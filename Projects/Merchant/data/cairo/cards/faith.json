@@ -1,1 +1,66 @@
-[]
+[
+  {
+    "id": "sabbath-carrier",
+    "group": "faith",
+    "from": {
+      "name": "Yehuda, a merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Goods that cannot travel on Saturday",
+    "body": "Yehuda is a Jewish merchant, and Saturday is his day of rest. Some of his goods must go by road on that day to reach the river boat. He asks if one of your carters can take them.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "help",
+        "label": "Send your carter with the goods",
+        "hint": "It costs a day. Yehuda will owe you a favour.",
+        "requires": {
+          "money": {
+            "gte": 15
+          }
+        },
+        "now": [
+          {
+            "money": -15
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "yehuda-returns-favour"
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Say you are too busy",
+        "hint": "Yehuda will ask someone else.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "North African Jewish traders in the Geniza letters had long given goods for the road to Muslim business friends. That way no Jewish carrier had to travel on the Sabbath.",
+    "sources": [
+      {
+        "src": "goitein-1967",
+        "at": "p. 281, as quoted by Edwards and Ogilvie (2008), p. 17"
+      }
+    ]
+  }
+]

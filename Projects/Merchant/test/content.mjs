@@ -14,7 +14,7 @@ import { freshState } from '../js/engine/state.js';
 import { validateContent, CONDITION_LEAVES } from '../js/engine/content.js';
 import { validateContent as exported } from '../js/engine/index.js';
 import { readingLevel, syllables, fkGrade, sentences, longestSentence, CEILINGS } from '../tools/reading-level.mjs';
-import { choiceVector, dominates, lintContent, loadBanned, OPENING_LETTERS } from '../tools/lint-content.mjs';
+import { choiceVector, dominates, gradientFailures, lintContent, loadBanned, OPENING_LETTERS } from '../tools/lint-content.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIX = path.join(ROOT, 'test/fixtures');
@@ -87,6 +87,52 @@ for (const name of ['d5-entry-ok', 'term-with-entry']) {
   });
 }
 
+// ---- rule 8: the direction of trade (MER-51b)
+const gradeSrc = [{ src: content.sources[0].id }];
+const gradeVariant = (grad, edit = () => {}) => variant(c => { c.city.gradients = [{ note: 'Wool went up the hill.', sources: gradeSrc, ...grad }]; edit(c); });
+const rule8 = c => lintContent(c, { banned }).filter(f => f.rule === 8);
+test('gradient: testport carries none and passes', () => eq(rule8(content), []));
+test('gradient: wool dearer uphill passes', () => eq(rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] })), []));
+test('gradient: wool dearer downhill fails, naming both stops and both prices', () => {
+  const f = rule8(gradeVariant({ good: 'wool', from: ['hilltown', 'harbour'] }));
+  eq(f.length, 1, JSON.stringify(f));
+  ok(f[0].message.includes('wool at harbour costs 20') && f[0].message.includes('30 at hilltown'), f[0].message);
+});
+test('gradient: equal prices pass (a tie is allowed)', () => eq(rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] }, c => { c.stops.find(s => s.id === 'hilltown').sells.wool.base = 20; })), []));
+test('gradient: one cent under fails (the edge is exact)', () => eq(rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] }, c => { c.stops.find(s => s.id === 'hilltown').sells.wool.base = 19; })).length, 1));
+test('gradient: a tier ties inside itself and is held to the stops before it', () => {
+  const salt = grad => rule8(gradeVariant({ good: 'salt', ...grad }, c => { c.stops.find(s => s.id === 'saltmarsh').sells.salt.base = 12; }));
+  eq(salt({ from: [['harbour', 'saltmarsh'], 'hilltown'] }), [], 'harbour 10 and saltmarsh 12 tie in a tier; hilltown sells no salt');
+  eq(salt({ from: ['harbour', ['saltmarsh', 'hilltown']] }), [], 'saltmarsh 12 above harbour 10');
+  eq(salt({ from: ['saltmarsh', ['harbour', 'hilltown']] }).length, 1, 'harbour 10 under saltmarsh 12');
+});
+test('gradient: a stop that does not sell the good is skipped, not failed', () => eq(rule8(gradeVariant({ good: 'salt', from: ['saltmarsh', 'hilltown', 'harbour'] }, c => { c.stops.find(s => s.id === 'harbour').sells.salt.base = 99; })), []));
+test('gradient: an act whose base breaks the order fails though the plain base holds', () => {
+  const f = rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] }, c => { c.stops.find(s => s.id === 'hilltown').sells.wool.baseByAct = [30, 15, 30]; }));
+  eq(f.length, 1, JSON.stringify(f));
+  ok(f[0].message.includes('act 2'), f[0].message);
+});
+test('gradient: an unknown stop, an unknown good and a single stop are schema problems (rule 1)', () => {
+  for (const grad of [{ good: 'wool', from: ['harbour', 'nowhere'] }, { good: 'gems', from: ['harbour', 'hilltown'] }, { good: 'wool', from: ['harbour'] }]) {
+    ok(problemsOf(gradeVariant(grad)).length > 0, JSON.stringify(grad));
+  }
+});
+test('gradient: a gradient with no note or no source is a schema problem', () => {
+  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], sources: gradeSrc }]; })).some(p => p.message === 'missing "note"'));
+  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], note: 'x' }]; })).some(p => p.message === 'missing "sources"'));
+});
+test('gradient: gradientFailures alone, on plain stops', () => eq(gradientFailures({ good: 'g', from: ['a', 'b'] }, [{ id: 'a', sells: { g: { base: 5 } } }, { id: 'b', sells: { g: { base: 4 } } }], 'x').length, 1));
+test('gradient: cairo covers the directions the research records', () => {
+  const have = new Set(cairo.city.gradients.map(g => g.good));
+  for (const g of ['pepper', 'porcelain', 'incense', 'silk', 'gold', 'sugar', 'linen', 'glass', 'copper', 'wool', 'salt']) ok(have.has(g), `no gradient for ${g}`);
+  for (const g of cairo.city.gradients) ok(g.note.length > 20 && g.sources.length > 0, `gradient ${g.good} lacks its note or source`);
+});
+test('gradient: cairo keeps the trade the right way round (Venice pepper above Alexandria, Calicut below Hormuz)', () => {
+  const base = (s, g) => cairo.stops.find(x => x.id === s).sells[g].base;
+  ok(base('venice', 'pepper') >= base('alexandria', 'pepper') && base('calicut', 'pepper') <= base('hormuz', 'pepper'));
+  eq(rule8(cairo), []);
+});
+
 // ---- validateContent
 test('validate: testport has no problems', () => eq(problemsOf(content), []));
 test('validate: one error lists every problem', () => {
@@ -109,6 +155,17 @@ test('validate: an unknown key is an error at any depth', () => {
     const p = problemsOf(variant(edit));
     ok(p.some(x => x.kind === 'unknown-key'), `no unknown-key problem for ${edit}: ${JSON.stringify(p)}`);
   }
+});
+test('validate: an agent may carry sources, and a source id that is not in sources.json fails (MER-50)', () => {
+  ok(problemsOf(variant(c => { c.agents[0].sources = [{ src: 'testport-fiction', at: 'a note' }]; })).length === 0, 'a good agent source was refused');
+  const bad = problemsOf(variant(c => { c.agents[0].sources = [{ src: 'lost-1900' }]; }));
+  ok(bad.some(x => String(x.text ?? x.message ?? JSON.stringify(x)).includes('no source "lost-1900"') && JSON.stringify(x).includes('sources')), `no bad-source problem: ${JSON.stringify(bad)}`);
+});
+test('validate: city.json clusters is a map of ids to names, and anything else fails (MER-44b)', () => {
+  ok(problemsOf(variant(c => { c.city.clusters = { 'red-sea': 'The Red Sea' }; })).length === 0, 'a good clusters map was refused');
+  ok(problemsOf(variant(c => { c.city.clusters = { 'Red Sea': 'x' }; })).length > 0, 'a cluster id with a capital and a space passed');
+  ok(problemsOf(variant(c => { c.city.clusters = { 'red-sea': 7 }; })).length > 0, 'a cluster name that is a number passed');
+  ok(problemsOf(variant(c => { c.city.clusters = ['red-sea']; })).length > 0, 'a clusters list passed');
 });
 test('validate: a reference to nothing is an error (card, good, stop, agent, house, source, entry)', () => {
   for (const [edit, text] of [
@@ -154,7 +211,7 @@ test('validate: every condition leaf is accepted, and agrees with the engine\'s 
   const samples = {
     season: { season: ['spring'] }, year: { year: [1200, 1202] }, act: { act: 1 }, length: { length: 'acts' },
     notebook: { notebook: 'testport' }, out: { out: { lte: 2 } }, money: { money: { lte: 900 } },
-    flag: { flag: 'x', not: true }, rep: { rep: 'partners', gte: 1 }, agent: { agent: 'mira', hired: true },
+    stock: { stock: 'wool', gte: 1 }, flag: { flag: 'x', not: true }, rep: { rep: 'partners', gte: 1 }, agent: { agent: 'mira', hired: true },
   };
   eq(Object.keys(samples).sort(), Object.keys(CONDITION_LEAVES).sort());
   const c2 = variant(c => { c.notebook = entries; });
@@ -219,6 +276,14 @@ test('a route leg may carry a when condition and a note; any other unknown key s
   ok(problemsOf({ ...cairo, routes: bad }).length > 0, 'a malformed when is refused');
   const odd = structuredClone(r); odd[0].legs[0].colour = 'red';
   ok(problemsOf({ ...cairo, routes: odd }).length > 0, 'an unknown leg key is refused');
+});
+test('a choice may carry ui: "outfit-first" and nothing else in that key', () => {
+  const c = structuredClone(cairo.cards);
+  const first = c.find(x => x.id === 'first-expedition');
+  ok(first && first.choices.some(ch => ch.ui === 'outfit-first'), 'the first expedition card opens the one-press outfitting');
+  eq(problemsOf({ ...cairo, cards: c }), [], 'accepted');
+  first.choices.find(ch => ch.ui).ui = 'open-the-map';
+  ok(problemsOf({ ...cairo, cards: c }).length > 0, 'an unknown ui value is refused');
 });
 test('cairo has every file of ARCH 5, empty or minimal', async () => {
   for (const f of ['city', 'calendar', 'houses', 'goods', 'stops', 'routes', 'agents', 'events', 'notebook', 'terms', 'text', 'letters']) {
@@ -295,12 +360,35 @@ test('rule 2: a card, letter, event with a note and notebook entry with no sourc
   eq(r2(c => { c.letters = [{ id: 'l', kind: 'question', title: 'T', body: 'B.', choices: [{ id: 'a', label: 'A', now: [{ money: 1 }] }, { id: 'b', label: 'B', now: [{ money: 2 }] }], note: 'N.' }]; }), ['letters[l]']);
 });
 test('reading level: the file mean fails on its own when every unit is under its own ceiling', () => {
+  // Every body and note sits under its own ceiling (7.0 and 8.0) and the mean over them is above 6.5.
   const hard = 'Negotiate considerable administrative documentation';
-  const c = variant(c2 => { for (const ch of c2.cards[0].choices) ch.label = hard; });
+  const c = variant(c2 => { for (const card of c2.cards) { card.body = hard + '.'; card.note = hard + '.'; } });
   const { failures, means } = readingLevel(c);
-  eq(failures.map(f => f.rule), ['file mean'], JSON.stringify(failures));
-  ok(means['cards/orders.json'] > 6.5);
+  ok(failures.every(f => f.rule === 'file mean' || f.rule === 'grade ceiling'), JSON.stringify(failures));
+  ok(means['cards/orders.json'] > 6.5, `mean ${means['cards/orders.json']}`);
+  ok(failures.some(f => f.rule === 'file mean'), 'no file mean failure');
   eq(readingLevel(content).failures, []);
+});
+test('reading level: titles, labels and hints stay out of the file mean (DECISIONS 2026-11-17)', () => {
+  // Hard fragments only: the labels, hints and titles of every card grade far above 6.5, the
+  // bodies and notes are untouched. Counted, they would push the mean over; left out, it passes.
+  const hard = 'Negotiate considerable administrative documentation';
+  const c = variant(c2 => {
+    for (const card of c2.cards) { card.title = hard; for (const ch of card.choices) { ch.label = hard; ch.hint = hard; } }
+  });
+  const { failures, units } = readingLevel(c);
+  eq(failures, [], JSON.stringify(failures));
+  const frag = units.filter(u => u.fragment && u.file.startsWith('cards/')), rest = units.filter(u => !u.fragment && u.file.startsWith('cards/'));
+  ok(frag.length > 0 && frag.every(u => u.grade > 6.5), 'the fragments should grade hard');
+  ok(rest.every(u => ['card body', 'note'].includes(u.kind)), 'only bodies and notes are in the mean');
+  const withFragments = [...frag, ...rest].filter(u => u.file === 'cards/orders.json');
+  const mean = withFragments.reduce((a, u) => a + u.grade, 0) / withFragments.length;
+  ok(mean > 6.5, `counting the fragments the mean would be ${mean.toFixed(2)}, so a regression to counting them would fail the suite`);
+});
+test('reading level: a fragment still has the sentence ceiling', () => {
+  const long = Array(23).fill('word').join(' ');
+  const c = variant(c2 => { c2.cards[0].choices[0].hint = long; });
+  eq(readingLevel(c).failures.map(f => f.rule), ['sentence length']);
 });
 test('reading level: a term is allowed when the card unlocks it by an effect or requires it in when', () => {
   const termed = edit => variant(c => {
@@ -349,10 +437,12 @@ test('grade: a hard sentence grades far above the ceiling and a plain one far be
   ok(fkGrade('The negotiation concerning transportation insurance necessitates considerable administrative documentation.') > CEILINGS.body + 10);
   ok(fkGrade('Nell has wool. She wants to sell it.') < CEILINGS.body - 4);
 });
-test('grade: a term, a place name or a real person counts as two syllables whatever its length', () => {
+test('grade: a term, a place name, a good or a real person counts as at most two syllables', () => {
   const plain = fkGrade('Hasan went to Alexandria today.');
   const fixed = fkGrade('Hasan went to Alexandria today.', new Set(['alexandria']));
   ok(fixed < plain, `${fixed} should be under ${plain}`);
+  // ...and a one-syllable name counts as one, not two (gold, salt: MER-31's goods pushed a note over)
+  eq(fkGrade('Gold came to Cairo.', new Set(['gold', 'cairo'])), fkGrade('Gold came to Cairo.', new Set(['cairo'])));
 });
 test('grade: a {template} slot is one two-syllable word', () => {
   eq(fkGrade('{agent} paid {money} dinars.'), 0.39 * 4 + 11.8 * 7 / 4 - 15.59, 'four words, seven syllables');

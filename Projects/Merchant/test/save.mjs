@@ -9,9 +9,6 @@ import { freshState } from '../js/engine/state.js';
 import { validate, migrate, repair, makeSlots, SAVE_KEY, SETTINGS_KEY, settingsDefaults } from '../js/save.js';
 
 const content = await loadContent('testport', { fs });
-// testport's cards unlock notebook entries but the city ships no notebook.json, so the content
-// the save is checked against lists the entries its own cards unlock (`unlocks` and `unlock` effects) (repair drops the rest).
-content.notebook = [...new Set([...JSON.stringify(content.cards).matchAll(/"unlocks?":(\[[^\]]*\]|"[^"]*")/g)].flatMap(m => [].concat(JSON.parse(m[1]))))].map(id => ({ id }));
 const game = (over = {}) => newGame(content, { seed: 7, length: 'acts', house: 'rich', ...over });
 const fresh = () => freshState(content, { seed: 1, length: 'acts', house: 'rich' });
 const copy = x => structuredClone(x);
@@ -78,7 +75,7 @@ test('migrate: a save from a newer version is refused, not guessed at', () => {
 // ---- validate, garbage
 test('validate: accepts a fresh state, refuses every shape ARCH 8.2 names', () => {
   ok(validate(fresh()));
-  for (const bad of [null, 5, 'x', [], {}, { ...fresh(), t: '3' }, { ...fresh(), t: NaN }, { ...fresh(), city: 4 }, { ...fresh(), phase: 'lunch' }]) {
+  for (const bad of [null, 5, 'x', [], {}, { ...fresh(), t: '3' }, { ...fresh(), t: NaN }, { ...fresh(), city: 4 }]) {
     ok(!validate(bad), `accepted ${JSON.stringify(bad)?.slice(0, 40)}`);
   }
 });
@@ -216,6 +213,16 @@ test('repair: an agent shown on the road with no expedition is at home', () => {
   const s = copy(fresh());
   s.agents.tobin.where = 'road';
   eq(repair(s, content).agents.tobin.where, 'harbour');
+});
+test('validate: an unknown phase is not a reason to refuse a save, repair makes it desk', () => {
+  for (const phase of ['lunch', undefined, 4, null]) {
+    const blob = { ...fresh(), phase };
+    ok(validate(blob), `validate refused phase ${String(phase)}`);
+    eq(repair(blob, content).phase, 'desk');
+  }
+  const slots = slotsOnMemory();
+  slots.store.setItem(SAVE_KEY, JSON.stringify({ ...fresh(), phase: 'lunch', money: 77 }));
+  eq([slots.game.load().phase, slots.game.load().money], ['desk', 77], 'the slot loads it');
 });
 test('repair: a phase outside the list becomes desk', () => {
   eq(repair({ ...fresh(), phase: 'lunch' }, content).phase, 'desk');

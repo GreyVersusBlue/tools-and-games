@@ -14,12 +14,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    },
@@ -34,12 +35,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    }
@@ -60,12 +62,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    },
@@ -77,14 +80,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19. Venice traded with Egypt through Famagusta, which replaced Acre as the port of call, p. 133, and especially while Venice forbade direct trade, 1323 to 1344, p. 135."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -96,14 +109,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19. Venice traded with Egypt through Famagusta, which replaced Acre as the port of call, p. 133, and especially while Venice forbade direct trade, 1323 to 1344, p. 135."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -118,12 +141,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    }
@@ -144,12 +168,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    },
@@ -161,14 +186,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19. Venice traded with Egypt through Famagusta, which replaced Acre as the port of call, p. 133, and especially while Venice forbade direct trade, 1323 to 1344, p. 135."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -180,14 +215,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 12,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19. Venice traded with Egypt through Famagusta, which replaced Acre as the port of call, p. 133, and especially while Venice forbade direct trade, 1323 to 1344, p. 135."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -199,14 +244,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 12,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19. Venice traded with Egypt through Famagusta, which replaced Acre as the port of call, p. 133, and especially while Venice forbade direct trade, 1323 to 1344, p. 135."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -218,14 +273,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19. Venice traded with Egypt through Famagusta, which replaced Acre as the port of call, p. 133, and especially while Venice forbade direct trade, 1323 to 1344, p. 135."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -240,12 +305,131 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-venice-direct",
+  "to": "venice",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "alexandria",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "venice",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.09,
+    "toll": 14,
+    "when": {
+     "year": [
+      1345,
+      1347
+     ]
+    },
+    "note": "estimate",
+    "sources": [
+     {
+      "src": "jacoby-2018",
+      "at": "pp. 135 to 137: in 1323 Venice, under papal pressure, forbade trade with Mamluk lands; the halt in direct trading lasted until 1344; Venice sent an envoy in August 1344, the treaty of 1345 fixed the taxes and the galley service resumed in 1345 (p. 137 n. 116). Before 1345 the leg is not open. Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19."
+     },
+     {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "pegolotti-1936",
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
+     }
+    ]
+   },
+   {
+    "from": "venice",
+    "to": "alexandria",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.09,
+    "toll": 14,
+    "when": {
+     "year": [
+      1345,
+      1347
+     ]
+    },
+    "note": "estimate",
+    "sources": [
+     {
+      "src": "jacoby-2018",
+      "at": "pp. 135 to 137: in 1323 Venice, under papal pressure, forbade trade with Mamluk lands; the halt in direct trading lasted until 1344; Venice sent an envoy in August 1344, the treaty of 1345 fixed the taxes and the galley service resumed in 1345 (p. 137 n. 116). Before 1345 the leg is not open. Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19."
+     },
+     {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "pegolotti-1936",
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    }
@@ -266,12 +450,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    },
@@ -283,14 +468,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 14,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -302,14 +497,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 14,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -324,12 +529,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    }
@@ -350,12 +556,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    },
@@ -367,14 +574,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 12,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -386,14 +603,24 @@
     "opens": [
      "spring",
      "summer",
-     "autumn"
+     "autumn",
+     "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 12,
+    "note": "estimate",
     "sources": [
      {
+      "src": "duggan-2015",
+      "at": "Winter bans on sailing were a legal fiction, not a closed sea, p. 277; a voyage from Alexandria to Crete is recorded for December 1319, p. 294. Winter stays open and costs more risk. No sailing time was reached. The nearest recorded figure is one winter round trip from Genoa to Alexandria in 1369 to 1370, 81 days, pp. 297 to 298."
+     },
+     {
+      "src": "jacoby-2018",
+      "at": "Sailing along the Levantine coast was generally interrupted in winter, and Venetians sometimes went to Egypt off season to buy cheaply, p. 119 n. 19."
+     },
+     {
       "src": "pegolotti-1936",
-      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+      "at": "Pegolotti lists Alexandria duties and freight, not sailing times; the toll is an estimate."
      }
     ]
    },
@@ -408,12 +635,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+      "at": "No time is given: he went between Cairo and Alexandria three or four times, vol. 1, p. 32 n. The nearest recorded figure is Cairo to Qus, 18 days by boat, vol. 1, p. 59 n. 185."
      }
     ]
    }
@@ -500,12 +728,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 2, p. 413 n. 3: five days from Qus; the season, risk and toll are estimates"
+      "at": "vol. 2, p. 413 n. 3: Quseir is five days from Qus; in 1330 a ship loaded at Jeddah for Quseir, pp. 412 to 413. The season, risk and toll are estimates."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 33: Quseir has the shorter desert road and the longer, harder sea voyage; p. 42: Quseir al-Qadim is 150 km from Qus"
      }
     ]
    },
@@ -520,12 +753,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; the five days of vol. 2, p. 413 n. 3, run the other way"
+      "at": "vol. 2, p. 413 n. 3: five days from Qus, run the other way"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 33: Quseir has the shorter desert road; p. 42: Quseir al-Qadim is 150 km from Qus"
      }
     ]
    },
@@ -591,7 +829,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus, citing Ibn Jubayr; p. 67: 15 days from Edfu; pp. 68 to 69: in June 1326 the crossing was stopped by the Beja king's war with the sultan; p. 68: the town's revenue was split, one third to the sultan and two thirds to the Beja king. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road to the Nile took \"some 15 or 20 days\" (a general figure, from Fatimid times); p. 35: the revenue split"
      }
     ]
    },
@@ -611,7 +853,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road took \"some 15 or 20 days\" (a general figure)"
      }
     ]
    },
@@ -677,7 +923,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus, citing Ibn Jubayr; p. 67: 15 days from Edfu; pp. 68 to 69: in June 1326 the crossing was stopped by the Beja king's war with the sultan; p. 68: the town's revenue was split, one third to the sultan and two thirds to the Beja king. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road to the Nile took \"some 15 or 20 days\" (a general figure, from Fatimid times); p. 35: the revenue split"
      }
     ]
    },
@@ -691,12 +941,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+      "at": "vol. 2, pp. 360 to 362: one crossing took two days with a fair wind, then a storm; vol. 4, p. 325: the crossing of 1348 ended at Mecca on 22 Sha'ban 749"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 33: the north wind blows for about 80 percent of the year on the Red Sea"
      }
     ]
    },
@@ -710,12 +965,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+      "at": "vol. 2, p. 413: in 1330 a ship was blown south and he walked nine days to Aydhab"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 35: ships drifted south of Aydhab into Beja land"
      }
     ]
    },
@@ -735,7 +995,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road took \"some 15 or 20 days\" (a general figure)"
      }
     ]
    },
@@ -801,7 +1065,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus, citing Ibn Jubayr; p. 67: 15 days from Edfu; pp. 68 to 69: in June 1326 the crossing was stopped by the Beja king's war with the sultan; p. 68: the town's revenue was split, one third to the sultan and two thirds to the Beja king. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road to the Nile took \"some 15 or 20 days\" (a general figure, from Fatimid times); p. 35: the revenue split"
      }
     ]
    },
@@ -815,12 +1083,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+      "at": "vol. 2, pp. 360 to 362: one crossing took two days with a fair wind, then a storm; vol. 4, p. 325: the crossing of 1348 ended at Mecca on 22 Sha'ban 749"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 33: the north wind blows for about 80 percent of the year on the Red Sea"
      }
     ]
    },
@@ -834,12 +1107,13 @@
      "winter",
      "spring"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Aden is the port of the merchants of India, vol. 2, p. 372; no sailing time was reached"
+      "at": "vol. 2, p. 372: Aden is the port of the merchants of India. No sailing time was reached; the nearest recorded figure is the two-day Aydhab to Jeddah crossing, vol. 2, pp. 360 to 362."
      }
     ]
    },
@@ -853,12 +1127,13 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the voyage out, vol. 2, p. 372"
+      "at": "vol. 2, p. 372: Aden is the port of the merchants of India. No sailing time was reached; the nearest recorded figure is the two-day Aydhab to Jeddah crossing, vol. 2, pp. 360 to 362."
      }
     ]
    },
@@ -872,12 +1147,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+      "at": "vol. 2, p. 413: in 1330 a ship was blown south and he walked nine days to Aydhab"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 35: ships drifted south of Aydhab into Beja land"
      }
     ]
    },
@@ -897,7 +1177,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road took \"some 15 or 20 days\" (a general figure)"
      }
     ]
    },
@@ -963,7 +1247,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus, citing Ibn Jubayr; p. 67: 15 days from Edfu; pp. 68 to 69: in June 1326 the crossing was stopped by the Beja king's war with the sultan; p. 68: the town's revenue was split, one third to the sultan and two thirds to the Beja king. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road to the Nile took \"some 15 or 20 days\" (a general figure, from Fatimid times); p. 35: the revenue split"
      }
     ]
    },
@@ -977,12 +1265,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+      "at": "vol. 2, pp. 360 to 362: one crossing took two days with a fair wind, then a storm; vol. 4, p. 325: the crossing of 1348 ended at Mecca on 22 Sha'ban 749"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 33: the north wind blows for about 80 percent of the year on the Red Sea"
      }
     ]
    },
@@ -996,12 +1289,13 @@
      "winter",
      "spring"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Aden is the port of the merchants of India, vol. 2, p. 372; no sailing time was reached"
+      "at": "vol. 2, p. 372: Aden is the port of the merchants of India. No sailing time was reached; the nearest recorded figure is the two-day Aydhab to Jeddah crossing, vol. 2, pp. 360 to 362."
      }
     ]
    },
@@ -1014,12 +1308,13 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.1,
-    "toll": 8,
+    "risk": 0.08,
+    "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Calicut is a chief port of Malabar, vol. 4, pp. 809 to 812; the monsoon dates come second hand from \"Monsoons, Mude and Gold,\" Saudi Aramco World, 2005"
+      "at": "vol. 4, pp. 809 to 812: Calicut is a chief port of Malabar, visited from China, Java, Ceylon, the Maldives, Yemen and Fars. The monsoon dates (leave Yemen by mid-September) come second hand from \"Monsoons, Mude and Gold,\" Saudi Aramco World, 2005, which gives no source for them."
      }
     ]
    },
@@ -1032,12 +1327,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.1,
-    "toll": 8,
+    "risk": 0.08,
+    "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the voyage out, vol. 4, pp. 809 to 812"
+      "at": "vol. 4, pp. 809 to 812: Calicut is a chief port of Malabar. The nearest recorded figure is 18 days from western India to Yemen, first ships leaving 16 October, from \"Monsoons, Mude and Gold,\" Saudi Aramco World, 2005, which gives no source for it; ports shut in June and July."
      }
     ]
    },
@@ -1051,12 +1347,13 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the voyage out, vol. 2, p. 372"
+      "at": "vol. 2, p. 372: Aden is the port of the merchants of India. No sailing time was reached; the nearest recorded figure is the two-day Aydhab to Jeddah crossing, vol. 2, pp. 360 to 362."
      }
     ]
    },
@@ -1070,12 +1367,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+      "at": "vol. 2, p. 413: in 1330 a ship was blown south and he walked nine days to Aydhab"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 35: ships drifted south of Aydhab into Beja land"
      }
     ]
    },
@@ -1095,7 +1397,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road took \"some 15 or 20 days\" (a general figure)"
      }
     ]
    },
@@ -1161,7 +1467,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus, citing Ibn Jubayr; p. 67: 15 days from Edfu; pp. 68 to 69: in June 1326 the crossing was stopped by the Beja king's war with the sultan; p. 68: the town's revenue was split, one third to the sultan and two thirds to the Beja king. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road to the Nile took \"some 15 or 20 days\" (a general figure, from Fatimid times); p. 35: the revenue split"
      }
     ]
    },
@@ -1175,12 +1485,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+      "at": "vol. 2, pp. 360 to 362: one crossing took two days with a fair wind, then a storm; vol. 4, p. 325: the crossing of 1348 ended at Mecca on 22 Sha'ban 749"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 33: the north wind blows for about 80 percent of the year on the Red Sea"
      }
     ]
    },
@@ -1194,12 +1509,13 @@
      "winter",
      "spring"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Aden is the port of the merchants of India, vol. 2, p. 372; no sailing time was reached"
+      "at": "vol. 2, p. 372: Aden is the port of the merchants of India. No sailing time was reached; the nearest recorded figure is the two-day Aydhab to Jeddah crossing, vol. 2, pp. 360 to 362."
      }
     ]
    },
@@ -1212,12 +1528,13 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+      "at": "vol. 2, p. 400 nn. 117 to 118: Hormuz was on the island of Jarun soon after 1300. No sailing time was reached; the nearest recorded figure is 35 days from Hormuz to Shiraz, vol. 2."
      }
     ]
    },
@@ -1230,12 +1547,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+      "at": "vol. 2, p. 400 nn. 117 to 118: Hormuz was on the island of Jarun soon after 1300. No sailing time was reached; the nearest recorded figure is 35 days from Hormuz to Shiraz, vol. 2."
      }
     ]
    },
@@ -1249,12 +1567,13 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the voyage out, vol. 2, p. 372"
+      "at": "vol. 2, p. 372: Aden is the port of the merchants of India. No sailing time was reached; the nearest recorded figure is the two-day Aydhab to Jeddah crossing, vol. 2, pp. 360 to 362."
      }
     ]
    },
@@ -1268,12 +1587,17 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+      "at": "vol. 2, p. 413: in 1330 a ship was blown south and he walked nine days to Aydhab"
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 35: ships drifted south of Aydhab into Beja land"
      }
     ]
    },
@@ -1293,7 +1617,11 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least. The toll is an estimate."
+     },
+     {
+      "src": "peacock-2008",
+      "at": "p. 34: the desert road took \"some 15 or 20 days\" (a general figure)"
      }
     ]
    },
@@ -1339,7 +1667,7 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326. The toll is an estimate."
      }
     ]
    },
@@ -1356,10 +1684,11 @@
     ],
     "risk": 0.04,
     "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326, the other way not given"
      }
     ]
    }
@@ -1385,7 +1714,7 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326. The toll is an estimate."
      }
     ]
    },
@@ -1402,10 +1731,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1422,10 +1752,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1442,10 +1773,11 @@
     ],
     "risk": 0.04,
     "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326, the other way not given"
      }
     ]
    }
@@ -1471,7 +1803,7 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326. The toll is an estimate."
      }
     ]
    },
@@ -1488,10 +1820,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1507,10 +1840,15 @@
     ],
     "risk": 0.08,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
+     },
+     {
+      "src": "greif-2006",
+      "at": "ch. 4, citing Lopez 1943, pp. 183 to 184: in 1340 Tabriz's ruler seized the goods of many Genoese and Genoa embargoed Tabriz; after the reopening of 1344 Genoese were robbed and killed. The road is dangerous for Italian merchants from 1340, not from 1335."
      }
     ]
    },
@@ -1526,10 +1864,15 @@
     ],
     "risk": 0.08,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
+     },
+     {
+      "src": "greif-2006",
+      "at": "ch. 4, citing Lopez 1943, pp. 183 to 184: the Genoese embargo on Tabriz began in 1340 and the killings followed the reopening of 1344"
      }
     ]
    },
@@ -1546,10 +1889,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1566,10 +1910,11 @@
     ],
     "risk": 0.04,
     "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326, the other way not given"
      }
     ]
    }
@@ -1595,7 +1940,7 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326. The toll is an estimate."
      }
     ]
    },
@@ -1612,10 +1957,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1631,10 +1977,15 @@
     ],
     "risk": 0.08,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
+     },
+     {
+      "src": "greif-2006",
+      "at": "ch. 4, citing Lopez 1943, pp. 183 to 184: in 1340 Tabriz's ruler seized the goods of many Genoese and Genoa embargoed Tabriz; after the reopening of 1344 Genoese were robbed and killed. The road is dangerous for Italian merchants from 1340, not from 1335."
      }
     ]
    },
@@ -1649,10 +2000,11 @@
     ],
     "risk": 0.1,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1667,10 +2019,11 @@
     ],
     "risk": 0.1,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1686,10 +2039,15 @@
     ],
     "risk": 0.08,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
+     },
+     {
+      "src": "greif-2006",
+      "at": "ch. 4, citing Lopez 1943, pp. 183 to 184: the Genoese embargo on Tabriz began in 1340 and the killings followed the reopening of 1344"
      }
     ]
    },
@@ -1706,10 +2064,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1726,10 +2085,11 @@
     ],
     "risk": 0.04,
     "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326, the other way not given"
      }
     ]
    }
@@ -1755,7 +2115,7 @@
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326. The toll is an estimate."
      }
     ]
    },
@@ -1772,10 +2132,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1791,10 +2152,15 @@
     ],
     "risk": 0.08,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
+     },
+     {
+      "src": "greif-2006",
+      "at": "ch. 4, citing Lopez 1943, pp. 183 to 184: in 1340 Tabriz's ruler seized the goods of many Genoese and Genoa embargoed Tabriz; after the reopening of 1344 Genoese were robbed and killed. The road is dangerous for Italian merchants from 1340, not from 1335."
      }
     ]
    },
@@ -1810,10 +2176,11 @@
     ],
     "risk": 0.1,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+      "at": "vol. 2, p. 400 nn. 117 to 118: Hormuz was on the island of Jarun soon after 1300. The nearest recorded figure is 35 days from Hormuz to Shiraz, vol. 2."
      }
     ]
    },
@@ -1829,10 +2196,11 @@
     ],
     "risk": 0.1,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+      "at": "vol. 2, p. 400 nn. 117 to 118: Hormuz was on the island of Jarun soon after 1300. The nearest recorded figure is 35 days from Hormuz to Shiraz, vol. 2."
      }
     ]
    },
@@ -1848,10 +2216,15 @@
     ],
     "risk": 0.08,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
+     },
+     {
+      "src": "greif-2006",
+      "at": "ch. 4, citing Lopez 1943, pp. 183 to 184: the Genoese embargo on Tabriz began in 1340 and the killings followed the reopening of 1344"
      }
     ]
    },
@@ -1868,10 +2241,11 @@
     ],
     "risk": 0.04,
     "toll": 5,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "No time was reached. The nearest recorded figure is vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326"
      }
     ]
    },
@@ -1888,10 +2262,11 @@
     ],
     "risk": 0.04,
     "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: Cairo to Damascus took 21 to 23 days in July and August 1326, the other way not given"
      }
     ]
    }
@@ -1912,10 +2287,11 @@
     ],
     "risk": 0.12,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Takedda to Sijilmasa by way of Tuat took about 12 weeks in 1353, vol. 4"
+      "at": "No Cairo to Tuat time was reached. The nearest recorded figure is Takedda to Sijilmasa by way of Tuat, 12 September 1353 to about December 1353, about 12 weeks, vol. 4, p. 975 n. 102 and p. 977."
      }
     ]
    },
@@ -1930,10 +2306,11 @@
     ],
     "risk": 0.12,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the road out, vol. 4"
+      "at": "As the road out. The nearest recorded figure is Takedda to Sijilmasa by way of Tuat, about 12 weeks in 1353, vol. 4, p. 975 n. 102 and p. 977."
      }
     ]
    }
@@ -1954,10 +2331,11 @@
     ],
     "risk": 0.12,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Takedda to Sijilmasa by way of Tuat took about 12 weeks in 1353, vol. 4"
+      "at": "No Cairo to Tuat time was reached. The nearest recorded figure is Takedda to Sijilmasa by way of Tuat, 12 September 1353 to about December 1353, about 12 weeks, vol. 4, p. 975 n. 102 and p. 977."
      }
     ]
    },
@@ -1970,12 +2348,13 @@
      "winter",
      "spring"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Sijilmasa to Walata took two months, leaving 14 February 1352, vol. 4, p. 950"
+      "at": "No Tuat to Walata time was reached. The nearest recorded figure is Sijilmasa to Walata, two full months, leaving 14 February 1352, vol. 4, pp. 946 and 950; Taghaza on day 25, p. 947."
      }
     ]
    },
@@ -1988,12 +2367,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he left Takedda northward on 12 September 1353, vol. 4"
+      "at": "No time was reached. The nearest recorded figure is the return from Takedda by way of Tuat, leaving 12 September 1353, vol. 4, p. 975 n. 102."
      }
     ]
    },
@@ -2008,10 +2388,11 @@
     ],
     "risk": 0.12,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the road out, vol. 4"
+      "at": "As the road out. The nearest recorded figure is Takedda to Sijilmasa by way of Tuat, about 12 weeks in 1353, vol. 4, p. 975 n. 102 and p. 977."
      }
     ]
    }
@@ -2032,10 +2413,11 @@
     ],
     "risk": 0.12,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Takedda to Sijilmasa by way of Tuat took about 12 weeks in 1353, vol. 4"
+      "at": "No Cairo to Tuat time was reached. The nearest recorded figure is Takedda to Sijilmasa by way of Tuat, 12 September 1353 to about December 1353, about 12 weeks, vol. 4, p. 975 n. 102 and p. 977."
      }
     ]
    },
@@ -2048,12 +2430,13 @@
      "winter",
      "spring"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; Sijilmasa to Walata took two months, leaving 14 February 1352, vol. 4, p. 950"
+      "at": "No Tuat to Walata time was reached. The nearest recorded figure is Sijilmasa to Walata, two full months, leaving 14 February 1352, vol. 4, pp. 946 and 950; Taghaza on day 25, p. 947."
      }
     ]
    },
@@ -2067,12 +2450,13 @@
      "winter",
      "spring"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he reached Gao by way of Mali, not from Walata, vol. 4, pp. 969 to 971"
+      "at": "vol. 4, pp. 969 to 971: he reached Gao by way of Mali, not from Walata, so no time was reached for this leg"
      }
     ]
    },
@@ -2086,12 +2470,13 @@
      "winter",
      "spring"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the road out, vol. 4, pp. 969 to 971"
+      "at": "As the road out, vol. 4, pp. 969 to 971"
      }
     ]
    },
@@ -2104,12 +2489,13 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; he left Takedda northward on 12 September 1353, vol. 4"
+      "at": "No time was reached. The nearest recorded figure is the return from Takedda by way of Tuat, leaving 12 September 1353, vol. 4, p. 975 n. 102."
      }
     ]
    },
@@ -2124,10 +2510,11 @@
     ],
     "risk": 0.12,
     "toll": 10,
+    "note": "estimate",
     "sources": [
      {
       "src": "ibn-battuta-1958",
-      "at": "estimate; as the road out, vol. 4"
+      "at": "As the road out. The nearest recorded figure is Takedda to Sijilmasa by way of Tuat, about 12 weeks in 1353, vol. 4, p. 975 n. 102 and p. 977."
      }
     ]
    }

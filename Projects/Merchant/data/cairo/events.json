@@ -1,1 +1,257 @@
-[]
+[
+  {
+    "id": "musa-arrives-cairo",
+    "at": 1,
+    "do": [ { "unlock": "person-mansa-musa" }, { "flag": "musa-in-cairo", "set": "now" } ],
+    "notice": {
+      "title": "A king from Mali is in Cairo",
+      "body": "Mansa Musa, the king of Mali, has reached Cairo on his way to Mecca. His company is very large. All Cairo is talking about it, and merchants wonder how much it will spend."
+    },
+    "note": "Al-Umari wrote what Cairenes told him about the visit, some years afterward. He says the Cairenes made great profits from the Malians.",
+    "sources": [
+      { "src": "levtzion-hopkins-1981", "at": "al-Umari on Mansa Musa in Cairo, pp. 269 to 273; second hand, from an emir who met the king" },
+      { "src": "collet-2023", "at": "arrival in summer 1324; sources give three different days, so the game gives none" }
+    ]
+  },
+  {
+    "id": "musa-gold-falls",
+    "at": 2,
+    "do": [ { "price": "cairo", "good": "gold", "by": 0.88 }, { "unlock": "person-al-umari" }, { "unlock": "good-gold" } ],
+    "notice": {
+      "title": "Gold sells for less",
+      "body": "The Malian company has left Cairo for Mecca. It spent and gave away so much gold that gold now sells for about 12 percent less."
+    },
+    "note": "Al-Umari wrote that gold fell from 25 dirhams or more to 22 or less. Only he says the low price lasted about twelve years, and Schultz doubts it.",
+    "sources": [
+      { "src": "levtzion-hopkins-1981", "at": "al-Umari, pp. 269 to 273; the twelve years is his claim alone" },
+      { "src": "schultz-2006", "at": "not read in full; the book's note says Schultz doubts the long fall" },
+      { "src": "collet-2023", "at": "the caravan left Cairo on 14 October 1324, 16 Shawwal 724" }
+    ]
+  },
+  {
+    "id": "cairo-lends-to-mali",
+    "at": 4,
+    "do": [ { "unlock": "person-karimi" } ],
+    "notice": {
+      "title": "Cairo's lenders and the Malian court",
+      "body": "Merchants in Cairo have lent money to the Malian court. One of them is Siraj al-Din ibn al-Kuwayk of Alexandria, a great spice merchant."
+    },
+    "note": "Ibn Battuta wrote that Mansa Musa borrowed from Siraj al-Din. Later, Siraj al-Din's son got the money back in Mali. No sum is given, and no date for the loan.",
+    "sources": [
+      { "src": "ibn-battuta-1958", "at": "vol. 4, pp. 969 to 970, with note 79" },
+      { "src": "sato-2006", "at": "p. 147, the Ibn Kuwayk family among the Karimi" },
+      { "src": "collet-2023", "at": "the Malian nobles took large loans from creditors in Cairo; no sum given" }
+    ]
+  },
+  {
+    "id": "ibn-battuta-alexandria",
+    "at": 8,
+    "between": [1, 2],
+    "do": [ { "unlock": "person-ibn-battuta" } ],
+    "interlude": "In April 1326 a young scholar from Tangier landed at Alexandria and went on to Cairo. His name was Ibn Battuta. He would travel for about thirty years, and long afterward he told the story of what he saw.",
+    "note": "Ibn Battuta says he landed at Alexandria on 5 April 1326. He told his book to a writer about 1355. His Egypt joins a few visits into one.",
+    "sources": [
+      { "src": "ibn-battuta-1958", "at": "vol. 1, pp. 18 and 59" }
+    ]
+  },
+  {
+    "id": "aydhab-closed-1326",
+    "at": 9,
+    "between": [1, 2],
+    "do": [ { "flag": "aydhab-shut", "set": true }, { "unlock": "place-aydhab" }, { "unlock": "person-beja" } ],
+    "notice": {
+      "title": "The Aydhab road is shut",
+      "body": "The king of the Beja is at war with the sultan's soldiers. He has sunk the ships at Aydhab, and no one can cross the Red Sea from there."
+    },
+    "interlude": "In the summer of 1326 Ibn Battuta crossed the desert toward Aydhab on the Red Sea. He found the crossing shut. The king of the Beja was at war with the sultan's soldiers and had sunk the ships. Ibn Battuta turned back to the Nile.",
+    "note": "Ibn Battuta wrote that the Beja king 'was engaged in hostilities with the Turks' and 'had sunk the ships'. So he went back to Qus and down the Nile. He was in Cairo again about 17 July.",
+    "sources": [
+      { "src": "ibn-battuta-1958", "at": "vol. 1, pp. 59 to 71; the date is Gibb's contents entry for p. 69" },
+      { "src": "peacock-2008", "at": "p. 35, Beja and Aydhab's revenues" }
+    ]
+  },
+  {
+    "id": "aydhab-open-again",
+    "at": 24,
+    "between": [1, 2],
+    "do": [ { "flag": "aydhab-shut", "clear": true } ],
+    "note": "By 1330 ships were sailing to Aydhab again. Ibn Battuta's ship that year was blown off course, and he walked nine days to reach the port.",
+    "sources": [
+      { "src": "ibn-battuta-1958", "at": "vol. 2, p. 413; the month is not recorded, so the game says only by 1330" }
+    ]
+  },
+  {
+    "id": "sultan-pilgrimage-1332",
+    "at": 33,
+    "between": [1, 2],
+    "do": [ { "unlock": "person-al-nasir" }, { "unlock": "term-pilgrimage" } ],
+    "interlude": "In the summer of 1332 the sultan, al-Nasir Muhammad, set out for Mecca on the pilgrimage. He took his wife and his son Anuk with him. Every Muslim who can make the journey is asked to go once.",
+    "note": "Bauden writes that the sultan 'presumably' left on 10 Shawwal 732, which was July 1332. He took his wife and his son Anuk.",
+    "sources": [
+      { "src": "bauden-2009", "at": "p. 66, citing al-Maqrizi's Suluk" }
+    ]
+  },
+  {
+    "id": "abu-said-dies",
+    "at": 47,
+    "do": [ { "flag": "ilkhan-dead", "set": "now" }, { "unlock": "place-tabriz" } ],
+    "notice": {
+      "title": "A ruler dies in Persia",
+      "body": "Word comes that Abu Said has died. He was the Ilkhan, the Mongol ruler of Persia and Iraq. He left no son to take his place."
+    },
+    "note": "Jackson dates Abu Said's death to the end of 1335, with no heir. Ibn Battuta reported a story that he was poisoned, and the sources used here give no day.",
+    "sources": [
+      { "src": "jackson-2017", "at": "the Ilkhanate under Abu Said, who died at the end of 1335 without an heir; page not recorded in the notes" },
+      { "src": "ibn-battuta-1958", "at": "vol. 2, pp. 339 to 341" }
+    ]
+  },
+  {
+    "id": "ilkhanate-breaks-up",
+    "at": 48,
+    "do": [ { "price": "cairo", "good": "silk", "by": 1.1 }, { "flag": "east-broken", "set": true } ],
+    "notice": {
+      "title": "Rivals for the Ilkhan's land",
+      "body": "The Ilkhan's land is breaking into pieces. One man holds Iraq and another holds Tabriz. Caravans on the road east may meet trouble."
+    },
+    "note": "Ibn Battuta listed who 'seized' what after Abu Said's death, over some years. Gibb calls it a 'confused history of this period'.",
+    "sources": [
+      { "src": "ibn-battuta-1958", "at": "vol. 2, p. 341, with Gibb's notes 231 to 238" }
+    ]
+  },
+  {
+    "id": "grain-shortage-1336",
+    "at": 49,
+    "do": [ { "flag": "grain-short-1336", "set": true }, { "unlock": "person-al-nasir" } ],
+    "notice": {
+      "title": "Grain runs short in Egypt",
+      "body": "Egypt's grain is running short. The sultan has ordered grain brought in from Syria and Palestine."
+    },
+    "note": "Soderberg writes that in 1336 the sultan had grain brought from Syria and Palestine. Sabra lists 1336 among ten big food shortages. The pages used here give neither the season nor the cause.",
+    "sources": [
+      { "src": "soderberg-2007", "at": "p. 198 and notes 7 and 8" },
+      { "src": "sabra-2000", "at": "case studies pp. 138 to 164; page range from Soderberg's note 8, the book itself not read" }
+    ]
+  },
+  {
+    "id": "ilkhanate-after-1335",
+    "at": 64,
+    "between": [2, 3],
+    "do": [ { "flag": "tabriz-embargo", "set": true } ],
+    "interlude": "Abu Said's lands did not come back together. Ibn Battuta named about eight men who held pieces of them. In 1340 the ruler of Tabriz seized the goods of many Genoese merchants, and Genoa stopped trading with the city.",
+    "note": "Greif, citing Lopez, writes that Tabriz's ruler seized many Genoese goods in 1340. Genoa then stopped trading there. A try to reopen it in 1344 ended in robbery and killings.",
+    "sources": [
+      { "src": "greif-2006", "at": "chapter 4, the Genoa and Tabriz passage, citing Lopez 1943 pp. 183 to 184" },
+      { "src": "ibn-battuta-1958", "at": "vol. 2, p. 341 and notes 231 to 238" }
+    ]
+  },
+  {
+    "id": "sultan-dies-1341",
+    "at": 68,
+    "between": [2, 3],
+    "do": [ { "flag": "sultan-died-1341", "set": true }, { "unlock": "person-al-nasir" } ],
+    "notice": {
+      "title": "The sultan has died",
+      "body": "Al-Nasir Muhammad, the sultan, has died. His son Abu Bakr has been made sultan the same day. The senior amirs guide him."
+    },
+    "interlude": "In June 1341 the sultan al-Nasir Muhammad died. His son Abu Bakr was made sultan the same day. In all, eight of his sons ruled one after another, and the amirs chose who sat on the throne.",
+    "note": "Bauden gives the day of the sultan's death and Abu Bakr's enthronement as 7 June 1341. His word 'puppets' for the sons is a judgement, not a recorded fact.",
+    "sources": [
+      { "src": "bauden-2009", "at": "pp. 53, 74 and 76; the 'puppets' quotation is on p. 53" }
+    ]
+  },
+  {
+    "id": "venice-envoy-1344",
+    "at": 81,
+    "between": [2, 3],
+    "do": [ { "flag": "venice-talks-1344", "set": true }, { "unlock": "person-venetians" } ],
+    "notice": {
+      "title": "Venice asks to trade again",
+      "body": "Venice wants to trade at Alexandria again. It sends an envoy to the sultan. Venetian ships have stayed away since 1323."
+    },
+    "interlude": "Venice had stopped trading at Alexandria in 1323. In 1344 the pope eased his ban on trade with the sultan's lands. In August Venice voted to send an envoy to Egypt, and a treaty followed in 1345.",
+    "note": "Jacoby writes that the pope eased the ban in 1344. That August, Venice decided to send an envoy. Hill says Venice stayed away from Alexandria from 1323 until 1345.",
+    "sources": [
+      { "src": "jacoby-2018", "at": "pp. 136 to 137" },
+      { "src": "hill-2017", "at": "pp. 49, 58 and 60" }
+    ]
+  },
+  {
+    "id": "venetian-galleys-return",
+    "at": 87,
+    "do": [ { "price": "alexandria", "good": "pepper", "by": 1.08 }, { "unlock": "place-venice" } ],
+    "notice": {
+      "title": "Venice's ships come back",
+      "body": "Venetian ships sail to Alexandria again after many years away. A treaty with the sultan sets the tax on gold and silver at 2 percent. Alexandria has more buyers for pepper."
+    },
+    "note": "Jacoby writes that Venice's galleys sailed to Alexandria again in 1345. The treaty 'fixed the import and export taxes on gold and silver at 2%'. An older writer gave the year as 1344, and Jacoby says that is wrong.",
+    "sources": [
+      { "src": "jacoby-2018", "at": "p. 137 and note 116" },
+      { "src": "hill-2017", "at": "pp. 49, 58 and 60; the treaty says no Venetian ship had traded at Alexandria for 22 years" }
+    ]
+  },
+  {
+    "id": "crimea-rumours",
+    "at": 90,
+    "do": [ { "flag": "plague-rumours", "set": true } ],
+    "notice": {
+      "title": "A rumour from the Black Sea",
+      "body": "Merchants back from the Crimea tell of a deadly sickness. They say it began far to the north, in the land of the Uzbeks, and reached the Crimea. No one in Cairo knows if it is true."
+    },
+    "note": "Dols says merchants coming from the Crimea to Syria told of plague 'in the land of the Uzbeks'. They placed it in Rajab 747, about October to November 1346. The records do not say how fast the news reached Cairo.",
+    "sources": [
+      { "src": "dols-1974a", "at": "the merchants' report as Dols gives it; page not checked, and the work was not read in full" }
+    ]
+  },
+  {
+    "id": "pepper-scarce-1346",
+    "at": 91,
+    "do": [ { "price": "cairo", "good": "pepper", "by": 1.5 }, { "price": "alexandria", "good": "pepper", "by": 1.5 }, { "unlock": "good-pepper" }, { "unlock": "person-al-maqrizi" } ],
+    "notice": {
+      "title": "Pepper is scarce",
+      "body": "Pepper is hard to find in Cairo and Alexandria. The price is climbing fast, and no one can say why."
+    },
+    "note": "Al-Maqrizi wrote that pepper in Cairo reached 46 dirhams the ratl, 'which had never been seen before'. That was April to May 1347, so the game starts the rise a season early.",
+    "sources": [
+      { "src": "vallet-2011", "at": "p. 216, quoting al-Maqrizi's Suluk; Vallet's own reading, that the Aydhab road failed, is not used as fact" }
+    ]
+  },
+  {
+    "id": "pepper-peaks-1347",
+    "at": 92,
+    "do": [ { "price": "cairo", "good": "pepper", "by": 1.4 }, { "price": "alexandria", "good": "pepper", "by": 1.4 } ],
+    "notice": {
+      "title": "Pepper costs more than ever",
+      "body": "Pepper now costs more in Cairo than anyone can remember. The pilgrims' caravan from Mecca has not come yet."
+    },
+    "note": "Al-Maqrizi gives 46 dirhams the ratl for April to May 1347, against 5 at the pilgrims' arrival. The game's price can only double, so it shows a smaller rise.",
+    "sources": [
+      { "src": "vallet-2011", "at": "p. 216, quoting al-Maqrizi's Suluk" }
+    ]
+  },
+  {
+    "id": "pilgrims-bring-pepper-1347",
+    "at": 93,
+    "do": [ { "price": "cairo", "good": "pepper", "by": 0.55 }, { "price": "alexandria", "good": "pepper", "by": 0.55 } ],
+    "notice": {
+      "title": "The pilgrims have come home",
+      "body": "The pilgrim caravan has arrived. Pepper came with it, and the price falls back."
+    },
+    "note": "Al-Maqrizi wrote that pepper 'was sold at the arrival of the pilgrimage at 5 dirhams the ratl'. The game does not say what caused the shortage.",
+    "sources": [
+      { "src": "vallet-2011", "at": "p. 216, quoting al-Maqrizi's Suluk" }
+    ]
+  },
+  {
+    "id": "plague-reaches-egypt",
+    "at": 94,
+    "do": [ { "flag": "plague-at-alexandria", "set": true }, { "unlock": "place-alexandria" } ],
+    "notice": {
+      "title": "Sickness at Alexandria",
+      "body": "A ship has come into Alexandria with most of its crew dead. The few still alive die soon after. The sickness is spreading along the lower Nile. Your agents are far from home."
+    },
+    "note": "Al-Maqrizi wrote long afterward. He told of a ship at Alexandria in 1347 with a dead crew, and of sickness spreading through the Delta. He gives no month, so the game's autumn is a choice.",
+    "sources": [
+      { "src": "borsch-2014", "at": "p. 125, citing al-Maqrizi's Suluk 2: 772 to 773; Borsch's larger argument is disputed" }
+    ]
+  }
+]

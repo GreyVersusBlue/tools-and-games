@@ -135,7 +135,7 @@ dialog.paper .panel-actions { margin-top: var(--s3); display: flex; justify-cont
 /* prefers-reduced-motion and the Reduce motion setting: no slide, no flip,
    no move, no fade (3.5). The tokens already go to 0; this covers the rest. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  html:not(.motion-ok) *, html:not(.motion-ok) *::before, html:not(.motion-ok) *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
@@ -148,3 +148,37 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Reduce motion "off" in Settings wins over the device's own request (DESIGN 4.13). */
+html.motion-ok {
+  --arrive-time: 220ms;
+  --arrive-rise: 2rem;
+  --flip-time: 260ms;
+  --season-fade-time: 600ms;
+  --token-move-time: 900ms;
+}
+
+.button.primary { background: var(--brass-dark); color: var(--paper); border-color: var(--brass-dark); }
+.button.primary:hover { background: var(--brass); }
+.button[aria-disabled="true"] { background: var(--paper-shade); color: var(--ink-soft); cursor: not-allowed; }
+dialog.paper .panel-actions { gap: var(--s2); flex-wrap: wrap; }
+dialog.paper h3 { font-size: var(--step-1); margin: var(--s3) 0 var(--s2); }
+dialog.paper fieldset { border: 0; padding: 0; margin: var(--s2) 0; min-inline-size: 0; }
+dialog.paper legend { font-family: var(--font-paper); font-weight: 700; font-size: var(--step-1); padding: 0; margin-bottom: var(--s2); }
+dialog.paper.confirm { width: min(28em, calc(100% - 2rem)); }
+.menu-items { display: grid; gap: var(--s2); }
+.save-bar { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; margin-bottom: var(--s3); }
+.save-bar button { min-height: var(--hit); padding: var(--s2) var(--s3); }
+
+/* New game: radio rows ruled on the paper */
+.option { display: flex; align-items: flex-start; gap: var(--s3); min-height: var(--hit); padding: var(--s2) 0;
+  border-bottom: 1px solid var(--paper-shade); }
+.option input { width: 1.5rem; height: 1.5rem; flex: none; margin-top: .2rem; accent-color: var(--brass-dark); }
+.option label { flex: 1; display: flex; gap: var(--s3); align-items: flex-start; cursor: pointer; flex-wrap: wrap; min-height: var(--hit); align-content: center; }
+.option.is-disabled label { color: var(--ink-soft); cursor: not-allowed; }
+.option .soon { display: block; width: 100%; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
+.house-text { display: block; flex: 1; min-width: 0; }
+.house-text .difficulty { font-family: var(--font-chrome); font-size: var(--step--1); color: var(--brass-dark); border: 1px solid var(--brass); padding: 0 .4rem; border-radius: var(--radius); }
+.house-text .blurb { display: block; font-size: var(--step-0); }
+.seal { width: 2.4rem; height: 2.4rem; flex: none; border-radius: 50%; }
+.seal-plain { background: var(--madder); box-shadow: inset 0 0 0 .25rem var(--paper-shade), inset 0 0 0 .4rem var(--madder); }

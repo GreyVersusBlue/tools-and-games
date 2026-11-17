@@ -25,7 +25,7 @@ const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 // The condition leaves of conditions.js, with the keys each takes besides its own. The suite
 // pins that this table and the engine's agree (test/content.mjs).
 export const CONDITION_LEAVES = {
-  season: [], year: [], act: [], length: [], notebook: [], out: [], money: [],
+  season: [], year: [], act: [], length: [], notebook: [], out: [], money: [], stock: ['gte'],
   flag: ['not', 'gte'], rep: ['gte', 'lte'], agent: ['hired', 'where'],
 };
 // Leaves only a letter's `when` may use (ARCHITECTURE 5.7); the engine does not read them yet.
@@ -170,6 +170,7 @@ export function validateContent(raw, { art } = {}) {
       case 'length': oneOf(['acts', 'full'], v, q); break;
       case 'notebook': refOf('notebook')(v, q); break;
       case 'out': case 'money': obj(v, q, { gte: (x, r) => int(x, r), lte: (x, r) => int(x, r) }); if (isObj(v) && !Object.keys(v).length) schema(q, 'needs gte or lte'); break;
+      case 'stock': refOf('goods')(v, q); if (!('gte' in c)) schema(p, 'stock needs gte'); else int(c.gte, `${p}.gte`, 1); break;
       case 'flag': str(v, q); if ('not' in c) bool(c.not, `${p}.not`); if ('gte' in c) int(c.gte, `${p}.gte`); break;
       case 'rep': oneOf(REP_GROUPS, v, q); if ('gte' in c) int(c.gte, `${p}.gte`); if ('lte' in c) int(c.lte, `${p}.lte`); if (!('gte' in c) && !('lte' in c)) schema(p, 'rep needs gte or lte'); break;
       case 'agent': refOf('agents')(v, q); if ('hired' in c) bool(c.hired, `${p}.hired`); if ('where' in c) str(c.where, `${p}.where`); break;
@@ -189,6 +190,7 @@ export function validateContent(raw, { art } = {}) {
   const choice = (isLetter) => (c, p) => obj(c, p, {
     id: idv, label: str, hint: str, requires: (x, q) => condition(x, q, isLetter),
     now: effects(isLetter ? 'letter-now' : 'now'), later,
+    ui: (x, q) => oneOf(['outfit-first'], x, q),
   }, ['id', 'label']);
   const choices = isLetter => (v, p) => {
     arr(v, p, choice(isLetter), 1);
@@ -229,6 +231,28 @@ export function validateContent(raw, { art } = {}) {
       contracts: (v, p) => dict(v, p, idv, (x, q) => obj(x, q, { agentShare: (y, r) => { arr(y, r, (n, s) => int(n, s, 1)); if (Array.isArray(y) && y.length !== 2) schema(r, 'needs [numerator, denominator]'); } })),
       score: (v, p) => obj(v, p, { wealthScale: (x, q) => arr(x, q, () => {}), ranks: (x, q) => arr(x, q, () => {}) }),
       stills: (v, p) => dict(v, p, str, (x, q) => { str(x, q); artRef(x, q); }),
+      priceNews: bool,
+      // the recorded direction of trade (DECISIONS 2026-11-17 10:25): `from` lists stops cheapest first, an inner list is a tier that ties among itself; the lint checks base prices against it
+      gradients: (v, p) => arr(v, p, (g, q) => obj(g, q, { good: refOf('goods'), from: (x, r) => arr(x, r, (t, u) => (Array.isArray(t) ? arr(t, u, refOf('stops'), 1) : refOf('stops')(t, u)), 2), note: str, sources }, ['good', 'from', 'note', 'sources'])),
+      // what the map calls each group of close stops (stops.json's `cluster`), in words a twelve-year-old reads; an id with no name here is shown as the id
+      clusters: (v, p) => dict(v, p, idv, str),
+      // what a loss takes and who retires at the act jump (ARCHITECTURE 4.7); every key is optional and routes.js has a default for each
+      jump: (v, p) => obj(v, p, {
+        retires: (x, q) => num(x, q, 0, 1), wholeLoss: (x, q) => num(x, q, 0, 1), survivesWhole: (x, q) => num(x, q, 0, 1),
+        partial: (x, q) => {
+          arr(x, q, (n, r) => num(n, r, 0, 1));
+          if (Array.isArray(x) && (x.length !== 2 || x[0] > x[1])) schema(q, 'needs [least, most], the least no more than the most');
+        },
+      }),
+      // the chances of the ending (ARCHITECTURE 4.9); every key is optional and routes.js has a default for each
+      recall: (v, p) => {
+        const unit = (x, q) => num(x, q, 0, 1);
+        obj(v, p, {
+          reach: (x, q) => obj(x, q, { start: unit, perSeason: unit, floor: unit }),
+          recalledKeeps: unit, recalledSurvives: unit, stayedSurvives: unit, homeSurvives: unit,
+          byStop: (x, q) => dict(x, q, (k, r) => ref('stops', k, r), unit),
+        });
+      },
     }, ['id', 'name', 'home', 'currency', 'title', 'tagline', 'opening']);
     if (typeof city.id === 'string' && typeof raw.cityId === 'string' && city.id !== raw.cityId) schema('city.json.id', `says "${city.id}" but the folder is "${raw.cityId}"`);
   } else schema('city.json', 'is missing or empty');
@@ -276,7 +300,7 @@ export function validateContent(raw, { art } = {}) {
   // goods.json
   const goods = file('goods', raw.goods, []);
   arr(goods, 'goods.json', (g, p) => obj(g, p, {
-    id: idv, name: str, unit: (v, q) => oneOf(['load'], v, q), sigma: (v, q) => num(v, q, 0), revert: (v, q) => num(v, q, 0, 1),
+    id: idv, name: str, unit: (v, q) => oneOf(['load', 'chest'], v, q), sigma: (v, q) => num(v, q, 0), revert: (v, q) => num(v, q, 0, 1),
     notebook: refOf('notebook'), art: (v, q) => { str(v, q); artRef(v, q); }, sources,
   }, ['id', 'name', 'unit', 'sigma', 'revert']));
   if (Array.isArray(goods)) unique(goods, 'goods.json', 'good id');
@@ -310,7 +334,7 @@ export function validateContent(raw, { art } = {}) {
   const agents = file('agents', raw.agents, []);
   arr(agents, 'agents.json', (a, p) => obj(a, p, {
     id: idv, name: str, community: str, seal, traits: (v, q) => arr(v, q, trait), wage: (v, q) => int(v, q, 0),
-    home: refOf('stops'), hireCard: refOf('cards'), notebook: refOf('notebook'),
+    home: refOf('stops'), hireCard: refOf('cards'), notebook: refOf('notebook'), sources,
   }, ['id', 'name', 'community', 'seal', 'traits', 'wage', 'home']));
   if (Array.isArray(agents)) unique(agents, 'agents.json', 'agent id');
 

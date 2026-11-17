@@ -1,1 +1,80 @@
-[]
+[
+  {
+    "id": "partner-loan",
+    "group": "loans",
+    "from": {
+      "name": "Farid, a partner",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Farid's ship is late",
+    "body": "Farid was a partner in your last venture. His ship is late, and he cannot pay his debts this season. He asks you for 150 until it comes in.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "lend",
+        "label": "Lend him the money",
+        "hint": "Ships are often late. Some never come.",
+        "requires": {
+          "money": {
+            "gte": 150
+          }
+        },
+        "now": [
+          {
+            "money": -150
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 100
+              }
+            ],
+            "card": "farid-ship-lost"
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "Farid will remember.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long done business on friendship as well as on written partnerships. A loan between friends was often a kindness, with no fee.",
+    "sources": [
+      {
+        "src": "goitein-1967",
+        "at": "pp. 169 to 170, as quoted by Edwards and Ogilvie (2008), p. 11"
+      },
+      {
+        "src": "goitein-1964",
+        "at": "pp. 317 and 325; loans between partners and as acts of kindness"
+      }
+    ]
+  }
+]
