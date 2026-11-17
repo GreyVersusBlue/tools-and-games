@@ -1,1 +1,46 @@
-{}
+{
+  "interludes": [
+    {
+      "id": "gap-1-2",
+      "title": "Years pass",
+      "body": "Nine years go by. Agents come home or do not, loans fall due, and the world changes while the house goes on.",
+      "fact": false
+    },
+    {
+      "id": "gap-2-3",
+      "title": "Years pass",
+      "body": "Nine more years go by. Loans fall due again, and some of your agents grow old or retire.",
+      "fact": false
+    }
+  ],
+  "ending": [
+    {
+      "id": "ending-alexandria",
+      "title": "Alexandria, 1347",
+      "body": "In 1347 the plague reached Alexandria. Al-Maqrizi told of a ship that came into the harbour with most of its crew dead. He wrote seventy years or more afterward, and he gives no month. The game ends in the autumn of 1347 as a choice, not as a recorded date.",
+      "sources": [
+        { "src": "borsch-2014", "at": "p. 125, citing al-Maqrizi's Suluk 2: 772 to 773; the year only, no month" },
+        { "src": "tresso-2021", "at": "p. 217 note 46, al-Maqrizi's dates" }
+      ]
+    },
+    {
+      "id": "ending-cairo",
+      "title": "Cairo, 1348",
+      "body": "In Cairo the plague was worst in November and December 1348. By late September the sultan and his court had left the city for Siryaqus, a town outside it. They stayed there until the end of December.",
+      "sources": [
+        { "src": "dols-1974b", "at": "notes 31 and 32: the court at Siryaqus from 25 September 1348 to the end of Ramadan, 22 December" },
+        { "src": "tresso-2021", "at": "p. 220, Cairo's height in Sha'ban and Ramadan, November and December 1348" },
+        { "src": "borsch-2014", "at": "p. 125, the peak around December 1348" }
+      ]
+    },
+    {
+      "id": "ending-counts",
+      "title": "Counting the dead",
+      "body": "Chroniclers gave very large counts of the dead in Cairo, and the counts do not agree. This page gives none.",
+      "sources": [
+        { "src": "borsch-2014", "at": "p. 125, a figure of something like 7,000 a day at the peak" },
+        { "src": "dols-1977", "at": "death tolls are the chroniclers' own; page unchecked" }
+      ]
+    }
+  ]
+}
