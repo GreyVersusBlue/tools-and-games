@@ -32,7 +32,7 @@ import { icon } from '../components/icons.js';
 import { count, periodWords } from '../components/words.js';
 import { addGroup, editGroup, duplicateGroup, deleteGroup, setSlot, moveSlot, copyDay, makeOwnCopy } from '../../engine/actions.js';
 import { effectiveSchedule, isOwnCopy, ownDayTypes, effectiveDayType } from '../../engine/day-types.js';
-import { bellsFor, periodName, formatTime } from '../../engine/bells.js';
+import { bellsFor, periodName, periodNumberName, formatTime } from '../../engine/bells.js';
 import { allRooms, resolveSlotRoom, GROUP_COLOUR_PRESETS, RANGES } from '../../engine/schema.js';
 import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, deletedText, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
@@ -479,6 +479,14 @@ export function mount(env) {
     return filled(slot) ? [{ id: null, number: '', label: 'No room', teachers: '', detail: '' }].concat(options) : options;
   }
 
+  // A period's row head: its number name, with its own name after it when it
+  // has one ("Period 5 (Lunch)"), since a row is where the number matters.
+  function rowHead(settings, period) {
+    const own = periodName(settings, period);
+    const number = periodNumberName(settings, period);
+    return own === number ? own : number + ' (' + own + ')';
+  }
+
   function slotRow(project, model, group, dayType, period, slot, bell) {
     const settings = project.settings;
     const pName = periodName(settings, period);
@@ -585,7 +593,7 @@ export function mount(env) {
     const shown = view.shown && view.shown.groupId === group.id && view.shown.dayTypeId === dayType.id && view.shown.period === period;
     const time = bell.start && bell.end ? formatTime(bell.start, settings.timeFormat, { suffix: false }) + '–' + formatTime(bell.end, settings.timeFormat) : '';
     return h('tr', { class: 'sch-slot' + (noClass ? ' is-noclass' : ''), role: 'row', data: { index: String(period), period: String(period), shown: shown ? 'true' : null, mark: mark ? mark.kind : null } },
-      h('th', { scope: 'row', role: 'rowheader', class: 'sch-slot__period' }, grip(), h('span', { class: 'sch-slot__name' }, pName),
+      h('th', { scope: 'row', role: 'rowheader', class: 'sch-slot__period' }, grip(), h('span', { class: 'sch-slot__name' }, rowHead(settings, period)),
         mark ? h('span', { class: 'chip sch-slot__mark', title: MARK_WORDS[mark.kind] + (markWord === MARK_WORDS[mark.kind] ? '' : ': ' + markWord) }, markWord) : null, time === '' ? null : h('span', { class: 'sch-slot__time' }, time)),
       h('td', { class: 'sch-slot__room', role: 'cell' }, room.element,
         noClass ? h('p', { class: 'sch-slot__noclass' }, 'No class: this room is kept but not used') : null,
@@ -632,7 +640,7 @@ export function mount(env) {
           h('thead', null, h('tr', null, h('th', { scope: 'col' }, words.One), h('th', { scope: 'col' }, 'Room'))),
           h('tbody', null, day.map((slot, period) => {
             const resolved = resolveSlotRoom(project, slot);
-            return h('tr', null, h('th', { scope: 'row' }, periodName(project.settings, period)),
+            return h('tr', null, h('th', { scope: 'row' }, rowHead(project.settings, period)),
               h('td', null, resolved.room ? roomLabel(project, resolved.room) : resolved.text !== '' ? resolved.text + ' · ' + NOT_IN_BUILDING : '—'));
           }))));
     }

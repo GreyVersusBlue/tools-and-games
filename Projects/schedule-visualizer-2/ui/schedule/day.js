@@ -221,7 +221,7 @@ export function periodWordControl(ctx, options) {
       if (value === 'other') {
         memory.open = true;
         if (!custom && memory.remembered && !run(setPeriodCustom, memory.remembered)) memory.open = false;
-        options.redraw(keyFor('custom-word'));
+        options.redraw(keyFor('word:other'));
         return;
       }
       memory.open = false;
@@ -253,8 +253,10 @@ export function periodWordControl(ctx, options) {
     commit: (value) => {
       const held = customOf(store.project);
       const word = value.trim();
-      // a plural the school typed stays; one that is only the word and "s" follows the word
-      const plural = held ? (held.plural !== held.word + 's' ? held.plural : undefined) : pluralField.input.value.trim() !== '' ? pluralField.input.value : undefined;
+      // a new word has its own plural, the word and "s" until one is typed:
+      // the old word's plural is not carried over. A plural typed before any
+      // word was is the one for this word.
+      const plural = held ? undefined : pluralField.input.value.trim() !== '' ? pluralField.input.value : undefined;
       store.apply(setPeriodCustom, { word, plural, count: held ? held.count : memory.count || 'number' });
     },
   });
@@ -315,6 +317,10 @@ export function periodWordControl(ctx, options) {
       counts.set(custom.count || 'number');
       memory.count = custom.count || 'number';
     } else {
+      // no word yet: the fields wait empty, so a word left earlier never
+      // comes back under a new one by accident
+      if (document.activeElement !== wordField.input) wordField.set('');
+      if (document.activeElement !== pluralField.input) pluralField.set('');
       counts.set(memory.count || 'number');
     }
     sample();
