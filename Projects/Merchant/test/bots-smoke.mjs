@@ -33,6 +33,11 @@ test('smoke: every bot sent expeditions and every round trip is a finite share',
   }
 });
 
+test('smoke: an expedition still on the road at an act jump counts as a trip (the jump entry is found even when later log entries follow it)', () => {
+  const settled = all.reduce((n, g) => n + g.settled, 0);
+  ok(settled > 0, `no expedition settled at a jump was counted in ${all.length} games`);
+});
+
 test('smoke: the bots differ (the careful bot sends smaller stakes than the greedy one)', () => {
   const med = b => { const a = res.results[b].flatMap(g => g.capital).sort((x, y) => x - y); return a[a.length >> 1]; };
   ok(med('careful') < med('greedy'), `careful ${med('careful')}, greedy ${med('greedy')}`);

@@ -272,12 +272,14 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
     if (!can.ok) throw new Error(`bots: ${can.reason}`);
     for (const x of s.expeditions) routeOfX[x.id] = x.route;
     const stakes = Object.fromEntries(s.expeditions.map(x => [x.id, x.staked.house]));
+    const logAt = s.log.length;
     s = endSeason(s, content);
     if (s.phase === 'interlude') {
       // an expedition still on the road at the act jump is settled off stage (ARCHITECTURE 4.7): it counts as a
       // trip here, so a road too long to finish inside an act of eight seasons is judged like any other
-      const jumped = s.log[s.log.length - 1];
-      for (const line of jumped?.kind === 'jump' ? jumped.settled : []) {
+      // the jump's entry among this closing's entries (the season entry is written after it, MER-60b)
+      const jumped = s.log.slice(logAt).find(e => e.kind === 'jump');
+      for (const line of jumped ? jumped.settled : []) {
         if (line.result === 'lost') out.lost++;
         else if (stakes[line.expedition] > 0) { out.trips.push(line.houseNet / stakes[line.expedition]); out.tripRoute.push(routeOfX[line.expedition]); out.settled++; }
       }
