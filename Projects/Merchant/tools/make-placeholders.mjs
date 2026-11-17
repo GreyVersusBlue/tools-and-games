@@ -1,5 +1,6 @@
 // make-placeholders.mjs: writes one flat WebP per manifest entry at its exact pixel size
 // (ARCHITECTURE 9.3) and map-cairo-geo.json (9.2). Usage: node tools/make-placeholders.mjs
+// `--geo` writes map-cairo-geo.json alone, with no browser.
 //
 // The encoder is the harness's Chromium (canvas.toBlob('image/webp')), so this needs the
 // install in Tools/board-check and nothing else. Under a display-less shell use xvfb-run -a
@@ -35,20 +36,18 @@ export const project = (lat, lon) => [
 ];
 
 // ART.md A03's table, minus Caffa, plus Quseir, Walata and Genoa (DECISIONS 2026-11-16).
+// The 20 stops of ART.md A03's table (version 2), which are stops.json's.
 export const STOPS = [
-  ['cairo', 'Cairo', 30.04, 31.24], ['alexandria', 'Alexandria', 31.20, 29.92],
-  ['venice', 'Venice', 45.44, 12.33], ['constantinople', 'Constantinople', 41.01, 28.98],
-  ['tunis', 'Tunis', 36.80, 10.18], ['qus', 'Qus', 25.92, 32.76],
-  ['aydhab', 'Aydhab', 22.33, 36.49], ['jeddah', 'Jeddah', 21.49, 39.19],
-  ['aden', 'Aden', 12.79, 45.03], ['calicut', 'Calicut', 11.25, 75.78],
-  ['trebizond', 'Trebizond', 41.00, 39.72], ['damascus', 'Damascus', 33.51, 36.29],
-  ['aleppo', 'Aleppo', 36.20, 37.16], ['tabriz', 'Tabriz', 38.08, 46.29],
-  ['samarkand', 'Samarkand', 39.65, 66.96], ['hormuz', 'Hormuz', 27.10, 56.45],
-  ['timbuktu', 'Timbuktu', 16.77, -3.01], ['gao', 'Gao', 16.27, -0.04],
-  ['taghaza', 'Taghaza', 23.60, -5.00], ['sijilmasa', 'Sijilmasa', 31.28, -4.28],
-  ['tuat', 'Tuat', 27.87, -0.29], ['awjila', 'Awjila', 29.11, 21.29],
-  ['quseir', 'Quseir', 26.10, 34.28], ['walata', 'Walata', 17.28, -7.03],
-  ['genoa', 'Genoa', 44.41, 8.93],
+  ['cairo', 'Cairo', 30.04, 31.24], ['aden', 'Aden', 12.79, 45.03],
+  ['alexandria', 'Alexandria', 31.20, 29.92], ['calicut', 'Calicut', 11.25, 75.78],
+  ['famagusta', 'Famagusta', 35.12, 33.95], ['hormuz', 'Hormuz', 27.07, 56.46],
+  ['venice', 'Venice', 45.44, 12.33], ['damascus', 'Damascus', 33.51, 36.29],
+  ['constantinople', 'Constantinople', 41.01, 28.98], ['aleppo', 'Aleppo', 36.20, 37.16],
+  ['tunis', 'Tunis', 36.80, 10.18], ['tabriz', 'Tabriz', 38.08, 46.29],
+  ['qus', 'Qus', 25.92, 32.76], ['samarkand', 'Samarkand', 39.65, 66.96],
+  ['quseir', 'Quseir', 26.10, 34.28], ['tuat', 'Tuat', 27.87, -0.29],
+  ['aydhab', 'Aydhab', 22.33, 36.49], ['walata', 'Walata', 17.30, -7.03],
+  ['jeddah', 'Jeddah', 21.49, 39.19], ['gao', 'Gao', 16.27, -0.04],
 ];
 
 export function geoJson() {
@@ -103,6 +102,11 @@ function draw({ w, h, kind, id, fill, ink, q }) {
 }
 
 async function main() {
+  if (process.argv.includes('--geo')) {
+    fs.writeFileSync(path.join(ART, 'map-cairo-geo.json'), geoText(geoJson()));
+    console.log('wrote map-cairo-geo.json');
+    return;
+  }
   const manifestPath = path.join(ART, 'manifest.json');
   const m = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const { launch } = await import(pathToFileURL(HARNESS).href);

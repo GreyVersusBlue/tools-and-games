@@ -95,10 +95,13 @@ test('map-cairo-geo.json has the picture size, every whole-degree crossing, and 
   eq(g.grid.xy.length, 44); ok(g.grid.xy.every(r => r.length === 91), 'a grid row is short');
   const inside = ([x, y]) => x >= 0 && x <= g.w && y >= 0 && y <= g.h;
   ok(g.grid.xy.flat().every(inside), 'a crossing falls outside the picture');
-  eq(g.stops.length, 25);
-  const id = new Set(g.stops.map(s => s.id));
-  for (const want of ['cairo', 'venice', 'aden', 'quseir', 'walata', 'genoa']) ok(id.has(want), `no stop ${want}`);
-  ok(!id.has('caffa'), 'Caffa left the list');
+  // the geo file's stops are exactly the game's (data/cairo/stops.json), with the same places
+  const game = JSON.parse(fs.readFileSync(path.join(ART, '..', '..', 'data', 'cairo', 'stops.json'), 'utf8'));
+  eq(g.stops.map(s => s.id).sort(), game.map(s => s.id).sort());
+  for (const s of game) {
+    const q = g.stops.find(x => x.id === s.id);
+    ok(Math.abs(q.lat - s.lat) <= 0.05 && Math.abs(q.lon - s.lon) <= 0.05, `${s.id} is at ${q.lat}, ${q.lon} in the geo file and ${s.lat}, ${s.lon} in stops.json`);
+  }
   ok(g.stops.every(s => inside([s.x, s.y])), 'a stop falls outside the picture');
   const at = n => g.stops.find(s => s.id === n);
   ok(at('venice').y < at('cairo').y && at('aden').y > at('cairo').y, 'north is not up');
