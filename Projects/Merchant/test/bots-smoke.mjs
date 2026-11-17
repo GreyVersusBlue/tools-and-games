@@ -6,7 +6,7 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
-import { BOTS, LIMITS, run, check, playGame, table } from '../tools/bots.mjs';
+import { BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table } from '../tools/bots.mjs';
 
 const content = await loadContent('cairo', { fs });
 const PER_BOT = 50;
@@ -62,7 +62,7 @@ test('smoke: an unknown bot and an unknown house are refused, not played as some
 test('smoke: the check returns one row per threshold and the table prints', () => {
   const checked = check(res);
   const names = checked.rows.map(r => r.name).join(' | ');
-  for (const part of ['most-used', 'broke by season', '75th percentile', 'after wage', 'under a doubling', 'every card drawn', 'choices taken']) ok(names.includes(part), `no row for "${part}"`);
+  for (const part of ['most-used', 'broke by season', '75th percentile', 'after wage', 'under a doubling', 'every card drawn', 'choices taken', 'mediterranean: share', 'levant-persia: share', 'redsea-india: share', 'sahara: share']) ok(names.includes(part), `no row for "${part}"`);
   ok(table(res, checked).includes('worth by house'));
 });
 
@@ -102,6 +102,64 @@ test('check: a round trip median outside 10 to 30 percent is a breach and one in
   eq(failing(inside).filter(n => n.includes('after wage')), []);
   const below = doctored(r => { for (const g of r.results.careful) g.trips = g.trips.map(() => 0.02); });
   ok(failing(below).some(n => n.startsWith('careful') && n.includes('after wage')));
+});
+
+// ---- the four directions (MER-51): where the careful, greedy and qirad bots' trips end
+const dirRoutes = { mediterranean: 'cairo-venice', 'levant-persia': 'cairo-damascus', 'redsea-india': 'cairo-calicut', sahara: 'cairo-tuat' };
+/** Gives every sensible bot's games the same expeditions: `mix` is a count per direction for each of 100 games. */
+const withMix = mix => doctored(r => { for (const b of SENSIBLE) for (const g of r.results[b]) g.routes = Object.fromEntries(Object.entries(mix).filter(([, n]) => n).map(([d, n]) => [dirRoutes[d], n])); });
+const dirRows = c => c.rows.filter(r => /^(mediterranean|levant-persia|redsea-india|sahara): share/.test(r.name));
+
+test('direction: every destination of the content belongs to one direction and the four lists do not overlap', () => {
+  const all = Object.values(DIRECTIONS).flat();
+  eq(new Set(all).size, all.length);
+  const ends = new Set(content.routes.map(r => r.to));
+  for (const e of ends) ok(directionOf(e), `${e} is in no direction`);
+  for (const d of all) ok(content.stops.some(s => s.id === d), `${d} is not a stop`);
+});
+
+test('direction: the mediterranean at 40 percent and each other direction at 20, 20 and 20 passes all four rows', () => {
+  const c = withMix({ mediterranean: 40, 'levant-persia': 20, 'redsea-india': 20, sahara: 20 });
+  eq(dirRows(c).length, 4);
+  eq(dirRows(c).filter(r => !r.ok).map(r => r.name), []);
+});
+
+test('direction: every trip to the mediterranean breaches all four rows, so one road can no longer carry the game', () => {
+  const c = withMix({ mediterranean: 5 });
+  eq(dirRows(c).filter(r => !r.ok).map(r => r.name.split(':')[0]).sort(), ['levant-persia', 'mediterranean', 'redsea-india', 'sahara']);
+  ok(!c.ok);
+});
+
+test('direction: the mediterranean at 65 percent is a breach and the others at 12, 12 and 11 are not', () => {
+  const c = withMix({ mediterranean: 65, 'levant-persia': 12, 'redsea-india': 12, sahara: 11 });
+  eq(dirRows(c).filter(r => !r.ok).map(r => r.name.split(':')[0]), ['mediterranean']);
+});
+
+test('direction: the sahara at 5 percent is a breach and the mediterranean at 50 is not', () => {
+  const c = withMix({ mediterranean: 50, 'levant-persia': 20, 'redsea-india': 25, sahara: 5 });
+  eq(dirRows(c).filter(r => !r.ok).map(r => r.name.split(':')[0]), ['sahara']);
+});
+
+test('direction: the shares count each bot together, so a direction the careful bot never visits can be saved by the greedy one', () => {
+  const r = structuredClone(res.results);
+  for (const g of r.careful) g.routes = { 'cairo-venice': 4 };
+  for (const g of r.greedy) g.routes = { 'cairo-tuat': 4 };
+  for (const g of r.qirad) g.routes = {};
+  const sh = directionShares(content, SENSIBLE.flatMap(b => r[b]));
+  eq([sh.mediterranean, sh.sahara, sh['redsea-india']], [0.5, 0.5, 0]);
+});
+
+test('direction: a route that ends nowhere in the four directions throws instead of being left out of the shares', () => {
+  const r = structuredClone(res.results);
+  r.careful[0].routes = { 'cairo-nowhere': 1 };
+  let threw = false;
+  try { directionShares({ routes: [...content.routes, { id: 'cairo-nowhere', to: 'atlantis' }] }, r.careful); } catch { threw = true; }
+  ok(threw);
+});
+
+test('direction: a run without the careful, greedy and qirad bots has no direction rows and does not throw', () => {
+  const c = check({ ...res, results: { random: res.results.random } });
+  eq(dirRows(c).length, 0);
 });
 
 test('check: the choice rule is pending until a card policy exists, and fails once it is switched on', () => {
