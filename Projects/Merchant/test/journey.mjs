@@ -1684,14 +1684,14 @@ try {
         eq(got.line, v.letters[p.id].line);
         eq(got.line, 'From Yusuf, at Aydhab. Written in Spring 1324. It reached you in Summer 1324.');
         eq(got.answer, undefined);
-        eq(got.labels, ['You did right', 'You should have argued', 'Complain to the court in Cairo']);
+        eq(got.labels, ['You did right', 'You should have waited', 'Complain to the court in Cairo']);
         eq(got.labels, def.choices.map(c => c.label));
         eq(got.described, null);
       });
       await test('a report answered by pointer: trust and money are the engine\'s, after the report\'s own cost was taken on arrival', async () => {
-        await page.click(`#choice-${p.id}-argue`);
+        await page.click(`#choice-${p.id}-waited`);
         await page.waitForSelector(BACK);
-        const model = eng.choose(report, nodeContent, p.id, 'argue');
+        const model = eng.choose(report, nodeContent, p.id, 'waited');
         const got = await engineState(page);
         eq([got.money, got.agents.yusuf.trust], [model.money, model.agents.yusuf.trust]);
         eq([got.money, got.agents.yusuf.trust], [report.money, -1], 'a lesser reply costs nothing and costs one trust');
