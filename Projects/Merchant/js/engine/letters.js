@@ -24,6 +24,7 @@ import { applyAll } from './effects.js';
 import { addPaper, deskFull } from './state.js';
 import { chance, weighted } from './rng.js';
 import { lagOf, writeSeason } from './market.js';
+import { wary } from './agents.js';
 
 /** The chance a letter is written, for an expedition with a letter to write, in a season. */
 export const LETTER_CHANCE = 0.5;
@@ -123,7 +124,7 @@ export function decide(s, content, x, legIdx, idx) {
   const asked = (x.post ?? []).filter(p => p.kind === 'question' && p.leg === legIdx);
   if (!asked.length) return null;
   const traits = agentOf(content, x.agent)?.traits ?? [];
-  if (traits.includes('careful')) return WAIT;
+  if (traits.includes('careful') || wary(s, x.agent)) return WAIT;
   if (traits.includes('bold')) return null;
   return asked[asked.length - 1].def === WAIT ? WAIT : null;
 }

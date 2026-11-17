@@ -14,12 +14,14 @@ import { weighted } from './rng.js';
 import * as market from './market.js';
 import * as routes from './routes.js';
 import * as letters from './letters.js';
+import * as agents from './agents.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
 
 export const steps = {
   // opening a season
+  agents(s, content) { agents.opening(s, content); },
   returns(s, content) { routes.returns(s, content); },
   letters(s, content) { letters.letters(s, content); },
   news(s, content) {
@@ -99,6 +101,7 @@ function numberPapers(s) {
 }
 
 function open(s, content) {
+  steps.agents(s, content);
   steps.returns(s, content);
   steps.letters(s, content);
   steps.news(s, content);
@@ -288,6 +291,7 @@ export function view(state, content) {
     phase: state.phase,
     prices: market.knownPrices(state, content),
     letters: letters.describe(state, content),
+    ...agents.standing(state, content),
     interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,
   };
 }
