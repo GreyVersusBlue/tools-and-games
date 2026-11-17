@@ -170,18 +170,18 @@
     ]
   },
   {
-    "id": "tabriz-guards",
+    "id": "aleppo-genoese-news",
     "kind": "report",
     "from": {
       "name": "Your agent",
-      "role": "Tabriz"
+      "role": "Aleppo"
     },
     "title": "No Genoese at Tabriz",
-    "body": "I am at Tabriz. The ruler took the goods of many Genoese merchants, and Genoa has stopped trade with this city. The next big caravan is a season away. I paid 35 of your money for guards to ride with us from here.",
+    "body": "I am at Aleppo. Men from Tabriz say their ruler took the goods of many Genoese merchants, and Genoa has stopped trade with that city. The next big caravan is a season away. I paid 35 of your money for guards to ride with us on the next road.",
     "when": {
       "all": [
         {
-          "at": "tabriz"
+          "at": "aleppo"
         },
         {
           "year": [
