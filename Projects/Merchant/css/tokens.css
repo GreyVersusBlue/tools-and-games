@@ -12,6 +12,8 @@
   --nile: #4f6b3a;
   --madder: #9b2f22;
   --night: #14110d;
+  --dawn-1: #2b3a52;   /* title gradient, top (stands in for A18's sky) */
+  --dawn-2: #6d5a58;   /* title gradient, middle */
   --veil: rgba(20, 17, 13, .55);
 
   /* 3.3 type scale, off the root size set below */
