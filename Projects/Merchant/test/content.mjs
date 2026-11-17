@@ -195,12 +195,12 @@ test('validate: a primary source needs a translator field, null for an edition i
   eq(problemsOf(variant(c => { c.sources = [...c.sources, { ...prim, translator: null }]; })), []);
 });
 
-// ---- the sources list. data/sources.json is held back (it would break engine.mjs line 399, which
-// pins testport's sources to one id; see the MER-03 report), so the 28 works wait in
-// test/fixtures/sources-28.json and these cases run on that copy.
-test('sources: 28 works, each with author, title, year and publisher, and no web address', async () => {
+// ---- the sources list, data/sources.json (moved there by MER-07). It only grows: write units
+// append works, never change an id, so the count is a floor, not a pin.
+test('sources: at least the 28 checked works, each with author, title, year and publisher, and no web address', async () => {
   const s = JSON.parse(await fs.readFile(path.join(ROOT, 'data/sources.json'), 'utf8'));
-  eq(s.length, 28);
+  ok(s.length >= 28, `only ${s.length} works`);
+  eq(new Set(s.map(x => x.id)).size, s.length, 'a source id appears twice');
   for (const x of s) for (const k of ['author', 'title', 'year', 'publisher']) ok(x[k], `${x.id} lacks ${k}`);
   ok(!/https?:|www\./i.test(JSON.stringify(s)), 'a web address in the sources');
   for (const id of ['ibn-battuta-1958', 'goitein-1967', 'pegolotti-1936', 'abu-lughod-1989']) ok(s.some(x => x.id === id), `no ${id}`);
@@ -208,6 +208,17 @@ test('sources: 28 works, each with author, title, year and publisher, and no web
   eq(s.filter(x => x.kind === 'primary').every(x => 'translator' in x), true);
   eq(problemsOf({ ...cairo, sources: s }), [], 'the list validates, inside a city that has it');
   eq(lintContent({ ...cairo, sources: s }, { banned }), [], 'and lints');
+});
+test('a route leg may carry a when condition and a note; any other unknown key still fails', () => {
+  const r = structuredClone(cairo.routes);
+  ok(r.length > 0, 'cairo has routes');
+  r[0].legs[0].when = { year: [1345, 1347] };
+  r[0].legs[0].note = 'estimate';
+  eq(problemsOf({ ...cairo, routes: r }), [], 'when and note accepted');
+  const bad = structuredClone(r); bad[0].legs[0].when = { year: 'soon' };
+  ok(problemsOf({ ...cairo, routes: bad }).length > 0, 'a malformed when is refused');
+  const odd = structuredClone(r); odd[0].legs[0].colour = 'red';
+  ok(problemsOf({ ...cairo, routes: odd }).length > 0, 'an unknown leg key is refused');
 });
 test('cairo has every file of ARCH 5, empty or minimal', async () => {
   for (const f of ['city', 'calendar', 'houses', 'goods', 'stops', 'routes', 'agents', 'events', 'notebook', 'terms', 'text', 'letters']) {

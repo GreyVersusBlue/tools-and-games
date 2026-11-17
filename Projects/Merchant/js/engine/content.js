@@ -301,6 +301,7 @@ export function validateContent(raw, { art } = {}) {
     legs: (v, q) => arr(v, q, (l, t) => obj(l, t, {
       from: refOf('stops'), to: refOf('stops'), by: (x, u) => oneOf(BY, x, u), seasons: (x, u) => int(x, u, 1),
       opens: (x, u) => arr(x, u, (y, w) => oneOf(SEASONS, y, w), 1), risk: (x, u) => num(x, u, 0, 1), toll: (x, u) => int(x, u, 0), sources,
+      when: (x, u) => condition(x, u), note: str,
     }, ['from', 'to', 'by', 'seasons', 'opens', 'risk', 'toll']), 2),
   }, ['id', 'to', 'legs']));
   if (Array.isArray(routes)) unique(routes, 'routes.json', 'route id');
