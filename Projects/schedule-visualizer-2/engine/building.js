@@ -827,6 +827,7 @@ export function copySpaces(building, args) {
     delete copy.id;
     if (space.kind === 'room') {
       copy.teacherIds = [];
+      if (Array.isArray(space.featureIds)) copy.featureIds = space.featureIds.slice();
       copy.doors = space.doors.map((door) => ({ at: offset(door.cell), side: door.side, ...stepMark(door) }));
     }
     return copy;

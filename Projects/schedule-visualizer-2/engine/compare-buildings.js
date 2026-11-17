@@ -82,7 +82,10 @@
 //              side and a stairwell's flight over the same floors on the other
 //              (each the only unpaired one over those floors) are one row,
 //              named as A has it, with nameAfter (B's name) and stairwell
-//              "now one stairwell" (or "no longer one stairwell").
+//              "now one stairwell" (or "no longer one stairwell"). `stairwells`
+//              lists each such change whatever the loads did: { kind: "now" |
+//              "no-longer", letter, names, sentence }, "Stairs A and B are now
+//              one stairwell, A."
 //              Every connection row carries floorsBefore, floorsAfter and
 //              floorsChanged. Rows: { key, kind, name, floorNames (as A
 //              writes them), before, after, difference } (+ the above),
@@ -334,7 +337,45 @@ function keyPlaces(entriesA, entriesB) {
     }
     return found;
   };
-  return { foundA: group(entriesA), foundB: group(entriesB) };
+  return { foundA: group(entriesA), foundB: group(entriesB), stairwells: stairwellChanges(entriesA, entriesB) };
+}
+
+// Stairs that joined into one stairwell, or a stairwell that came apart, as
+// sentences. Flights are paired by key (letter and floors, or floors alone for
+// the stairs `keyPlaces` paired above); a stairwell of one side whose flights
+// are plain stairs on the other is one change, however the loads moved.
+//   { kind: 'now' | 'no-longer', letter, names, sentence }
+// 'now': the letter is B's stairwell, `names` A's plain stairs; "Stairs A and B
+// are now one stairwell, A." 'no-longer': the letter is A's stairwell, `names`
+// B's stairs; "Stairwell A is no longer one stairwell: it is now stairs A and B."
+function stairwellChanges(entriesA, entriesB) {
+  const byKey = (entries) => {
+    const out = new Map();
+    for (const entry of entries) if (entry.kind === 'stairs') out.set(entry.key, (out.get(entry.key) || []).concat([entry]));
+    return out;
+  };
+  const inA = byKey(entriesA);
+  const inB = byKey(entriesB);
+  const changes = [];
+  const sweep = (wellSide, plainSide, kind) => {
+    const found = new Map();
+    for (const [key, list] of wellSide) {
+      if (list.length !== 1 || !list[0].well) continue;
+      const other = plainSide.get(key);
+      if (!other || other.length !== 1 || other[0].well) continue;
+      const letter = nameKey(list[0].name);
+      if (!found.has(letter)) found.set(letter, { letter: list[0].name, names: [] });
+      if (!found.get(letter).names.some((name) => nameKey(name) === nameKey(other[0].name))) found.get(letter).names.push(other[0].name);
+    }
+    for (const entry of found.values()) {
+      const words = entry.names.length === 1 ? 'stairs ' + entry.names[0] : 'stairs ' + entry.names.slice(0, -1).join(', ') + ' and ' + entry.names[entry.names.length - 1];
+      const sentence = kind === 'now' ? words.charAt(0).toUpperCase() + words.slice(1) + (entry.names.length === 1 ? ' is ' : ' are ') + NOW_ONE_STAIRWELL + ', ' + entry.letter + '.' : 'Stairwell ' + entry.letter + ' is ' + NO_LONGER_ONE_STAIRWELL + ': it is now ' + words + '.';
+      changes.push({ kind, letter: entry.letter, names: entry.names, sentence });
+    }
+  };
+  sweep(inB, inA, 'now');
+  sweep(inA, inB, 'no-longer');
+  return changes;
 }
 
 // The names a finding is about, as this side writes them, and the key that
@@ -588,7 +629,7 @@ export function compareBuildings(projectA, resultA, projectB, resultB, options) 
   // ---- places
   const placesA = namedPlaces(projectA, viewA, idA, transition);
   const placesB = namedPlaces(projectB, viewB, idB, transition);
-  const { foundA, foundB } = keyPlaces(placesA.entries, placesB.entries);
+  const { foundA, foundB, stairwells } = keyPlaces(placesA.entries, placesB.entries);
   const keys = [];
   for (const key of foundA.keys()) keys.push(key);
   for (const key of foundB.keys()) if (!foundA.has(key)) keys.push(key);
@@ -641,6 +682,7 @@ export function compareBuildings(projectA, resultA, projectB, resultB, options) 
     new: fresh,
     gone,
     ambiguous,
+    stairwells,
     unnamed: { before: placesA.unnamed, after: placesB.unnamed, sentence: placesA.unnamed + placesB.unnamed > 0 ? UNNAMED_SENTENCE : null },
   };
 

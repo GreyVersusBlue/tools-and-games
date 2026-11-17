@@ -59,6 +59,7 @@ export const GROUPS = {
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/w7-rules.test.mjs', // SV2-125
     'engine/w7-actions.test.mjs', // SV2-127
+    'engine/stairwells.test.mjs', // SV2-128
     'engine/teacher-away.test.mjs', // SV2-127
     'engine/w7-fields.test.mjs', // SV2-126
     'engine/w7-files.test.mjs', // SV2-126
