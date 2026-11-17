@@ -226,18 +226,22 @@ export function periodWordControl(ctx, options) {
       }
       memory.open = false;
       if (!custom) {
+        // the word already set (after Other word… was opened and not used) has
+        // no action to run, but the Other word fields still close
         if (value !== project.settings.periodWord) run(setSetting, { key: 'periodWord', value });
+        else options.redraw(keyFor(value));
         return;
       }
-      // leaving Other word: the custom word is cleared from the project (one
-      // undo step), and a different one of the four is set after it
+      // leaving Other word: the custom word is cleared from the project and a
+      // different one of the four is set, in one undo step
       memory.remembered = custom;
-      let steps = 0;
-      if (!run(setPeriodCustom, null)) return;
-      steps += 1;
-      if (value !== store.project.settings.periodWord && run(setSetting, { key: 'periodWord', value })) steps += 1;
+      const payload = value !== project.settings.periodWord ? { clear: true, periodWord: value } : { clear: true };
+      if (!run(setPeriodCustom, payload)) return;
+      const mine = store.history.past[store.history.past.length - 1];
       ctx.toast({ text: 'The word ' + custom.word + ' is gone.', action: { label: 'Undo', run: () => {
-        for (let i = 0; i < steps; i += 1) ctx.undo();
+        // only our own step is taken back: after another edit or an undo it is not on top
+        if (store.history.past[store.history.past.length - 1] !== mine) return;
+        ctx.undo();
         options.redraw(keyFor('other'));
       } } });
     },
@@ -497,7 +501,7 @@ export function mount(env) {
     const name = Array.isArray(names) && typeof names[period] === 'string' ? names[period].trim().toLowerCase() : '';
     const kind = NAMED_KINDS[name];
     if (!kind) return null;
-    const covered = marksOf(project).some((mark) => mark.kind === kind && mark.scope === 'school' && mark.period === period && (!Array.isArray(mark.dayTypeIds) || mark.dayTypeIds.length === 0));
+    const covered = marksOf(project).some((mark) => mark.kind === kind && mark.scope === 'school' && mark.period === period && (!Array.isArray(mark.dayTypeIds) || mark.dayTypeIds.length === 0 || project.dayTypes.every((dayType) => mark.dayTypeIds.includes(dayType.id))));
     return covered ? null : kind;
   }
 
@@ -548,20 +552,18 @@ export function mount(env) {
     const twin = stored.trim() !== '' && names.some((other, at) => at !== period && at < settings.periods && typeof other === 'string' && spacelessKey(other) === spacelessKey(stored));
     const kind = nudgeKind(project, period);
     const notes = [];
-    if (twin) notes.push(h('p', { class: 'sch-hint sch-names__twin', role: 'status' }, 'Two periods are named ' + stored.trim() + '; imports match them by number.'));
-    if (kind) {
-      notes.push(h('p', { class: 'sch-hint sch-names__nudge', data: { nudge: String(period) } },
-        'Named ' + stored.trim() + ', but still counted as a teaching or free period. ',
-        button('Mark it as ' + MARK_WORDS[kind].toLowerCase() + ' for the whole school', () => markAsNamed(period, kind), { key: 'names:' + period + ':mark', action: 'mark-named', small: true })));
-    }
-    return h('li', { class: 'sch-names__row', data: { period: String(period) } }, control.element, h('div', { id: hintId }, notes));
+    if (twin) notes.push(h('p', { class: 'sch-hint sch-names__twin' }, 'Two periods are named ' + stored.trim() + '; imports match them by number.'));
+    if (kind) notes.push(h('p', { class: 'sch-hint sch-names__nudge', data: { nudge: String(period) } }, 'Named ' + stored.trim() + ', but still counted as a teaching or free period.'));
+    const markButton = kind ? button('Mark it as ' + MARK_WORDS[kind].toLowerCase() + ' for the whole school', () => markAsNamed(period, kind), { key: 'names:' + period + ':mark', action: 'mark-named', small: true }) : null;
+    return h('li', { class: 'sch-names__row', data: { period: String(period) } }, control.element, h('div', { id: hintId }, notes), markButton);
   }
 
   // Behind a disclosure, so the card stays short for a school with no names.
   function periodNamesPart(project) {
     const open = view.namesOpen === true;
     const panelId = uid('names');
-    const toggle = keyed(h('button', { type: 'button', class: 'btn sch-names__toggle', 'aria-expanded': String(open), 'aria-controls': panelId, data: { action: 'names-toggle' }, on: { click: () => {
+    const countId = uid('names-count');
+    const toggle = keyed(h('button', { type: 'button', class: 'btn sch-names__toggle', 'aria-expanded': String(open), 'aria-controls': panelId, 'aria-describedby': countId, data: { action: 'names-toggle' }, on: { click: () => {
       view.namesOpen = !open;
       env.render('names:toggle');
     } } }, 'Name periods (Lunch, Advisory)…'), 'names:toggle');
@@ -572,7 +574,7 @@ export function mount(env) {
         h('ul', { class: 'sch-names__list' }, Array.from({ length: project.settings.periods }, (_, at) => nameRow(project, at))),
       ] : null);
     return h('div', { class: 'sch-names', data: { part: 'period-names' } },
-      h('div', { class: 'sch-names__head' }, toggle, h('span', { class: 'sch-names__count', data: { part: 'named-count' } }, n + ' named')),
+      h('div', { class: 'sch-names__head' }, toggle, h('span', { class: 'sch-names__count', id: countId, data: { part: 'named-count' } }, n + ' named')),
       panel);
   }
 

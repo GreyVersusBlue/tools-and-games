@@ -8,7 +8,7 @@
 // in actions.js itself.
 
 import { action, ActionError, patch, mapRooms, mapShared, reporting, withRoomFeatureIds, clearNumberNames, normalAway, awayKey, awayIsNever, BUILDING, SCHEDULE } from './actions.js';
-import { RANGES, FEATURES_MOST, FEATURE_NAME_MOST, COMMON_FEATURES, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WEEKDAY_NAMES } from './schema.js';
+import { RANGES, PERIOD_WORDS, FEATURES_MOST, FEATURE_NAME_MOST, COMMON_FEATURES, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WEEKDAY_NAMES } from './schema.js';
 import { nameKey, spacelessKey, textLength, findRoom, nameOfRoom, allRooms } from './schema.js';
 import { periodNumberName } from './bells.js';
 import { periodByNumber, columnRoleOf, roleWords } from './import-groups.js';
@@ -191,12 +191,22 @@ function needWord(value, what) {
 
 // payload: { word, plural, count } or null, which goes back to the period word
 // of the settings. `plural` left out is the word with "s"; `count` is how the
-// periods are numbered: number, letter or ordinal.
+// periods are numbered: number, letter or ordinal. { clear: true, periodWord }
+// is null and also sets that period word, in one step.
 export const setPeriodCustom = action(
-  { label: (before, payload) => (payload ? 'Use ' + (typeof payload.word === 'string' ? payload.word.trim() : '') + ' as the period word' : 'Go back to the period word of the settings'), bumps: [SCHEDULE], focus: () => ({ section: 'project' }) },
+  { label: (before, payload) => (payload && !payload.clear ? 'Use ' + (typeof payload.word === 'string' ? payload.word.trim() : '') + ' as the period word' : 'Go back to the period word of the settings'), bumps: [SCHEDULE], focus: () => ({ section: 'project' }) },
   (project, payload) => {
     // a new word has new number names: a period name equal to one is cleared
     if (payload === null) return clearNumberNames(project, withSetting(project, 'periodCustom', undefined));
+    // { clear: true, periodWord? } goes back and, in the same step, sets one of
+    // the four words: leaving Other word for another word is one undo step
+    if (payload && typeof payload === 'object' && payload.clear === true) {
+      const word = payload.periodWord;
+      if (word !== undefined && !PERIOD_WORDS.includes(word)) refuse('The period word is one of ' + PERIOD_WORDS.join(', ') + '.', 'bad-value');
+      let next = withSetting(project, 'periodCustom', undefined);
+      if (word !== undefined) next = withSetting(next, 'periodWord', word);
+      return clearNumberNames(project, next);
+    }
     if (typeof payload !== 'object' || Array.isArray(payload)) refuse('The custom period word is a word, its plural and how the periods are counted, or null.', 'bad-value');
     const word = needWord(payload.word, 'The period word');
     const plural = payload.plural === undefined || (typeof payload.plural === 'string' && payload.plural.trim() === '') ? word + 's' : needWord(payload.plural, 'The plural of the period word');

@@ -17,14 +17,16 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go as goHash, assertTouch } from './harness.mjs';
+import { openPlanner, go as goHash, assertTouch, loadModule } from './harness.mjs';
 
 const HOSTILE = '<b>Lab</b> "Q" 名前';
 
 let session;
 let page;
-let phone = null;
+// true while the cases are driven on the phone, where a press is a tap
+let touching = false;
 
+const press = (selector) => (touching ? page.tap(selector) : page.click(selector));
 const shows = (fn, ...args) => page.waitForFunction(fn, { timeout: 8000 }, ...args);
 const settled = () => page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 8000 });
 const settings = () => page.evaluate(() => JSON.parse(JSON.stringify(globalThis.sv2.store.project.settings)));
@@ -66,7 +68,12 @@ async function typeInto(selector, words) {
   // a toast sits over the bottom-left of the section and takes the press
   await closeToast();
   for (let tries = 0; ; tries += 1) {
-    await page.click(selector, { clickCount: 3 });
+    if (touching) {
+      await page.tap(selector);
+      await page.keyboard.down('Control');
+      await page.keyboard.press('a');
+      await page.keyboard.up('Control');
+    } else await page.click(selector, { clickCount: 3 });
     const there = await page.evaluate((wanted) => document.activeElement === document.querySelector(wanted), selector);
     if (there) break;
     assert.ok(tries < 5, 'the focus never reached ' + selector);
@@ -88,7 +95,6 @@ before(async () => {
 });
 
 after(async () => {
-  if (phone) await phone.close();
   if (session) await session.close();
 });
 
@@ -117,30 +123,51 @@ test('2. an arrow key moves the word, and the keys reach Other word… the same 
   assert.equal((await settings()).periodCustom, undefined, 'nothing is written until a word is typed');
 });
 
-test('3. Other word: a word, its plural and how the periods count, with the sample line they read', async () => {
+test('2b. Other word picked and then the word already set closes the fields, and Other word is no longer the one chosen', async () => {
+  await shows(() => !document.querySelector('[data-card="school-day"] .sch-wordother').hidden);
+  await settled();
+  const set = (await settings());
+  assert.equal(set.periodCustom, undefined);
+  await page.click(radio(set.periodWord));
+  await shows(() => document.querySelector('[data-card="school-day"] .sch-wordother').hidden);
+  assert.equal(await page.$eval(radio(set.periodWord), (el) => el.checked), true);
+  assert.equal(await page.$eval(radio('other'), (el) => el.checked), false, 'Other word is no longer the one chosen');
+  await page.click(radio('other'));
+  await shows(() => !document.querySelector('[data-card="school-day"] .sch-wordother').hidden);
+});
+
+async function case3() {
   const sample = () => text('[data-card="school-day"] [data-part="word-sample"]');
   assert.equal(await sample(), 'Type a word to see how it reads.');
-  await page.focus(key('day-word:custom-word'));
-  await page.keyboard.type('Lesson');
-  await page.keyboard.press('Enter');
+  if (touching) {
+    await typeInto(key('day-word:custom-word'), 'Lesson');
+    await shows(() => globalThis.sv2.store.project.settings.periodCustom?.word === 'Lesson');
+  }
+  else {
+    await page.focus(key('day-word:custom-word'));
+    await page.keyboard.type('Lesson');
+    await page.keyboard.press('Enter');
+  }
   await settled();
   assert.deepEqual((await settings()).periodCustom, { word: 'Lesson', plural: 'Lessons', count: 'number' });
   assert.equal(await sample(), 'Lesson 1, Lesson 2, … Lesson 8');
   assert.equal(await activeKey(), 'day-word:custom-word', 'the focus is kept in the field after the save');
   assert.match(await text('[data-card="school-day"] .field__label'), /Lessons per day/);
   assert.equal(await page.$eval('[data-card="school-day"] [data-part="word-sample"]', (el) => el.getAttribute('aria-live')), null, 'the sample is not a live region');
-  await page.click(key('day-word:count:letter'));
+  await press(key('day-word:count:letter'));
   await settled();
   assert.equal((await settings()).periodCustom.count, 'letter');
   assert.equal(await sample(), 'Lesson A, Lesson B, … Lesson H');
-  await page.click(key('day-word:count:ordinal'));
+  await press(key('day-word:count:ordinal'));
   await settled();
   assert.equal(await sample(), '1st Lesson, 2nd Lesson, … 8th Lesson');
   await typeInto(key('day-word:custom-plural'), 'Lessoni');
   await settled();
   assert.equal((await settings()).periodCustom.plural, 'Lessoni');
   assert.match(await text('[data-card="school-day"] .field__label'), /Lessoni per day/);
-});
+}
+
+test('3. Other word: a word, its plural and how the periods count, with the sample line they read', case3);
 
 test('4. a word that is too long or empty is refused inline, in words, and nothing changes', async () => {
   const before = (await settings()).periodCustom;
@@ -155,7 +182,7 @@ test('4. a word that is too long or empty is refused inline, in words, and nothi
   assert.equal(await page.$eval(key('day-word:custom-word'), (el) => el.getAttribute('aria-invalid')), null, 'the refusal goes when a word is taken');
 });
 
-test('5. leaving Other word says so in the toast, and Undo brings the word back', async () => {
+test('5. leaving Other word says so in the toast, and Undo brings the word back in one step', async () => {
   await closeToast();
   await page.click(radio('Hour'));
   await settled();
@@ -166,14 +193,41 @@ test('5. leaving Other word says so in the toast, and Undo brings the word back'
   await settled();
   assert.equal((await settings()).periodCustom.word, 'Class', 'Undo took the word back');
   assert.equal((await settings()).periodWord, 'Hour', 'and the word that was under it is the one it was');
-  // a different word than the one under it is two steps, and Undo takes both
+  // a different word than the one under it is still one step, and one undo takes it back
   await closeToast();
   await page.click(radio('Block'));
   await settled();
   assert.deepEqual([(await settings()).periodWord, (await settings()).periodCustom], ['Block', undefined]);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.undoLabel), 'Go back to the period word of the settings', 'leaving Other word is one engine step');
   await page.click('.toast__action');
   await settled();
-  assert.deepEqual([(await settings()).periodWord, (await settings()).periodCustom.word], ['Hour', 'Class'], 'Undo from the toast takes back both steps');
+  assert.deepEqual([(await settings()).periodWord, (await settings()).periodCustom.word], ['Hour', 'Class'], 'Undo from the toast takes back the step');
+  // Undo after another edit leaves that edit alone
+  await closeToast();
+  await page.click(radio('Block'));
+  await settled();
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSetting, { key: 'schoolName', value: 'Oak Test' }));
+  await settled();
+  assert.equal((await settings()).schoolName, 'Oak Test');
+  await page.evaluate(() => document.querySelector('.toast__action')?.click());
+  await settled();
+  assert.equal((await settings()).schoolName, 'Oak Test', 'the later edit is not undone by the toast');
+  assert.equal((await settings()).periodCustom, undefined, 'and neither is the word brought back');
+  await page.evaluate(() => { globalThis.sv2.store.undo(); globalThis.sv2.store.undo(); });
+  await settled();
+  // and after the shortcut took the step back, the toast does nothing more
+  await closeToast();
+  await page.click(radio('Block'));
+  await settled();
+  const toastAction = await page.$eval('.toast__action', (el) => el.textContent);
+  assert.equal(toastAction, 'Undo');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await settled();
+  const afterShortcut = await page.evaluate(() => JSON.stringify(globalThis.sv2.store.project.settings));
+  await page.evaluate(() => document.querySelector('.toast__action')?.click());
+  await settled();
+  assert.equal(await page.evaluate(() => JSON.stringify(globalThis.sv2.store.project.settings)), afterShortcut, 'the toast Undo after the shortcut does nothing more');
   // leaving again, and choosing Other word again, brings the word it left
   await closeToast();
   await page.click(radio('Hour'));
@@ -188,16 +242,22 @@ test('5. leaving Other word says so in the toast, and Undo brings the word back'
   await closeToast();
 });
 
-test('6. Name periods is a disclosure with "n named", each name one undo step, the refusals inline', async () => {
+async function case6() {
   const toggle = key('names:toggle');
   assert.equal(await text('[data-part="named-count"]'), '0 named');
   assert.equal(await page.$eval(toggle, (el) => el.getAttribute('aria-expanded')), 'false');
   assert.equal(await exists('.sch-names__row'), false, 'the table is not drawn while the disclosure is shut');
-  await page.focus(toggle);
-  await page.keyboard.press('Enter');
+  if (touching) await page.tap(toggle);
+  else {
+    await page.focus(toggle);
+    await page.keyboard.press('Enter');
+  }
   await shows(() => document.querySelectorAll('.sch-names__row').length === 8);
   assert.equal(await page.$eval(toggle, (el) => el.getAttribute('aria-expanded')), 'true');
   assert.equal(await activeKey(), 'names:toggle');
+  // "n named" is read with the disclosure button
+  const countId = await page.$eval('[data-part="named-count"]', (el) => el.id);
+  assert.ok(countId !== '' && (await page.$eval(toggle, (el) => el.getAttribute('aria-describedby'))).split(' ').includes(countId), 'the count is described by the button');
   assert.equal(await page.$eval('.sch-names__row[data-period="4"] .field__label', (el) => el.textContent), 'Period 5');
   assert.equal(await page.$eval('.sch-names__row[data-period="4"] input', (el) => el.placeholder), 'No name');
   assert.match(await text('.sch-names__panel .sch-hint'), /^A name replaces the number on screens and in the staff browser \(Lunch, Advisory\)\. The number stays in files and imports\.$/);
@@ -224,7 +284,9 @@ test('6. Name periods is a disclosure with "n named", each name one undo step, t
   await refusal(4, 'P3', /would be read as Period 3/);
   await refusal(4, 'x'.repeat(30), /at most 24 characters/);
   await refusal(0, 'Group', /column heading an import reads/);
-});
+}
+
+test('6. Name periods is a disclosure with "n named", each name one undo step, the refusals inline', case6);
 
 test('7. the same name on two periods is allowed and said under both', async () => {
   await typeInto('.sch-names__row[data-period="1"] input', 'Study');
@@ -248,12 +310,16 @@ test('8. a name as typed is kept as typed, never read as markup', async () => {
   await settled();
 });
 
-test('9. a name that reads as a kind of mark offers the school mark under its field; the button makes it in one step and the toast is said once', async () => {
+async function case9() {
   await closeToast();
   await typeInto('.sch-names__row[data-period="4"] input', 'Lunch');
   await settled();
   const nudge = '.sch-names__row[data-period="4"] .sch-names__nudge';
-  assert.match(await text(nudge), /^Named Lunch, but still counted as a teaching or free period\. Mark it as lunch for the whole school$/);
+  assert.equal(await text(nudge), 'Named Lunch, but still counted as a teaching or free period.');
+  // the button sits beside the sentence, outside the element the field's description points to
+  const described = await page.$eval('.sch-names__row[data-period="4"] input', (el) => el.getAttribute('aria-describedby'));
+  assert.equal(await page.evaluate((id) => document.getElementById(id).querySelector('button'), described), null, 'no button inside the described element');
+  assert.equal(await text('.sch-names__row[data-period="4"] [data-action="mark-named"]'), 'Mark it as lunch for the whole school');
   assert.equal(await toastNow(), 'Period 5 is named Lunch, but it is still counted as a teaching or free period. Mark it as lunch under its name.');
   await closeToast();
   // the name changed and changed back says nothing a second time
@@ -264,7 +330,7 @@ test('9. a name that reads as a kind of mark offers the school mark under its fi
   await settled();
   assert.equal(await toastNow(), null, 'the toast was said once');
   const before = (await marks()).length;
-  await page.click(nudge + ' button');
+  await press('.sch-names__row[data-period="4"] [data-action="mark-named"]');
   await settled();
   const after = await marks();
   assert.equal(after.length, before + 1);
@@ -280,11 +346,13 @@ test('9. a name that reads as a kind of mark offers the school mark under its fi
   // an Advisory name offers the advisory mark
   await typeInto('.sch-names__row[data-period="5"] input', 'advisory');
   await settled();
-  assert.match(await text('.sch-names__row[data-period="5"] .sch-names__nudge'), /Mark it as advisory for the whole school$/);
+  assert.equal(await text('.sch-names__row[data-period="5"] [data-action="mark-named"]'), 'Mark it as advisory for the whole school');
   await typeInto('.sch-names__row[data-period="5"] input', 'Lab');
   await settled();
   assert.equal(await exists('.sch-names__row[data-period="5"] .sch-names__nudge'), false, 'a name that is not one of the four offers nothing');
-});
+}
+
+test('9. a name that reads as a kind of mark offers the school mark under its field; the button makes it in one step and the toast is said once', case9);
 
 test('10. the named period reads "Lunch" in the grid editor and "Period 5 (Lunch)" in the group editor’s row head', async () => {
   await go(page, '#schedule/grid');
@@ -293,8 +361,8 @@ test('10. the named period reads "Lunch" in the grid editor and "Period 5 (Lunch
   assert.ok(heads.includes('Lunch'), 'the grid editor’s header says Lunch: ' + heads.join(' | '));
   await go(page, '#schedule/groups');
   await page.waitForSelector('.sch-slot__period');
-  const rows = await page.$$eval('.sch-slot__period', (all) => all.map((el) => el.textContent));
-  assert.ok(rows.some((row) => row.includes('Period 5 (Lunch)')), 'the row head names the number and the name: ' + rows.join(' | '));
+  const rows = await page.$$eval('.sch-slot__name', (all) => all.map((el) => el.textContent));
+  assert.ok(rows.includes('Period 5 (Lunch)'), 'the group editor’s row head names the number and the name: ' + rows.join(' | '));
   await go(page, '#schedule/day');
 });
 
@@ -327,14 +395,41 @@ test('11. Settings has the same radio group and Other word fields, by keyboard',
   assert.equal((await settings()).periodWord, 'Block');
 });
 
+test('12b. at 390 px with touch, the word, the names and the Lunch nudge are driven by tap', async () => {
+  // the same page, made a phone: a second page of the tool would be a second tab, and
+  // its saves meet the first's. The edits so far are undone, so the school is as it began.
+  await page.evaluate(() => { while (globalThis.sv2.store.canUndo) globalThis.sv2.store.undo(); });
+  await settled();
+  await page.evaluate(() => globalThis.sv2.storage.flush());
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+  await page.waitForFunction(() => globalThis.sv2 && document.documentElement.dataset.ready === 'true', { timeout: 15000 });
+  await go(page, '#schedule/day');
+  await page.waitForSelector('[data-card="school-day"]');
+  await assertTouch(page, 'the phone, before driving the period names');
+  await settled();
+  touching = true;
+  try {
+    await press('[data-card="school-day"] ' + key('day-word:other'));
+    await shows(() => !document.querySelector('[data-card="school-day"] .sch-wordother').hidden);
+    await case3();
+    await press(radio('Period'));
+    await settled();
+    await closeToast();
+    await case6();
+    await case9();
+    await assertTouch(page, 'the phone, driving the period names');
+  } finally {
+    touching = false;
+  }
+});
+
 test('12. at 390 px the card and Settings fit with no sideways scroll, and every new control is 44 px', async () => {
-  phone = await openPlanner({ hash: '#schedule/day', width: 390, height: 844, mobile: true, browser: session.browser, server: session.server, theme: 'light' });
-  const p = phone.page;
+  // the page is already a phone, on the Day tab with the names open, from the case before
+  const p = page;
   await p.waitForSelector('[data-card="school-day"]');
   await p.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 8000 });
-  await p.click('[data-card="school-day"] ' + key('day-word:other'));
+  await p.tap('[data-card="school-day"] ' + key('day-word:other'));
   await p.waitForFunction(() => !document.querySelector('[data-card="school-day"] .sch-wordother').hidden, { timeout: 8000 });
-  await p.click('[data-card="school-day"] ' + key('names:toggle'));
   await p.waitForSelector('.sch-names__row');
   const fits = () => p.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: document.documentElement.clientWidth, card: (document.querySelector('[data-card="school-day"]')?.scrollWidth || 0) - (document.querySelector('[data-card="school-day"]')?.clientWidth || 0) }));
   const day = await fits();

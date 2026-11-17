@@ -224,6 +224,16 @@ test('setPeriodCustom sets the word, its plural and how the periods count, and n
   assert.equal(setPeriodCustom(plain, null, ctx()), plain, 'null with none set is no change');
 });
 
+test('setPeriodCustom with clear and a periodWord leaves Other word and sets the word in one undo step', () => {
+  const custom = run(setPeriodCustom, school(), { word: 'Lesson', count: 'number' });
+  const back = step(custom, setPeriodCustom, { clear: true, periodWord: 'Block' }, 'Go back to the period word of the settings');
+  assert.equal('periodCustom' in back.settings, false);
+  assert.equal(back.settings.periodWord, 'Block');
+  const bare = run(setPeriodCustom, custom, { clear: true });
+  assert.equal(bare.settings.periodWord, school().settings.periodWord, 'without a word it is null');
+  refused(setPeriodCustom, custom, { clear: true, periodWord: 'Class' }, 'bad-value');
+});
+
 test('setPeriodCustom refuses a blank word, one over 16 characters, a bad count, and keeps a word as typed', () => {
   refused(setPeriodCustom, school(), { word: ' ', count: 'number' }, 'no-name');
   refused(setPeriodCustom, school(), { word: 'x'.repeat(17), count: 'number' }, 'too-long');
