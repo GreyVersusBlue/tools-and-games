@@ -23,6 +23,7 @@ const eng = await import(pathToFileURL(path.join(MER, 'engine', 'index.js')).hre
 const { loadContent } = await import(pathToFileURL(path.join(MER, 'data.js')).href);
 const nodeContent = eng.validateContent(await loadContent('cairo', { fs: await import('node:fs/promises') }));
 const SEED = 1324;
+const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'state.js')).href);
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
@@ -514,15 +515,11 @@ try {
       ok(Math.abs(r.left - 0.22 * r.vw) < 4 && Math.abs(r.width - 0.56 * r.vw) < 4, `stack at ${r.left}, ${r.width}`);
     });
 
-    await test('top bar: Ledger and Notebook are disabled with their reasons, and pressing one says why', async () => {
-      for (const [key, word] of [['ledger', 'ledger'], ['notebook', 'notebook']]) {
-        eq(await page.$eval(`#btn-${key}`, b => [b.disabled, b.getAttribute('aria-disabled'), b.getAttribute('aria-describedby')]), [false, 'true', `reason-${key}`]);
-        await page.click(`#btn-${key}`);
-        const note = await page.$eval('#bar-note', e => e.textContent);
-        ok(note.toLowerCase().includes(word), `${key}: ${note}`);
-        ok(await page.$eval('#bar-note', e => e.getBoundingClientRect().height > 0), `${key}: the reason is not visible`);
-        eq(await hashOf(page), '#desk');
+    await test('top bar: Ledger, Notebook and the warehouse count are live buttons, and Notebook carries the count', async () => {
+      for (const id of ['btn-ledger', 'btn-notebook', 'btn-warehouse']) {
+        eq(await page.$eval(`#${id}`, b => [b.disabled, b.getAttribute('aria-disabled'), b.getAttribute('aria-haspopup')]), [false, null, 'dialog'], id);
       }
+      eq(await page.$eval('#btn-notebook', b => b.textContent.trim()), `Notebook${(await engineState(page)).notebook.length}`);
     });
 
     await test('End the season is disabled with its reason as visible text, and pressing it does nothing', async () => {
@@ -738,10 +735,15 @@ try {
       eq(await engineState(page), JSON.parse(JSON.stringify(model)));
     });
 
-    await test('keyboard: L and N tell why they cannot open yet; E does nothing while papers wait', async () => {
-      for (const [k, word] of [['l', 'ledger'], ['n', 'notebook']]) {
+    await test('keyboard: L and N open the ledger and the notebook, Esc returns focus to their buttons; E does nothing while papers wait', async () => {
+      for (const [k, name] of [['l', 'ledger'], ['n', 'notebook']]) {
         await page.keyboard.press(k);
-        ok((await page.$eval('#bar-note', e => e.textContent)).toLowerCase().includes(word), k);
+        await page.waitForFunction(n => document.getElementById(`panel-${n}`)?.open, {}, name);
+        eq(await hashOf(page), `#${name}`);
+        await page.keyboard.press('Escape');
+        await gone(page, name);
+        eq(await focusId(page), `btn-${name}`, `${k}: focus back on its button`);
+        eq(await hashOf(page), '#desk');
       }
       const before = await engineState(page);
       await page.keyboard.press('e');
@@ -1387,6 +1389,204 @@ try {
     await test(`whole game by ${how}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.screenshot({ path: path.join(SHOTS, `ending-stub-${how}.png`) });
     await page.close();
+  }
+
+  // ---- MER-62: the ledger and the notebook, by pointer and by keyboard. The save is built in Node by the
+  // engine on this seed (two seasons played: an expedition out, goods in the warehouse, notebook entries met),
+  // given a loan and the `season` log entries the ledger's money trail reads, and loaded as a player would.
+  {
+    const policy = s => {
+      for (const p of s.desk) {
+        if (p.state !== 'open') continue;
+        const c = eng.paperChoices(s, nodeContent, p.id).find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        s = eng.choose(s, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+      }
+      return eng.endSeason(s, nodeContent);
+    };
+    let book = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    while (book.t < 2) book = policy(book);
+    book.loans.push({ id: 'nell-1', from: 'nell', principal: 100, due: book.t + 4, rate: 0.1 });
+    for (const [i, change] of [[0, -60], [1, 120], [2, -45], [3, 80], [4, 300]]) book.log.push({ at: i, kind: 'season', change });
+    book.agents.yusuf.trust = -1; book.rep.court = 3; book.rep.partners = -3; book.rep.agents = 1;
+    const view = eng.view(book, nodeContent);
+    const total = nodeContent.notebook.length;
+    const found = nodeContent.notebook.filter(e => book.notebook.includes(e.id));
+    const loadBook = async (page, hash = '#desk') => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((st, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...st, __v: v })); }, JSON.parse(JSON.stringify(book)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+      await page.waitForSelector('#screen-desk .sheet-title');
+    };
+    const closed = (page, name) => page.waitForFunction(n => !document.getElementById(`panel-${n}`), {}, name);
+    const opened = (page, name) => page.waitForFunction(n => document.getElementById(`panel-${n}`)?.open, {}, name);
+    const texts = (page, sel) => page.$$eval(sel, es => es.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+
+    for (const how of ['pointer', 'keyboard']) {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await loadBook(page);
+      const openBy = async (name, key) => {
+        if (how === 'pointer') await page.click(`#btn-${name}`);
+        else { await page.focus('body'); await page.keyboard.press(key); }
+        await opened(page, name);
+      };
+      const closeBy = async (name, route) => {
+        if (route === 'Esc') await page.keyboard.press('Escape');
+        else if (route === 'Back') await page.goBack();
+        else await page.click(`#panel-${name}-close`);
+        await closed(page, name);
+      };
+
+      await test(`${how}: the ledger opens as a dialog on its title, and says the money, the loan and the last four seasons from the log`, async () => {
+        await openBy('ledger', 'l');
+        eq(await hashOf(page), '#ledger');
+        eq(await focusId(page), 'panel-ledger-title');
+        eq(await page.$eval('#panel-ledger', d => [d.tagName, d.getAttribute('aria-labelledby'), d.matches(':modal')]), ['DIALOG', 'panel-ledger-title', true]);
+        eq(await texts(page, '#panel-ledger h3'), ['Money', 'Warehouse', 'Out on the road', 'People']);
+        eq(await texts(page, '#ledger-have'), [`The house has ${withCommas(book.money)} dinars.`]);
+        eq(await texts(page, '#ledger-loans li'), ['Owes 100 dinars to Nell, due Autumn 1325.']);
+        eq(await texts(page, '#ledger-trail li'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
+        eq(await page.$$eval('#ledger-trail li', es => es.map(e => e.dataset.change)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, each as the log wrote it');
+        ok((await texts(page, '#ledger-trail li')).every(t => /[+−]\d+ dinars$/.test(t)), 'signed with a real minus');
+      });
+
+      await test(`${how}: the ledger's warehouse shows each good with Cairo's price as last known and its date, from the engine's view`, async () => {
+        const want = Object.entries(book.stock).filter(([, q]) => q > 0).map(([id, q]) => {
+          const g = nodeContent.goods.find(x => x.id === id), p = view.prices.cairo[id];
+          return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`;
+        });
+        ok(want.length >= 2, 'the saved game holds at least two goods');
+        eq(await texts(page, '#ledger-stock li'), want);
+      });
+
+      await test(`${how}: the ledger's road and people sections name where each is, when due, the traits and trust in words, and the four reputations with numbers`, async () => {
+        const trip = (await texts(page, '#ledger-trips li'))[0];
+        ok(trip.startsWith('Yusuf to Damascus Last heard of on the '), trip);
+        ok(/Due home about (Spring|Summer|Autumn|Winter) \d{4}\.$/.test(trip), trip);
+        eq(await page.$$eval('#ledger-trips li', es => es.length), book.expeditions.length);
+        const yusuf = await page.$eval('[data-agent="yusuf"]', e => e.textContent.replace(/\s+/g, ' ').trim());
+        eq(yusuf, 'Yusuf careful, knows Damascus Yusuf is uneasy with the house. On the road to Damascus.');
+        ok(await page.$eval('[data-agent="yusuf"] img.seal', i => i.complete && i.naturalWidth > 0), 'the seal shows');
+        eq(await texts(page, '#ledger-reps li'), ['Partners They will not deal with you −3', 'Agents They speak well of you +1',
+          'The court They come to you first +3', 'Foreign merchants They deal with you as with anyone 0']);
+      });
+
+      await test(`${how}: Esc, Back and Close each close the ledger, step the hash back and return focus to its button`, async () => {
+        await closeBy('ledger', 'Esc');
+        eq([await hashOf(page), await focusId(page)], ['#desk', 'btn-ledger'], 'Esc');
+        await openBy('ledger', 'l'); await closeBy('ledger', 'Back');
+        eq([await hashOf(page), await focusId(page)], ['#desk', 'btn-ledger'], 'Back');
+        await openBy('ledger', 'l'); await closeBy('ledger', 'Close');
+        eq([await hashOf(page), await focusId(page)], ['#desk', 'btn-ledger'], 'Close');
+        eq(await page.evaluate(() => history.length > 0 && !document.querySelector('dialog[open]')), true);
+      });
+
+      await test(`${how}: the warehouse button opens the ledger at Warehouse and Esc puts focus back on it`, async () => {
+        if (how === 'pointer') await page.click('#btn-warehouse');
+        else { await page.focus('#btn-warehouse'); await page.keyboard.press('Enter'); }
+        await opened(page, 'ledger');
+        eq(await focusId(page), 'ledger-warehouse-h');
+        ok(await page.$eval('#ledger-warehouse-h', e => { const r = e.getBoundingClientRect(), d = document.getElementById('panel-ledger').getBoundingClientRect(); return r.top >= d.top && r.bottom <= d.bottom; }), 'the Warehouse heading is on screen');
+        await page.keyboard.press('Escape'); await closed(page, 'ledger');
+        eq(await focusId(page), 'btn-warehouse');
+      });
+
+      await test(`${how}: the notebook opens as a tab list; the count on its button and its heading are the engine's`, async () => {
+        await openBy('notebook', 'n');
+        eq(await hashOf(page), '#notebook');
+        eq(await focusId(page), 'panel-notebook-title');
+        eq(await texts(page, '[role="tab"]'), ['terms', 'places', 'people', 'goods'].map(t => `${cap(t)} ${found.filter(e => e.tab === t).length}`));
+        eq(await texts(page, '#nb-count'), [`${found.length} of ${total} found`]);
+        eq(await page.$eval('[role="tablist"]', e => e.getAttribute('aria-label')), 'Notebook');
+        eq(await page.$$eval('[role="tab"]', ts => ts.map(t => [t.getAttribute('aria-selected'), t.tabIndex])), [['true', 0], ['false', -1], ['false', -1], ['false', -1]]);
+        eq(await page.$eval('[role="tabpanel"]', p => p.getAttribute('aria-labelledby')), 'nb-tab-terms');
+      });
+
+      await test(`${how}: arrow keys, Home and End move between the tabs; each tab lists its entries in the order met, then a blank line for each not met`, async () => {
+        await page.focus('#nb-tab-terms');
+        const order = [];
+        for (const key of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft', 'End', 'Home']) {
+          await page.keyboard.press(key);
+          order.push(await focusId(page));
+        }
+        eq(order, ['nb-tab-places', 'nb-tab-people', 'nb-tab-goods', 'nb-tab-terms', 'nb-tab-goods', 'nb-tab-goods', 'nb-tab-terms']);
+        for (const tab of ['terms', 'places', 'people', 'goods']) {
+          if (how === 'pointer') await page.click(`#nb-tab-${tab}`);
+          else { await page.focus('#nb-tab-terms'); for (let n = 0; n < ['terms', 'places', 'people', 'goods'].indexOf(tab); n++) await page.keyboard.press('ArrowRight'); }
+          eq(await page.$eval(`#nb-tab-${tab}`, t => t.getAttribute('aria-selected')), 'true');
+          const here = nodeContent.notebook.filter(e => e.tab === tab);
+          const metOrder = book.notebook.map(id => nodeContent.notebook.find(e => e.id === id)).filter(e => e.tab === tab).map(e => e.title);
+          eq(await texts(page, '.nb-entry h4'), metOrder, `${tab}: the entries met, in the order met`);
+          eq(await page.$$eval('.nb-blank', b => b.length), here.length - metOrder.length, `${tab}: one blank line for each not met`);
+          eq(await texts(page, '#nb-tab-count'), [`${metOrder.length} of ${here.length} found`]);
+          if (here.length > metOrder.length) eq(await page.$eval('.nb-blanks', e => e.getAttribute('aria-hidden')), 'true', `${tab}: the blank lines are not read out`);
+        }
+      });
+
+      await test(`${how}: an entry shows its title, its body and a source line written as author, title, year and page, with no web address`, async () => {
+        await page.click('#nb-tab-places');
+        const e = found.find(x => x.tab === 'places');
+        const entry = await page.$eval(`[data-entry="${e.id}"]`, n => ({ title: n.querySelector('h4').textContent, body: n.querySelector('.nb-body').textContent, source: n.querySelector('.source').textContent }));
+        eq([entry.title, entry.body], [e.title, e.body]);
+        const src = nodeContent.sources.find(x => x.id === e.sources[0].src);
+        ok(entry.source.startsWith(`Source: ${src.author}, ${src.title}, ${src.year}`), entry.source);
+        ok(/, (vol\. \d+, )?pp?\. \d/.test(entry.source), `a page: ${entry.source}`);
+        ok(!/https?:|www\.|\.com|\.org/.test(entry.source), 'no address');
+        eq(await page.$$eval('.nb-entry .source', ss => ss.every(s => s.textContent.startsWith('Source: ') && s.textContent.endsWith('.'))), true, 'every source line is written the same way');
+      });
+
+      await test(`${how}: Esc, Back and Close each close the notebook and put focus back on the Notebook button`, async () => {
+        await closeBy('notebook', 'Esc');
+        eq([await hashOf(page), await focusId(page)], ['#desk', 'btn-notebook'], 'Esc');
+        await openBy('notebook', 'n'); await closeBy('notebook', 'Back');
+        eq([await hashOf(page), await focusId(page)], ['#desk', 'btn-notebook'], 'Back');
+        await openBy('notebook', 'n'); await closeBy('notebook', 'Close');
+        eq([await hashOf(page), await focusId(page)], ['#desk', 'btn-notebook'], 'Close');
+      });
+
+      await test(`${how}: a reload on #ledger and on #notebook shows the panel over the desk`, async () => {
+        for (const name of ['ledger', 'notebook']) {
+          await loadBook(page, `#${name}`);
+          await opened(page, name);
+          ok(await page.$('#screen-desk'), `${name}: the desk is behind it`);
+          eq(await focusId(page), `panel-${name}-title`);
+          await page.keyboard.press('Escape'); await closed(page, name);
+        }
+      });
+
+      await test(`${how}: #ledger with no game goes to the title and is not left in history`, async () => {
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate(() => localStorage.clear());
+        await page.goto(GAME + '#ledger', { waitUntil: 'load' });
+        await page.waitForSelector('#screen-title');
+        eq(await hashOf(page), '#title');
+        eq(await page.$('#panel-ledger'), null);
+      });
+
+      await test(`${how}: ledger and notebook, no offsite request, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // the phone frames hold only Menu in the bar (DESIGN 5.2, 5.3): the ledger and the notebook are in it
+    for (const frame of [FRAMES[3], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await loadBook(page);
+      await test(`${frame.name}: Menu holds Ledger and Notebook; each closes back to Menu, and neither dialog overflows`, async () => {
+        for (const name of ['ledger', 'notebook']) {
+          eq(await page.$eval(`#btn-${name}`, e => e.checkVisibility()), false, 'the bar holds only Menu here');
+          await page.click('#btn-menu'); await page.waitForSelector(`#menu-${name}`); await page.click(`#menu-${name}`);
+          await opened(page, name);
+          await page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
+          const m = await page.$eval(`#panel-${name}`, d => ({ x: [d.scrollWidth, d.clientWidth], r: d.getBoundingClientRect().toJSON(), w: innerWidth, h: innerHeight }));
+          eq(m.x[0], m.x[1], `${name}: no sideways scroll`);
+          ok(m.r.left >= 0 && m.r.right <= m.w + 1 && m.r.bottom <= m.h + 1, `${name}: inside the screen ${JSON.stringify(m.r)}`);
+          await page.keyboard.press('Escape'); await closed(page, name);
+          eq(await focusId(page), 'btn-menu', `${name}: focus back on Menu`);
+        }
+      });
+      await test(`${frame.name}: ledger and notebook, no offsite request, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
   }
 
 } finally {

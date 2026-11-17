@@ -4,7 +4,8 @@
 // DESIGN 5 and at Large text on the short phone frame. Port 8193, through the site harness.
 //
 // Screens: the title (with and without a save), New game, the desk with a letter raised, the desk
-// with a full stack, a return paper, the outfitting sheet, the price board on the map table, the page
+// with a full stack, a return paper, the outfitting sheet, the price board on the map table, the ledger,
+// the notebook (MER-62), the page
 // between acts and the ending stub. The labels on the map table are MER-44b's check in
 // journey.mjs and are not measured here.
 //
@@ -98,6 +99,14 @@ const states = {
   firstDone: (() => { let s = fresh(); for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, content, p.id, FIRST[p.ref]); return s; })(),
   interlude: playUntil(s => s.phase === 'interlude'),
   recall: playUntil(s => s.phase === 'recall'),
+  // a house with an expedition out, stock, a loan and several notebook entries, and the `season` log
+  // entries the ledger's money trail reads (ledger.js: { kind: 'season', at, change }); the engine does not write them yet
+  book: (() => {
+    const s = playUntil(x => x.phase === 'desk' && x.t >= 2 && x.expeditions.length > 0 && x.notebook.length >= 6);
+    s.loans.push({ id: 'nell-1', from: 'nell', principal: 100, due: s.t + 4, rate: 0.1 });
+    for (let i = 4; i >= 1; i--) s.log.push({ at: Math.max(0, s.t - i), kind: 'season', change: i % 2 ? 140 * i : -60 * i });
+    return s;
+  })(),
 };
 const plain = s => JSON.parse(JSON.stringify(s));
 
@@ -124,6 +133,13 @@ const load = async (page, hash, { state = null, large = false } = {}) => {
   await page.evaluate((s, v) => { localStorage.clear(); if (s) localStorage.setItem('merchant-save', JSON.stringify({ ...s, __v: v })); }, state && plain(state), SAVE_VERSION);
   await page.goto(GAME + hash, { waitUntil: 'load' });
   await page.evaluate(v => document.documentElement.classList.toggle('large-text', v), large);
+};
+
+/** The bar's own button where the frame shows it; the Menu's item on the phone frames, where the bar holds only Menu. */
+const openBook = async (p, name) => {
+  await p.waitForSelector('#btn-menu');
+  if (await p.$eval(`#btn-${name}`, e => e.checkVisibility())) { await p.click(`#btn-${name}`); return; }
+  await p.click('#btn-menu'); await p.waitForSelector(`#menu-${name}`); await p.click(`#menu-${name}`);
 };
 
 // ---- the screens: each leaves the page ready to measure and names the part of it that is "raised"
@@ -161,6 +177,18 @@ const SCREENS = [
       if (await p.$eval('#prices-box', e => getComputedStyle(e).display === 'none')) { await p.click('#btn-prices'); }
     },
     modalOf: p => p.evaluate(() => { const b = document.getElementById('prices-box'); return b?.getAttribute('aria-modal') === 'true' ? '#prices-box' : null; }) },
+  { name: 'ledger', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states.book, large: f.large });
+      await openBook(p, 'ledger');
+      await p.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+    } },
+  { name: 'notebook', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states.book, large: f.large });
+      await openBook(p, 'notebook');
+      await p.waitForFunction(() => document.getElementById('panel-notebook')?.open);
+    } },
   { name: 'between-acts',
     go: async (p, f) => { await load(p, '#desk', { state: states.interlude, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
   { name: 'ending-stub',

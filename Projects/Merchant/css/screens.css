@@ -361,3 +361,44 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
   .send-row .panel-actions { flex-direction: column-reverse; }
   .send-row .button { width: 100%; }
 }
+
+/* ---- The ledger and the notebook (DESIGN 4.9, 4.10): dialogs over the desk ---- */
+dialog.book { width: min(44em, calc(100% - 2rem)); max-width: none; padding: var(--s3) var(--s4); display: flex; flex-direction: column; overflow: hidden; }
+dialog.book[open] { display: flex; }
+dialog.book .panel-actions { flex: none; }
+.ledger-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: var(--s2); }
+.ledger-sec { padding: var(--s2) 0 var(--s3); border-bottom: 1px solid var(--paper-shade); }
+.ledger-sec:last-child { border-bottom: 0; }
+.ledger-sec h3 { margin-top: 0; }
+.ledger-sec h4 { font-family: var(--font-chrome); font-size: var(--step--1); font-weight: 600; color: var(--ink-soft); margin: var(--s3) 0 var(--s1); }
+.ledger-line { margin: 0 0 var(--s1); }
+.ledger-list { list-style: none; margin: 0; padding: 0; }
+.ledger-list li { display: flex; flex-wrap: wrap; gap: 0 var(--s3); align-items: baseline; justify-content: space-between; padding: var(--s1) 0; border-bottom: 1px dotted var(--paper-shade); font-variant-numeric: tabular-nums; }
+.ledger-list li > span { color: var(--ink-soft); font-family: var(--font-chrome); font-size: var(--step--1); }
+.ledger-trip, .ledger-person > div { display: grid; gap: 0; }
+.ledger-trip { display: grid !important; }
+.ledger-person { justify-content: flex-start !important; align-items: center !important; flex-wrap: nowrap !important; gap: var(--s3) !important; }
+.ledger-person > div { display: grid; }
+.ledger-person .seal { flex: none; width: 2.4rem; height: 2.4rem; }
+.ledger-reps li .num { font-weight: 600; color: var(--ink); }
+.ledger-reps li > span:nth-of-type(1) { flex: 1 1 12em; }
+
+.nb-count { margin: 0 0 var(--s2); font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--s1); border-bottom: 2px solid var(--brass-dark); flex: none; }
+.tab { min-height: var(--hit); padding: 0 var(--s3); font-family: var(--font-chrome); font-weight: 600; color: var(--ink);
+  background: var(--paper-shade); border-radius: var(--radius) var(--radius) 0 0; }
+.tab[aria-selected="true"] { background: var(--brass-dark); color: var(--paper); }
+.tab .tab-count { font-weight: 400; }
+.tabpanel { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--s2) var(--s2) var(--s2) 0; }
+.nb-tab-count { margin: 0 0 var(--s2); font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
+.nb-entries, .nb-blanks { list-style: none; margin: 0; padding: 0; }
+.nb-entry { display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s2) 0; border-bottom: 1px solid var(--paper-shade); }
+.nb-entry h4 { font-size: var(--step-1); margin: 0 0 var(--s1); }
+.nb-entry .nb-body { margin: 0; }
+.nb-entry .source { font-size: var(--step--1); color: var(--ink-soft); margin: var(--s1) 0 0; }
+.nb-art { flex: none; width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: var(--radius); }
+.nb-blank { height: var(--s4); border-bottom: 1px solid var(--ink-soft); opacity: .45; }
+@media (max-width: 700px), (max-height: 500px) {
+  dialog.book { width: 100%; height: 100dvh; max-height: none; border-radius: 0; padding: var(--s3); }
+}
+@media (max-height: 500px) { dialog.book { padding: var(--s2) max(var(--s3), env(safe-area-inset-right)) var(--s2) max(var(--s3), env(safe-area-inset-left)); } }
