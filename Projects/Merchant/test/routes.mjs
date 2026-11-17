@@ -631,6 +631,23 @@ test('the act jump settles every expedition at the quoted prices, resets markets
   eq([o.phase, view(o, c).interlude], ['desk', null]);
 });
 
+test('the act jump charges an expedition on the road the wage of its whole road, not of the seasons it had ridden (MER-51b)', () => {
+  const run = wage => {
+    const c = risk(variant(T, y => { y.agents.find(a => a.id === 'mira').wage = wage; }), 0);
+    let s = game(c, { length: 'acts' });
+    s = play(s, c, 1);
+    s = outfit(s, c, WOOL);
+    s.expeditions[0].out = 0;
+    const road = R.wholeRoad(c, s.expeditions[0]);
+    s = play(s, c, 2);
+    return { money: s.money, road, line: view(s, c).interlude.settled[0] };
+  };
+  const free = run(0), paid = run(3);
+  ok(free.road >= 4, `the road is ${free.road} seasons there and back, more than the one season ridden at the jump`);
+  eq(free.money - paid.money, 3 * free.road, `at 3 a season the whole road of ${free.road} seasons costs ${3 * free.road}`);
+  eq(free.line.houseNet - paid.line.houseNet, 3 * free.road, 'the interlude line counts the same wage');
+});
+
 test('the act jump: an expedition that left at the last season settles too, and each leg left is one roll of its risk (two legs here)', () => {
   const c = risk(T, 0.95);   // testport's road to Hilltown has two legs
   let lostCount = 0;

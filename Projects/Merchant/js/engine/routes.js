@@ -745,6 +745,12 @@ function settleAndClose(s, content, x, elapsed) {
 // ---------------------------------------------------------------------------------------------
 // The act jump (ARCHITECTURE 4.7)
 
+/** The seasons of every leg of the expedition's road, there and back, at its agent's pace. */
+export function wholeRoad(content, x) {
+  const agent = agentOf(content, x.agent);
+  return routeOf(content, x.route).legs.reduce((n, l) => n + legSeasons(agent, l), 0);
+}
+
 /** Closing step "jump": the years between acts. Called after `t` has advanced to the first
     season of the next act. Writes one log entry, kind "jump", which the interlude page reads
     (view().interlude). */
@@ -755,7 +761,14 @@ export function jump(s, content) {
   const entry = { at: to, kind: 'jump', from, to, years, settled: [], loans: [], agents: [], events: [] };
 
   // 1. every expedition on the road is settled
-  for (const x of s.expeditions) entry.settled.push(norm(x) && settleAndClose(s, content, x, Math.max(1, x.out)));
+  // The years pass while it finishes, so an expedition still out is charged the wage of its whole road
+  // (every leg's seasons, there and back), not of the seasons it had ridden when the jump came (MER-51b).
+  for (const x of s.expeditions) {
+    norm(x);
+    const road = routeOf(content, x.route) ? wholeRoad(content, x) : 0;
+    x.out = Math.max(x.out, road);
+    entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out)));
+  }
   s.expeditions = [];
 
   // 2. loans fall due, with interest for the years passed
