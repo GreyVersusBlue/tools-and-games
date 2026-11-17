@@ -55,7 +55,7 @@
         ]
       }
     ],
-    "note": "At Aydhab the town's money was split: one third went to the sultan and two thirds to the Beja king. A writer of about 1400 says some merchants preferred Quseir, because it was nearer Qus.",
+    "note": "Ibn Battuta saw Aydhab in 1326. One third of the town was the sultan's, and two thirds was the Beja king's. A writer of about 1400 says some merchants preferred Quseir, because it was nearer Qus.",
     "unlocks": [
       "term-toll",
       "term-caravan",
@@ -64,7 +64,7 @@
     "sources": [
       {
         "src": "peacock-2008",
-        "at": "pp. 33 and 35; Quseir nearer Qus, and the split of Aydhab's revenue"
+        "at": "pp. 33 and 35; Quseir nearer Qus, and the split of Aydhab's revenue (sometimes in half)" }, { "src": "ibn-battuta-1958", "at": "vol. 1, p. 68; one third of the city the sultan's, two thirds the Beja king's, in 1326"
       }
     ]
   },
@@ -217,7 +217,7 @@
       "seal": null
     },
     "title": "Papers for the road",
-    "body": "Nabil belongs to the Karimi, a loose group of merchants who trade spices. Their office gives members papers for the road and takes 2.5 in every hundred of their goods. He says he could send two loads of yours under his papers.",
+    "body": "Nabil belongs to the Karimi, a loose group of merchants who trade spices. One writer says a spice office gave them papers for the road. It took 2.5 in every hundred of their goods. He says he could send two loads of yours under his papers.",
     "when": {
       "rep": "partners",
       "gte": 1
@@ -272,7 +272,7 @@
         ]
       }
     ],
-    "note": "One writer says the Karimi office gave its members papers and took 2.5 in every hundred of their goods. The Karimi were a loose group, and historians do not agree on how tightly they were organised.",
+    "note": "One modern writer says the Karimi office gave its members papers. He says it took 2.5 in every hundred of their goods. The Karimi were a loose group, and historians do not agree on how tightly they were organised.",
     "unlocks": [
       "person-karimi",
       "term-load"
@@ -280,7 +280,7 @@
     "sources": [
       {
         "src": "sato-2006",
-        "at": "pp. 150 and 152; a loose confederation, and the office's papers and 2.5 percent"
+        "at": "pp. 150 and 152; a loose confederation; the office's papers and 2.5 percent are al-Ashqar's reading, as Sato reports it, and Sato takes the office for a state one"
       }
     ]
   }
