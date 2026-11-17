@@ -77,6 +77,17 @@ const tabOrder = async (page, n) => {
 };
 const setLarge = (page, on) => page.evaluate(v => document.documentElement.classList.toggle('large-text', v), on);
 const hashOf = page => page.evaluate(() => location.hash);
+/** The one-press paper (DESIGN 7): Next on a card whose choice said `outfit-first` lands on the map
+    table with the outfitting sheet open on the first stop. Send it, then go back to the desk.
+    Returns false when Next stayed on the desk, true when a sheet was sent or the map had nothing to send. */
+const sendFromMap = async page => {
+  if (!['#map', '#outfit'].includes(await hashOf(page))) return false;
+  await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
+  if (await page.$('#outfit-send')) { await page.click('#outfit-send'); await page.waitForSelector('#map-toast:not([hidden])'); }
+  await page.click('#map-desk-top');
+  await page.waitForSelector('#screen-desk');
+  return true;
+};
 const panelOpen = (page, name) => page.evaluate(n => !!document.getElementById(`panel-${n}`)?.open, name);
 const gone = (page, name) => page.waitForFunction(n => !document.getElementById(`panel-${n}`), {}, name);
 // Reduced motion on a page, for Playwright or Puppeteer alike.
@@ -503,8 +514,8 @@ try {
       ok(Math.abs(r.left - 0.22 * r.vw) < 4 && Math.abs(r.width - 0.56 * r.vw) < 4, `stack at ${r.left}, ${r.width}`);
     });
 
-    await test('top bar: Map, Ledger and Notebook are disabled with their reasons, and pressing one says why', async () => {
-      for (const [key, word] of [['map', 'map table'], ['ledger', 'ledger'], ['notebook', 'notebook']]) {
+    await test('top bar: Ledger and Notebook are disabled with their reasons, and pressing one says why', async () => {
+      for (const [key, word] of [['ledger', 'ledger'], ['notebook', 'notebook']]) {
         eq(await page.$eval(`#btn-${key}`, b => [b.disabled, b.getAttribute('aria-disabled'), b.getAttribute('aria-describedby')]), [false, 'true', `reason-${key}`]);
         await page.click(`#btn-${key}`);
         const note = await page.$eval('#bar-note', e => e.textContent);
@@ -564,9 +575,9 @@ try {
       eq(saved, JSON.parse(JSON.stringify(eng.choose(model, nodeContent, 'p0-0', 'begin'))), 'the save after the first answer');
     });
 
-    // The engine model for the rest of the pointer flow: letter 1, expedition 1 (opens the stub), neighbour 2.
+    // The engine model for the rest of the pointer flow: letter 1, expedition 1 (opens the sheet over the map), neighbour 2.
     model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
-    await test('Next raises the next paper and the page matches the engine; the first expedition opens the stub; then End is live', async () => {
+    await test('Next raises the next paper and the page matches the engine; the first expedition opens the sheet over the map table; then End is live', async () => {
       const m0 = eng.choose(model, nodeContent, 'p0-0', 'begin');
       await page.click('#btn-next');
       await sameScreen(page, m0, 'after the letter');
@@ -579,19 +590,21 @@ try {
       const m1 = eng.choose(m0, nodeContent, 'p0-1', 'go');
       eq(await page.$eval('.sheet-title', e => e.textContent), 'You paid 20 dinars.');
       await page.click('#btn-next');
-      // the one-press first expedition (DESIGN 4.8) stands in for the map table until MER-44
-      await page.waitForSelector('.sheet[data-kind="outfit"]');
-      eq(await page.evaluate(() => document.querySelector('.stack-count').textContent), '2 papers left');
-      eq(await page.$eval('#btn-end', b => b.getAttribute('aria-disabled')), 'true');
-      eq(await page.$eval('#end-reason', e => e.textContent), '2 papers still need an answer.');
+      // the one-press first expedition (DESIGN 7): the sheet over the map table, filled in for Damascus
+      await page.waitForSelector('#outfit-send');
+      eq(await hashOf(page), '#outfit');
+      eq(await page.$eval('#outfit-send', b => [b.textContent, b.getAttribute('aria-disabled')]), ['Send Yusuf to Damascus', 'false']);
+      eq(await engineState(page), JSON.parse(JSON.stringify(m1)), 'nothing is sent until the button is pressed');
       const plan = eng.suggestPlan(m1, nodeContent, 'damascus');
-      eq(await page.$eval('.sheet-title', e => e.textContent), 'Send Yusuf to Damascus');
-      eq(await page.$eval('#btn-send', b => b.textContent), 'Send Yusuf to Damascus');
-      await page.click('#btn-send');
+      await page.click('#outfit-send');
       const m1b = eng.outfit(m1, nodeContent, plan);
+      await page.waitForSelector('#map-toast:not([hidden])');
+      eq(await engineState(page), JSON.parse(JSON.stringify(m1b)), 'the expedition on the road is the engine\'s');
+      await page.click('#map-desk-top');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.kind === 'card');
       await sameScreen(page, m1b, 'after the expedition is sent');
-      eq(await engineState(page), JSON.parse(JSON.stringify(m1b)), 'the expedition on the road is the engine\'s');
+      eq(await hashOf(page), '#desk');
+      eq(await page.$eval('#end-reason', e => e.textContent), eng.canEndSeason(m1b).reason, 'the desk says why it cannot end the season yet');
       eq(await page.$eval('#bar-money', e => e.textContent.trim()), '1,480 dinars');
 
       // the neighbour, second choice ("Keep them")
@@ -694,7 +707,7 @@ try {
     });
 
     let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
-    await test('keyboard: 1 answers, Enter presses Next, 1 on the expedition, Tab and Enter past the stub, 1 on the neighbour, E ends the season', async () => {
+    await test('keyboard: 1 answers, Enter presses Next, 1 on the expedition, Enter on Send in the sheet, Esc back to the desk, 1 on the neighbour, E ends the season', async () => {
       await page.keyboard.press('1');
       await page.waitForSelector('.sheet[data-face="back"]');
       model = eng.choose(model, nodeContent, 'p0-0', 'begin');
@@ -705,11 +718,12 @@ try {
       await page.waitForSelector('.sheet[data-face="back"]');
       model = eng.choose(model, nodeContent, 'p0-1', 'go');
       await page.keyboard.press('Enter');
-      await page.waitForSelector('.sheet[data-kind="outfit"]');
+      await page.waitForSelector('#outfit-send');
       model = eng.outfit(model, nodeContent, eng.suggestPlan(model, nodeContent, 'damascus'));
-      await page.keyboard.press('Tab');
-      eq(await focusId(page), 'btn-send');
+      await page.focus('#outfit-send');
       await page.keyboard.press('Enter');
+      await page.waitForSelector('#map-toast:not([hidden])');
+      await page.keyboard.press('Escape');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.kind === 'card');
       await page.keyboard.press('1');
       await page.waitForSelector('.sheet[data-face="back"]');
@@ -724,14 +738,32 @@ try {
       eq(await engineState(page), JSON.parse(JSON.stringify(model)));
     });
 
-    await test('keyboard: M, L and N tell why they cannot open yet; E does nothing while papers wait', async () => {
-      for (const [k, word] of [['m', 'map table'], ['l', 'ledger'], ['n', 'notebook']]) {
+    await test('keyboard: L and N tell why they cannot open yet; E does nothing while papers wait', async () => {
+      for (const [k, word] of [['l', 'ledger'], ['n', 'notebook']]) {
         await page.keyboard.press(k);
         ok((await page.$eval('#bar-note', e => e.textContent)).toLowerCase().includes(word), k);
       }
       const before = await engineState(page);
       await page.keyboard.press('e');
       eq(await engineState(page), before);
+    });
+
+    await test('the Map button and the M key open the map table, and Esc and Back to the desk come back', async () => {
+      eq(await page.$eval('#btn-map', b => [b.disabled, b.getAttribute('aria-disabled'), b.getAttribute('aria-describedby')]), [false, null, null], 'Map is a live button');
+      await page.click('#btn-map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      eq(await hashOf(page), '#map');
+      eq(await page.$('#outfit-send'), null, 'a plain Map press opens no sheet');
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#screen-desk');
+      eq(await hashOf(page), '#desk');
+      await page.evaluate(() => document.activeElement.blur());
+      await page.keyboard.press('m');
+      await page.waitForSelector('#screen-map[data-ready]');
+      eq(await hashOf(page), '#map');
+      await page.click('#map-desk');
+      await page.waitForSelector('#screen-desk');
+      eq(await hashOf(page), '#desk');
     });
 
     await test('Settings: turning single-key shortcuts off stops the digits and E, and the setting survives a reload', async () => {
@@ -798,8 +830,7 @@ try {
       for (let guard = 0; guard < 12; guard++) {
         if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
         const k = await page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
-        if (k.face === 'back') { await page.click('#btn-next'); continue; }
-        if (k.kind === 'outfit') { await page.click('#btn-send, #btn-stub-dismiss'); continue; }
+        if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
         if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
         await page.click('.sheet .choice:not([aria-disabled="true"])');
         await page.waitForSelector('.sheet[data-face="back"]');
@@ -873,7 +904,7 @@ try {
         await page.waitForSelector('.sheet[data-face="back"]');
         await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' }));
         await page.click('#btn-next');
-        if (id === 'go') { await page.waitForSelector('#btn-send'); await page.click('#btn-send'); }
+        if (id === 'go') { await page.waitForSelector('#outfit-send'); await sendFromMap(page); }
       }
       await page.waitForFunction(() => document.getElementById('btn-end').getAttribute('aria-disabled') === 'false');
       const r = await page.$eval('#btn-end', b => { const x = b.getBoundingClientRect(); return [x.bottom <= innerHeight + 1, x.top >= 0]; });
@@ -885,8 +916,8 @@ try {
   }
 
   // ---- MER-44: the map table, the price board and outfitting.
-  // The Map button on the desk is MER-43's file and still says "next part", so these cases
-  // arrive at the map table by its hash, as a bookmark or the back button would.
+  // These cases arrive at the map table by its hash, as a bookmark or the back button would;
+  // the desk's Map button and M key have their own case in the keyboard game above.
   const FIRST = { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' };
   const goMap = async page => { await page.evaluate(() => { location.hash = '#map'; }); await page.waitForSelector('#screen-map[data-ready]'); };
   const goDesk = async page => { await page.evaluate(() => { location.hash = '#desk'; }); await page.waitForSelector('#screen-desk .sheet, #screen-desk #btn-end'); };
@@ -916,8 +947,7 @@ try {
     for (let guard = 0; guard < 14; guard++) {
       if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
       const k = await page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
-      if (k.face === 'back') { await page.click('#btn-next'); continue; }
-      if (k.kind === 'outfit') { await page.click('#btn-send, #btn-stub-dismiss'); continue; }
+      if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
       if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
       await page.click('.sheet .choice:not([aria-disabled="true"])');
       await page.waitForSelector('.sheet[data-face="back"]');
@@ -1150,10 +1180,66 @@ try {
       eq(m.frame, [1.78, true, true], 'the 16:9 picture is shown whole');
       for (const [id, hgt] of m.hits) ok(hgt >= 44, `${id} is ${hgt} px tall`);
     });
+    // DESIGN 4.7 and MER-44b: labels are placed by collision avoidance. The four frames the unit names.
+    if (['laptop', 'board', 'laptop-small', 'phone-upright'].includes(frame.name)) {
+      await test(`${frame.name} ${frame.width}x${frame.height}: no two map labels overlap, none is cut by the picture or lies under the price panel, and every dot names its stop`, async () => {
+        const r = await page.evaluate(() => {
+          const box = e => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+          const key = e => e.dataset.stop ?? `cluster:${e.dataset.cluster}`;
+          return {
+            frame: box(document.getElementById('map-frame')), board: box(document.getElementById('board')),
+            labels: [...document.querySelectorAll('.stop-label')].map(l => ({ id: key(l), hidden: l.hidden, ...box(l) })),
+            dots: [...document.querySelectorAll('.dot')].map(d => ({ id: key(d), name: d.getAttribute('aria-label'), role: d.getAttribute('role'), ...box(d) })),
+          };
+        });
+        const shown = r.labels.filter(l => !l.hidden);
+        const hit = (a, b) => Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 0.5;
+        for (let i = 0; i < shown.length; i++) for (let j = i + 1; j < shown.length; j++) ok(!hit(shown[i], shown[j]), `${shown[i].id} overlaps ${shown[j].id}`);
+        for (const l of shown) {
+          ok(l.l >= r.frame.l - 0.5 && l.r <= r.frame.r + 0.5 && l.t >= r.frame.t - 0.5 && l.b <= r.frame.b + 0.5, `${l.id} is cut by the picture's edge`);
+          ok(!hit(l, r.board), `${l.id} is under the price panel`);
+        }
+        eq(r.dots.map(d => d.id).sort(), r.labels.map(l => l.id).sort(), 'every label has its dot');
+        for (const d of r.dots) ok(d.role === 'img' && d.name && d.name.length > 1, `the dot for ${d.id} has no name`);
+        // not vacuous: a placement that hides everything would pass the overlap check
+        if (frame.width >= 1280) eq(r.labels.filter(l => l.hidden).map(l => l.id), [], 'room for every label at this size');
+        else ok(shown.length >= 10, `only ${shown.length} labels shown`);
+        if (frame.width >= 1280) {
+          // the picture sits beside the price panel, so the far stops are on the picture and named
+          ok(r.frame.r <= r.board.l + 0.5, `the picture (right edge ${r.frame.r}) runs under the panel (left edge ${r.board.l})`);
+          for (const id of ['calicut', 'samarkand']) {
+            const d = r.dots.find(x => x.id === id), l = r.labels.find(x => x.id === id);
+            ok(d.l >= r.frame.l && d.r <= r.frame.r && d.t >= r.frame.t && d.b <= r.frame.b, `${id}'s dot is off the picture`);
+            ok(!l.hidden, `${id} has no label`);
+          }
+        }
+      });
+      await test(`${frame.name}: the stop list starts on a whole row, keeps the lit row whole, and Home shows Cairo`, async () => {
+        const rows = () => page.evaluate(() => {
+          const lr = document.getElementById('stoplist').getBoundingClientRect();
+          const seen = [...document.querySelectorAll('#stoplist .option')].map(o => ({ id: o.dataset.stop, ...o.getBoundingClientRect().toJSON() })).filter(o => o.bottom > lr.top + 1 && o.top < lr.bottom - 1);
+          return { top: lr.top, bottom: lr.bottom, first: seen[0], lit: document.querySelector('#stoplist .option.lit')?.getBoundingClientRect().toJSON() };
+        });
+        let v = await rows();
+        ok(v.first.top >= v.top - 0.5, `the first row in view starts ${Math.round(v.top - v.first.top)} px above the list`);
+        await page.focus('#stoplist');
+        await page.keyboard.press('End');
+        v = await rows();
+        // (at the very end of a scrolled list the top row may be cut: there is no boundary left to stop on)
+        ok(v.lit.top >= v.top - 0.5 && v.lit.bottom <= v.bottom + 0.5, 'the lit row is whole in the list');
+        await page.keyboard.press('Home');
+        v = await rows();
+        eq(v.first.id, 'cairo', 'Home shows the first row, Cairo');
+        ok(v.first.top >= v.top - 0.5 && v.first.top <= v.top + 1, 'and it is not scrolled under a blank strip');
+      });
+    }
     if (frame.width < 700) {
       await test(`${frame.name}: close stops are one cluster label and pressing it zooms to an inset`, async () => {
-        const cl = await page.$$eval('.cluster-label', ls => ls.map(l => l.textContent));
-        ok(cl.includes('Delta: 2 stops') && cl.includes('Levant: 2 stops') && cl.includes('Niger: 2 stops'), cl.join(' | '));
+        const cl = await page.$$eval('.cluster-label:not([hidden])', ls => ls.map(l => l.textContent));
+        // the names are city.json's `clusters`, one label for each group of close stops
+        const want = Object.entries(nodeContent.city.clusters).map(([id, name]) => `${name}: ${nodeContent.stops.filter(x => x.cluster === id).length} stops`);
+        eq(want.length, 5, 'Cairo names five clusters');
+        eq(cl.slice().sort(), want.slice().sort(), 'every cluster is labelled by its name from city.json');
         eq(await page.$('.stop-label[data-stop="cairo"]'), null, 'Cairo has no label of its own until the inset');
         const [x, y] = await page.$eval('.dot.cluster[data-cluster="delta"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
         await page.mouse.click(x + 10, y + 6);
@@ -1177,6 +1263,129 @@ try {
       });
     }
     await test(`${frame.name}: map table, no offsite request, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.close();
+  }
+
+  // ---- MER-46: a whole three-act game, once by pointer and once by keyboard alone, on the fixed seed.
+  // After every season the page is compared with the engine run in Node on the same seed (the bar,
+  // the counter, the papers, and the whole saved state), the years between acts are read off the
+  // interlude page, and the last page is the ending stub. A reload in the middle of act two must
+  // pick the game up where it was. Reduced motion is on so 24 seasons do not wait on card flips;
+  // the flips themselves are covered by the cases above.
+  const RELOAD_AT = 12; // season 13 of 24, the fifth of act two (acts run t 0-7, 8-15, 16-23)
+  const playWhole = async (page, how) => {
+    await reduceMotion(page);
+    await start(page, how === 'pointer' ? 'pointer' : 'keys');
+    let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    const state = () => engineState(page);
+    // the engine's side of a season: the first choice that is open to the player, the first
+    // expedition sent on the engine's own plan, every other paper set aside, then End the season
+    const nodeSeason = s => {
+      for (const p of s.desk) {
+        if (p.state !== 'open') continue;
+        const cs = eng.paperChoices(s, nodeContent, p.id);
+        const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        s = eng.choose(s, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+      }
+      return eng.endSeason(s, nodeContent);
+    };
+    const faceOf = () => page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
+    const sendByKeys = async () => {
+      await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
+      if (await page.$('#outfit-send')) { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#screen-desk');
+    };
+    const pointerSeason = async () => {
+      for (let guard = 0; guard < 14; guard++) {
+        if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
+        const k = await faceOf();
+        if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
+        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
+        await page.click('.sheet .choice:not([aria-disabled="true"])');
+        await page.waitForSelector('.sheet[data-face="back"]');
+      }
+      await page.click('#btn-end');
+    };
+    const keySeason = async () => {
+      for (let guard = 0; guard < 14; guard++) {
+        if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
+        const k = await faceOf();
+        if (k.face === 'back') {
+          await page.keyboard.press('Enter');
+          if (['#map', '#outfit'].includes(await hashOf(page))) await sendByKeys();
+          continue;
+        }
+        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) {
+          // a record paper has no digit and Enter on its heading does nothing: Tab from the heading reaches Next
+          if (await page.evaluate(() => document.activeElement.id) !== 'btn-next') {
+            for (let i = 0; i < 6 && await page.evaluate(() => document.activeElement.id) !== 'btn-next'; i++) await page.keyboard.press('Tab');
+          }
+          eq(await page.evaluate(() => document.activeElement.id), 'btn-next', 'Tab reaches Next on a record paper');
+          await page.keyboard.press('Enter'); continue;
+        }
+        const n = await page.$$eval('.sheet .choice', cs => cs.findIndex(c => c.getAttribute('aria-disabled') !== 'true'));
+        await page.keyboard.press(String(n + 1));
+        await page.waitForSelector('.sheet[data-face="back"]');
+      }
+      await page.keyboard.press('e');
+    };
+    const season = how === 'pointer' ? pointerSeason : keySeason;
+    const seasonsSeen = [], interludes = [];
+    let reloaded = false;
+    for (let guard = 0; guard < 60 && model.phase !== 'recall'; guard++) {
+      if (model.phase === 'interlude') {
+        const gap = eng.view(model, nodeContent).interlude;
+        await page.waitForSelector('#btn-open-house');
+        eq(await page.$eval('#phase-title', e => e.textContent), 'Years pass', 'the interlude page');
+        eq(await page.$eval('#interlude-span', e => e.textContent), `${gap.from} to ${gap.to}`, 'the years named on the interlude page');
+        eq(await state(), JSON.parse(JSON.stringify(model)), `at the interlude before t=${model.t}`);
+        interludes.push({ page: `${gap.from} to ${gap.to}`, engine: gap });
+        model = eng.openSeason(model, nodeContent);
+        if (how === 'pointer') await page.click('#btn-open-house');
+        else { await page.focus('#btn-open-house'); await page.keyboard.press('Enter'); }
+        await page.waitForFunction(t => document.getElementById('bar-count')?.textContent.startsWith(`Season ${t + 1} `), {}, model.t);
+        continue;
+      }
+      await sameScreen(page, model, `${how} season ${model.t + 1}`, { raisedFirst: false });
+      seasonsSeen.push(model.t);
+      model = nodeSeason(model);
+      await season();
+      if (model.phase === 'desk') await page.waitForFunction(t => document.getElementById('bar-count')?.textContent.startsWith(`Season ${t + 1} `), {}, model.t);
+      eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: engine state after season ${seasonsSeen.length}`);
+      if (model.t === RELOAD_AT && !reloaded) {
+        reloaded = true;
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await sameScreen(page, model, `${how} after the reload in act two`, { raisedFirst: false });
+        eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: state after the reload`);
+        await reduceMotion(page);
+      }
+    }
+    // the end: phase recall, the stub page, and the same saved game as the engine's
+    await page.waitForSelector('#btn-to-title');
+    eq(await page.$eval('#phase-title', e => e.textContent), 'The last season is over');
+    eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: the ended game`);
+    return { seasonsSeen, interludes, reloaded, model };
+  };
+
+  for (const how of ['pointer', 'keyboard']) {
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    let out;
+    await test(`whole game by ${how}: three acts, 24 seasons, the page matches the engine after each, reload in act two`, async () => {
+      try { out = await playWhole(page, how); }
+      catch (e) { // say where the page was, so a stuck game names its screen and not just a timeout
+        const where = await page.evaluate(() => ({ hash: location.hash, t: window.__merchant?.state.t, phase: window.__merchant?.state.phase, sheet: document.querySelector('.sheet')?.dataset, title: document.querySelector('.sheet-title')?.textContent, focus: document.activeElement.id || document.activeElement.className, end: document.getElementById('btn-end')?.getAttribute('aria-disabled') })).catch(() => ({}));
+        throw new Error(`${e.message} (page at ${JSON.stringify(where)})`);
+      }
+      eq(out.seasonsSeen, Array.from({ length: 24 }, (_, i) => i), 'every season of the three acts was played on screen');
+      eq(out.reloaded, true, 'the reload in act two happened');
+      eq(out.interludes.length, 2, 'two interludes, between acts one and two and acts two and three');
+      eq(out.model.phase, 'recall');
+    });
+    await test(`whole game by ${how}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.screenshot({ path: path.join(SHOTS, `ending-stub-${how}.png`) });
     await page.close();
   }
 

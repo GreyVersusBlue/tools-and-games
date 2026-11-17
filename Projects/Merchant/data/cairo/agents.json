@@ -10,7 +10,13 @@
     ],
     "wage": 8,
     "home": "cairo",
-    "hireCard": "yusuf-asks-for-work"
+    "hireCard": "yusuf-asks-for-work",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   },
   {
     "id": "ali",
@@ -22,7 +28,13 @@
       "knows-aden"
     ],
     "wage": 9,
-    "home": "cairo"
+    "home": "cairo",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   },
   {
     "id": "samir",
@@ -35,7 +47,13 @@
     ],
     "wage": 7,
     "home": "cairo",
-    "hireCard": "qirad-offer"
+    "hireCard": "qirad-offer",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   },
   {
     "id": "mariam",
@@ -47,7 +65,13 @@
       "careful"
     ],
     "wage": 8,
-    "home": "cairo"
+    "home": "cairo",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   },
   {
     "id": "hana",
@@ -59,7 +83,13 @@
       "speaks-persian"
     ],
     "wage": 9,
-    "home": "cairo"
+    "home": "cairo",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   },
   {
     "id": "samuel",
@@ -72,7 +102,13 @@
       "knows-alexandria"
     ],
     "wage": 9,
-    "home": "alexandria"
+    "home": "alexandria",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   },
   {
     "id": "tadros",
@@ -84,7 +120,13 @@
       "knows-qus"
     ],
     "wage": 7,
-    "home": "cairo"
+    "home": "cairo",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   },
   {
     "id": "matteo",
@@ -96,6 +138,12 @@
       "speaks-italian"
     ],
     "wage": 10,
-    "home": "alexandria"
+    "home": "alexandria",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326. Recorded: people sitting in the store were paid from 5 dirhams to half a dinar a week; a travelling manager had his living expenses paid instead of a wage. The season's pay here stands for those expenses and is an estimate."
+      }
+    ]
   }
 ]
