@@ -188,9 +188,7 @@ function draw(){
       if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.fill(t._bs)}
       return}
     const c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,by-r*.6,2,r*.9);
-    if(sh===0){g.fillStyle=c[0];g.beginPath();g.arc(cx,by-r,r,0,6.283);g.fill();if(lookQ>=2){g.fillStyle=c[1];g.beginPath();g.arc(cx-r*.3,by-r*1.2,r*.6,0,6.283);g.fill()}}
-    else if(sh===1){g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*1.3,r*.62,r*1.2,0,0,6.283);g.fill();if(lookQ>=2){g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.2,by-r*1.6,r*.36,r*.7,0,0,6.283);g.fill()}}
-    else{g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*.9,r*1.35,r*.85,0,0,6.283);g.fill();if(lookQ>=2){g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.35,by-r*1.1,r*.8,r*.5,0,0,6.283);g.fill()}}
+    leafTree(t,r,sh,sx);g.fillStyle=c[0];g.fill(t._lp0);if(lookQ>=2){g.fillStyle=c[1];g.fill(t._lp1)}
     if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(cx-r*.6,by-r*1.1,2,2);g.fillRect(cx+r*.3,by-r*1.5,2,2);g.fillRect(cx+r*.1,by-r*.6,2,2)}
     if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();if(sh===0)g.arc(cx-r*.2,by-r*1.35,r*.55*cap,0,6.283);else if(sh===1)g.ellipse(cx-r*.15,by-r*2.0,r*.4*cap,r*.35*cap,0,0,6.283);else g.ellipse(cx-r*.2,by-r*1.45,r*.9*cap,r*.38*cap,0,0,6.283);g.fill()}}});
   /* A4: in autumn's last two days the canopies let go: up to 40 leaf pixels in the air (20 under reduced motion), each from one tree, each on its own phase of animT */

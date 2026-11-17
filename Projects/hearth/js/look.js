@@ -18,6 +18,9 @@ function lookQNext(q,st,ms,dt){
 const lookSt={ema:0,over:0,under:0};
 function lookQTick(ms,dt){if(!lookAuto)return;lookQ=lookQNext(lookQ,lookSt,ms,dt);lookEma=lookSt.ema}
 function setLookQ(q){lookQ=q;lookAuto=false}
+/* A14 (speed): lookFast false draws the way draw() did before the caches (every path built each frame, the light map and the shadows blitted whole), so a test can ask whether the fast
+   frame is the same picture. Never set by the game. */
+let lookFast=true;function setLookFast(b){lookFast=b}
 const SKYH=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 /* name, what the hour is counted from (0 sunrise edge, 1 sunset edge, 2 the day itself), offset in day fractions, multiply colour */
 const SKY=[['night0',0,-.06,'#34406e'],['first',0,-.04,'#5a5f8a'],['dawn',0,.02,'#f0b292'],['morning',0,.10,'#fff0dc'],['noon',2,.5,'#ffffff'],
@@ -59,13 +62,16 @@ function houseLights(L,f,e){
    nothing was stamped (the whole map is that one colour, and the picture multiplies by a fill instead of by a map, which costs half), and null when something was. */
 /* does the world, under the view's transform, cover every pixel of the canvas? A fill and a map agree there; where the world's edge is on the canvas an edge pixel is covered
    by a fraction, and a fill and a blit round it differently by a level or two, so the map is blitted */
+/* a clipped blit starts its run of texels at the clip's edge instead of the canvas's, and where the step from one pixel to the next (1/vk) is not a binary fraction the two
+   runs round differently now and then (one pixel in 700,000, measured at vk .83, a level to nine off). So a clipped blit is used only where the step is exact in a float. */
+function exactStep(vk){const q=4096/vk;return q===Math.round(q)}
 function worldFills(vk){const x0=cv.width/2-camX*T*vk,y0=cv.height/2-camY*T*vk;return x0<=0&&y0<=0&&x0+W*T*vk>=cv.width&&y0+H*T*vk>=cv.height}
 /* the picture multiplies by the map. Most of the map is the hour's one colour and the lights are small, so the colour goes on as fills over everything the lights do not
    touch and the map goes on only over boxes round the lights, in whole device pixels: the same value in every pixel, at a third of the cost of blitting all of it. Falls
    back to the whole map when the world does not fill the canvas, when there are many boxes, or when they cover over half of it. The transform is the view's and is put back. */
 function lightMultiply(lm,vk){
   const cw=cv.width,ch=cv.height,tx=cw/2-camX*T*vk,ty=ch/2-camY*T*vk;
-  if(!worldFills(vk)){g.drawImage(lm,0,0,W*T,H*T);return}
+  if(!lookFast||!worldFills(vk)){g.drawImage(lm,0,0,W*T,H*T);return}
   if(lmSolid){g.fillStyle=lmSolid;g.fillRect(0,0,W*T,H*T);return}
   const bx=[];
   for(let i=0;i<lmBoxes.length;i+=4){let x0=Math.max(0,Math.floor(tx+lmBoxes[i]*vk)-1),y0=Math.max(0,Math.floor(ty+lmBoxes[i+1]*vk)-1),x1=Math.min(cw,Math.ceil(tx+lmBoxes[i+2]*vk)+1),y1=Math.min(ch,Math.ceil(ty+lmBoxes[i+3]*vk)+1);
@@ -74,7 +80,7 @@ function lightMultiply(lm,vk){
     for(let i=0;i<bx.length&&!again;i++)for(let j=i+1;j<bx.length;j++){const a=bx[i],b=bx[j];
       if(a[0]<=b[2]&&b[0]<=a[2]&&a[1]<=b[3]&&b[1]<=a[3]){a[0]=Math.min(a[0],b[0]);a[1]=Math.min(a[1],b[1]);a[2]=Math.max(a[2],b[2]);a[3]=Math.max(a[3],b[3]);bx.splice(j,1);again=true;break}}}
   let area=0;for(const b of bx)area+=(b[2]-b[0])*(b[3]-b[1]);
-  if(bx.length>24||area>cw*ch*.5){g.drawImage(lm,0,0,W*T,H*T);return}
+  if(!exactStep(vk)||bx.length>24||area>cw*ch*.5){g.drawImage(lm,0,0,W*T,H*T);return}
   g.setTransform(1,0,0,1,0,0);g.fillStyle=lmBase;
   const ys=[0,ch];for(const b of bx){ys.push(b[1],b[3])}ys.sort((p,q)=>p-q); /* the rest of the canvas, as bands of fills on whole pixels */
   for(let i=0;i<ys.length-1;i++){const y0=ys[i],y1=ys[i+1];if(y1<=y0)continue;
@@ -116,13 +122,29 @@ function sunAt(f,season,wx){
   return{dir,len,str:wx==='clear'?.28*fade:0}}
 /* shadows: the things that do not move go on a world-sized canvas once per change of sun (black, opaque, so two shadows that overlap are not twice as
    dark) and it is laid over the ground at the sun's strength; people, who move, are three-by-one marks put straight on the picture. */
-let shCv=null,shG=null,shKey='';const SILS={};
+let shCv=null,shG=null,shKey='',shBoxes=null;const SILS={};
 function silhouette(name){
   if(SILS[name])return SILS[name];const f=BSHEET.frames[name],cv2=document.createElement('canvas');cv2.width=f.w;cv2.height=f.h;
   const c=cv2.getContext('2d');c.drawImage(BIMG,f.x,f.y,f.w,f.h,0,0,f.w,f.h);c.globalCompositeOperation='source-in';c.fillStyle='#000';c.fillRect(0,0,f.w,f.h);
   let top=0;try{const d=c.getImageData(0,0,f.w,f.h).data;top=f.h;for(let i=3;i<d.length;i+=4)if(d[i]>0){top=Math.floor(i/4/f.w);break}}catch(e){top=0} /* the first row with anything in it: the height a shadow is measured from */
   cv2.top=top;return SILS[name]=cv2}
 const SHADOW_FRAME={hut:'hut',well:'well',market:'market',mill:'mill',smoke:'smoke',hall:'hall',light:'light'};
+/* A14 (speed): the shadow canvas is 3 to 9 per cent ink and a blit of it all costs what a blit of anything the size of the screen costs. When it is rebuilt, the boxes that hold
+   its ink are found (8 px cells, a margin of empty cells round each box, overlapping boxes made one so nothing is drawn twice), and a frame blits only those, at the same
+   world coordinates under the same transform: every pixel is sampled from the same texel, and what is left out is transparent. null (blit it all) if the canvas cannot be read. */
+function shadowBoxes(m){
+  let d;try{d=m.getImageData(0,0,W*T,H*T).data}catch(e){return null}
+  const C=8,cw=(W*T/C)|0,ch=(H*T/C)|0,occ=new Uint8Array(cw*ch);
+  for(let y=0;y<H*T;y++)for(let x=0;x<W*T;x++)if(d[(y*W*T+x)*4+3])occ[((y/C)|0)*cw+((x/C)|0)]=1;
+  const seen=new Uint8Array(cw*ch),out=[];
+  for(let i=0;i<occ.length;i++){if(!occ[i]||seen[i])continue;let x0=cw,y0=ch,x1=-1,y1=-1;const st=[i];seen[i]=1;
+    while(st.length){const c=st.pop(),cx=c%cw,cy=(c/cw)|0;if(cx<x0)x0=cx;if(cx>x1)x1=cx;if(cy<y0)y0=cy;if(cy>y1)y1=cy;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=cw||ny>=ch)continue;const n=ny*cw+nx;if(occ[n]&&!seen[n]){seen[n]=1;st.push(n)}}}
+    out.push([Math.max(0,(x0-1)*C),Math.max(0,(y0-1)*C),Math.min(W*T,(x1+2)*C),Math.min(H*T,(y1+2)*C)])}
+  for(let again=true;again;){again=false;
+    for(let i=0;i<out.length&&!again;i++)for(let j=i+1;j<out.length;j++){const a=out[i],b=out[j];
+      if(a[0]<b[2]&&b[0]<a[2]&&a[1]<b[3]&&b[1]<a[3]){a[0]=Math.min(a[0],b[0]);a[1]=Math.min(a[1],b[1]);a[2]=Math.max(a[2],b[2]);a[3]=Math.max(a[3],b[3]);out.splice(j,1);again=true;break}}}
+  return out}
 function drawShadows(){
   if(typeof lookQ!=='undefined'&&lookQ<2)return;
   const sun=sunAt(dayFrac(),sea(),wx);if(sun.str<=.005)return;
@@ -142,8 +164,12 @@ function drawShadows(){
       if(ls>1){const e=off<0?x-ls:x1+ls,a=off<0?x1:x;m.beginPath();m.moveTo(a,fy-dp);m.lineTo(e,fy-dp*.85);m.lineTo(e,fy-dp*.15);m.lineTo(a,fy);m.fill()}};
     for(const h of houses)cast(roofFrame(h.r),h.x*T,h.y*T,h.y*T+2*T,2);
     for(const b of bl)if(b.done&&SHADOW_FRAME[b.kind])cast(SHADOW_FRAME[b.kind],b.x*T,b.y*T,(b.y+b.h)*T,b.w);
-    m.setTransform(1,0,0,1,0,0)}
-  g.globalAlpha=sun.str;g.drawImage(shCv,0,0);
+    m.setTransform(1,0,0,1,0,0);shBoxes=shadowBoxes(m)}
+  g.globalAlpha=sun.str;
+  if(shBoxes&&lookFast&&exactStep(vScale())){const vk=vScale(),tx=cv.width/2-camX*T*vk,ty=cv.height/2-camY*T*vk;
+    g.save();g.setTransform(1,0,0,1,0,0);g.beginPath(); /* the clip is in whole device pixels, so its edge is not a fraction of one */
+    for(const b of shBoxes){const x0=Math.floor(tx+b[0]*vk),y0=Math.floor(ty+b[1]*vk);g.rect(x0,y0,Math.ceil(tx+b[2]*vk)-x0,Math.ceil(ty+b[3]*vk)-y0)}
+    g.clip();g.setTransform(vk,0,0,vk,tx,ty);g.drawImage(shCv,0,0);g.restore();g.setTransform(vk,0,0,vk,tx,ty)}else g.drawImage(shCv,0,0);
   g.fillStyle='#000';for(const p of people){if(p.dead||p.inside||p.inBoat)continue;g.fillRect(Math.round(p.x*T+off*1.2)-1,Math.round(p.y*T),3,1)}
   g.globalAlpha=1}
 /* A6: weather that lands. The rain is not only streaks over the picture: it rings the water, it darkens the ground and the ground keeps it a while, it
@@ -292,7 +318,7 @@ function drawFarLife(L){
 function pxLine(p,x0,y0,x1,y1){const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0,m=n||1;
   for(let i=0;i<=n;i++)p.rect(Math.round(x0+(x1-x0)*i/m),Math.round(y0+(y1-y0)*i/m),1,1)}
 function bareTree(t,r,sh,sx,tips){
-  if(t._bq===lookQ&&t._bsx===sx&&t._br===r&&t._bsh===sh&&t._bx===t.x&&t._by===t.y)return t;
+  if(lookFast&&t._bq===lookQ&&t._bsx===sx&&t._br===r&&t._bsh===sh&&t._bx===t.x&&t._by===t.y)return t;
   const tx0=t.x*T,by=t.y*T,cx=tx0+sx,fy=by-r*.9,p=new Path2D(),sn=new Path2D();
   p.rect(tx0-1,by-r*1.0,2,r*1.3);
   for(const [tx,ty] of tips){const ex=Math.round(cx+tx*r),ey=Math.round(by+ty*r);
@@ -301,3 +327,11 @@ function bareTree(t,r,sh,sx,tips){
   for(const [tx,ty] of tips)sn.rect(Math.round(cx+tx*r)-1,Math.round(by+ty*r)-1,3,1);
   sn.rect(Math.round(tx0)-1,Math.round(fy)-1,3,1);
   t._bq=lookQ;t._bsx=sx;t._br=r;t._bsh=sh;t._bx=t.x;t._by=t.y;t._bp=p;t._bs=sn;return t}
+/* A14 (speed): a leafy tree's two canopy shapes, kept the same way as the bare tree's outline (the tier, the wind's pixel, the radius, the shape and where it stands). */
+function leafTree(t,r,sh,sx){
+  if(lookFast&&t._lq===lookQ&&t._lsx===sx&&t._lr===r&&t._lsh===sh&&t._lx===t.x&&t._ly===t.y)return t;
+  const cx=t.x*T+sx,by=t.y*T,p0=new Path2D(),p1=lookQ>=2?new Path2D():null;
+  if(sh===0){p0.arc(cx,by-r,r,0,6.283);if(p1)p1.arc(cx-r*.3,by-r*1.2,r*.6,0,6.283)}
+  else if(sh===1){p0.ellipse(cx,by-r*1.3,r*.62,r*1.2,0,0,6.283);if(p1)p1.ellipse(cx-r*.2,by-r*1.6,r*.36,r*.7,0,0,6.283)}
+  else{p0.ellipse(cx,by-r*.9,r*1.35,r*.85,0,0,6.283);if(p1)p1.ellipse(cx-r*.35,by-r*1.1,r*.8,r*.5,0,0,6.283)}
+  t._lq=lookQ;t._lsx=sx;t._lr=r;t._lsh=sh;t._lx=t.x;t._ly=t.y;t._lp0=p0;t._lp1=p1;return t}

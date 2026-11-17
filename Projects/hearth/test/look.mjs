@@ -812,7 +812,7 @@ check('phone 390 by 844: across 36 placements of 12 people no name tag is in the
 await tierChecks();
 if (process.argv.includes('--tiers-only')) { await browser.close(); srv.close(); console.log(failed ? `FAIL: ${failed} look checks` : 'PASS: tiers'); process.exit(failed ? 1 : 0); } // a developer's shortcut: the tier checks alone, about 40 s
 
-const rows = [], lums = {}, tierRows = [], tierLum = [];
+const rows = [], lums = {}, tierRows = [], tierLum = [], speedRows = [];
 // the stock checks set wood, food and granary and the clock by hand, so they get an island of their own: run on the scenes' island they left S7's lit windows with no pairs to measure
 {
   const { ctx, page } = await open(7);
@@ -835,6 +835,38 @@ const rows = [], lums = {}, tierRows = [], tierLum = [];
   await farChecks(page);
   await ctx.close();
 }
+// A14 (speed): the caches and clipped blits in look.js must draw the picture the plain code draws. On a page of its own (a draw at a moved animT leaves the wet and the like behind
+// it, which would shift every later reading): for each of the 16 views, two frames a wind apart with the caches (the second one rebuilds what the wind moved), then the same two
+// with lookFast off (every path built fresh, the light map and the shadows blitted whole), the wet put back before each: the pixels must be the same.
+{
+  const { ctx, page } = await open(7);
+  for (const sc of SCENES) {
+    await page.evaluate(sc => {
+      const H = window.__hearth;
+      while (H.dayCount < sc.day) H.step(.05);
+      H.setTime((Math.floor(H.time / 140) + sc.f) * 140);
+      H.setWx(sc.wx); H.setSnow(sc.snow);
+      for (let i = 0; i < 40 + (sc.settle || 0); i++) H.step(.05);
+    }, sc);
+    for (const z of [1, 3.2]) {
+      const same = await page.evaluate(z => {
+        const H = window.__hearth, hs = H.houses, c = document.getElementById('c'), g = c.getContext('2d');
+        H.setZoom(1);
+        if (z > 1) { const mx = hs.reduce((a, h) => a + h.x, 0) / hs.length, my = hs.reduce((a, h) => a + h.y, 0) / hs.length; H.setZoom(z, mx, my); H.setCam(mx, my); }
+        const base = H.animT, w0 = H.wetA;
+        const hash = () => { const d = g.getImageData(0, 0, c.width, c.height).data; let h = 2166136261 >>> 0; for (let i = 0; i < d.length; i++) { h ^= d[i]; h = Math.imul(h, 16777619) >>> 0; } return h; };
+        const seq = fast => { H.setLookFast(fast); H.setWetA(w0); H.setAnimT(base + 7.3); H.draw(); H.setAnimT(base + 7.9); H.draw(); return hash(); };
+        seq(true); // the first frame after a scene is set up settles things (the ground's litter, the wet clock) that no later frame repeats; it is not a reading
+        const hf = seq(true), hp = seq(false), hf2 = seq(true);
+        H.setLookFast(true);
+        return hf === hp && hf2 === hp;
+      }, z);
+      speedRows.push({ id: sc.id, z, same });
+    }
+  }
+  await ctx.close();
+}
+if (process.argv.includes('--speed-only')) { const bad = speedRows.filter(r => !r.same); console.log(bad.length ? 'FAIL speed: ' + bad.map(r => r.id + ' z' + r.z).join(', ') : 'PASS: speed (16 views identical)'); await browser.close(); srv.close(); process.exit(bad.length ? 1 : 0); } // a developer's shortcut, about 1 minute
 {
   const { ctx, page } = await open(7);
   await groundChecks(page);
@@ -918,6 +950,7 @@ if (process.argv.includes('--strict-tier0')) {
   const over0 = tierRows.filter(t => t.t0 > base(t) + TIER0_MARGIN);
   check(`tier 0: every scene's draw() median is at or under its A0 baseline plus ${TIER0_MARGIN} ms`, over0.length === 0, over0.map(t => `${t.id} z${t.z} ${t.t0.toFixed(1)} against ${base(t)}`).join(', '));
 }
+check('speed: in all 16 views the cached and clipped drawing is pixel for pixel the plain drawing (lookFast off)', speedRows.length === 16 && speedRows.every(r => r.same), speedRows.filter(r => !r.same).map(r => `${r.id} z${r.z}`).join(', '));
 const lumBad = tierLum.filter(t => Math.abs(t.l - lums[t.id]) > lums[t.id] * .08);
 check('tiers: at zoom 1 every scene at tier 1 and tier 0 has a mean luminance within 8% of tier 2 (the same picture)', tierLum.length === 16 && lumBad.length === 0, lumBad.map(t => `${t.id} tier ${t.q} ${t.l.toFixed(1)} against ${lums[t.id].toFixed(1)}`).join(', '));
 check('no warnings from the page', warns.length === 0, warns.slice(0, 3).join(' | '));
