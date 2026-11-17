@@ -1,0 +1,4 @@
+[
+  { "id": "testport", "tab": "terms", "title": "Testport", "body": "Testport is an invented harbour town. It exists so the game's rules can be tried on a small city.", "sources": [ { "src": "testport-fiction" } ] },
+  { "id": "harbour-town", "tab": "places", "title": "The harbour town", "body": "A small town on a bay, with a quay, a bridge and a market. Nothing in it is real.", "sources": [ { "src": "testport-fiction" } ] }
+]
