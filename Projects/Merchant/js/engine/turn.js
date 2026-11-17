@@ -99,14 +99,17 @@ function fireDue(s, content) {
   const played = playedSeasons(content.calendar, s.length);
   const upTo = played[Math.min(s.t + 1, played.length - 1)];
   const due = s.queue.filter(q => q.at <= upTo).sort((a, b) => a.at - b.at);
-  s.queue = s.queue.filter(q => q.at > upTo);
+  const held = [];
   for (const q of due) {
+    // A follow-up that would put a sixth paper on the desk waits a season, effects and all.
+    if (q.card && s.desk.length >= MAX_PAPERS) { held.push(q); continue; }
     applyAll(s, content, q.do, { later: true });
     if (q.card) {
       apply(s, content, { card: q.card }, { later: true });
       s.flags[`from:${q.card}`] = q.from;
     }
   }
+  s.queue = [...s.queue.filter(q => q.at > upTo), ...held];
 }
 
 export function newGameFrom(state, content) {
