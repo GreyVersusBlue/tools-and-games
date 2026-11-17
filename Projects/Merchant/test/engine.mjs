@@ -1,6 +1,7 @@
 // Engine units (ARCHITECTURE 7.1): node test/engine.mjs, from Projects/Merchant/.
 // Plain Node, no browser, no clock. The game it plays is the invented city in data/testport/.
 import fs from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test, eq, ok, throws, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import * as rng from '../js/engine/rng.js';
@@ -389,23 +390,63 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
 });
 
 // ---- data
+const fetchOver = (root = new URL('../data/', import.meta.url), override = () => undefined) => async href => {
+  const o = override(href); if (o) return o;
+  try { const text = await fs.readFile(new URL(href), 'utf8'); return { ok: true, status: 200, text: async () => text }; }
+  catch { return { ok: false, status: 404, text: async () => '' }; }
+};
 test('data: loadContent reads a city by fs and by fetch to the same object, sources included', async () => {
-  const fetcher = async href => {
-    try { const text = await fs.readFile(new URL(href), 'utf8'); return { ok: true, text: async () => text }; }
-    catch { return { ok: false, text: async () => '' }; }
-  };
-  const viaFetch = await loadContent('testport', { fetch: fetcher });
+  const viaFetch = await loadContent('testport', { fetch: fetchOver() });
   eq(viaFetch, content);
   ok(content.sources.some(s => s.id === 'testport-fiction'), 'testport-fiction is among the sources, whatever data/sources.json adds');
   eq([content.cards.length, content.stops.length, content.goods.length, content.events.length], [4, 3, 3, 1]);
 });
-test('data: a missing file reads as empty and a file that will not parse throws', async () => {
-  const empty = await loadContent('nowhere', { fs });
-  eq([empty.cards, empty.houses, empty.letters, empty.city, empty.calendar], [[], [], [], {}, {}]);
+test('data: a file missing from a city reads as empty, but a missing city.json throws and names it', async () => {
+  const bare = { readFile: async u => { if (String(u).endsWith('/city.json')) return '{"id":"bare"}'; const e = new Error('no'); e.code = 'ENOENT'; throw e; } };
+  const empty = await loadContent('bare', { fs: bare });
+  eq([empty.cards, empty.houses, empty.letters, empty.calendar, empty.sources], [[], [], [], {}, []]);
+  let msg = ''; await loadContent('nowhere', { fs }).catch(e => { msg = e.message; });
+  ok(/nowhere\/city\.json/.test(msg) && /required/.test(msg), `a missing city.json must throw and name the file: ${msg}`);
+});
+test('data: a file that will not parse throws and names the file', async () => {
   const bad = { readFile: async () => '{ nope' };
   let msg = ''; await loadContent('testport', { fs: bad }).catch(e => { msg = e.message; });
   ok(/city\.json/.test(msg), msg);
   await loadContent('testport', {}).then(() => ok(false), e => ok(/fetch|fs/.test(e.message)));
+});
+test('data: a content file holding null or the wrong top-level type throws an error naming the file', async () => {
+  const serve = (name, body) => ({ readFile: async u => (String(u).endsWith(name) ? body : fs.readFile(u, 'utf8')) });
+  const msg = async (name, body) => { let m = ''; await loadContent('testport', { fs: serve(name, body) }).catch(e => { m = e.message; }); return m; };
+  for (const [name, body, want] of [
+    ['/city.json', 'null', /city\.json.*null/], ['/calendar.json', '[]', /calendar\.json.*list/],
+    ['/goods.json', '{}', /goods\.json.*object/], ['/stops.json', 'null', /stops\.json.*null/],
+    ['/orders.json', '3', /orders\.json.*number/], ['/sources.json', '{"id":"x"}', /sources\.json.*object/],
+  ]) { const m = await msg(name, body); ok(want.test(m), `${name}: "${m}" should match ${want}`); }
+  ok(/orders\.json.*object/.test(await msg('/orders.json', '[7]')), 'a card that is not an object names its file');
+});
+test('data: over fetch only a 404 reads as missing; a 500 or 403 throws and names the file', async () => {
+  const status = (suffix, code) => fetchOver(undefined, href => (href.endsWith(suffix) ? { ok: false, status: code, text: async () => '' } : undefined));
+  const withText = await loadContent('testport', { fetch: status('/text.json', 404) });
+  eq(withText.text, {});
+  for (const code of [500, 403]) {
+    let msg = ''; await loadContent('testport', { fetch: status('/goods.json', code) }).catch(e => { msg = e.message; });
+    ok(/goods\.json/.test(msg) && msg.includes(String(code)), `a ${code} must throw naming the file: "${msg}"`);
+  }
+  let msg = ''; await loadContent('nowhere', { fetch: status('/never', 404) }).catch(e => { msg = e.message; });
+  ok(/city\.json/.test(msg), 'a 404 on city.json still throws');
+});
+test('data: a string base that is a file path works, with or without a trailing slash and as a URL', async () => {
+  const here = fileURLToPath(new URL('../data', import.meta.url));
+  for (const base of [here, here + '/', pathToFileURL(here).href, pathToFileURL(here).href + '/']) {
+    const c = await loadContent('testport', { fs, base });
+    eq(c.city.id, 'testport', `base ${base}`);
+  }
+  // Windows form: a drive path is a path, not the URL scheme "c:". pathToFileURL on this machine
+  // cannot parse it, so the check is that the loader asks fs for a file: URL and never throws "c:".
+  const asked = [];
+  const spy = { readFile: async u => { asked.push(String(u)); const e = new Error('no'); e.code = 'ENOENT'; throw e; } };
+  const err = await loadContent('x', { fs: spy, base: 'C:\\games\\data' }).catch(e => e);
+  ok(asked.every(u => u.startsWith('file:///')) && asked.length > 0 && /x\/city\.json/.test(err.message), `asked ${asked[0]}, error ${err.message}`);
 });
 test('data: every source id testport uses is testport-fiction and is defined', () => {
   const used = new Set(JSON.stringify(content).match(/"src":"[^"]+"/g).map(x => x.slice(7, -1)));
