@@ -14,7 +14,7 @@ const lvEl=id=>document.getElementById(id);
 const lvEpochStep=n=>n===0?0:LV_FIRST+lvCfg.epochSteps*(n-1);
 const lvSleep=ms=>new Promise(ok=>setTimeout(ok,ms));
 function lvFnv(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0}return h.toString(16)+':'+s.length}
-function lvSay(text,link){const el=lvEl('live-note');el.textContent='';if(!text){el.hidden=true;return}el.hidden=false;el.textContent=text;
+function lvSay(text,link){const el=lvEl('live-note');el.textContent='';el.className='';if(!text){el.hidden=true;return}el.hidden=false;el.textContent=text;
   if(link){const a=document.createElement('a');a.href=link[0];a.textContent=link[1];el.appendChild(document.createTextNode(' '));el.appendChild(a)}}
 function lvShowBreath(on){if(on===lvBreath)return;lvBreath=on;lvSay(on?'The island is catching its breath.':'')}
 function lvOffline(){lvDead=true;lvSay('The public island is kept on the site and cannot be reached from here.',['index.html','Play your own island'])}
@@ -27,7 +27,7 @@ async function lvStart(){
   try{lvCfg=await lvFetchLive()}catch(e){lvOffline();return}
   if(lvStale())return;
   try{lvLoad(await(await lvGet('/hearth-live/epoch/'+lvCfg.era+'-'+lvCfg.epoch+'.json')).json())}catch(e){lvOffline();return}
-  lvReady=true;lvStat();lvAway()}
+  lvReady=true;lvStat();lvAway();lvEras()}
 /* more than an epoch behind (a tab that was hidden, a laptop that slept): take the newest snapshot instead of stepping a long way */
 async function lvReboot(){lvHold=true;lvRebootAt=performance.now();
   try{const c=await lvFetchLive();lvCfg=c;if(!lvStale())lvLoad(await(await lvGet('/hearth-live/epoch/'+c.era+'-'+c.epoch+'.json')).json())}catch(e){lvShowBreath(true)}
@@ -38,14 +38,24 @@ async function lvBoundary(k){lvHold=true;
   while(!body){
     try{const r=await fetch('/hearth-live/epoch/'+lvCfg.era+'-'+k+'.json',{cache:'no-store'});if(r.ok)body=await r.json()}catch(e){}
     if(body)break;
+    /* C7: the era may have ended at this epoch. Its files are gone and live.json names the next era, whose island this page takes instead */
+    try{const c=await lvFetchLive();if(c.era!==lvCfg.era){lvCfg=c;lvEraGo();return}}catch(e){}
     if(performance.now()-t0>lvBreathMs)lvShowBreath(true);
     await lvSleep(lvRetryMs)}
   lvLog.push({n:k,step:lvStep,mine,theirs:body.hash});
   if(mine!==body.hash){lvMis++;console.info('hearth live: epoch '+k+' differs, here '+mine+' and on the server '+body.hash)}
   try{lvLoad(body)}catch(e){lvDead=true;lvSay('The island has changed. Reload the page to see it.')}
   lvShowBreath(false);
-  try{const c=await lvFetchLive();lvCfg=c;lvStale()}catch(e){} /* the same file again keeps the clock offset fresh and notices a new save version */
+  try{const c=await lvFetchLive(),was=lvCfg.era;lvCfg=c;lvStale();if(c.era!==was){lvEraGo();return}}catch(e){} /* the same file again keeps the clock offset fresh, notices a new save version and a new era */
   lvHold=false}
+/* the era changed under this page (C7): take the new era's current snapshot, and list the islands before it. lvHold is already set by the caller. */
+async function lvEraGo(){
+  try{lvLoad(await(await lvGet('/hearth-live/epoch/'+lvCfg.era+'-'+lvCfg.epoch+'.json')).json())}catch(e){lvShowBreath(true)}
+  lvShowBreath(false);lvEraNote();lvHold=false;lvEras()}
+function lvEraNote(){lvSay('A new island. Its people came over the water from the one before.',['#','the island before this one']);
+  lvEl('live-note').className='era';   /* lower than the tools row, whose buttons a centred note would cover */
+  const a=lvEl('live-note').querySelector('a');a.onclick=e=>{e.preventDefault();lvErasOpen()};
+  setTimeout(()=>{if(!lvBreath&&!lvDead)lvSay('')},30000)}
 function lvStat(){const alive=people.filter(p=>!p.dead).length,key=village+'|'+dayCount+'|'+alive;if(key===lvStatKey)return;lvStatKey=key;
   if(!lvBack)lvNowDay=dayCount;const yr=yearOf(dayCount);lvEl('live-status').textContent=(village||'The island')+' · year '+yr+', '+yearName(yr)+' · day '+dayCount+' · '+alive+' people'}
 /* ---- C5: what happened while you were away, the way to keep it, and yesterday at speed ---- */
@@ -70,15 +80,17 @@ function lvAwayClose(){lvEl('live-away').hidden=true;lvSeenPut()}
 function lvCopyUpdate(body){const a=lvEl('lv-copy'),long=body.save.length>LV_COPY_MAX;
   a.hidden=long;lvEl('lv-long').hidden=!long;if(!long)a.href='index.html#'+body.save}
 /* yesterday: the epoch a real day back, or the oldest one kept. Epochs in a real day follow from the clock, so a different pace needs no change here. */
+const LV_BACK_DOWN='Yesterday is not available just now. The island will carry on from here.';
 async function lvLookBack(){
   if(lvBack||!lvReady||lvDead)return;
   for(let i=0;lvHold&&i<50;i++)await lvSleep(200);   /* an epoch or a reboot is being taken: wait for it, ten seconds at most */
-  if(lvBack||lvHold||lvDead)return;
+  if(lvBack||lvDead)return;
+  if(lvHold){lvSay(LV_BACK_DOWN);return}   /* still held after ten seconds: the server is not answering, so say so and stay in the present */
   lvHold=true;
-  const per=Math.max(1,Math.round(86400e3/(lvCfg.clock.stepMs*lvCfg.epochSteps))),cur=lvEpoch;let n=Math.max(0,cur-per),body=null;
-  while(n<cur&&!body){try{const r=await fetch('/hearth-live/epoch/'+lvCfg.era+'-'+n+'.json',{cache:'no-store'});if(r.ok)body=await r.json()}catch(e){break}
+  const per=Math.max(1,Math.round(86400e3/(lvCfg.clock.stepMs*lvCfg.epochSteps))),cur=lvEpoch;let n=Math.max(0,cur-per),body=null,down=false;
+  while(n<cur&&!body){try{const r=await fetch('/hearth-live/epoch/'+lvCfg.era+'-'+n+'.json',{cache:'no-store'});if(r.ok)body=await r.json()}catch(e){down=true;break}
     if(!body)n++}
-  if(!body){lvHold=false;lvSay('Nothing earlier than this is kept yet.');return}
+  if(!body){lvHold=false;lvSay(down?LV_BACK_DOWN:'Nothing earlier than this is kept yet.');return}
   lvSeenPut();
   try{lvLoad(body)}catch(e){lvHold=false;return}
   lvBack={to:lvEpochStep(cur)};lvBackFrom=body.step;lvSay('');
@@ -103,10 +115,29 @@ function liveFrame(now){
       for(let i=0;i<n;i++)step(lvCfg.dt);
       lvStep+=n;
       if(lvStep===next)lvBoundary(lvEpoch+1)}}
-  audioTick(rdt);cardT-=rdt;renderCard(false);draw();lvStat()}
+  audioTick(rdt);cardT-=rdt;renderCard(false);timedDraw(rdt);lvStat()}
+/* ---- C7: the islands before this one. eras.json lists them; each has its saga and its final island, which opens as a copy on index.html ---- */
+let lvErasList=[];
+const lvEraName=r=>r.name||'island '+r.seed.toString(36);
+async function lvEras(){
+  try{const d=await(await lvGet('/hearth-live/eras.json?'+Date.now())).json();lvErasList=(d.eras||[]).filter(r=>r.era<lvCfg.era).sort((a,b)=>b.era-a.era)}catch(e){lvErasList=[]}
+  lvEl('lv-eras').hidden=!lvErasList.length;if(!lvErasList.length)return;
+  const roll=lvEl('lv-eras-roll');roll.textContent='';
+  for(const r of lvErasList){const p=document.createElement('p'),b=document.createElement('b');b.textContent=lvEraName(r);p.appendChild(b);
+    p.appendChild(document.createTextNode(' · '+r.years+' years · '+r.people+' living · '+r.graves+' graves · ended '+String(r.ended).slice(0,10)+' · '));
+    const s=document.createElement('a');s.href='/hearth-live/eras/'+r.era+'/saga.html';s.textContent='the saga';s.className='lv-era-saga';p.appendChild(s);
+    p.appendChild(document.createTextNode(' · '));
+    const c=document.createElement('a');c.href='#';c.textContent='its final island as a copy';c.className='lv-era-copy';c.dataset.era=r.era;
+    c.onclick=async e=>{e.preventDefault();const h=await lvEraCopy(r.era);if(h)window.open(h,'_blank','noopener');else lvEl('lv-eras-s').textContent='that island has grown too long to fit in a link; the saga is the way to keep it'};
+    p.appendChild(c);roll.appendChild(p)}
+  lvEl('lv-eras-s').textContent=lvErasList.length===1?'the one it was founded from':lvErasList.length+' before it'}
+/* the final island's own save string, the same one final.json holds, as an index.html link; null when it is too long for one */
+async function lvEraCopy(era){const b=await(await lvGet('/hearth-live/eras/'+era+'/final.json')).json();return b.save.length>LV_COPY_MAX?null:'index.html#'+b.save}
+function lvErasOpen(){lvEl('live-eras').hidden=false}
+lvEl('lv-eras').onclick=lvErasOpen;lvEl('lv-eras-x').onclick=()=>{lvEl('live-eras').hidden=true};
 /* the saga lives in the server's folder, not in this repo, so the links are set here and the site's link check does not look for a file that is not there */
 lvEl('lv-saga').href=lvEl('lv-away-saga').href='/hearth-live/saga.html';
 lvEl('lv-away-x').onclick=lvEl('lv-away-ok').onclick=lvAwayClose;lvEl('lv-back').onclick=lvLookBack;lvEl('lv-now').onclick=lvBackEnd;
 addEventListener('pagehide',lvSeenPut);
-window.__hearthLive={get step(){return lvStep},get epoch(){return lvEpoch},get log(){return lvLog},get mismatches(){return lvMis},get ready(){return lvReady},get breath(){return lvBreath},get dead(){return lvDead},get back(){return !!lvBack},get backFrom(){return lvBackFrom},get nowDay(){return lvNowDay}};
+window.__hearthLive={get step(){return lvStep},get epoch(){return lvEpoch},get log(){return lvLog},get mismatches(){return lvMis},get ready(){return lvReady},get breath(){return lvBreath},get dead(){return lvDead},get back(){return !!lvBack},get backFrom(){return lvBackFrom},get nowDay(){return lvNowDay},get era(){return lvCfg?lvCfg.era:-1},get eras(){return lvErasList.length}};
 lvStart();
