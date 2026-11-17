@@ -28,7 +28,7 @@ function list(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function space(source) {
+function space(source, featureIds) {
   if (source.kind === 'room') {
     const room = {
       id: source.id,
@@ -43,8 +43,9 @@ function space(source) {
       doors: list(source.doors).map((door) => ({ cell: door.cell, side: door.side, stepFree: door.stepFree !== false })),
     };
     // W7: a room's features, written only when it has some
-    const featureIds = list(source.featureIds).filter((id) => typeof id === 'string');
-    if (featureIds.length > 0) room.featureIds = featureIds;
+    // only those the published building lists, so the staff browser never meets an id with no name
+    const named = list(source.featureIds).filter((id) => typeof id === 'string' && featureIds.has(id));
+    if (named.length > 0) room.featureIds = named;
     return room;
   }
   return {
@@ -57,7 +58,7 @@ function space(source) {
   };
 }
 
-function floor(source) {
+function floor(source, featureIds) {
   return {
     id: source.id,
     name: source.name,
@@ -65,7 +66,7 @@ function floor(source) {
     width: source.width,
     height: source.height,
     cells: source.cells,
-    spaces: list(source.spaces).map(space),
+    spaces: list(source.spaces).map((one) => space(one, featureIds)),
     corridors: list(source.corridors).map((corridor) => ({ id: corridor.id, name: corridor.name, cells: list(corridor.cells).slice() })),
     exits: list(source.exits).map((exit) => ({ id: exit.id, cell: exit.cell, doorName: exit.doorName, assembly: exit.assembly, stepFree: exit.stepFree !== false })),
     // ARCHITECTURE 19.2: elevator stops, corridor cells with a step, areas of refuge
@@ -100,9 +101,15 @@ function connection(source) {
 // The features a published room uses, in the building's list order, as { id, name } (W7). The list
 // is only what a published room names; absent when no room names one.
 function usedFeatures(building) {
+  const listed = featureIdsOf(building);
   const used = new Set();
-  for (const floorSource of list(building.floors)) for (const room of list(floorSource.spaces)) if (room.kind === 'room') for (const id of list(room.featureIds)) if (typeof id === 'string') used.add(id);
+  for (const floorSource of list(building.floors)) for (const room of list(floorSource.spaces)) if (room.kind === 'room') for (const id of list(room.featureIds)) if (typeof id === 'string' && listed.has(id)) used.add(id);
   return list(building.features).filter((feature) => feature && typeof feature.id === 'string' && used.has(feature.id)).map((feature) => ({ id: feature.id, name: feature.name }));
+}
+
+// The ids of the features the building lists.
+function featureIdsOf(building) {
+  return new Set(list(building.features).filter((feature) => feature && typeof feature.id === 'string').map((feature) => feature.id));
 }
 
 // The custom period word, field by field (W7).
@@ -114,8 +121,18 @@ function periodCustom(source) {
 }
 
 // When a teacher is away, field by field (W7).
-function away(source) {
-  return list(source).filter((entry) => entry && typeof entry === 'object').map((entry) => ({ dayTypeIds: list(entry.dayTypeIds).slice(), weekdays: list(entry.weekdays).slice(), periods: list(entry.periods).slice() }));
+// Day types are only those the published data has; an entry left naming none of the ones it
+// named is dropped, never widened to every day type.
+function away(source, dayTypeIds) {
+  const out = [];
+  for (const entry of list(source)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const named = list(entry.dayTypeIds);
+    const days = named.filter((id) => dayTypeIds.has(id));
+    if (named.length > 0 && days.length === 0) continue;
+    out.push({ dayTypeIds: days, weekdays: list(entry.weekdays).slice(), periods: list(entry.periods).slice() });
+  }
+  return out;
 }
 
 // The custom word and the names, each only when there (W7).
@@ -124,7 +141,7 @@ function writtenWordSettings(settings) {
   const custom = settings.periodCustom;
   const names = settings.periodNames;
   if (custom && typeof custom === 'object') out.periodCustom = periodCustom(custom);
-  if (Array.isArray(names) && names.length > 0) out.periodNames = names.slice();
+  if (Array.isArray(names) && names.some((name) => typeof name === 'string' && name.trim() !== '')) out.periodNames = names.slice();
   return out;
 }
 
@@ -229,6 +246,8 @@ export function publishedModel(project, options) {
   // every view a project keeps a switch for, the calendar's too; absent is on
   const views = {};
   for (const view of PUBLISH_VIEWS.concat(LATER_PUBLISH_VIEWS)) views[view] = !publish.views || publish.views[view] !== false;
+  const dayTypeIds = new Set(list(project.dayTypes).map((dayType) => dayType.id));
+  const featureIds = featureIdsOf(project.building);
   return {
     format: PUBLISHED_FORMAT,
     version: PUBLISHED_VERSION,
@@ -252,14 +271,15 @@ export function publishedModel(project, options) {
       ...writtenWordSettings(settings),
     },
     building: {
-      floors: list(project.building.floors).map(floor),
+      floors: list(project.building.floors).map((one) => floor(one, featureIds)),
       connections: list(project.building.connections).map(connection),
       ...(usedFeatures(project.building).length > 0 ? { features: usedFeatures(project.building) } : {}),
     },
     subjects: list(project.subjects).map((subject) => ({ id: subject.id, code: subject.code, name: subject.name, colour: subject.colour })),
     teachers: list(project.teachers).map((teacher) => {
       const out = { id: teacher.id, name: teacher.name, subjectId: teacher.subjectId, roomIds: list(teacher.roomIds).slice(), notes: teacher.notes };
-      if (away(teacher.away).length > 0) out.away = away(teacher.away);
+      const when = away(teacher.away, dayTypeIds);
+      if (when.length > 0) out.away = when;
       return out;
     }),
     // sameAs null and short "" when a project saved before them has none

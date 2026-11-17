@@ -418,13 +418,21 @@ export function applyBuilding(project, file, options) {
 
   // rooms
   const teacherIds = new Set(project.teachers.map((teacher) => teacher.id));
+  const featureIds = new Set(Array.isArray(incoming.features) ? incoming.features.map((feature) => feature.id) : []);
   const building = {
     ...incoming,
     floors: incoming.floors.map((floor) => ({
       ...floor,
       spaces: floor.spaces.map((space) => {
         if (space.kind !== 'room') return space;
-        return { ...space, teacherIds: space.teacherIds.filter((id) => teacherIds.has(id)), subjectId: subjectMap.has(space.subjectId) ? subjectMap.get(space.subjectId) : null };
+        const room = { ...space, teacherIds: space.teacherIds.filter((id) => teacherIds.has(id)), subjectId: subjectMap.has(space.subjectId) ? subjectMap.get(space.subjectId) : null };
+        // a room's features are the incoming building's: one it does not list is not carried (an older file may name a gone one)
+        if (Array.isArray(space.featureIds)) {
+          const kept = space.featureIds.filter((id) => featureIds.has(id));
+          if (kept.length > 0 || space.featureIds.length === 0) room.featureIds = kept;
+          else delete room.featureIds; // all of them gone: absent, not an empty list written
+        }
+        return room;
       }),
     })),
   };
@@ -509,7 +517,9 @@ function scheduleFileObject(project) {
   for (const duty of duties) if (typeof duty.roomId === 'string') named.add(duty.roomId);
   const settings = {};
   for (const key of SCHEDULE_SETTINGS) settings[key] = project.settings[key];
-  for (const key of SCHEDULE_SETTING_EXTRAS) if (project.settings[key] !== undefined && project.settings[key] !== null) settings[key] = project.settings[key];
+  // written only when there is something to write: no null, and no list of blank names
+  if (project.settings.periodCustom !== undefined && project.settings.periodCustom !== null) settings.periodCustom = project.settings.periodCustom;
+  if (Array.isArray(project.settings.periodNames) && project.settings.periodNames.some((name) => typeof name === 'string' && name.trim() !== '')) settings.periodNames = project.settings.periodNames;
   const file = {
     format: SCHEDULE_FORMAT,
     version: SCHEDULE_VERSION,
@@ -769,8 +779,11 @@ export function applySchedule(project, file, options) {
         // the word and the names are one setting (22.17): the custom word and the periods' own names go with it
         const taken = takeWordAndNames(next.settings, file.settings);
         if (taken.changed) {
+          const plainBefore = next.settings.periodCustom === undefined && next.settings.periodNames === undefined;
+          const plainAfter = taken.settings.periodCustom === undefined && taken.settings.periodNames === undefined;
+          // the plain word is the key, as before; when the custom word or names are on either side the entry says what went and what came
+          summary.settingsTaken.push(plainBefore && plainAfter ? key : { key, from: wordAndNamesText(next.settings), to: wordAndNamesText(taken.settings) });
           next = { ...next, settings: taken.settings };
-          summary.settingsTaken.push(key);
         }
         continue;
       }
@@ -1288,7 +1301,12 @@ function takeWordAndNames(here, file) {
     changed = true;
   }
   for (const key of SCHEDULE_SETTING_EXTRAS) {
-    const want = file[key] !== undefined ? file[key] : file.periodWord !== undefined ? undefined : here[key];
+    let want = file[key] !== undefined ? file[key] : file.periodWord !== undefined ? undefined : here[key];
+    // the names the day has periods for: the result's periods, not the file's
+    if (key === 'periodNames' && Array.isArray(want)) {
+      if (want.length > settings.periods) want = want.slice(0, settings.periods);
+      if (!want.some((name) => typeof name === 'string' && name.trim() !== '')) want = undefined; // no empty list written
+    }
     const held = here[key] !== undefined && here[key] !== null;
     if (want === undefined || want === null) {
       if (held) {
