@@ -14,14 +14,14 @@ import {
 } from '../../engine/schema.js';
 import { periodWordForms, periodName, periodNumberName, periodLabel } from '../../engine/bells.js';
 import { periodWord } from '../../engine/findings.js';
-import { awayFor } from '../../engine/marks.js';
+import { awayFor, awayEntries } from '../../engine/marks.js';
 import { teacherDays, teacherDay, isFree, awayWords } from '../../engine/teacher-day.js';
 import { buildGraph } from '../../engine/graph.js';
 import { route, routingGraph } from '../../engine/routing.js';
 import { directions } from '../../engine/directions.js';
 import { publishedModel } from '../../engine/publish-data.js';
-import { openSchool, letterOfStairs } from '../../staff/model.js';
-import { routeFloors, routeCrossings } from '../../staff/views/directions.js';
+import { openSchool, letterOfStairs, oneWayGroups } from '../../staff/model.js';
+import { routeFloors, routeCrossings, floorIsPassed } from '../../staff/views/directions.js';
 import { oneWayStairs } from '../../staff/views/map.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { school, clone, makeIds, clock } from './helpers.mjs';
@@ -126,7 +126,7 @@ test('names: a period\'s own name wins, else the number name; periodNumberName n
   assert.equal(periodName(custom, 0), 'Lesson A');
   assert.equal(periodName(custom, 1), 'Choir');
   assert.equal(periodNumberName(custom, 1), 'Lesson B');
-  assert.equal(periodName(settingsWith({ periodNames: ['  <b>Art</b> & Co '] }), 0), '  <b>Art</b> & Co ', 'a name comes back exactly as typed');
+  assert.equal(periodName(settingsWith({ periodNames: ['  <b>Art</b> & Co '] }), 0), '<b>Art</b> & Co', 'a name comes back as typed, trimmed');
   assert.equal(periodName(settingsWith({ periodNames: ['   '] }), 0), 'Period 1', 'a blank name is no name');
 });
 
@@ -317,7 +317,7 @@ test('away sometimes: a weekdays-only entry holds only on a date that falls on o
 test('away reads absent or malformed entries as not there, and returns the first that holds', () => {
   for (const away of [undefined, null, 'Fridays', [], [null, 4, 'x', []]]) assert.equal(awayFor({ away }, A, 0, {}), null, JSON.stringify(away));
   const garbled = { dayTypeIds: 7, weekdays: 'Fri', periods: {} };
-  assert.equal(awayFor({ away: [garbled] }, A, 0, {}), garbled, 'fields that are not lists are not restrictions: the entry holds always');
+  assert.equal(awayFor({ away: [garbled] }, A, 0, {}), null, 'fields that are not lists make the entry ignored, never wider');
   assert.equal(awayFor({ away: [null, 4, 'x'] }, A, 0), null);
   assert.equal(awayFor(null, A, 0), null);
   assert.equal(awayFor(undefined, A, 0), null);
@@ -380,19 +380,21 @@ test('awayWords: ranges by number names, weekdays, day types, as typed', () => {
   assert.equal(words({ weekdays: [4, 0, 2] }), 'Not in school on Mondays, Wednesdays and Fridays');
   assert.equal(words({ dayTypeIds: [B] }), 'Not in school when it is B <i>Day</i>');
   assert.equal(words({ dayTypeIds: [A, B] }), 'Not in school when it is A Day or B <i>Day</i>');
-  assert.equal(words({ dayTypeIds: ['dgone00000'] }), 'Not in school', 'a day type that is not there is left out');
+  assert.equal(words({ dayTypeIds: ['dgone00000'] }), '', 'an entry naming only a day type that is not there holds nowhere and is worded nowhere');
+  assert.equal(words({ dayTypeIds: ['dgone00000', B] }), 'Not in school when it is B <i>Day</i>', 'a dangling id beside a real one is left out');
   assert.equal(words({ periods: [6, 7], weekdays: [4], dayTypeIds: [B] }), 'Not in school in Periods 7 to 8 on Fridays when it is B <i>Day</i>');
   assert.equal(words({ periods: [4, 5] }, settingsWith({ periodWord: 'Block' })), 'Not in school in Blocks E to F');
-  assert.equal(words({ periods: [0, 1] }, settingsWith({ periodWord: 'Hour' })), 'Not in school in Hours 1st to 2nd');
+  assert.equal(words({ periods: [0, 1] }, settingsWith({ periodWord: 'Hour' })), 'Not in school in 1st to 2nd Hour', 'an ordinal range carries the word once, at the end');
   assert.equal(words({ periods: [0, 1] }, settingsWith({ periodCustom: { word: 'Class', plural: 'Classes', count: 'number' }, periodNames: ['Homeroom', 'Maths'] })), 'Not in school in Classes 1 to 2', 'ranges use number names, never a period\'s own name');
   assert.equal(words({ periods: [4] }, settingsWith({ periodCustom: { word: 'Class', plural: 'Classes', count: 'letter' } })), 'Not in school in Class E');
 });
 
-test('awayWords reads malformed entries as plain "Not in school"', () => {
-  for (const bad of [null, undefined, 4, 'Fridays', {}, { periods: 'x', weekdays: null, dayTypeIds: 3 }, { periods: [-1, 1.5, 'a'], weekdays: [9, -1] }]) {
-    assert.equal(awayWords(defaultSettings(), bad, []), 'Not in school', JSON.stringify(bad));
+test('awayWords words an entry that awayFor ignores as nothing, and nothing else', () => {
+  for (const bad of [null, undefined, 4, 'Fridays', [], { periods: 'x', weekdays: null, dayTypeIds: 3 }, { periods: [-1, 1.5, 'a'], weekdays: [9, -1] }]) {
+    assert.equal(awayWords(defaultSettings(), bad, []), '', JSON.stringify(bad));
   }
-  assert.equal(awayWords(defaultSettings(), entry({ dayTypeIds: [A] }), null), 'Not in school');
+  assert.equal(awayWords(defaultSettings(), entry({ dayTypeIds: [A] }), null), '', 'without a day type list no id is known');
+  assert.equal(awayWords(defaultSettings(), {}, null), 'Not in school', 'an entry naming nothing is the whole day');
 });
 
 // ---------------------------------------------------------------- every field absent
@@ -492,4 +494,239 @@ test('the staff browser lists a stairwell\'s one-way flights once, by the letter
   const plain = clone(model);
   for (const connection of plain.building.connections) delete connection.well;
   assert.deepEqual(oneWayStairs(plain, plain.building.floors[1]).map((each) => each.text), ['Stairs A (up only)', 'Stairs B (up only)'], 'plain flights keep their own letters');
+});
+
+// ---------------------------------------------------------------- SV2-125b: the review's findings
+
+test('away: a malformed entry never widens, and awayFor and awayWords agree on every input', () => {
+  const project = school();
+  const dayTypes = project.dayTypes;
+  const bad = [
+    { periods: ['3'] }, { weekdays: ['x'], periods: [1] }, { dayTypeIds: [5] }, { dayTypeIds: 'd1' }, { periods: [-1] }, { periods: [1.5] },
+    { dayTypeIds: ['zz'] }, { periods: 3 }, { weekdays: [7] }, { weekdays: [-1] }, { weekdays: 4 }, { periods: {} }, { dayTypeIds: [null, 'zz'] },
+  ];
+  for (const each of bad) {
+    const label = JSON.stringify(each);
+    for (const dayTypeId of [A, B]) {
+      for (let period = 0; period < 8; period += 1) {
+        assert.equal(awayFor({ away: [each] }, dayTypeId, period, { project, date: FRIDAY }), null, 'holds nowhere: ' + label);
+        assert.equal(awayFor({ away: [each] }, dayTypeId, period, { project }), null, 'holds nowhere without a date: ' + label);
+      }
+    }
+    assert.equal(awayWords(defaultSettings(), each, dayTypes), '', 'worded nowhere: ' + label);
+    assert.deepEqual(awayEntries({ away: [each] }, A, { project }), [], 'listed nowhere: ' + label);
+  }
+  // what survives narrows the entry; it never leaves it wider than it says
+  const some = { periods: ['3', 2, -1, 2.5], weekdays: [4, 'x', 9], dayTypeIds: ['zz', B] };
+  assert.equal(awayFor({ away: [some] }, B, 2, { project, date: FRIDAY }), some);
+  assert.equal(awayFor({ away: [some] }, B, 3, { project, date: FRIDAY }), null);
+  assert.equal(awayFor({ away: [some] }, A, 2, { project, date: FRIDAY }), null);
+  assert.equal(awayFor({ away: [some] }, B, 2, { project, date: MONDAY }), null);
+  assert.equal(awayWords(defaultSettings(), some, dayTypes), 'Not in school in Period 3 on Fridays when it is B Day');
+  // the same entries read the same through both, on a spread of inputs
+  const inputs = [...bad, {}, entry({}), { periods: [] }, { periods: [0] }, { weekdays: [] }, { weekdays: [4] }, { dayTypeIds: [A] }, { dayTypeIds: [] }, some, null, 4, 'x', []];
+  for (const each of inputs) {
+    const held = awayFor({ away: [each] }, A, 0, { project, date: FRIDAY }) !== null || awayFor({ away: [each] }, B, 0, { project, date: FRIDAY }) !== null;
+    const worded = awayWords(defaultSettings(), each, dayTypes) !== '';
+    if (held) assert.ok(worded, 'held, so worded: ' + JSON.stringify(each));
+    assert.equal(awayEntries({ away: [each] }, A, { project }).length > 0 || awayEntries({ away: [each] }, B, { project }).length > 0, worded, 'listed exactly when worded: ' + JSON.stringify(each));
+  }
+});
+
+test('away: a follower named by the entry is not the leader; a bad options.project is no project', () => {
+  const project = school();
+  project.dayTypes.push({ id: C, name: 'C Day', own: false, sameAs: A, short: '', bells: Array(8).fill(null) });
+  const names = (id) => ({ away: [entry({ dayTypeIds: [id] })] });
+  assert.ok(awayFor(names(C), C, 0, { project }), 'the entry names the follower and the query is the follower');
+  assert.equal(awayFor(names(C), A, 0, { project }), null, 'the entry names the follower and the query is the leader: the leader is not the follower');
+  assert.ok(awayFor(names(A), C, 0, { project }), 'the entry names the leader and the query is the follower');
+  for (const bad of [null, 'x', 4, [], {}, { dayTypes: 'x' }, { dayTypes: null }]) {
+    assert.equal(awayFor(names(A), A, 0, { project: bad }), null, 'no project, no day type to name: ' + JSON.stringify(bad));
+    assert.ok(awayFor({ away: [entry({})] }, A, 0, { project: bad }), 'an entry naming no day type still holds: ' + JSON.stringify(bad));
+  }
+  assert.equal(awayFor(names(A), A, 0, null), null);
+  assert.equal(awayFor(names(A), A, 0, 'x'), null);
+});
+
+test('away in the teacher\'s day and the school\'s: a period nobody meets in reads "No class", ahead of away, a duty and other marks', () => {
+  const project = school();
+  project.bellSchedules = [{ id: 'bsample0er', name: 'Early Release', short: '', bells: project.dayTypes[0].bells.slice(), off: [5, 6, 7] }];
+  project.teachers.find((each) => each.id === HALLORAN).away = [entry({})];
+  const planning = (days) => days.filter((day) => day.kind === 'planning');
+  const regular = planning(teacherDays(project, A).get(HALLORAN));
+  assert.ok(regular.length > 0 && regular.every((day) => day.marked === 'away'));
+  const early = teacherDays(project, A, { bellsId: 'bsample0er' }).get(HALLORAN);
+  for (const day of planning(early)) assert.equal(day.marked, day.period >= 5 ? 'noclass' : 'away', 'period ' + day.period);
+  assert.ok(planning(early).some((day) => day.period >= 5), 'the teacher plans in an off period');
+  // a school No class mark does the same, with no bells chosen
+  const marked = clone(project);
+  marked.marks = [{ id: 'k000000001', kind: 'noclass', scope: 'school', period: planning(teacherDays(project, A).get(HALLORAN))[0].period, label: '', dayTypeIds: [], grades: [], groupIds: [] }];
+  const at = marked.marks[0].period;
+  assert.equal(teacherDays(marked, A).get(HALLORAN)[at].marked, 'noclass', 'a school No class mark comes before away');
+  // then away, then a duty, then another school mark
+  const lunch = clone(project);
+  lunch.marks = [{ id: 'k000000002', kind: 'lunch', scope: 'school', period: at, label: '', dayTypeIds: [], grades: [], groupIds: [] }];
+  assert.equal(teacherDays(lunch, A).get(HALLORAN)[at].marked, 'away', 'away comes before another school mark');
+  lunch.teachers.find((each) => each.id === HALLORAN).away = [];
+  assert.equal(teacherDays(lunch, A).get(HALLORAN)[at].marked, 'lunch');
+  assert.equal(teacherDay(project, HALLORAN, A, { bellsId: 'bsample0er' })[7].marked, 'noclass', 'teacherDay passes the bells through');
+});
+
+test('periodLabel, periodNumberName and periodName: a bad index is nothing; letters past Z; names trimmed and held to their limits', () => {
+  const settings = settingsWith({});
+  for (const bad of [-1, 1.5, NaN, Infinity, '2', null, undefined, {}]) {
+    assert.equal(periodLabel(settings, bad), '', String(bad));
+    assert.equal(periodNumberName(settings, bad), '', String(bad));
+    assert.equal(periodName(settings, bad), '', String(bad));
+    assert.equal(periodLabel(settingsWith({ periodWord: 'Block' }), bad), '');
+    assert.equal(periodLabel(settingsWith({ periodWord: 'Hour' }), bad), '');
+  }
+  assert.equal(periodLabel(settings, 0), '1');
+  const letters = settingsWith({ periodCustom: { word: 'Lesson', count: 'letter', plural: 'Lessons' } });
+  assert.deepEqual([0, 25, 26, 27, 51, 52, 701, 702].map((i) => periodLabel(letters, i)), ['A', 'Z', 'AA', 'AB', 'AZ', 'BA', 'ZZ', 'AAA'], 'letters carry on past Z with the custom count');
+  assert.equal(periodNumberName(letters, 26), 'Lesson AA');
+  assert.equal(periodName(letters, 702), 'Lesson AAA');
+  const block = settingsWith({ periodWord: 'Block' });
+  assert.deepEqual([26, 27, 702].map((i) => periodLabel(block, i)), ['AA', 'AB', 'AAA']);
+  assert.equal(periodLabel(settingsWith({ periodCustom: { word: 'Hour', count: 'ordinal' } }), 111), '112th');
+  const wordMost = 'W'.repeat(PERIOD_WORD_MOST);
+  const nameMost = 'N'.repeat(PERIOD_NAME_MOST);
+  const long = settingsWith({ periodCustom: { word: ' ' + wordMost + 'xyz', plural: wordMost + 'PLURAL ', count: 'number' }, periodNames: ['  ' + nameMost + 'overflow  ', '  Lunch  '] });
+  assert.equal(periodWordForms(long).one, wordMost);
+  assert.equal(periodWordForms(long).many, wordMost);
+  assert.equal(periodWordForms(long).oneLower, wordMost);
+  assert.equal(periodName(long, 0), nameMost);
+  assert.equal(periodName(long, 1), 'Lunch', 'an own name is trimmed');
+  assert.equal(periodWordForms(settingsWith({ periodCustom: { word: wordMost } })).many, wordMost, 'the default plural is held to the limit too');
+  assert.equal(periodNumberName(long, 2), wordMost + ' 3');
+});
+
+test('awayWords: an ordinal range reads "1st to 3rd Hour"; the other counts keep "Periods 7 to 8"', () => {
+  const dayTypes = [];
+  assert.equal(awayWords(settingsWith({ periodWord: 'Hour' }), entry({ periods: [0, 1, 2] }), dayTypes), 'Not in school in 1st to 3rd Hour');
+  assert.equal(awayWords(settingsWith({ periodWord: 'Hour' }), entry({ periods: [0, 2] }), dayTypes), 'Not in school in 1st Hour and 3rd Hour');
+  assert.equal(awayWords(settingsWith({ periodCustom: { word: 'Class', plural: 'Classes', count: 'ordinal' } }), entry({ periods: [1, 2] }), dayTypes), 'Not in school in 2nd to 3rd Class');
+  assert.equal(awayWords(settingsWith({}), entry({ periods: [6, 7] }), dayTypes), 'Not in school in Periods 7 to 8');
+});
+
+test('directions collapse adjacent flights only for a non-blank well equal by name', () => {
+  const said = (change) => {
+    const project = threeFloors();
+    change(project.building.connections);
+    return directions(project, route(routingGraph(project), roomId('1A'), roomId('3A')));
+  };
+  const stairs = (result) => result.steps.find((step) => step.kind === 'stairs');
+  const samePlain = said((connections) => {
+    connections[0].label = 'A';
+    connections[1].label = 'A';
+  });
+  assert.equal(stairs(samePlain).text, 'Take stairs A, then stairs A up to Floor 3.', 'two plain flights with one label are two flights');
+  assert.deepEqual(stairs(samePlain).labels, ['A', 'A']);
+  const blank = said((connections) => {
+    connections[0].label = '';
+    connections[1].label = '';
+  });
+  assert.deepEqual(stairs(blank).labels, ['', ''], 'two blank labels are never one stairwell');
+  const blankWells = said((connections) => {
+    connections[0].well = '';
+    connections[1].well = '  ';
+  });
+  assert.deepEqual(stairs(blankWells).labels, ['A', 'B'], 'blank wells are no wells');
+  const oneWell = said((connections) => {
+    connections[0].well = 'W';
+  });
+  assert.deepEqual(stairs(oneWell).labels, ['W', 'B'], 'a well beside a plain flight keeps both');
+  const sameLabelOneWell = said((connections) => {
+    connections[0].label = 'W';
+    connections[0].well = 'W';
+    connections[1].label = 'W';
+  });
+  assert.deepEqual(stairs(sameLabelOneWell).labels, ['W', 'W'], 'a plain label equal to a well is not that well');
+  const mixed = said((connections) => {
+    connections[0].well = 'w';
+    connections[1].well = ' W ';
+  });
+  assert.equal(stairs(mixed).text, 'Take stairs w up to Floor 3.', 'wells equal by name are one letter, the first said');
+  assert.deepEqual(stairs(mixed).connections, ['cplan00001', 'cplan00002']);
+  const differing = said((connections) => {
+    connections[0].well = 'W';
+    connections[1].well = 'X';
+  });
+  assert.deepEqual(stairs(differing).labels, ['W', 'X']);
+});
+
+test('the staff browser passes through a floor only when the way crossed it at one cell, by the same letter', () => {
+  const via = (label) => ({ kind: 'stairs', label });
+  const part = (cells, label) => ({ cells, via: label === null ? null : via(label) });
+  assert.equal(floorIsPassed([part(1, 'W'), part(1, 'W'), part(1, null)], 1), true);
+  assert.equal(floorIsPassed([part(1, 'W'), part(4, 'W'), part(1, null)], 1), false, 'a walk across the floor is not a pass');
+  assert.equal(floorIsPassed([part(1, 'W'), part(1, 'X'), part(1, null)], 1), false, 'another letter');
+  assert.equal(floorIsPassed([part(1, ''), part(1, ''), part(1, null)], 1), false, 'blank letters');
+  assert.equal(floorIsPassed([part(1, 'W'), part(1, null)], 1), false, 'the last floor is where the walk ends');
+  assert.equal(floorIsPassed([part(1, 'W'), part(1, 'W')], 0), false, 'the first floor is not entered by stairs');
+  assert.equal(floorIsPassed([{ cells: 1, via: { kind: 'ride', label: 'A' } }, { cells: 1, via: { kind: 'ride', label: 'A' } }, part(1, null)], 1), false, 'a ride is not stairs');
+  // and on the real route: the sample's well W, one flight after the other
+  const open = openSchool(publishedWell());
+  const floors = routeFloors(open, open.route('rsample101', 'rsample303'));
+  assert.deepEqual(floors.map((each, at) => floorIsPassed(floors, at)), [false, floors[1].cells === 1, false]);
+});
+
+test('one-way stairs are said by letter: a stop with flights of different ways never says two contradictory sentences', () => {
+  const model = publishedWell((built) => {
+    built.building.connections[0].direction = 'ab';
+    built.building.connections[1].direction = 'ab';
+  });
+  const names = model.building.floors.map((floor) => floor.name);
+  const second = model.building.floors[1];
+  assert.deepEqual(oneWayGroups(model, second).map((each) => each.sentence), ['Stairs W is up only.']);
+  const against = clone(model);
+  against.building.connections[1].direction = 'ba';
+  const groups = oneWayGroups(against, against.building.floors[1]);
+  assert.equal(groups.length, 1, 'one letter, one sentence');
+  assert.equal(groups[0].text, 'Stairs W: up only from ' + names[0] + ' to ' + names[1] + ', down only from ' + names[2] + ' to ' + names[1]);
+  assert.equal(groups[0].sentence, groups[0].text + '.');
+  assert.deepEqual(oneWayStairs(against, against.building.floors[1]).map((each) => each.text), [groups[0].text]);
+  assert.equal(oneWayGroups(against, against.building.floors[0]).map((each) => each.sentence).join(' '), 'Stairs W is up only.', 'the end floor touches one flight only');
+  // letters differing only by case are one letter
+  const cased = clone(against);
+  cased.building.connections[1].well = 'w';
+  assert.equal(oneWayGroups(cased, cased.building.floors[1]).length, 1);
+  assert.deepEqual(oneWayGroups({ building: null }, second), []);
+});
+
+test('stairsLetter trims the well; nextConnectionLabel compares used labels and wells by name; stairwells leaves out flights with no id and sorts unknown floors last', () => {
+  assert.equal(stairsLetter({ label: 'A', well: ' W ' }), 'W');
+  assert.equal(stairsLetter({ label: 'A', well: '\tx\n' }), 'x');
+  assert.equal(nextConnectionLabel([{ label: 'a' }]), 'B', 'a used label is compared by name');
+  assert.equal(nextConnectionLabel([{ label: ' A ' }, { label: 'b' }]), 'C');
+  assert.equal(nextConnectionLabel([{ label: 'a', well: 'b' }, { label: 7 }, null]), 'C');
+  assert.equal(nextConnectionLabel([{ label: 'Z' }].concat(Array.from({ length: 25 }, (_, i) => ({ label: String.fromCharCode(97 + i) })))), 'AA');
+
+  const building = {
+    floors: [{ id: 'f1', level: 0 }, { id: 'f2', level: 1 }],
+    connections: [
+      { id: 'c1', label: 'A', well: ' W ', a: { floorId: 'f1', cell: 3 }, b: { floorId: 'f2', cell: 3 } },
+      { label: 'B', well: 'W', a: { floorId: 'f1', cell: 5 }, b: { floorId: 'f2', cell: 5 } },
+      { id: '', label: 'C', well: 'W', a: { floorId: 'f1', cell: 6 }, b: { floorId: 'f2', cell: 6 } },
+      { id: 'c4', label: 'D', well: 'W', a: { floorId: 'fgone', cell: 9 }, b: { floorId: 'f2', cell: 9 } },
+      { id: 'c5', label: 'E', well: 'W', a: { floorId: 'fgone', cell: 2 }, b: { floorId: 'fgone', cell: 4 } },
+    ],
+  };
+  const [well] = stairwells(building);
+  assert.equal(well.letter, 'W', 'the letter is trimmed');
+  assert.deepEqual(well.connectionIds, ['c1', 'c4', 'c5'], 'the flights with no id are left out');
+  assert.deepEqual(well.stops.map((stop) => stop.floorId + ':' + stop.cell), ['f1:3', 'f2:3', 'f2:9', 'fgone:2', 'fgone:4', 'fgone:9'], 'unknown floors last, by cell, never an unordered pair');
+  assert.deepEqual(well.stops.map((stop) => stop.level), [0, 1, 1, null, null, null]);
+  assert.equal(stairwells({ floors: [], connections: [{ id: 'c1', well: 'W', a: { floorId: 'x', cell: 1 }, b: { floorId: 'y', cell: 1 } }] })[0].stops.length, 2, 'a building with no floors still lists its stops');
+});
+
+test('the staff browser lists the away entries of a day type, so two day types that differ only by one are two cards', () => {
+  const model = publishedModel(school(), { clock });
+  model.teachers[0].away = [{ dayTypeIds: [B], weekdays: [], periods: [6, 7] }, { dayTypeIds: [], weekdays: [4], periods: [2] }, { dayTypeIds: ['zz'], periods: [1] }, { periods: 'x' }];
+  const open = openSchool(model);
+  const id = model.teachers[0].id;
+  assert.deepEqual(open.awayOf(id, A).map((each) => each.words), ['Not in school in Period 3 on Fridays']);
+  assert.deepEqual(open.awayOf(id, B).map((each) => each.words), ['Not in school in Periods 7 to 8 when it is ' + model.dayTypes.find((dayType) => dayType.id === B).name, 'Not in school in Period 3 on Fridays']);
+  assert.deepEqual(open.awayOf(id, B).map((each) => each.sometimes), [false, true]);
+  assert.deepEqual(open.awayOf('tgone00000', A), []);
 });
