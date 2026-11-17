@@ -57,6 +57,11 @@ orchestrator's to reopen.
 | D19 | The orchestrator carries on from M0 into M1 and beyond without waiting for Devon. It stops for him only when something truly cannot proceed without him; everything else is written down as a question with the assumption in force. |
 | D9 | An Opus orchestrator runs development. Sonnet 5.5 workers do the writing, the research and the code, each in a new session, at most three at a time. A worker's session is archived once it has reported. No work between 22:00 and 04:00 Eastern. |
 
+**Changed by Devon on 2026-11-16 at 23:26:** the quest card goes on the
+board at the first landing (M0), not at M5, and the page it links to says
+plainly that the game is being built. This replaces D14's "the card comes at
+M5". He also lifted the 22:00 to 04:00 rule (D9, D12) for that one night.
+
 ## 3. How it plays
 
 ### 3.1 The turn
@@ -103,7 +108,7 @@ after every turn.
   when it can come back. The Sahara is crossed in the cool months. Mountain
   passes shut in winter. Mediterranean sailing mostly stops in winter. Sending
   at the wrong time is the game's "ford the river" mistake.
-- **Goods and prices.** About 10 goods. Each city has its own price for each,
+- **Goods and prices.** Eight to twelve goods (ART.md v1 draws twelve). Each city has its own price for each,
   which drifts and reacts to events. The player's own sales push a local price
   down, so flooding one market is a lesson the player teaches themselves. The
   Mansa Musa event is the same rule at a king's scale.
@@ -145,6 +150,13 @@ after every turn.
 
 What Cairo sells: linen, sugar, glass, and everything it re-exports. The final
 list of goods is M1's.
+
+Corrected in M0 from the first research (orchestrator, 2026-11-16): Caffa is
+not a Cairo stop, because its trade with Cairo was mainly in enslaved people
+(D5); it returns with Constantinople in M7. The Sahara road runs by Tuat to
+Walata and Gao rather than to Timbuktu itself, and Quseir sits beside Aydhab
+on the Red Sea. ART.md v1 lists twelve goods, not about ten; M1 keeps the
+ones the sources support.
 
 ### 3.5 Constantinople (M7)
 
@@ -432,15 +444,15 @@ card, so Devon can play it on any device.
 
 **Ends with:** Cairo complete from title to score.
 
-### M5. Art in, polish, first public landing
+### M5. Art in, polish, the full public landing
 
 - Final art replaces placeholders as it arrives; nothing else waits for it.
 - Motion, transitions, the feel of opening a letter.
 - Accessibility and timing passes.
-- The quest card on `index.html` and `landing.html`, the preview and social
-  images, the social tags.
+- The preview and social images for the quest card, from the final art (the
+  card itself went up at M0, Devon 2026-11-16).
 
-**Ends with:** the game on the quest board.
+**Ends with:** the game on the quest board with its own pictures.
 
 ### M6. Depth
 

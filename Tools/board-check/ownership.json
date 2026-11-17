@@ -61,6 +61,10 @@
       "owns": ["Projects/schedule-visualizer-2/", ".github/workflows/schedule-visualizer-2-ci.yml"],
       "note": "Built from its own plan outside the ranked backlog (the Foreman loop, from 2026-10-07): no row in BACKLOG.md's table, no HISTORY.md entries. The planner, the staff browser and their suites live in the one folder; the suites run through Tools/board-check's harness read-only."
     },
+    "Merchant": {
+      "owns": ["Projects/Merchant/"],
+      "note": "Built from its own road map (Projects/Merchant/ROADMAP.md) outside the ranked backlog (the orchestrator loop in ~/projects/merchant/, from 2026-11-16, road map D10): no row in BACKLOG.md's table, no HISTORY.md entries. Its suites run through Tools/board-check's harness read-only."
+    },
 
     "Prompt Builder": {
       "owns": ["Tools/prompt-builder.html", "Tools/prompt-builder/"],
