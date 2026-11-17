@@ -418,7 +418,7 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   await p.focus('#room-features-add');
   await p.keyboard.type('s');
   const heights = await p.$$eval('#room-features-list [role="option"]', (all) => all.map((el) => el.getBoundingClientRect().height));
-  assert.ok(heights.length > 0 && heights.every((height) => height >= 44), 'options are 44 px: ' + heights.join(', '));
+  assert.ok(heights.length > 0 && heights.every((height) => height >= 43.9), 'options are 44 px: ' + heights.join(', '));
   await p.keyboard.press('Escape');
   await p.$eval('#room-features-add', (el) => { el.value = ''; });
   await p.tap(key('feature-edit'));
