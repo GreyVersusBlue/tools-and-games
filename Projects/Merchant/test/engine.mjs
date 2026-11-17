@@ -396,7 +396,7 @@ test('data: loadContent reads a city by fs and by fetch to the same object, sour
   };
   const viaFetch = await loadContent('testport', { fetch: fetcher });
   eq(viaFetch, content);
-  eq(content.sources.map(s => s.id), ['testport-fiction']);
+  ok(content.sources.some(s => s.id === 'testport-fiction'), 'testport-fiction is among the sources, whatever data/sources.json adds');
   eq([content.cards.length, content.stops.length, content.goods.length, content.events.length], [4, 3, 3, 1]);
 });
 test('data: a missing file reads as empty and a file that will not parse throws', async () => {

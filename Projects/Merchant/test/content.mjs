@@ -199,7 +199,7 @@ test('validate: a primary source needs a translator field, null for an edition i
 // pins testport's sources to one id; see the MER-03 report), so the 28 works wait in
 // test/fixtures/sources-28.json and these cases run on that copy.
 test('sources: 28 works, each with author, title, year and publisher, and no web address', async () => {
-  const s = JSON.parse(await fs.readFile(path.join(FIX, 'sources-28.json'), 'utf8'));
+  const s = JSON.parse(await fs.readFile(path.join(ROOT, 'data/sources.json'), 'utf8'));
   eq(s.length, 28);
   for (const x of s) for (const k of ['author', 'title', 'year', 'publisher']) ok(x[k], `${x.id} lacks ${k}`);
   ok(!/https?:|www\./i.test(JSON.stringify(s)), 'a web address in the sources');
