@@ -117,7 +117,7 @@
 
 import { findRoom, findById, resolveSlotRoom, nameKey, roomNumberKey, allRooms, bellSchedulesOf, releaseOf, isBellTime, inRange, RANGES, RELEASE_SECONDS, CELL_CORRIDOR, ELEVATOR_KIND } from './schema.js';
 import { findDayType, isOwnCopy, ownDayTypes, effectiveSchedule, describeDayType } from './day-types.js';
-import { periodName, formatTime } from './bells.js';
+import { periodName, periodWordForms, formatTime } from './bells.js';
 import { slotTeacherIds } from './teacher-day.js';
 import { countBySeverity, SEVERITIES, countWord, listWords, periodWord, formatDuration } from './findings.js';
 import { releaseDelay, releaseKind } from './release.js';
@@ -447,7 +447,7 @@ export function reconcile(project, scenario) {
   const dropped = [];
   list.forEach((change, index) => {
     let why = gone[index];
-    if (why === null && replaced[index]) why = [words('a later change to the same ' + String(project.settings.periodWord).toLowerCase() + ' replaces it.')];
+    if (why === null && replaced[index]) why = [words('a later change to the same ' + periodWordForms(project.settings).oneLower + ' replaces it.')];
     if (why === null && isNoChange(project, change)) why = [words('the schedule already has this.')];
     if (why === null) {
       changes.push(change);

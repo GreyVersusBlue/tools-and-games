@@ -39,10 +39,10 @@
 // nameKey of the imported name; `names[key]` is the name to import under
 // when the answer is 'rename' (otherwise " (2)", " (3)" is added).
 
-import { RANGES, roomNumberKey, nameKey, inRange, emptySlot, emptyDay, allRooms, nextGroupColour } from './schema.js';
+import { RANGES, roomNumberKey, nameKey, inRange, spacelessKey, emptySlot, emptyDay, allRooms, nextGroupColour } from './schema.js';
 import { isId } from './ids.js';
 import { isOwnCopy, effectiveDayType, findDayType, describeDayType } from './day-types.js';
-import { periodName, periodLabel } from './bells.js';
+import { periodName, periodNumberName, periodWordForms } from './bells.js';
 
 export const ROLES = ['name', 'grade', 'headCount', 'colour', 'dayType', 'period', 'ignore'];
 export const CLASH_POLICIES = ['skip', 'overwrite', 'rename'];
@@ -71,13 +71,31 @@ function letterIndex(letters) {
   return letters.length === 1 ? letters.charCodeAt(0) - 97 : -1;
 }
 
-// "period 3", "per. 3", "p3", "mod 3", "block c", "3rd hour", "hour 3", "3":
-// the period's index from 0, or -1 when the text is not a period header. A
-// bare letter is a period only in a school that letters its periods.
+// The periods that carry a name of their own, the same name once (ARCHITECTURE
+// 22.17): compared ignoring case and spaces. Two periods with one name are
+// never matched by it; the number is the way to say which.
+function periodsNamed(text, settings) {
+  const names = Array.isArray(settings.periodNames) ? settings.periodNames : [];
+  const key = spacelessKey(text);
+  const found = [];
+  for (let index = 0; index < settings.periods; index += 1) {
+    if (typeof names[index] === 'string' && names[index].trim() !== '' && spacelessKey(names[index]) === key) found.push(index);
+  }
+  return found;
+}
+
+// "period 3", "per. 3", "p3", "mod 3", "block c", "3rd hour", "hour 3", "3",
+// "lesson 3" (the school's word), and a period's own name ("lunch"): the
+// period's index from 0, or -1 when the text is not a period header. A bare
+// letter is a period only in a school that letters its periods. The number
+// name wins over an own name, an own name over the looser forms.
 function periodIndex(text, settings) {
   for (let index = 0; index < RANGES.periods[1]; index += 1) {
-    if (text === periodName(settings, index).toLowerCase()) return index;
+    if (spacelessKey(text) === spacelessKey(periodNumberName(settings, index))) return index;
   }
+  const named = periodsNamed(text, settings);
+  if (named.length === 1) return named[0];
+  if (named.length > 1) return -1;
   let match = text.match(/^(?:period|per|pd|p|mod|hour|hr|block|blk)\.? ?(\d{1,2})(?:st|nd|rd|th)?$/);
   if (!match) match = text.match(/^(\d{1,2})(?:st|nd|rd|th)? ?(?:period|mod|hour|block)?$/);
   if (match) {
@@ -86,7 +104,7 @@ function periodIndex(text, settings) {
   }
   match = text.match(/^(?:block|blk) ?([a-z])$/);
   if (match) return letterIndex(match[1]);
-  if (settings.periodWord === 'Block' && /^[a-z]$/.test(text)) return letterIndex(text);
+  if (periodWordForms(settings).count === 'letter' && /^[a-z]$/.test(text)) return letterIndex(text);
   return -1;
 }
 
@@ -133,7 +151,11 @@ export function guessColumns(header, project) {
       split = splitDayType(key, project);
       period = split.dayTypeId === null ? -1 : periodIndex(split.rest, settings);
     }
-    if (period === -1) return entry(column, text, 'ignore');
+    if (period === -1) {
+      const twice = periodsNamed(split.dayTypeId === null ? key : split.rest, settings);
+      if (twice.length > 1) return entry(column, text, 'ignore', null, null, 'Two periods are called "' + settings.periodNames[twice[0]] + '", so this column is not matched by that name. Call it by its number, like ' + periodNumberName(settings, twice[0]) + '.');
+      return entry(column, text, 'ignore');
+    }
     if (period >= settings.periods) return entry(column, text, 'ignore', null, null, 'The school day has ' + settings.periods + ' periods, so this column is past the end of it.');
     return entry(column, text, 'period', period, split.dayTypeId);
   });
