@@ -23,6 +23,5 @@ same relative path, and the tools load the result (`node tools/lint-content.mjs 
 Two folders must pass both tools: `d5-entry-ok` (a d5 entry may hold the banned words where it
 stands) and `term-with-entry` (the same card as `term-without-entry`, now unlocking the entry).
 
-The web address and the dashes are written as JSON escapes (`https`, `—`), so no file
-here holds a web address or a dash character; JSON turns them back into text when it loads.
+The web address and the dash are written as JSON escapes (a `\u0068` for the first letter of the address, `\u2014` for the dash), so no file here holds a web address or a dash character; JSON turns them back into text when it loads.
 The D5 fixtures hold a banned word in a test entry, which is the one place such a word may go.

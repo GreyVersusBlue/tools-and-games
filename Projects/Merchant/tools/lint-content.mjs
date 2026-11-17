@@ -120,14 +120,14 @@ const FILES = ['city', 'calendar', 'houses', 'goods', 'stops', 'routes', 'agents
 const isD5 = n => n && typeof n === 'object' && n.context === 'd5';
 
 export function normalize(s) {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ');
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ');
 }
 export function bannedHit(text, banned) {
   const t = normalize(text);
   return banned.find(w => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(t));
 }
 
-const DASH = /[—–]/;
+const DASH = /[\u2014\u2013]/;
 const URL_RE = /(https?:\/\/|www\.)\S+|\b[a-z0-9][a-z0-9-]*\.(com|org|net|edu|gov|io|uk|dev|app|info|co)\b/i;
 const TODO = /\bTODO\b/i;
 
