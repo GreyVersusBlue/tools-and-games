@@ -184,6 +184,131 @@ test('suggestPlan: a free agent who knows the stop, the best road, half the stoc
   eq(suggestPlan({ ...cairo({ house: 'newcomer' }) }, calmC, 'damascus'), null, 'a house with nobody to send');
 });
 
+// ---- a careful agent's timing is read everywhere a route is timed (MER-47's paths, pinned by MER-48)
+
+/** Testport with a second road to Hilltown: two legs of one season, so no agent is slowed on it, whose way
+    back opens only in the summer of 1201 (idx 5). Sent in spring 1200 it takes 6 seasons for everyone,
+    the same as the written two-by-two road for a plain agent and one fewer than it takes a careful one. */
+const withRiver = c => variant(c, y => {
+  const [out, back] = structuredClone(y.routes.find(r => r.id === 'harbour-saltmarsh').legs);
+  out.to = 'hilltown'; back.from = 'hilltown';
+  back.opens = ['summer']; back.when = { year: [1201, 1201] };
+  y.routes.push({ id: 'harbour-hilltown-river', to: 'hilltown', legs: [out, back] });
+});
+/** Plays an expedition at risk 0 until it is home and its paper has landed; the steps it took. */
+function ride(s, c, seen = () => {}) {
+  let n = 0;
+  while (s.expeditions.length) { s = step(s, c); n++; seen(s); ok(n < 30, 'it never came home'); }
+  return n;
+}
+
+test('a careful agent plays out the seasons project() counted: the later leg of two seasons or more starts with one more', () => {
+  const c = risk(T, 0);
+  const road = c.routes.find(r => r.id === 'harbour-hilltown');
+  const s = game(c, { house: 'rich' });
+  for (const [name, agent, seasons, later] of [['careful', 'mira', 7, 3], ['bold', 'tobin', 6, 2]]) {
+    const who = c.agents.find(a => a.id === agent);
+    eq(R.project(s, c, road, who).seasons, seasons, `${name}: what project says`);
+    let started;
+    const n = ride(outfit(s, c, { ...WOOL, agent }), c, t => {
+      const x = t.expeditions[0];
+      if (!started && x?.leg === 1 && x.status === 'out') started = x.left;
+    });
+    eq(started, later, `${name}: the second leg starts with ${later} seasons to ride`);
+    eq(n, seasons, `${name}: seasons from sending to the return paper`);
+  }
+});
+
+test('at the recall, a careful agent is further from word than a plain one by perSeason for each later leg of two seasons or more', () => {
+  // The first draw of recall() is the reach test, so the chance is placed around it: the plain agent's
+  // reach lands just above the draw and the careful agent's just below (one season less per slowed leg).
+  const long = c => variant(c, y => {
+    const legs = structuredClone(y.routes.find(r => r.id === 'harbour-hilltown').legs);
+    legs.push(structuredClone(legs[1]));
+    for (const l of legs) l.opens = ['spring', 'summer', 'autumn', 'winter'];
+    y.routes.push({ id: 'long', to: 'hilltown', legs });
+  });
+  const careful = long(risk(T, 0)), plain = plainMira(careful);
+  const p = 0.1;
+  const SEED = 6;                                   // its first draw is mid-range, so there is room either side of it
+  const how = (c, start, edit, route = 'harbour-hilltown') => {
+    const recallBlock = { reach: { start, perSeason: p, floor: 0 }, recalledSurvives: 1, recalledKeeps: 1, stayedSurvives: 1, homeSurvives: 1, byStop: {} };
+    const k = variant(c, y => { y.city.recall = recallBlock; });
+    let s = game(k, { length: 'acts', seed: SEED });
+    s = outfit(s, k, { ...WOOL, route });
+    s.phase = 'recall';
+    const x = s.expeditions[0];
+    edit(x);
+    return { how: recall(s, k, { [x.id]: 'recall' }).log.at(-1).results[0].how, u: peek(s) };
+  };
+  const u = how(plain, 1, () => {}).u;
+  ok(u > 0.2 && u < 0.7, `the seeded draw is ${u}; this case needs room either side of it`);
+  const cases = [
+    ['riding the first of two legs, one to go', 'harbour-hilltown', x => { x.leg = 0; x.status = 'out'; x.left = 1; }, 3, 1],
+    ['waiting to start the second of two legs', 'harbour-hilltown', x => { x.leg = 1; x.status = 'waiting'; x.left = 0; }, 2, 1],
+    ['riding the first of three legs, two to go', 'long', x => { x.leg = 0; x.status = 'out'; x.left = 1; }, 5, 2],
+  ];
+  for (const [what, route, edit, plainLag, extra] of cases) {
+    // plain reach = u + p/2 + (extra - 1) p for a plain agent; with only one slowed leg counted it would still pass
+    const start = u + plainLag * p + (extra - 0.5) * p + 0.0001;
+    eq(how(plain, start, edit, route).how, 'recalled', `${what}: the plain agent is reached`);
+    eq(how(careful, start, edit, route).how, 'no word', `${what}: the careful agent is ${extra} season${extra > 1 ? 's' : ''} further off and is not`);
+  }
+});
+
+test('checkPlan and outfit time the plan for the agent named: a careful agent waits less here and is refused less there', () => {
+  const c = risk(T, 0);
+  const gate = year => variant(c, y => { y.routes.find(r => r.id === 'harbour-hilltown').legs[1].when = { year }; });
+  const s = c0 => game(c0, { house: 'rich' });
+  // the way back opens in 1201: the written timing waits a season in Hilltown, the careful timing arrives as it opens
+  const g1 = gate([1201, 1201]);
+  const blind = checkPlan(s(g1), g1, { ...WOOL, agent: 'tobin' });
+  const slow = checkPlan(s(g1), g1, WOOL);
+  eq([blind.ok, slow.ok], [true, true]);
+  ok(/will wait in Hilltown for one season\./.test(blind.warnings.join(' ')), `the written timing: ${JSON.stringify(blind.warnings)}`);
+  eq(slow.warnings.filter(w => /will wait/.test(w)), [], 'the careful timing has no wait to warn of');
+  // the way back opens only in 1202: the written timing would wait five seasons (over MAX_WAIT), the careful one four
+  const g2 = gate([1202, 1202]);
+  const refused = reasons(s(g2), g2, { ...WOOL, agent: 'tobin' });
+  ok(refused.some(m => /A later leg, Hilltown to Harbour, can only start in spring, summer or autumn/.test(m)), JSON.stringify(refused));
+  const allowed = checkPlan(s(g2), g2, WOOL);
+  eq([allowed.ok, allowed.reasons], [true, []], 'the careful agent is not refused');
+  ok(/will wait in Hilltown for four seasons\./.test(allowed.warnings.join(' ')), JSON.stringify(allowed.warnings));
+  eq(outfit(s(g2), g2, WOOL).expeditions.length, 1, 'and outfit sends it');
+  throws(() => outfit(s(g2), g2, { ...WOOL, agent: 'tobin' }), /A later leg, Hilltown to Harbour/);
+});
+
+test('destinations() takes an optional agent, and its seasons and waits are that agent\'s', () => {
+  const c = risk(T, 0);
+  const s = game(c, { house: 'rich' });
+  const hill = (agent) => destinations(s, c, agent && c.agents.find(a => a.id === agent)).find(d => d.stop === 'hilltown');
+  eq([hill().seasons, hill('tobin').seasons, hill('mira').seasons], [6, 6, 7], 'written, bold, careful');
+  const salt = agent => destinations(s, c, agent && c.agents.find(a => a.id === agent)).find(d => d.stop === 'saltmarsh').seasons;
+  eq([salt(), salt('mira')], [salt('tobin'), salt('tobin')], 'a road of one-season legs is the same for everyone');
+  const g = variant(c, y => { y.routes.find(r => r.id === 'harbour-hilltown').legs[1].when = { year: [1201, 1201] }; });
+  const w = agent => destinations(s, g, agent && g.agents.find(a => a.id === agent)).find(d => d.stop === 'hilltown');
+  eq([w('tobin').waits, w('mira').waits], [1, 0], 'the waits are the agent\'s too');
+});
+
+test('the best road to a stop can flip for a careful agent, and suggestPlan, routeFor and destinations all pick the careful agent\'s road', () => {
+  const c = withRiver(risk(T, 0));
+  const plain = plainMira(c);
+  const s = game(c);
+  const sp = game(plain);
+  const mira = c.agents.find(a => a.id === 'mira');
+  const via = (st, k, agent) => routeFor(st, k, 'hilltown', agent);
+  eq([via(sp, plain, plain.agents[0]).route.id, via(sp, plain, plain.agents[0]).seasons], ['harbour-hilltown', 6], 'a plain agent: the written road wins the tie by coming first');
+  eq([via(s, c, mira).route.id, via(s, c, mira).seasons], ['harbour-hilltown-river', 6], 'a careful agent: the two-by-two road is 7, the river road is still 6');
+  eq(via(s, c).route.id, 'harbour-hilltown', 'no agent named: the legs as written');
+  eq(destinations(s, c, mira).find(d => d.stop === 'hilltown').route, 'harbour-hilltown-river');
+  eq(destinations(s, c).find(d => d.stop === 'hilltown').route, 'harbour-hilltown');
+  const careful = suggestPlan(s, c, 'hilltown');
+  eq([careful.agent, careful.route], ['mira', 'harbour-hilltown-river'], 'suggestPlan sends Mira the careful agent\'s road');
+  eq(checkPlan(s, c, careful).ok, true);
+  eq(outfit(s, c, careful).expeditions[0].left, 1, 'and her first leg is the one season the river road takes');
+  eq(suggestPlan(sp, plain, 'hilltown').route, 'harbour-hilltown', 'the same house with a plain Mira is sent the written road');
+});
+
 // ---- risk
 
 test('a careful agent takes one more season on a leg of two seasons or more, and the same as anyone on a leg of one', () => {

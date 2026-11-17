@@ -139,13 +139,14 @@ export function routeFor(state, content, stopId, agent) {
   return best;
 }
 
-/** One line per stop the house can send someone to now, each with its best open route. */
-export function destinations(state, content) {
+/** One line per stop the house can send someone to now, each with its best open route. With an
+    `agent` the seasons and the waits are that agent's timing (a careful agent is slower on a long leg). */
+export function destinations(state, content, agent) {
   const home = homeOf(content);
   const out = [];
   for (const stop of content.stops ?? []) {
     if (stop.id === home) continue;
-    const hit = routeFor(state, content, stop.id);
+    const hit = routeFor(state, content, stop.id, agent);
     if (hit) out.push({ stop: stop.id, name: stop.name, route: hit.route.id, seasons: hit.seasons, waits: hit.waits, warnings: hit.warnings });
   }
   return out;
