@@ -45,7 +45,8 @@ export async function loadCity(city, { overlay } = {}) {
   const shim = {
     async readFile(url, enc) {
       if (overlay) {
-        const rel = path.relative(DATA, fileURLToPath(url));
+        let rel = path.relative(DATA, fileURLToPath(url));
+        if (rel.startsWith(`${city}${path.sep}`)) rel = rel.slice(city.length + 1);
         try { return await fs.readFile(path.join(overlay, rel), enc); }
         catch (e) { if (e.code !== 'ENOENT') throw e; }
       }
