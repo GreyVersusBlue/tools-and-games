@@ -8,7 +8,7 @@
       "careful",
       "knows-damascus"
     ],
-    "wage": 20,
+    "wage": 8,
     "home": "cairo",
     "hireCard": "yusuf-asks-for-work"
   },
@@ -21,7 +21,7 @@
       "bold",
       "knows-aden"
     ],
-    "wage": 25,
+    "wage": 9,
     "home": "cairo"
   },
   {
@@ -33,7 +33,7 @@
       "bold",
       "knows-alexandria"
     ],
-    "wage": 15,
+    "wage": 7,
     "home": "cairo",
     "hireCard": "qirad-offer"
   },
@@ -46,7 +46,7 @@
       "honest",
       "careful"
     ],
-    "wage": 20,
+    "wage": 8,
     "home": "cairo"
   },
   {
@@ -58,7 +58,7 @@
       "sharp",
       "speaks-persian"
     ],
-    "wage": 25,
+    "wage": 9,
     "home": "cairo"
   },
   {
@@ -71,7 +71,7 @@
       "speaks-italian",
       "knows-alexandria"
     ],
-    "wage": 25,
+    "wage": 9,
     "home": "alexandria"
   },
   {
@@ -83,7 +83,7 @@
       "careful",
       "knows-qus"
     ],
-    "wage": 15,
+    "wage": 7,
     "home": "cairo"
   },
   {
@@ -95,7 +95,7 @@
       "sharp",
       "speaks-italian"
     ],
-    "wage": 30,
+    "wage": 10,
     "home": "alexandria"
   }
 ]
