@@ -28,6 +28,17 @@ function agentId(state, ref, ctx) {
   return id;
 }
 
+const nameOf = (content, id) => (content.agents ?? []).find(a => a.id === id)?.name ?? id;
+
+/** The agent a trust or memory effect names. A queued effect (it fires seasons after the choice) that
+    names an agent who has since left throws, so `fireDue` drops the item and logs it; a trial run
+    of the same effect at the choice does not, since the agent was there when it was chosen. */
+function stayedId(state, content, ref, ctx, what) {
+  const id = agentId(state, ref, ctx);
+  if (ctx.later && !ctx.dry && state.agents[id].where === 'gone') throw new Error(`${nameOf(content, id)} has left the house, so their ${what} cannot change`);
+  return id;
+}
+
 /** Structure check only: returns the effect's head key or throws. */
 export function check(effect) {
   if (!effect || typeof effect !== 'object' || Array.isArray(effect)) throw new Error('effect must be an object');
@@ -59,13 +70,13 @@ export function apply(state, content, effect, ctx = {}) {
       state.rep[v] = clamp3(state.rep[v] + whole(effect.by, 'rep'));
       return;
     case 'trust': {
-      const a = state.agents[agentId(state, v, ctx)];
+      const a = state.agents[stayedId(state, content, v, ctx, 'trust')];
       a.trust = clamp3(a.trust + whole(effect.by, 'trust'));
       return;
     }
     case 'memory':
       if (typeof effect.kind !== 'string') throw new Error('effect memory: needs a kind');
-      state.agents[agentId(state, v, ctx)].memory.push({ at: nowOf(state, content, ctx), kind: effect.kind });
+      state.agents[stayedId(state, content, v, ctx, 'memory')].memory.push({ at: nowOf(state, content, ctx), kind: effect.kind });
       return;
     case 'flag':
       if (typeof v !== 'string') throw new Error('effect flag: needs a name');
@@ -91,9 +102,12 @@ export function apply(state, content, effect, ctx = {}) {
       state.money += v.principal;
       return;
     }
-    case 'hire':
-      state.agents[agentId(state, v, ctx)].hired = true;
+    case 'hire': {
+      const id = agentId(state, v, ctx);
+      if (state.agents[id].where === 'gone') throw new Error(`${nameOf(content, id)} has gone to work for another house and cannot be hired again`);
+      state.agents[id].hired = true;
       return;
+    }
     case 'dismiss':
       state.agents[agentId(state, v, ctx)].hired = false;
       return;

@@ -377,10 +377,10 @@ test('turn: season order is pinned (ARCHITECTURE 4.1), with the jump between adv
   try {
     let s = game(); calls.length = 0;
     s = endSeason(answer(s, content), content);
-    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'advance', 'end', 'agents', 'returns', 'letters', 'news', 'events', 'drawCards']);
+    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'settle', 'advance', 'end', 'agents', 'returns', 'letters', 'news', 'events', 'drawCards']);
     s = endSeason(answer(s, content), content); calls.length = 0;
     s = endSeason(answer(s, content), content);                 // season index 2 to 8: a gap
-    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'advance', 'jump', 'end']);
+    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'settle', 'advance', 'jump', 'end']);
     eq(s.phase, 'interlude');
   } finally { Object.assign(steps, saved); }
 });

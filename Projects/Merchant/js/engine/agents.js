@@ -65,6 +65,7 @@ export function legSeasons(agent, leg) {
 
 export const LEAVES_AT = -2;      // an agent at home with trust this low or lower leaves at the next opening
 export const WARY_AT = -1;        // trust this low or lower acts as careful whatever the traits
+export const STEP_AT = 2;         // a season's net trust change among hired agents must be this large either way to move rep.agents
 export const UNFAIR_LIMIT = 2;    // this many `unfair` memories and the agent wants a share, not a wage
 export const UNFAIR = 'unfair';   // the memory an unpaid wage leaves
 export const BLAMED = 'blamed';   // the memory a report answered "You should have waited" leaves (data: a letter choice's `memory` effect)
@@ -124,9 +125,17 @@ export const wary = (s, agentId) => (s.agents[agentId]?.trust ?? 0) <= WARY_AT;
 
 /** Two or more `unfair` memories: the agent will not go on a wage again and asks for a qirad share.
     The words `outfit` gives, or null when the agent will go. */
-export function refusesOwn(s, agent) {
+export function refusesOwn(s, agent, qirad = true) {
   if (unfairCount(s.agents[agent.id]) < UNFAIR_LIMIT) return null;
-  return `${agent.name} will not go for a wage again, because the house did not pay what it promised before. ${agent.name} asks for a qirad share.`;
+  const why = `${agent.name} will not go for a wage again, because the house did not pay what it promised before.`;
+  return qirad ? `${why} ${agent.name} asks for a qirad share.` : why;
+}
+
+/** An agent at home with trust -2 or lower is about to leave and takes no new trip, on any contract,
+    so the house cannot keep them on the road to dodge the leaving. The words `outfit` gives, or null. */
+export function refusesAny(s, agent) {
+  if ((s.agents[agent.id]?.trust ?? 0) > LEAVES_AT) return null;
+  return `${agent.name} has lost faith in the house and will not go out again.`;
 }
 
 // Invented houses an agent may go to work for; chosen from the agent's place in the book, not drawn,
@@ -141,21 +150,32 @@ function reason(rec, name) {
   return `${name} says the house did not keep faith.`;
 }
 
+/** What `rep.agents` is owed for a season: the net trust change among agents the house has hired,
+    against the note taken at the opening. Only a net change of 2 or more either way moves it, and by
+    one step. A card's direct `rep: agents` effect already moved it, so a step the same way as that
+    direct move is not taken again. */
+function owed(s, was) {
+  let net = 0;
+  for (const [id, r] of Object.entries(s.agents)) if (r.hired && id in was.trust) net += r.trust - was.trust[id];
+  if (Math.abs(net) < STEP_AT) return 0;
+  const step = Math.sign(net);
+  return Math.sign(s.rep.agents - (was.rep ?? s.rep.agents)) === step ? 0 : step;
+}
+
+/** Closing step "settle": after the season's answers and its closing, before the calendar moves, so
+    a season before an act jump and the last season count too (the jump halves trust and is not the
+    house's doing, and nothing is read after it). Moves `rep.agents` by `owed`. */
+export function settle(s) {
+  const was = s.log.find(e => e.kind === NOTED);
+  if (was) s.rep.agents = clamp3(s.rep.agents + owed(s, was));
+}
+
 /** Opening step "agents": the first thing that runs when a season opens, before the returns.
-    1. The season that has just closed moves `rep.agents` by the sum of every agent's trust change
-       since the last opening, at most one step (nothing moves across the years of a jump, whose
-       halving is not the house's doing).
-    2. An agent at home with trust -2 or lower leaves: hired false, where "gone", a notice paper that
+    1. An agent at home with trust -2 or lower leaves: hired false, where "gone", a notice paper that
        names them and says why.
-    3. The trust of every agent is noted, in the log, for the next opening. */
+    2. The trust of every agent and `rep.agents` are noted, in the log, for the closing's `settle`. */
 export function opening(s, content) {
   const idx = seasonIndex(s, content);
-  const was = s.log.find(e => e.kind === NOTED);
-  if (was && idx - was.at === 1) {
-    let sum = 0;
-    for (const [id, r] of Object.entries(s.agents)) sum += r.trust - (was.trust[id] ?? r.trust);
-    s.rep.agents = clamp3(s.rep.agents + Math.max(-1, Math.min(1, sum)));
-  }
   (content.agents ?? []).forEach((a, i) => {
     const rec = s.agents[a.id];
     if (!rec?.hired || rec.trust > LEAVES_AT || rec.where !== cityOf(content, 'agents').home || s.expeditions.some(x => x.agent === a.id)) return;
@@ -167,5 +187,5 @@ export function opening(s, content) {
     s.log.push({ at: idx, kind: 'left', ref: a.id, choice: 'trust', ...(shown ? {} : { dropped: 'notice' }) });
   });
   s.log = s.log.filter(e => e.kind !== NOTED);
-  s.log.push({ at: idx, kind: NOTED, trust: Object.fromEntries(Object.entries(s.agents).map(([id, r]) => [id, r.trust])) });
+  s.log.push({ at: idx, kind: NOTED, trust: Object.fromEntries(Object.entries(s.agents).map(([id, r]) => [id, r.trust])), rep: s.rep.agents });
 }

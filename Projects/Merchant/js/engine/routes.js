@@ -18,7 +18,7 @@ import { applyAll } from './effects.js';
 import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
 import * as M from './market.js';
-import { riskFactor, bargain, legSeasons, returnTrust, refusesOwn } from './agents.js';
+import { riskFactor, bargain, legSeasons, returnTrust, refusesOwn, refusesAny } from './agents.js';
 import { decide, close, seasonsLeft, MAX_HOLD, WAIT, HOME } from './letters.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
@@ -303,6 +303,7 @@ function build(s, content, plan) {
   else if (!rec.hired) no(`${agent.name} does not work for the house.`);
   else if (rec.where === 'road' || s.expeditions.some(x => x.agent === agent.id)) no(`${agent.name} is already on the road.`);
   else if (rec.where !== home) no(`${agent.name} is not in ${homeName}.`);
+  else { const leaving = refusesAny(s, agent); if (leaving) no(leaving); }
 
   // where
   const route = plan.route ? routeOf(content, plan.route) : null;
@@ -353,7 +354,7 @@ function build(s, content, plan) {
     else if (!isCount(partners) || partners < 1) no('A qirad needs partners who put in some money. Say how much.');
     else if (partners > purse + buyCost) no(`The partners cannot put in more than the ${coins(content, purse + buyCost)} that goes out in money and bought goods.`);
   } else partners = 0;
-  const wants = agent && kind === 'own' ? refusesOwn(s, agent) : null;
+  const wants = agent && kind === 'own' ? refusesOwn(s, agent, !!city.contracts?.qirad?.agentShare) : null;
   if (wants) no(wants);
 
   // selling and buying at the far end
@@ -430,26 +431,31 @@ export function suggestPlan(state, content, stopId) {
     return r?.hired && r.where === home && !state.expeditions.some(x => x.agent === a.id);
   });
   if (!free.length) return null;
-  const agent = free.find(a => a.traits.includes(`knows-${stopId}`)) ?? free[0];
-  const hit = routeFor(state, content, stopId, agent);
-  if (!hit) return null;
-  const homePrice = g => state.known[home]?.[g]?.p ?? M.truePrice(state, content, home, g) ?? 0;
-  const there = g => state.known[stopId]?.[g]?.p ?? null;
-  const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0)
-    .sort((a, b) => ((there(b) ?? 0) - homePrice(b)) - ((there(a) ?? 0) - homePrice(a)) || state.stock[b] - state.stock[a] || (a < b ? -1 : 1));
-  if (!goods.length) return null;
-  const g = goods[0];
-  const load = Math.max(1, Math.floor(state.stock[g] / 2));
-  // buy back the good that is cheaper there than at home by what the house knows
-  const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
-    .sort((a, b) => (homePrice(b) - there(b)) - (homePrice(a) - there(a)) || (a < b ? -1 : 1));
-  const plan = { agent: agent.id, route: hit.route.id, cargo: { [g]: load }, purse: 0, contract: 'own', sell: [g], buy: back.slice(0, 1) };
-  // an agent who will not go for a wage again is offered a qirad: partners put in a small purse and the house sends no money
-  if (refusesOwn(state, agent)) {
-    const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
-    Object.assign(plan, { contract: 'qirad', partners: stake, purse: stake });
-  }
-  return build(structuredClone(state), content, plan).problems.length ? null : plan;
+  const tryAgent = agent => {
+    const hit = routeFor(state, content, stopId, agent);
+    if (!hit) return null;
+    const homePrice = g => state.known[home]?.[g]?.p ?? M.truePrice(state, content, home, g) ?? 0;
+    const there = g => state.known[stopId]?.[g]?.p ?? null;
+    const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0)
+      .sort((a, b) => ((there(b) ?? 0) - homePrice(b)) - ((there(a) ?? 0) - homePrice(a)) || state.stock[b] - state.stock[a] || (a < b ? -1 : 1));
+    if (!goods.length) return null;
+    const g = goods[0];
+    const load = Math.max(1, Math.floor(state.stock[g] / 2));
+    // buy back the good that is cheaper there than at home by what the house knows
+    const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
+      .sort((a, b) => (homePrice(b) - there(b)) - (homePrice(a) - there(a)) || (a < b ? -1 : 1));
+    const plan = { agent: agent.id, route: hit.route.id, cargo: { [g]: load }, purse: 0, contract: 'own', sell: [g], buy: back.slice(0, 1) };
+    // an agent who will not go for a wage again is offered a qirad: partners put in a small purse and the house sends no money
+    if (refusesOwn(state, agent)) {
+      const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
+      Object.assign(plan, { contract: 'qirad', partners: stake, purse: stake });
+    }
+    return build(structuredClone(state), content, plan).problems.length ? null : plan;
+  };
+  // one who knows the stop first; an agent who refuses (a wage again, or a house they are leaving) is passed over for the next
+  const order = [...free.filter(a => a.traits.includes(`knows-${stopId}`)), ...free.filter(a => !a.traits.includes(`knows-${stopId}`))];
+  for (const agent of order) { const plan = tryAgent(agent); if (plan) return plan; }
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------

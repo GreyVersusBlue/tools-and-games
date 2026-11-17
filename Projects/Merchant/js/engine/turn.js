@@ -22,6 +22,7 @@ export const RECENT = 6; // a card is not drawn again within this many seasons
 export const steps = {
   // opening a season
   agents(s, content) { agents.opening(s, content); },
+  settle(s) { agents.settle(s); },
   returns(s, content) { routes.returns(s, content); },
   letters(s, content) { letters.letters(s, content); },
   news(s, content) {
@@ -247,6 +248,7 @@ export function endSeason(state, content) {
   steps.tolls(s, content);
   steps.drift(s, content);
   steps.fireDue(s, content);
+  steps.settle(s);
   const closing = seasonIndex(s, content), first = s.t === 0;
   const moved = steps.advance(s, content);
   if (moved && seasonIndex(s, content) - closing > 1) steps.jump(s, content);

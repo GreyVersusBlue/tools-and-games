@@ -194,6 +194,37 @@ test('repair: papers for a card or event the content lacks leave the desk; the l
   eq(r.desk, game().desk);
   eq(r.log.length, s.log.length);
 });
+test('repair: the agent-left notice, whose words are in its own data, stays; a notice with neither an event nor words goes', () => {
+  const s = game();
+  const left = { id: null, kind: 'notice', ref: 'agent-left', agent: 'tobin', state: 'open', data: { headline: 'Tobin has gone to work for the Karimi house.', title: 'Tobin has left', body: 'Tobin has gone to work for the Karimi house.' } };
+  s.desk.push(copy(left));
+  s.desk.push({ id: null, kind: 'notice', ref: 'agent-left', state: 'open' });
+  s.desk.push({ id: null, kind: 'notice', ref: 'agent-left', state: 'open', data: { headline: '  ', body: 7 } });
+  const r = repair(s, content);
+  eq(r.desk.filter(p => p.ref === 'agent-left'), [left]);
+  eq(r.desk.length, game().desk.length + 1);
+});
+test('repair: the leave notice an opening really puts on the desk survives a reload', () => {
+  let s = game();
+  s.agents.tobin.trust = -2;
+  for (const p of copy(s.desk)) s = choose(s, content, p.id, paperChoices(s, content, p.id)[0].id);
+  s = endSeason(s, content);
+  ok(s.desk.some(p => p.ref === 'agent-left'), 'the notice is on the desk');
+  const r = repair(JSON.parse(JSON.stringify(s)), content);
+  eq(r.desk.map(p => p.ref), s.desk.map(p => p.ref), 'the same papers after repair');
+  const t = repair(JSON.parse(JSON.stringify(s)), content);
+  ok(t.log.some(e => e.kind === 'trust'), 'and the trust note, whole, stays');
+});
+test('repair: a trust log entry with a string or null value, or no table, is dropped; a good one stays', () => {
+  const entry = (trust, extra = {}) => ({ at: 2, kind: 'trust', trust, ...extra });
+  const logOf = e => { const s = game(); s.log = [e, { at: 2, kind: 'season', change: 0, money: 100 }]; return repair(s, content).log; };
+  eq(logOf(entry({ mira: 'high', tobin: 0 })).map(e => e.kind), ['season'], 'a string');
+  eq(logOf(entry({ mira: null })).map(e => e.kind), ['season'], 'null');
+  eq(logOf(entry(null)).map(e => e.kind), ['season'], 'no table');
+  eq(logOf(entry('x')).map(e => e.kind), ['season'], 'a string for the table');
+  eq(logOf(entry({ mira: 1, tobin: -1 }, { rep: 1 })).map(e => e.kind), ['trust', 'season'], 'a good one stays');
+  eq(logOf(entry({ mira: 1 }, { rep: 'two' }))[0].rep, undefined, 'a malformed rep is cut and the entry stays');
+});
 test('repair: a desk over five papers is cut to five', () => {
   const s = game();
   for (let i = 0; i < 4; i++) s.desk.push({ id: null, kind: 'card', ref: 'lamp-order', state: 'open' });
