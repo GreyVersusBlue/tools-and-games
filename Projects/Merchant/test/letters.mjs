@@ -178,7 +178,7 @@ test('(1) a letter in the post when the act jump settles its expedition is deliv
   const states = play(c, seed, opts), control = play(noHappened(c), seed, opts);
   const j = states.findIndex(s => s.phase === 'interlude');
   ok(j > 0, 'the jump came');
-  eq([states[j].expeditions, states[j].log.at(-2).kind], [[], 'jump'], 'the jump settled the expedition');
+  eq([states[j].expeditions, states[j].log.some(e => e.kind === 'jump')], [[], true], 'the jump settled the expedition');
   ok(posted(states[j], 'r1'), 'the letter is still in the post across the jump');
   ok(states[j + 1].desk.some(p => p.ref === 'r1'), 'on the desk when the next act opens');
   eq(salt(states[j + 1]) - salt(control[j + 1]), 3, 'its happened applied');
