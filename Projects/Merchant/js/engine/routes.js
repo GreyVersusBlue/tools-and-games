@@ -19,6 +19,7 @@ import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
 import * as M from './market.js';
 import { riskFactor, bargain, legSeasons } from './agents.js';
+import { decide, WAIT } from './letters.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
 export const UPKEEP = 4;            // coins a season for an expedition waiting at a stop (an estimate; the bots tune it)
@@ -578,6 +579,8 @@ export function tolls(s, content) {
     for (const [g, q] of Object.entries(given)) x.book.paidInGoods[g] = (x.book.paidInGoods[g] ?? 0) + q;
     if (rode.leg === route.legs.length - 1) { x.status = 'home'; x.leg = route.legs.length; continue; }
     x.leg = rode.leg + 1;
+    // an order from a letter, or the agent's trait until one comes (letters.js): wait a season here
+    if (decide(s, content, x, rode.leg, idx) === WAIT) { x.status = 'waiting'; continue; }
     startLeg(s, content, x, 1);
   }
 }

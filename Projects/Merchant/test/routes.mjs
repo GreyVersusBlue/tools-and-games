@@ -203,7 +203,9 @@ function ride(s, c, seen = () => {}) {
 }
 
 test('a careful agent plays out the seasons project() counted: the later leg of two seasons or more starts with one more', () => {
-  const c = risk(T, 0);
+  // MER-60: testport has letters now, and a careful agent who has asked a question waits at the end of the leg
+  // (test/letters.mjs), so this case, which is about legs, plays without any.
+  const c = variant(risk(T, 0), y => { y.letters = []; });
   const road = c.routes.find(r => r.id === 'harbour-hilltown');
   const s = game(c, { house: 'rich' });
   for (const [name, agent, seasons, later] of [['careful', 'mira', 7, 3], ['bold', 'tobin', 6, 2]]) {

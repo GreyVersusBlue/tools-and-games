@@ -1,0 +1,36 @@
+[
+  {
+    "id": "rain-on-the-pass",
+    "kind": "question",
+    "from": { "name": "The mule road", "role": "Hilltown road", "seal": null },
+    "title": "Rain on the pass",
+    "body": "The rain has come early on the pass. The mules can wait here until the road dries, or press on through the mud.",
+    "when": { "leg": { "by": "mules" } },
+    "weight": 3,
+    "repeat": false,
+    "default": "hold",
+    "choices": [
+      { "id": "hold", "label": "Wait for the road to dry", "hint": "It costs a season, and it is safe.", "now": [ { "order": { "go": "wait" } } ] },
+      { "id": "press", "label": "Press on through the mud", "hint": "It is faster, and it is not safe.", "now": [ { "order": { "go": "press" } } ] }
+    ],
+    "note": "An invented letter for testing.",
+    "sources": [ { "src": "testport-fiction" } ]
+  },
+  {
+    "id": "salt-toll",
+    "kind": "report",
+    "from": { "name": "The salt road", "role": "Saltmarsh road", "seal": null },
+    "title": "A toll at the salt pans",
+    "body": "The keeper of the salt pans asked a small toll. I paid 4 coins rather than argue, and we are going on.",
+    "when": { "at": "saltmarsh" },
+    "happened": [ { "money": -4 } ],
+    "weight": 2,
+    "repeat": false,
+    "choices": [
+      { "id": "right", "label": "You did right", "hint": "The agent will trust your judgment.", "now": [ { "trust": "$agent", "by": 1 } ] },
+      { "id": "argue", "label": "You should have argued", "hint": "The agent may argue next time.", "now": [ { "trust": "$agent", "by": -1 } ] }
+    ],
+    "note": "An invented letter for testing.",
+    "sources": [ { "src": "testport-fiction" } ]
+  }
+]

@@ -414,7 +414,8 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
   // MER-41: 406 and 16 became 416 and 24. The jump rolls each hired agent's retirement from state.rng, which moves the
   // second act's draws, and the log gains one entry for the jump and one for each Accounts paper.
   eq(s.money, 416, 'final money');
-  eq(s.log.length, 24, 'log length');
+  // MER-60: 24 became 30. The closing step writes one `season` entry for each of the six seasons played.
+  eq(s.log.length, 30, 'log length');
   eq(JSON.stringify(s), JSON.stringify((() => {
     let t = game();
     while (t.phase !== 'recall') { t = t.phase === 'interlude' ? openSeason(t, content) : endSeason(answer(t, content), content); }
@@ -599,13 +600,13 @@ test('acts numbering: "past the act\'s first half" reads the same position in bo
 test('pinned game: the papers of each season of seed 7 (full) are pinned, and a different seed deals different ones', () => {
   const { seq, s } = play(content, { seed: 7 });
   // MER-41: the papers other than the Accounts paper are exactly what they were; the money is too. The log grew by the
-  // accounts entries (23 to 39).
+  // accounts entries (23 to 39). MER-60: 39 became 50, one `season` entry for each of the eleven seasons closed.
   eq(seq.map(x => x.filter(r => r !== 'accounts').join('+')), [
     'welcome-note+wool-offer', 'lamp-order', 'wool-due+salt-order+court-summons', 'quay-toll+lamp-quarrel', 'salt-dispute+bridge-toll',
     'rope-dispute+harvest-gift', 'wool-offer', 'lamp-order', 'wool-due+salt-order', 'quay-toll+lamp-quarrel+court-summons', 'fair-closes+salt-dispute+bridge-toll',
   ]);
   eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, false, true, true], 'the seasons that open with an Accounts paper');
-  eq([s.money, s.log.length], [396, 39]);
+  eq([s.money, s.log.length], [396, 50]);
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
 });

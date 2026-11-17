@@ -28,7 +28,7 @@ export const CONDITION_LEAVES = {
   season: [], year: [], act: [], length: [], notebook: [], out: [], money: [], stock: ['gte'],
   flag: ['not', 'gte'], rep: ['gte', 'lte'], agent: ['hired', 'where'],
 };
-// Leaves only a letter's `when` may use (ARCHITECTURE 5.7); the engine does not read them yet.
+// Leaves only a letter's `when` may use (ARCHITECTURE 5.7); letters.js reads them off the expedition.
 export const LETTER_LEAVES = { leg: [], at: [], trait: [] };
 
 export function validateContent(raw, { art } = {}) {
@@ -210,8 +210,12 @@ export function validateContent(raw, { art } = {}) {
   function letters(items) {
     items.forEach((c, i) => {
       const p = `letters[${i}]${isObj(c) && typeof c.id === 'string' ? ` (${c.id})` : ''}`;
-      obj(c, p, { ...common(true), kind: (x, q) => oneOf(['question', 'report'], x, q), happened: effects('do') }, ['id', 'kind', 'title', 'body', 'choices', 'note']);
+      obj(c, p, { ...common(true), kind: (x, q) => oneOf(['question', 'report'], x, q), happened: effects('do'), default: str }, ['id', 'kind', 'title', 'body', 'choices', 'note']);
       if (isObj(c) && c.kind === 'question' && 'happened' in c) schema(p, 'only a report has "happened"');
+      if (isObj(c) && 'default' in c) {
+        if (c.kind !== 'question') schema(p, 'only a question has a "default"');
+        else if (Array.isArray(c.choices) && !c.choices.some(ch => isObj(ch) && ch.id === c.default)) schema(`${p}.default`, `no choice "${c.default}" to act as the default`);
+      }
       if (isObj(c) && c.kind === 'report' && Array.isArray(c.choices)) {
         c.choices.forEach((ch, j) => { if (isObj(ch) && (ch.now ?? []).some?.(e => isObj(e) && 'order' in e)) schema(`${p}.choices[${j}]`, 'a report\'s choices are the house\'s response, not orders'); });
       }
