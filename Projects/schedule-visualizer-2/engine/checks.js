@@ -408,7 +408,7 @@ export function checkSchedule(project, walkResults) {
           return taught.roomText !== '' ? taughtGroup.name + ' is in "' + taught.roomText + '" (not in the building)' : taughtGroup.name + ' is scheduled';
         });
         const text = hits.length > 0
-          ? teacher.name + ' is not in school in ' + periodName(settings, entry.period) + ' on ' + dayNames + (scope === '' ? '' : ' (' + scope + ')') + ', but ' + listWords(teaches) + ' then. Another teacher is needed, or the entry for when ' + teacher.name + ' is not in school needs to change.'
+          ? teacher.name + ' is not in school in ' + periodName(settings, entry.period) + ' on ' + dayNames + (scope === '' ? '' : ' (' + scope + ')') + ', but ' + listWords(teaches) + ' then. Change the entry, or give that group another teacher.'
           : teacher.name + ' is not in school ' + scope + ', and ' + listWords(teaches) + ' in ' + periodName(settings, entry.period) + ' on ' + dayNames + '. On those days that group needs another teacher.';
         const finding = makeFinding('teacher-away', [holding[0][0].id, entry.period, teacher.id], text,
           { dayTypeId: holding[0][0].id, period: entry.period, groupIds: entry.groups.map((taught) => taught.groupId), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id },
