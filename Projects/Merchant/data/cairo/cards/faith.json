@@ -72,7 +72,7 @@
       "seal": null
     },
     "title": "A Christian merchant writes",
-    "body": "Nicola is a Christian merchant in Alexandria. He has heard good things of your house and wants to trade with you. He asks you to send him a few bolts of linen, worth 20 dinars, to start.",
+    "body": "Nicola is a Christian merchant in Alexandria. He has heard good things of your house and wants to trade with you. He asks you to send him a few bolts of linen to start.",
     "when": {
       "rep": "foreign",
       "gte": 0
