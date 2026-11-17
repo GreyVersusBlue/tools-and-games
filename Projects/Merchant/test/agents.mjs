@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, throws, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import * as R from '../js/engine/routes.js';
-import { decide, WAIT } from '../js/engine/letters.js';
+import { decide, WAIT, ON } from '../js/engine/letters.js';
 import { SCALE, scaleWords, stepOf, UNFAIR, BLAMED } from '../js/engine/agents.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
@@ -104,12 +104,11 @@ test('rule 2 an agent at -1, and an agent at -2 who is out on the road, stay', (
 // ---- rule 3: an agent at -1 or lower acts as careful
 
 test('rule 3 a bold agent at trust -1 holds the expedition where it stands, as a careful one does; at 0 it goes on', () => {
-  const asked = { kind: 'question', leg: 0, def: null };
-  const ask = trust => { const s = outfit(game(), calm, { ...WOOL, agent: 'tobin' }); s.agents.tobin.trust = trust; const x = s.expeditions[0]; x.post = [{ ...asked }]; return decide(s, calm, x, 0, 3); };
+  const ask = trust => { const s = outfit(game(), calm, { ...WOOL, agent: 'tobin' }); s.agents.tobin.trust = trust; const x = s.expeditions[0]; s.post.push({ id: 'rain-on-the-pass', kind: 'question', expedition: x.id }); return decide(s, calm, x, 3); };
   eq(ask(-1), WAIT);
   eq(ask(-3), WAIT);
-  eq(ask(0), null);
-  eq(ask(2), null);
+  eq(ask(0), ON);
+  eq(ask(2), ON);
 });
 
 // ---- rule 4: two unfair memories, a share and no wage
