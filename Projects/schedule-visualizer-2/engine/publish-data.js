@@ -118,6 +118,16 @@ function away(source) {
   return list(source).filter((entry) => entry && typeof entry === 'object').map((entry) => ({ dayTypeIds: list(entry.dayTypeIds).slice(), weekdays: list(entry.weekdays).slice(), periods: list(entry.periods).slice() }));
 }
 
+// The custom word and the names, each only when there (W7).
+function writtenWordSettings(settings) {
+  const out = {};
+  const custom = settings.periodCustom;
+  const names = settings.periodNames;
+  if (custom && typeof custom === 'object') out.periodCustom = periodCustom(custom);
+  if (Array.isArray(names) && names.length > 0) out.periodNames = names.slice();
+  return out;
+}
+
 function slot(source) {
   return { room: source.room, roomText: source.roomText, label: source.label, teacherIds: list(source.teacherIds).slice() };
 }
@@ -239,8 +249,7 @@ export function publishedModel(project, options) {
       elevatorSecondsPerFloor: elevatorSettings(settings).perFloor,
       elevatorPeoplePerTrip: elevatorSettings(settings).perTrip,
       // W7: the custom period word and the periods' own names, only when the project has them
-      ...(settings.periodCustom && typeof settings.periodCustom === 'object' ? { periodCustom: periodCustom(settings.periodCustom) } : {}),
-      ...(Array.isArray(settings.periodNames) && settings.periodNames.length > 0 ? { periodNames: settings.periodNames.slice() } : {}),
+      ...writtenWordSettings(settings),
     },
     building: {
       floors: list(project.building.floors).map(floor),
