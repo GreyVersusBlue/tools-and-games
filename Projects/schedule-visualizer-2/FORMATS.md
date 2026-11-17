@@ -84,8 +84,8 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `schoolName` | text | `""` | Empty shows the tool's own name. |
 | `periods` | integer | `8` | 1 to 16. Every day and every bell schedule has this many entries. |
 | `periodWord` | text | `"Period"` | `"Period"`, `"Mod"`, `"Block"` or `"Hour"`. Names are Period 1, Mod 1, Block A, 1st Hour. |
-| `periodCustom` | object or `null`, optional | absent reads as `null` | The school's own word for a period, which wins over `periodWord` (that keeps its value, so a copy of the tool from before it still shows it): `{ "word", "plural", "count" }`. `word` is 1 to 16 characters, trimmed, and is shown as typed in every form ("Lesson", never lower-cased). `plural` is 1 to 16 characters, optional (absent reads as the word and an "s"). `count` is `"number"` (Lesson 1), `"letter"` (Lesson A) or `"ordinal"` (1st Lesson). Written to the schedule file only when set (an optional extra of its settings). Published when set. Not in `defaultSettings()`: a new project has none. Validate refuses an object of another shape or a word, plural or count out of range; on load repair trims and cuts the words, makes a missing or unknown `count` `"number"`, and removes one it cannot read, each with a note. |
-| `periodNames` | text[], optional | absent reads as `[]` | The periods' own names: index is the period (from 0), `""` or a missing entry is no name, as typed. At most 16 entries, each at most 24 characters. A name wins over the word and number wherever a period is named. Validate refuses a list that is not text, more than 16 entries or an entry longer than 24; it does not refuse more entries than `periods` (an older copy of the tool may have shortened the day). On load repair cuts the list to `periods` entries and each name to 24 characters, clears an entry that is not text and removes a list it cannot read, each with a note. Written to the schedule file only when set. Published when it holds at least one entry. |
+| `periodCustom` | object or `null`, optional | absent reads as `null` | The school's own word for a period, which wins over `periodWord` (that keeps its value, so a copy of the tool from before it still shows it): `{ "word", "plural", "count" }`. `word` is 1 to 16 characters with no space before or after, and is shown as typed in every form ("Lesson", never lower-cased). `plural` is 1 to 16 characters with no space before or after, optional (absent reads as the word and an "s"). `count` is `"number"` (Lesson 1), `"letter"` (Lesson A) or `"ordinal"` (1st Lesson). Written to the schedule file only when set (an optional extra of its settings). Published when set. Not in `defaultSettings()`: a new project has none. Validate refuses an object of another shape or a word, plural or count out of range, and a word or plural with a space before or after it (the field is new, so nothing older wrote one); on load repair trims and cuts the words, saying so in its note, makes a missing or unknown `count` `"number"`, and removes one it cannot read, each with a note. |
+| `periodNames` | text[], optional | absent reads as `[]` | The periods' own names: index is the period (from 0), `""` or a missing entry is no name, as typed. At most 16 entries, each at most 24 characters. A name wins over the word and number wherever a period is named. Validate refuses a list that is not text, more than 16 entries or an entry longer than 24; it does not refuse more entries than `periods` (an older copy of the tool may have shortened the day). On load repair cuts the list to `periods` entries and each name to 24 characters, clears an entry that is not text and removes a list it cannot read, each with a note. Written to the schedule file and published only when at least one entry is not blank, never as a list of blanks. |
 | `defaultPassingSeconds` | integer | `240` | 0 to 3600. Used where bell times are missing. |
 | `defaultHeadCount` | integer | `25` | 1 to 999. Used for a group with no head count. |
 | `secondsPerCell` | integer | `3` | 1 to 10. Walking time for one corridor cell. |
@@ -197,14 +197,15 @@ scenario) and unique in the project, `name` is 1 to 30 characters, as typed.
 Two features never share a name, compared without regard to capitals or
 surrounding spaces: that is a rule of the actions (which refuse), not of
 validate, and on load repair makes a repeated name unique ("Lab (2)"). A room's
-`featureIds` lists its features, each once, in the order of `building.features`.
+`featureIds` lists its features, each once. The order is the room's own: validate does not ask for the list's order and repair does not change it.
 Validate checks the form only: a list of strings, each once; an id the list does
 not hold is not refused, since a copy of the tool from before features may
 have deleted the feature. On load repair drops entries that are not objects or
 have no name, gives a feature with a missing, malformed or repeated id a new
 one (a room that named it by the old id follows), cuts a name to 30 characters,
-stops the list at 40, and filters a room's `featureIds` to the ids the list holds, each once, in
-the list's order; each with a note. The features travel in the project file
+stops the list at 40, and filters a room's `featureIds` to the ids the list holds, each once, keeping
+the room's order; each with a note. A name is trimmed before "(2)" is added (" lab " after "lab" is "lab (2)"). Merge import's "Only the building"
+keeps on each room only the features the incoming list holds. The features travel in the project file
 and the building file (they are part of the building), and a published file
 carries only the features a published room has.
 
@@ -219,8 +220,9 @@ stairwells may have pulled a middle flight out). Validate checks the form only:
 a non-blank text of at most 8 characters, and nothing across connections. On load
 repair, each with a note: removes `well` from an elevator connection, removes
 one that is not text and cuts one longer than 8 characters; gives a well that
-has the same letter as a stairs connection that is not part of a stairwell a
-fresh letter (the plain flight keeps its own); and, for a well in more than one
+has the same letter as a stairs connection that is not part of a stairwell, or
+as an elevator's label, a fresh letter (the plain flight and the elevator keep their own);
+gives every flight of one well (letters equal without regard to capitals or spaces) the first's letter string; and, for a well in more than one
 part, keeps the letter on the first part and gives each other part a fresh
 letter. A fresh letter is the first of A to Z, AA, AB… that no connection's
 label or well already uses.
@@ -316,7 +318,7 @@ whole cells inside its floor, `w` and `h` at least 1.
 | `notes` | text | `""` | |
 | `away` | AwayEntry[], optional | `[]` | When the teacher is not in school (part-time days). At most 12 entries. `notes` stays the free text it was. |
 
-**AwayEntry**: `{ dayTypeIds, weekdays, periods }`, all three lists. `dayTypeIds` empty means every day type, else these (and the day types that are the same as them); `weekdays` empty means every day, else 0 (Monday) to 6 (Sunday), each once, and the entry then holds only on a date that falls on one of them; `periods` empty means the whole day, else period numbers from 0, each once, in order. Validate checks the form only, and a day type id that is not in the project is not refused (a copy of the tool from before may have deleted the day type). On load repair, each with a note: drops an entry that is not an object or whose three fields are not lists (never widening it to every day or the whole day); removes day type ids that are not in the project and drops an entry that named some and has none left; removes periods past the end of the school day and drops an entry whose periods were all past the end; removes weekdays that are not 0 to 6, repeats and orders them; keeps at most 12 entries; and removes an `away` that is not a list.
+**AwayEntry**: `{ dayTypeIds, weekdays, periods }`, all three lists. `dayTypeIds` empty means every day type, else these (and the day types that are the same as them); `weekdays` empty means every day, else 0 (Monday) to 6 (Sunday), each once, in order, and the entry then holds only on a date that falls on one of them; `periods` empty means the whole day, else period numbers from 0, each once, in order. Validate checks the form only (weekdays and periods each once and in order), and a day type id that is not in the project is not refused (a copy of the tool from before may have deleted the day type). On load repair, each with a note: drops an entry that is not an object or whose three fields are not lists (never widening it to every day or the whole day); removes day type ids that are not in the project and drops an entry that named some and has none left; removes periods past the end of the school day and drops an entry whose periods were all past the end; removes weekdays that are not 0 to 6 and repeats, and puts weekdays and periods in order; one note for each cause (day types not in the project, a repeated day type, weekdays that do not exist, repeats, periods that are not numbers from 0, periods past the end, an order mended); keeps at most 12 entries; and removes an `away` that is not a list.
 
 A teacher's `roomIds` and a room's `teacherIds` say the same thing: a room is
 in a teacher's list exactly when the teacher is in the room's list. The
@@ -622,7 +624,7 @@ this project's is blank), `periods` (raised, never lowered), `periodWord`,
 `timeFormat`. The period word, `periodCustom` and `periodNames` are one setting,
 "The period word and names": they are taken together, so a file that has a
 `periodWord` and no custom word or names takes those away from this project, and
-a file that holds only some of the three leaves the others as they are. A
+a file that holds only some of the three leaves the others as they are. The names are cut to the periods the project ends with, and a list left with no non-blank name is not written. A schedule file import's summary says what went as `{ key: "periodWord", from, to }` when a custom word or names were on either side. A
 `periodCustom` or `periodNames` that is not of the form above refuses the whole
 import, naming it.
 
@@ -730,7 +732,7 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
 
 | Field | Meaning |
 |---|---|
-| `settings` | Those four settings of the project object, all present, and two optional extras: `periodCustom` and `periodNames` (see Settings), each written only when the project has it and read when the file has it. A file without them is still a schedule file. |
+| `settings` | Those four settings of the project object, all present, and two optional extras: `periodCustom` and `periodNames` (see Settings), each written only when the project has it (`periodNames` only when some name is not blank) and read when the file has it. A file without them is still a schedule file. |
 | `rooms` | The room index: one entry for each room a slot or a teacher names, with the number it had when the file was written. It is how the file is read against a building whose rooms have other ids. |
 | `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged, a day type's `sameAs` and `short` with it, and a teacher's `away` when it has any. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
 | `bellSchedules` | Optional. As in the project object. Written only when the project has a bell schedule; absent is none. |
@@ -1218,9 +1220,9 @@ run on it unchanged, and `validate` and `repair` accept it.
 | `publishedAt` | date | When it was published, in UTC. Shown in the reader's own time zone. |
 | `staleAfter` | date | With a calendar and `publish.staleAtCalendarEnd` not `false`, the day after the calendar's `end` at 12:00 UTC (the school's date; noon UTC falls on it from UTC−11 to UTC+11). Otherwise, or when that is not after `publishedAt` (a calendar already over), `publishedAt` plus the project's `publish.stalenessDays`. After it the staff browser shows a notice and goes on working. `staleness(project, date)` in the same module says which applied. |
 | `settings` | object | `schoolName`, `periods`, `periodWord`, `defaultPassingSeconds`, `secondsPerCell`, `secondsPerStair`, `timeFormat`, as in the project, the three elevator timings, and (only when the project has them) `periodCustom` and `periodNames`, as in the project. `periodNames` is written only when it holds at least one entry. |
-| `building` | object | `floors` and `connections`, and `features` (a list of `{ id, name }`) only when a published room has a feature: just those features, in the project's order. A floor has `id`, `name`, `level`, `width`, `height`, `cells`, `spaces`, `corridors`, `exits`. A room and an other space have every field they have in the project, a room's `featureIds` only when it has some. A stairs connection carries `well` only when it is part of a stairwell, and an elevator never does. |
+| `building` | object | `floors` and `connections`, and `features` (a list of `{ id, name }`) only when a published room has a feature: just those features, in the project's order. A floor has `id`, `name`, `level`, `width`, `height`, `cells`, `spaces`, `corridors`, `exits`. A room and an other space have every field they have in the project, a room's `featureIds` only when it has some, and only ids of the features listed in the building. A stairs connection carries `well` only when it is part of a stairwell, and an elevator never does. |
 | `subjects` | list | As in the project. |
-| `teachers` | list | As in the project: `id`, `name`, `subjectId`, `roomIds`, `notes`, and `away` (each entry's `dayTypeIds`, `weekdays` and `periods`) only when the teacher has an entry. |
+| `teachers` | list | As in the project: `id`, `name`, `subjectId`, `roomIds`, `notes`, and `away` (each entry's `dayTypeIds`, `weekdays` and `periods`) only when the teacher has an entry left: a day type the published data does not have is not listed, and an entry left naming none of the day types it named is not published. |
 | `dayTypes` | list | `id`, `name`, `own`, `sameAs` (`null` when absent in the project), `short` (`""` when absent), `bells`. |
 | `bellSchedules` | list | As in the project: `id`, `name`, `short`, `bells`, `off`. Empty when there are none. |
 | `calendar` | object or `null` | As in the project: `start`, `end`, `weekdays`, `rotation`, `dates`, `changedAt`. `null` when there is none. |
