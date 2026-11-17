@@ -582,7 +582,7 @@ test('content.city missing: freshState, newGame and drawing fail with a message 
   throws(() => newGame(none, { seed: 1, length: 'acts', house: 'plain' }), /content\.city is missing/);
   const empty = variant(c => { c.city = {}; });
   throws(() => freshState(empty, { seed: 1, length: 'acts', house: 'plain' }), /content\.city is missing/);
-  throws(() => openSeason({ ...game(), desk: [], phase: 'interlude' }, none), /drawing cards: content\.city is missing/);
+  throws(() => openSeason({ ...game(), desk: [], phase: 'interlude' }, none), /market: content\.city is missing/);
   throws(() => endSeason(answer(game(), content), none), /content\.city is missing/);
 });
 

@@ -233,6 +233,14 @@ export function validateContent(raw, { art } = {}) {
       stills: (v, p) => dict(v, p, str, (x, q) => { str(x, q); artRef(x, q); }),
       priceNews: bool,
       // the chances of the ending (ARCHITECTURE 4.9); every key is optional and routes.js has a default for each
+      // what a loss takes and who retires at the act jump (ARCHITECTURE 4.7); every key is optional and routes.js has a default for each
+      jump: (v, p) => obj(v, p, {
+        retires: (x, q) => num(x, q, 0, 1), wholeLoss: (x, q) => num(x, q, 0, 1), survivesWhole: (x, q) => num(x, q, 0, 1),
+        partial: (x, q) => {
+          arr(x, q, (n, r) => num(n, r, 0, 1));
+          if (Array.isArray(x) && (x.length !== 2 || x[0] > x[1])) schema(q, 'needs [least, most], the least no more than the most');
+        },
+      }),
       recall: (v, p) => {
         const unit = (x, q) => num(x, q, 0, 1);
         obj(v, p, {

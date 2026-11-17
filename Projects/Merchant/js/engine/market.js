@@ -127,9 +127,6 @@ export function priceAt(state, stopId, goodId, idx) {
     that arrives goes onto one paper, kind "news"; in the first year it carries a one-line
     `line` as well (DESIGN 4.7). */
 export function news(s, content) {
-  // Price letters come from a city's correspondents, so a city with no letters file sends
-  // none. (The engine suite's own city has none, and its pinned papers stay as they were.)
-  if (!content.letters?.length) return;
   const idx = seasonIndex(s, content);
   const home = cityOf(content, 'market').home;
   for (const goodId of Object.keys(s.market[home] ?? {})) {

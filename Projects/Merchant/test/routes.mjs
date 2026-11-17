@@ -21,7 +21,11 @@ const C = await loadContent('cairo', { fs });
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
 /** The same city with every leg's risk set to `p`, so a test about trade is not a test about luck. */
 const risk = (c, p = 0) => variant(c, x => { for (const r of x.routes) for (const l of r.legs) l.risk = p; });
-const calm = risk(T, 0);
+// Mira is careful, and a careful agent takes a season more on a leg of two or more (agents.js). The
+// timeline cases below pin the roads for an agent with no such trait; 'a careful agent takes one more
+// season' has its own cases on the unmodified content.
+const plainMira = c => variant(c, x => { x.agents.find(a => a.id === 'mira').traits = ['honest']; });
+const calm = plainMira(risk(T, 0));
 const calmC = risk(C, 0);
 const game = (c = calm, over = {}) => newGame(c, { seed: 7, length: 'full', house: 'plain', ...over });
 const cairo = (over = {}) => newGame(calmC, { seed: 7, length: 'full', house: 'spice', ...over });
@@ -120,7 +124,7 @@ test('legs honour `opens`: a leg closed the season after sending waits one seaso
 });
 
 test('legs honour `opens` on the way: an expedition whose next leg is closed waits, pays upkeep each season and starts when it opens', () => {
-  const c = risk(variant(T, y => { for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0; }), 0);
+  const c = risk(variant(plainMira(T), y => { for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0; }), 0);
   let s = outfit(game(c), c, { ...WOOL, purse: 20 });
   s = play(s, c, 1);                                     // sent in spring (0); summer (1) it rides
   eq([s.expeditions[0].status, s.expeditions[0].left], ['out', 2]);
@@ -181,6 +185,24 @@ test('suggestPlan: a free agent who knows the stop, the best road, half the stoc
 });
 
 // ---- risk
+
+test('a careful agent takes one more season on a leg of two seasons or more, and the same as anyone on a leg of one', () => {
+  const c = risk(T, 0);
+  const road = c.routes.find(r => r.id === 'harbour-hilltown');    // two legs of two seasons
+  const mira = c.agents.find(a => a.id === 'mira'), tobin = c.agents.find(a => a.id === 'tobin');
+  const s = game(c, { house: 'rich' });
+  eq([road.legs[0].seasons, road.legs[1].seasons], [2, 2], 'the road this case reads');
+  eq(R.project(s, c, road, tobin).seasons, 6, 'a bold agent: 2 and 2, and a winter wait before the way back, which is closed in winter');
+  eq(R.project(s, c, road, mira).seasons, 7, 'a careful agent: 3 and 3, and the way back opens as the first leg ends, so no wait');
+  eq(R.project(s, c, road).seasons, 6, 'no agent named: the legs as written');
+  // outfitted, the careful agent's expedition has three seasons to ride on its first leg, the bold one two
+  const left = agent => outfit(s, c, { ...WOOL, agent }).expeditions[0].left;
+  eq([left('mira'), left('tobin')], [3, 2]);
+  // a leg of one season is not slowed
+  const damascus = C.routes.find(r => r.id === 'cairo-damascus');
+  eq(damascus.legs.map(l => l.seasons), [1, 1]);
+  eq(R.project(cairo(), C, damascus, C.agents.find(a => a.id === 'mariam')).seasons, R.project(cairo(), C, damascus).seasons, 'Mariam is careful and Damascus is a season off');
+});
 
 test('winter risk: a galley leg started in winter carries its risk times 1.5, a caravan leg does not, a careful agent halves either', () => {
   const galley = C.routes.find(r => r.id === 'cairo-famagusta').legs[1];
@@ -322,7 +344,7 @@ test('a trait that bargains changes what a load fetches: sharp sells for 5 perce
 // ---- returns
 
 test('returns put a return paper on the desk: the headline sentence first, then the account, and the goods and money come home', () => {
-  const c = risk(variant(T, y => { for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0; y.agents.find(a => a.id === 'mira').wage = 2; }), 0);
+  const c = risk(variant(plainMira(T), y => { for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0; y.agents.find(a => a.id === 'mira').wage = 2; }), 0);
   const s0 = game(c);
   const six = { ...WOOL, cargo: { wool: 6 } };
   let s = outfit(s0, c, six);
@@ -397,7 +419,7 @@ test('split conserves for every value, stake and share: nothing negative, nothin
 });
 
 test('a qirad end to end: the partners are paid their stake and share out of what came home, the agent his third, and the coins add up', () => {
-  const c = risk(variant(T, y => {
+  const c = risk(variant(plainMira(T), y => {
     y.city.contracts = { qirad: { agentShare: [1, 3] } };
     for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0;
   }), 0);
@@ -527,7 +549,7 @@ test('the act jump: trust halves toward 0, an agent at -2 or lower leaves, and s
     const t = play(game(c, { length: 'acts', seed }), c, 3);
     if (t.agents.mira.where === 'gone') retired++;
   }
-  ok(retired > 5 && retired < 50, `${retired} of 200 retired at ${R.RETIRES}`);
+  ok(retired > 5 && retired < 50, `${retired} of 200 retired at ${R.jumpChances(c).retires}`);
 });
 
 test('the act jump applies the between events of that gap in order and shows their paragraphs, and does not fire them by `at` in the three-act game', () => {
@@ -643,7 +665,54 @@ test('the recall schema: every chance is a number from 0 to 1, an unknown key is
     void what;
   }
   eq(R.recallChances(T).reach, { start: 0.9, perSeason: 0.2, floor: 0.1 }, 'testport sets its own');
-  eq(R.recallChances(C), R.DEFAULT_RECALL, 'a city with no block gets the defaults');
+  eq(R.recallChances(variant(C, y => { delete y.city.recall; })), R.DEFAULT_RECALL, 'a city with no block gets the defaults');
+  eq(R.recallChances(C), { ...R.DEFAULT_RECALL, ...C.city.recall }, 'cairo reads its own block');
+  eq(R.recallChances(variant(C, y => { y.city.recall.reach.start = 0.5; })).reach.start, 0.5, 'and changing it in city.json changes the chance');
+});
+
+// ---- city.json's jump block
+
+test('jump: cairo has a recall block and a jump block, routes.js reads them, and a city with none gets the defaults', () => {
+  ok(C.city.recall && C.city.jump, 'cairo carries both blocks');
+  eq(R.jumpChances(C), { ...R.DEFAULT_JUMP, ...C.city.jump });
+  eq(R.jumpChances(variant(C, y => { delete y.city.jump; })), R.DEFAULT_JUMP, 'no block, the defaults');
+  eq(R.DEFAULT_JUMP, { retires: 0.1, wholeLoss: 0.4, survivesWhole: 0.75, partial: [0.25, 0.75] }, 'the numbers MER-41 shipped');
+  eq(C.city.jump, R.DEFAULT_JUMP, 'cairo writes down the same numbers, so nothing the bots measure moves');
+});
+
+test('jump: retires in city.json decides who retires across the act jump', () => {
+  const retired = retires => {
+    const c = variant(risk(T, 0), y => { y.city.jump = { retires }; });
+    const s = play(game(c, { length: 'acts', house: 'rich' }), c, 3);
+    return ['mira', 'tobin'].filter(id => s.agents[id].where === 'gone').length;
+  };
+  eq(retired(1), 2, 'everyone at home retires');
+  eq(retired(0), 0, 'nobody does');
+});
+
+test('jump: wholeLoss, survivesWhole and partial in city.json decide what a loss takes', () => {
+  const base = c => outfit(game(c), c, { ...WOOL, cargo: { wool: 10 }, purse: 30 });
+  const roll = (jump, seed) => {
+    const c = variant(risk(T, 1), y => { y.city.jump = jump; });
+    const s = base(c);
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, c);
+    return s;
+  };
+  let checked = 0;
+  for (let seed = 1; seed <= 80; seed++) {
+    const whole = roll({ wholeLoss: 1, survivesWhole: 0 }, seed);
+    if (whole.desk.at(-1)?.kind === 'lost') checked++;
+    if (whole.desk.at(-1)?.kind === 'lost') eq([whole.expeditions.length, whole.desk.at(-1).data.whole, whole.desk.at(-1).data.survived, whole.agents.mira.where], [0, true, false, 'dead'], `seed ${seed}: always whole, nobody lives`);
+    const half = roll({ wholeLoss: 0, partial: [0.5, 0.5] }, seed);
+    if (half.desk.at(-1)?.kind === 'lost') eq([half.desk.at(-1).data.whole, half.expeditions[0]?.cargo.wool], [false, 5], `seed ${seed}: never whole, half of the wool`);
+  }
+  ok(checked > 20, `${checked} of 80 rolls at risk 0.95 were a loss to check`);
+  for (const [bad, re] of [
+    [{ retires: 2 }, /retires: needs a number from 0 to 1/],
+    [{ partial: [0.8, 0.2] }, /needs \[least, most\]/],
+    [{ partial: [0.5] }, /needs \[least, most\]/],
+  ]) throws(() => validateContent(variant(T, y => { y.city.jump = bad; })), re);
 });
 
 // ---- price news

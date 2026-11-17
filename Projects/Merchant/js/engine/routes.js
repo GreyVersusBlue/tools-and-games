@@ -18,14 +18,19 @@ import { applyAll } from './effects.js';
 import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
 import * as M from './market.js';
-import { riskFactor, bargain } from './agents.js';
+import { riskFactor, bargain, legSeasons } from './agents.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
 export const UPKEEP = 4;            // coins a season for an expedition waiting at a stop (an estimate; the bots tune it)
-export const WHOLE_LOSS = 0.4;      // of the losses, the share that take the whole vessel
-export const SURVIVES_WHOLE = 0.75; // an agent whose vessel was lost gets home
-export const PARTIAL = [0.25, 0.75]; // a partial loss takes this share of each good
-export const RETIRES = 0.1;         // an agent at home retires during the years of the jump
+// What happens to an expedition that is lost, and to an agent at home across the act jump: the
+// defaults for city.json's `jump` block (ARCHITECTURE 5.1). A loss is rolled the same way on the
+// road and at the jump, so the loss shares are one set of numbers, read in both places.
+export const DEFAULT_JUMP = {
+  retires: 0.1,          // an agent at home retires during the years of the jump
+  wholeLoss: 0.4,        // of the losses, the share that take the whole vessel
+  survivesWhole: 0.75,   // an agent whose vessel was lost gets home
+  partial: [0.25, 0.75], // a partial loss takes this share of each good
+};
 export const MAX_WAIT = 4;          // seasons a plan may wait at one stop before it is refused
 export const DEFAULT_RECALL = {
   reach: { start: 0.95, perSeason: 0.15, floor: 0.1 }, // chance word reaches an agent in time, by seasons from home
@@ -93,7 +98,7 @@ const legName = (content, leg) => `${stopName(content, leg.from)} to ${stopName(
 /** Where a plan along `route` would be, season by season, if sent now. Legs start at the first
     season they are open; the first may wait one season, a later one up to MAX_WAIT.
     { ok, legs: [{ i, startK, startIdx, waits }], seasons, waits, warnings, why } */
-export function project(s, content, route) {
+export function project(s, content, route, agent) {
   const warnings = [];
   let k = 1, waits = 0;
   const legs = [];
@@ -112,7 +117,7 @@ export function project(s, content, route) {
     }
     waits += w;
     legs.push({ i, startK: k, startIdx: o.idx, waits: w });
-    k += leg.seasons;
+    k += legSeasons(agent, leg);
   }
   // k - 1 seasons from the season after sending to the last arrival, so the return opens k seasons ahead
   return { ok: true, legs, seasons: k, waits, warnings };
@@ -121,11 +126,11 @@ const by = leg => ({ caravan: 'the caravan', galley: 'the galley', dhow: 'the dh
 
 /** The open route to `stopId` that gets there and back soonest, or null. Ties go to the one
     with fewer legs, then the one listed first. */
-export function routeFor(state, content, stopId) {
+export function routeFor(state, content, stopId, agent) {
   let best = null;
   for (const r of content.routes ?? []) {
     if (r.to !== stopId) continue;
-    const p = project(state, content, r);
+    const p = project(state, content, r, agent);
     if (!p.ok) continue;
     if (!best || p.seasons < best.seasons || (p.seasons === best.seasons && r.legs.length < best.route.legs.length)) {
       best = { route: r, seasons: p.seasons, waits: p.waits, warnings: p.warnings };
@@ -197,16 +202,22 @@ export function legRisk(content, agent, leg, startIdx) {
   return clamp(leg.risk * riskFactor(agent, leg) * (winter ? WINTER_GALLEY : 1), 0, 0.95);
 }
 
+/** The chances of loss and retirement: city.json's `jump` over the defaults. */
+export function jumpChances(content) {
+  return { ...DEFAULT_JUMP, ...(content.city?.jump ?? {}) };
+}
+
 /** A loss happened to `x`. Draws: whole or partial; a whole loss then draws whether the agent
     lives, a partial loss how much goes. Returns what was lost; changes `x` on a partial loss. */
 function loseSome(s, content, x) {
-  if (next(s) < WHOLE_LOSS) {
-    const survived = next(s) < SURVIVES_WHOLE;
+  const J = jumpChances(content);
+  if (next(s) < J.wholeLoss) {
+    const survived = next(s) < J.survivesWhole;
     const cargo = { ...x.cargo }, purse = x.purse;
     x.cargo = {}; x.purse = 0;
     return { whole: true, survived, cargo, purse };
   }
-  const f = PARTIAL[0] + next(s) * (PARTIAL[1] - PARTIAL[0]);
+  const f = J.partial[0] + next(s) * (J.partial[1] - J.partial[0]);
   const cargo = {};
   for (const [g, n] of Object.entries(x.cargo)) {
     const lose = Math.min(n, Math.max(1, Math.round(n * f)));
@@ -296,7 +307,7 @@ function build(s, content, plan) {
   if (!plan.route) no('Choose where the expedition goes.');
   else if (!route) no(`There is no road called "${plan.route}".`);
   else {
-    proj = project(s, content, route);
+    proj = project(s, content, route, agent);
     if (!proj.ok) no(proj.why);
     else warnings.push(...proj.warnings);
   }
@@ -369,7 +380,7 @@ function build(s, content, plan) {
   const first = proj.legs[0];
   const idx = seasonIndex(s, content);
   const x = {
-    id: `x${n}`, agent: agent.id, route: route.id, leg: 0, left: route.legs[0].seasons, waiting: 0, status: first.waits ? 'waiting' : 'out',
+    id: `x${n}`, agent: agent.id, route: route.id, leg: 0, left: legSeasons(agent, route.legs[0]), waiting: 0, status: first.waits ? 'waiting' : 'out',
     cargo, purse,
     contract: kind === 'qirad' ? { kind, agentShare: share[0], of: share[1] } : { kind },
     staked: { house: stockValue + buyCost + purse - partners, partners },
@@ -409,14 +420,14 @@ export function suggestPlan(state, content, stopId) {
   const home = homeOf(content);
   const stop = stopOf(content, stopId);
   if (!stop || stopId === home) return null;
-  const hit = routeFor(state, content, stopId);
-  if (!hit) return null;
   const free = (content.agents ?? []).filter(a => {
     const r = state.agents[a.id];
     return r?.hired && r.where === home && !state.expeditions.some(x => x.agent === a.id);
   });
   if (!free.length) return null;
   const agent = free.find(a => a.traits.includes(`knows-${stopId}`)) ?? free[0];
+  const hit = routeFor(state, content, stopId, agent);
+  if (!hit) return null;
   const homePrice = g => state.known[home]?.[g]?.p ?? M.truePrice(state, content, home, g) ?? 0;
   const there = g => state.known[stopId]?.[g]?.p ?? null;
   const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0)
@@ -436,8 +447,9 @@ export function suggestPlan(state, content, stopId) {
 
 const seasonsHome = (content, x) => {
   const legs = routeOf(content, x.route).legs;
-  let n = x.status === 'out' ? x.left : legs[x.leg].seasons;
-  for (let i = x.leg + 1; i < legs.length; i++) n += legs[i].seasons;
+  const agent = agentOf(content, x.agent);
+  let n = x.status === 'out' ? x.left : legSeasons(agent, legs[x.leg]);
+  for (let i = x.leg + 1; i < legs.length; i++) n += legSeasons(agent, legs[i]);
   return n;
 };
 
@@ -480,7 +492,7 @@ export function move(s, content) {
 function startLeg(s, content, x, k) {
   const leg = routeOf(content, x.route).legs[x.leg];
   const o = legOpen(s, content, leg, k);
-  if (o.open) { x.status = 'out'; x.left = leg.seasons; x.start = o.idx; }
+  if (o.open) { x.status = 'out'; x.left = legSeasons(agentOf(content, x.agent), leg); x.start = o.idx; }
   else x.status = 'waiting';
 }
 
@@ -761,7 +773,7 @@ export function jump(s, content) {
     if (!r || !r.hired || r.where === 'dead' || r.where === 'gone') continue;
     if (r.trust <= -2) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'trust' }); continue; }
     r.trust = Math.trunc(r.trust / 2);
-    if (chance(s, RETIRES)) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'retired' }); }
+    if (chance(s, jumpChances(content).retires)) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'retired' }); }
   }
 
   // 4. markets reset to the new act's base prices, with no glut

@@ -34,6 +34,27 @@
       ]
     }
   },
+  "recall": {
+    "reach": {
+      "start": 0.95,
+      "perSeason": 0.15,
+      "floor": 0.1
+    },
+    "recalledKeeps": 0.6,
+    "recalledSurvives": 0.9,
+    "stayedSurvives": 0.5,
+    "homeSurvives": 0.6,
+    "byStop": {}
+  },
+  "jump": {
+    "retires": 0.1,
+    "wholeLoss": 0.4,
+    "survivesWhole": 0.75,
+    "partial": [
+      0.25,
+      0.75
+    ]
+  },
   "score": {
     "wealthScale": [
       [
