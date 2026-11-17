@@ -221,7 +221,7 @@ export function periodWordControl(ctx, options) {
       if (value === 'other') {
         memory.open = true;
         if (!custom && memory.remembered && !run(setPeriodCustom, memory.remembered)) memory.open = false;
-        options.redraw(keyFor('word:other'));
+        options.redraw(keyFor('other'));
         return;
       }
       memory.open = false;
@@ -238,14 +238,18 @@ export function periodWordControl(ctx, options) {
       if (value !== store.project.settings.periodWord && run(setSetting, { key: 'periodWord', value })) steps += 1;
       ctx.toast({ text: 'The word ' + custom.word + ' is gone.', action: { label: 'Undo', run: () => {
         for (let i = 0; i < steps; i += 1) ctx.undo();
-        options.redraw(keyFor('word:other'));
+        options.redraw(keyFor('other'));
       } } });
     },
   });
-  group.element.querySelectorAll('input').forEach((input) => keyed(input, keyFor('word:' + input.value)));
+  group.element.querySelectorAll('input').forEach((input) => keyed(input, keyFor(input.value)));
 
+  const wordLabelId = uid('word-label');
+  const pluralLabelId = uid('plural-label');
   const wordField = field({
     label: 'Word',
+    labelledBy: wordLabelId,
+    describedBy: options.describedBy,
     value: '',
     name: 'periodCustomWord',
     placeholder: 'Lesson',
@@ -260,10 +264,13 @@ export function periodWordControl(ctx, options) {
       store.apply(setPeriodCustom, { word, plural, count: held ? held.count : memory.count || 'number' });
     },
   });
+  wordField.element.querySelector('label').id = wordLabelId;
   keyed(wordField.input, keyFor('custom-word'));
   wordField.input.maxLength = PERIOD_WORD_MOST * 2;
   const pluralField = field({
     label: 'Plural',
+    labelledBy: pluralLabelId,
+    describedBy: options.describedBy,
     value: '',
     name: 'periodCustomPlural',
     placeholder: 'Lessons',
@@ -277,6 +284,7 @@ export function periodWordControl(ctx, options) {
       store.apply(setPeriodCustom, { word: held.word, plural: value.trim() === '' ? undefined : value, count: held.count });
     },
   });
+  pluralField.element.querySelector('label').id = pluralLabelId;
   keyed(pluralField.input, keyFor('custom-plural'));
   pluralField.input.maxLength = PERIOD_WORD_MOST * 2;
 
@@ -284,6 +292,7 @@ export function periodWordControl(ctx, options) {
   const counts = choice({
     name: options.name + '-count',
     labelledBy: countLabel,
+    describedBy: options.describedBy,
     options: PERIOD_COUNTS.map((value) => ({ value, label: COUNT_WORDS[value] })),
     value: 'number',
     onChange: (value) => {

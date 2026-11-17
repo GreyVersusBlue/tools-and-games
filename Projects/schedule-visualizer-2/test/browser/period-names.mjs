@@ -78,7 +78,7 @@ async function typeInto(selector, words) {
 }
 
 // The period word's radio, by its visible label.
-const radio = (value) => key('day-word:word:' + value);
+const radio = (value) => key('day-word:' + value);
 
 before(async () => {
   session = await openPlanner({ hash: '#schedule/day', theme: 'light' });
@@ -111,7 +111,7 @@ test('2. an arrow key moves the word, and the keys reach Other word… the same 
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   await shows(() => !document.querySelector('[data-card="school-day"] .sch-wordother').hidden);
-  assert.equal(await activeKey(), 'day-word:word:other', 'the focus stays on the radio that was reached');
+  assert.equal(await activeKey(), 'day-word:other', 'the focus stays on the radio that was reached');
   await page.keyboard.press('Tab');
   assert.equal(await activeKey(), 'day-word:custom-word', 'Tab goes into the Word field');
   assert.equal((await settings()).periodCustom, undefined, 'nothing is written until a word is typed');
@@ -303,10 +303,10 @@ test('11. Settings has the same radio group and Other word fields, by keyboard',
   await page.focus('[data-setting="day.2"] .seg__input:checked');
   await page.keyboard.press('ArrowRight');
   await shows(() => globalThis.sv2.store.project.settings.periodWord === 'Mod');
-  await page.focus(key('setting-word:word:Mod'));
+  await page.focus(key('setting-word:Mod'));
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
   await shows(() => !document.querySelector('[data-setting="day.2"] .sch-wordother').hidden);
-  assert.equal(await activeKey(), 'setting-word:word:other', 'Other word opens its fields and the focus stays on the radio');
+  assert.equal(await activeKey(), 'setting-word:other', 'Other word opens its fields and the focus stays on the radio');
   await page.keyboard.press('Tab');
   assert.equal(await activeKey(), 'setting-word:custom-word');
   await page.keyboard.type('Session');
@@ -317,7 +317,7 @@ test('11. Settings has the same radio group and Other word fields, by keyboard',
   await shows(() => globalThis.sv2.store.project.settings.periodCustom?.count === 'number');
   assert.equal(await text('[data-setting="day.2"] [data-part="word-sample"]'), 'Session 1, Session 2, … Session 8');
   assert.match(await text('[data-setting="day.1"] .setting__label'), /Sessions per day/);
-  await page.click(key('setting-word:word:Block'));
+  await page.click(key('setting-word:Block'));
   await shows(() => globalThis.sv2.store.project.settings.periodCustom === undefined);
   await toastSays('The word Session is gone.');
   await closeToast();
@@ -329,7 +329,7 @@ test('12. at 390 px the card and Settings fit with no sideways scroll, and every
   const p = phone.page;
   await p.waitForSelector('[data-card="school-day"]');
   await p.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 8000 });
-  await p.click('[data-card="school-day"] ' + key('day-word:word:other'));
+  await p.click('[data-card="school-day"] ' + key('day-word:other'));
   await p.waitForFunction(() => !document.querySelector('[data-card="school-day"] .sch-wordother').hidden, { timeout: 8000 });
   await p.click('[data-card="school-day"] ' + key('names:toggle'));
   await p.waitForSelector('.sch-names__row');
