@@ -1,1 +1,290 @@
-[]
+[
+  {
+    "id": "aydhab-toll",
+    "group": "tolls",
+    "from": {
+      "name": "Hamza, a carter",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A toll at Aydhab",
+    "body": "Hamza leads caravans to the Red Sea. A caravan is a group of travellers and animals that go together. At Aydhab a toll, a fee to pass, is taken on every load. Hamza asks your house to pay its share.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay your share of the toll",
+        "hint": "It costs now. Hamza will speak well of you.",
+        "now": [
+          {
+            "money": -25
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "quseir",
+        "label": "Send the goods by Quseir",
+        "hint": "It costs a little less. Quseir is nearer to Qus.",
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": -10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Aydhab the town's money was split: one third went to the sultan and two thirds to the Beja king. A writer of about 1400 says some merchants preferred Quseir, because it was nearer Qus.",
+    "unlocks": [
+      "term-toll",
+      "term-caravan",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "pp. 33 and 35; Quseir nearer Qus, and the split of Aydhab's revenue"
+      }
+    ]
+  },
+  {
+    "id": "harbour-count",
+    "group": "tolls",
+    "from": {
+      "name": "A customs officer",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "The officer counts twice",
+    "body": "Your carters bring goods up from a ship at Alexandria. A customs officer there has not met your house, so he counts every bundle twice. Customs are taxes on goods that enter a port. He asks for 40 dinars.",
+    "when": {
+      "rep": "court",
+      "lte": 0
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "all",
+        "label": "Pay it all and ask for a receipt",
+        "hint": "It costs now. Your name goes in his book.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Pay half now and the rest later",
+        "hint": "It costs less. He may not like a late payer.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -15
+              },
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A merchant's handbook from about 1340 says goods coming into Alexandria paid 20 in every hundred. Goods going out paid nothing.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "print p. 72; the duty at Alexandria"
+      }
+    ]
+  },
+  {
+    "id": "harbour-vouch",
+    "group": "tolls",
+    "from": {
+      "name": "Giorgio, a young merchant",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "A stranger needs a name",
+    "body": "Giorgio is new in Alexandria. The port officers do not know him, but they know your house. He asks you to vouch for him, to tell them he will pay what he owes. If he does not pay, they will come to you.",
+    "when": {
+      "rep": "court",
+      "gte": 1
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "vouch",
+        "label": "Vouch for Giorgio",
+        "hint": "He will not forget it. His debt could become yours.",
+        "now": [
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Say you do not know him",
+        "hint": "You keep your money. Giorgio will tell others.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long done favours for each other and expected the same. One Geniza letter says: \"you are in my place there, for you know well that I am your support here.\"",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; business friends who serve each other"
+      }
+    ]
+  },
+  {
+    "id": "karimi-papers",
+    "group": "tolls",
+    "from": {
+      "name": "Nabil, a spice dealer",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Papers for the road",
+    "body": "Nabil belongs to the Karimi, a loose group of merchants who trade spices. Their office gives members papers for the road and takes 2.5 in every hundred of their goods. He says he could send two loads of yours under his papers.",
+    "when": {
+      "rep": "partners",
+      "gte": 1
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "papers",
+        "label": "Send two loads under his papers",
+        "hint": "It costs a little. Nabil will be glad to help.",
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "alone",
+        "label": "Send them alone",
+        "hint": "It costs less. Nabil may feel left out.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -5
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One writer says the Karimi office gave its members papers and took 2.5 in every hundred of their goods. The Karimi were a loose group, and historians do not agree on how tightly they were organised.",
+    "unlocks": [
+      "person-karimi",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "pp. 150 and 152; a loose confederation, and the office's papers and 2.5 percent"
+      }
+    ]
+  }
+]
