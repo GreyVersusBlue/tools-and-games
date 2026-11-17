@@ -1,1 +1,101 @@
-[]
+[
+  {
+    "id": "yusuf",
+    "name": "Yusuf",
+    "community": "Muslim",
+    "seal": "seal-1",
+    "traits": [
+      "careful",
+      "knows-damascus"
+    ],
+    "wage": 20,
+    "home": "cairo",
+    "hireCard": "yusuf-asks-for-work"
+  },
+  {
+    "id": "ali",
+    "name": "Ali",
+    "community": "Muslim",
+    "seal": "seal-2",
+    "traits": [
+      "bold",
+      "knows-aden"
+    ],
+    "wage": 25,
+    "home": "cairo"
+  },
+  {
+    "id": "samir",
+    "name": "Samir",
+    "community": "Muslim",
+    "seal": "seal-3",
+    "traits": [
+      "bold",
+      "knows-alexandria"
+    ],
+    "wage": 15,
+    "home": "cairo",
+    "hireCard": "qirad-offer"
+  },
+  {
+    "id": "mariam",
+    "name": "Mariam",
+    "community": "Coptic Christian",
+    "seal": "seal-4",
+    "traits": [
+      "honest",
+      "careful"
+    ],
+    "wage": 20,
+    "home": "cairo"
+  },
+  {
+    "id": "hana",
+    "name": "Hana",
+    "community": "Jewish",
+    "seal": "seal-5",
+    "traits": [
+      "sharp",
+      "speaks-persian"
+    ],
+    "wage": 25,
+    "home": "cairo"
+  },
+  {
+    "id": "samuel",
+    "name": "Samuel ben Yosef",
+    "community": "Jewish",
+    "seal": "seal-6",
+    "traits": [
+      "honest",
+      "speaks-italian",
+      "knows-alexandria"
+    ],
+    "wage": 25,
+    "home": "alexandria"
+  },
+  {
+    "id": "tadros",
+    "name": "Tadros",
+    "community": "Coptic Christian",
+    "seal": "seal-7",
+    "traits": [
+      "careful",
+      "knows-qus"
+    ],
+    "wage": 15,
+    "home": "cairo"
+  },
+  {
+    "id": "matteo",
+    "name": "Matteo",
+    "community": "Genoese",
+    "seal": "seal-8",
+    "traits": [
+      "sharp",
+      "speaks-italian"
+    ],
+    "wage": 30,
+    "home": "alexandria"
+  }
+]

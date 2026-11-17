@@ -1,1 +1,49 @@
-[]
+[
+  {
+    "id": "spice",
+    "name": "The spice house",
+    "blurb": "An old family business with money, two agents and friends in the market.",
+    "difficulty": 1,
+    "money": 1500,
+    "stock": {
+      "linen": 20,
+      "pepper": 4
+    },
+    "agents": [
+      "yusuf",
+      "ali"
+    ],
+    "rep": {
+      "partners": 1
+    },
+    "multiplier": 1
+  },
+  {
+    "id": "cloth",
+    "name": "The cloth merchant",
+    "blurb": "A middling house: some money, one agent, and a warehouse of linen.",
+    "difficulty": 2,
+    "money": 700,
+    "stock": {
+      "linen": 20
+    },
+    "agents": [
+      "yusuf"
+    ],
+    "rep": {},
+    "multiplier": 1.1
+  },
+  {
+    "id": "newcomer",
+    "name": "The newcomer",
+    "blurb": "Little money, no agents, no friends yet. Your score counts for more.",
+    "difficulty": 3,
+    "money": 300,
+    "stock": {
+      "linen": 20
+    },
+    "agents": [],
+    "rep": {},
+    "multiplier": 1.3
+  }
+]

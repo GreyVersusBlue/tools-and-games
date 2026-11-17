@@ -4,6 +4,92 @@
   "home": "cairo",
   "currency": "dinars",
   "title": "Merchant",
-  "tagline": "Cairo, 1324. Run a trading house from your desk.",
-  "opening": {}
+  "tagline": "Cairo, 1324. Buy where it is cheap, sell where it is dear, and bring your people home.",
+  "opening": {
+    "spice": [
+      "opening-letter",
+      "first-expedition",
+      "linen-neighbour"
+    ],
+    "cloth": [
+      "opening-letter",
+      "first-expedition",
+      "linen-neighbour"
+    ],
+    "newcomer": [
+      "opening-letter-broker",
+      "yusuf-asks-for-work",
+      "linen-neighbour"
+    ]
+  },
+  "secondSeason": {
+    "letter": "first-road-letter",
+    "cards": 1
+  },
+  "contracts": {
+    "qirad": {
+      "agentShare": [
+        1,
+        3
+      ]
+    }
+  },
+  "score": {
+    "wealthScale": [
+      [
+        0,
+        0
+      ],
+      [
+        500,
+        10
+      ],
+      [
+        1000,
+        20
+      ],
+      [
+        2000,
+        35
+      ],
+      [
+        4000,
+        50
+      ],
+      [
+        8000,
+        60
+      ]
+    ],
+    "ranks": [
+      {
+        "from": 0,
+        "name": "A house that kept its doors open"
+      },
+      {
+        "from": 40,
+        "name": "A small but steady house"
+      },
+      {
+        "from": 80,
+        "name": "A respected house"
+      },
+      {
+        "from": 120,
+        "name": "A great house of Cairo"
+      },
+      {
+        "from": 160,
+        "name": "A house whose name travelled to many ports"
+      }
+    ]
+  },
+  "stills": {
+    "spring": "desk-day",
+    "summer": "desk-day",
+    "autumn": "desk-dusk",
+    "winter": "desk-night",
+    "lastAct": "desk-night",
+    "map": "map-cairo"
+  }
 }
