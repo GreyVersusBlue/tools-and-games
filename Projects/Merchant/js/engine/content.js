@@ -5,7 +5,7 @@
 // or "schema" so the lint can file each under its rule (ARCHITECTURE 6.2 rules 1 and 6).
 //
 // A reference to a kind whose file is still an empty list is not checked: a city may be a
-// skeleton (data/cairo until M1) and a unit may load a city before every file exists. Once the
+// skeleton (a new city until its files are written) and a unit may load a city before every file exists. Once the
 // list has one entry, every reference to that kind is checked. Art, seal and still ids are
 // checked only when the caller passes `art`, the set of ids in assets/art/manifest.json.
 import { check as checkEffect } from './effects.js';

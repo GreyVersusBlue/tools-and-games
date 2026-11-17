@@ -3,6 +3,7 @@
 // pass), on data/cairo (must pass) and on each fixture in test/fixtures/ (must fail, naming
 // its rule), and pins the syllable counter on named words.
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,7 @@ import { holds } from '../js/engine/conditions.js';
 import { freshState } from '../js/engine/state.js';
 import { validateContent, CONDITION_LEAVES } from '../js/engine/content.js';
 import { validateContent as exported } from '../js/engine/index.js';
-import { syllables, fkGrade, sentences, longestSentence, CEILINGS } from '../tools/reading-level.mjs';
+import { readingLevel, syllables, fkGrade, sentences, longestSentence, CEILINGS } from '../tools/reading-level.mjs';
 import { choiceVector, dominates, lintContent, loadBanned, OPENING_LETTERS } from '../tools/lint-content.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -194,15 +195,19 @@ test('validate: a primary source needs a translator field, null for an edition i
   eq(problemsOf(variant(c => { c.sources = [...c.sources, { ...prim, translator: null }]; })), []);
 });
 
-// ---- data/sources.json
-test('sources.json: 28 works, each with author, title, year and publisher, and no web address', async () => {
-  const s = JSON.parse(await fs.readFile(path.join(ROOT, 'data/sources.json'), 'utf8'));
+// ---- the sources list. data/sources.json is held back (it would break engine.mjs line 399, which
+// pins testport's sources to one id; see the MER-03 report), so the 28 works wait in
+// test/fixtures/sources-28.json and these cases run on that copy.
+test('sources: 28 works, each with author, title, year and publisher, and no web address', async () => {
+  const s = JSON.parse(await fs.readFile(path.join(FIX, 'sources-28.json'), 'utf8'));
   eq(s.length, 28);
   for (const x of s) for (const k of ['author', 'title', 'year', 'publisher']) ok(x[k], `${x.id} lacks ${k}`);
-  ok(!/https?:|www\./i.test(JSON.stringify(s)), 'a web address in sources.json');
+  ok(!/https?:|www\./i.test(JSON.stringify(s)), 'a web address in the sources');
   for (const id of ['ibn-battuta-1958', 'goitein-1967', 'pegolotti-1936', 'abu-lughod-1989']) ok(s.some(x => x.id === id), `no ${id}`);
   eq(s.find(x => x.id === 'pegolotti-1936').translator, null);
-  eq(validateContent(cairo) === cairo, true);
+  eq(s.filter(x => x.kind === 'primary').every(x => 'translator' in x), true);
+  eq(problemsOf({ ...cairo, sources: s }), [], 'the list validates, inside a city that has it');
+  eq(lintContent({ ...cairo, sources: s }, { banned }), [], 'and lints');
 });
 test('cairo has every file of ARCH 5, empty or minimal', async () => {
   for (const f of ['city', 'calendar', 'houses', 'goods', 'stops', 'routes', 'agents', 'events', 'notebook', 'terms', 'text', 'letters']) {
@@ -260,6 +265,49 @@ test('rule 2: a fact in text.json needs a source unless it says fact false', () 
   ok(t({ id: 'a', body: 'Cairo was large.' }).some(f => f.rule === 2));
   eq(t({ id: 'a', body: 'Welcome.', fact: false }), []);
   eq(t({ id: 'a', body: 'Cairo was large.', sources: [{ src: 'testport-fiction' }] }), []);
+});
+test('rule 5: a d5 entry is unreachable by an unlock effect, in now or in a later entry', () => {
+  const d5 = { id: 'hard-part', tab: 'terms', title: 'A hard part', body: 'Some words.', context: 'd5', sources: [{ src: 'testport-fiction' }] };
+  const lint = edit => lintContent(variant(c => { c.notebook = [...entries, d5]; edit(c); }), { banned }).filter(f => f.rule === 5);
+  eq(lint(() => {}), [], 'the entry alone is fine');
+  eq(lint(c => { c.cards[0].choices[0].now = [{ unlock: 'hard-part' }]; }).length, 1, 'now');
+  eq(lint(c => { c.cards[0].choices[0].later = [{ in: 1, do: [{ unlock: 'hard-part' }] }]; }).length, 1, 'later');
+  eq(lint(c => { c.cards[0].unlocks = ['hard-part']; }).length, 1, 'unlocks list');
+  eq(lint(c => { c.events[0].do = [{ unlock: 'hard-part' }]; }).length, 1, 'event');
+});
+test('rule 2: a card, letter, event with a note and notebook entry with no sources fails', () => {
+  const r2 = edit => lintContent(variant(edit), { banned }).filter(f => f.rule === 2).map(f => f.path);
+  eq(r2(c => { delete c.cards[0].sources; }), [`cards[${content.cards[0].id}]`]);
+  eq(r2(c => { c.cards[0].sources = []; }), [`cards[${content.cards[0].id}]`]);
+  eq(r2(c => { c.events[0].sources = []; }), ['events[fair-closes]']);
+  eq(r2(c => { c.notebook = [{ id: 'e', tab: 'terms', title: 'E', body: 'Body.' }]; c.cards[0].unlocks = ['e']; c.cards[1].unlocks = ['e']; }).filter(p => p.startsWith('notebook')), ['notebook[e]']);
+  eq(r2(c => { c.letters = [{ id: 'l', kind: 'question', title: 'T', body: 'B.', choices: [{ id: 'a', label: 'A', now: [{ money: 1 }] }, { id: 'b', label: 'B', now: [{ money: 2 }] }], note: 'N.' }]; }), ['letters[l]']);
+});
+test('reading level: the file mean fails on its own when every unit is under its own ceiling', () => {
+  const hard = 'Negotiate considerable administrative documentation';
+  const c = variant(c2 => { for (const ch of c2.cards[0].choices) ch.label = hard; });
+  const { failures, means } = readingLevel(c);
+  eq(failures.map(f => f.rule), ['file mean'], JSON.stringify(failures));
+  ok(means['cards/orders.json'] > 6.5);
+  eq(readingLevel(content).failures, []);
+});
+test('reading level: a term is allowed when the card unlocks it by an effect or requires it in when', () => {
+  const termed = edit => variant(c => {
+    c.notebook = [...entries, { id: 'qirad', tab: 'terms', title: 'Qirad', body: 'A deal.', sources: [{ src: 'testport-fiction' }] }];
+    c.terms = [{ word: 'qirad', forms: ['qirads'], entry: 'qirad' }];
+    c.cards[0].body = 'Nell offers a qirad. She wants an answer today.';
+    edit(c);
+  });
+  const rules = c => readingLevel(c).failures.map(f => f.rule);
+  eq(rules(termed(() => {})), ['term rule'], 'no unlock');
+  eq(rules(termed(c => { c.cards[0].unlocks = ['qirad']; })), [], 'unlocks list');
+  eq(rules(termed(c => { c.cards[0].choices[0].now = [{ unlock: 'qirad' }]; })), [], 'unlock effect');
+  eq(rules(termed(c => { c.cards[0].when = { notebook: 'qirad' }; })), [], 'when leaf');
+  eq(rules(termed(c => { c.cards[0].when = { all: [{ season: ['spring'] }, { notebook: 'qirad' }] }; })), [], 'when inside all');
+  eq(rules(termed(c => { c.cards[0].when = { any: [{ season: ['spring'] }, { notebook: 'qirad' }] }; })), ['term rule'], 'inside any is not required');
+  eq(rules(termed(c => { c.cards[0].body = 'Nell offers two QIRADS. She wants an answer today.'; })), ['term rule'], 'a form, any case');
+  eq(rules(termed(c => { c.cards[0].body = 'Nell offers a deal. She wants an answer today.'; c.cards[0].note = 'A qirad is a deal.'; })), [], 'a note may use a term');
+  eq(rules(termed(c => { c.notebook = entries; })), ['term rule'], 'a term whose entry is missing');
 });
 test('banned.json is a plain list of lowercase words and nothing else', async () => {
   const b = JSON.parse(await fs.readFile(path.join(ROOT, 'tools/banned.json'), 'utf8'));
