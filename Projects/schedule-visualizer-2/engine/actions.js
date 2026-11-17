@@ -1026,7 +1026,7 @@ export const setBells = action(
 
 const scheduleOutcomes = new WeakMap();
 
-function reporting(project, next, outcome) {
+export function reporting(project, next, outcome) {
   if (next !== project) scheduleOutcomes.set(next, outcome);
   return next;
 }
