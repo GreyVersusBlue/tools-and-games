@@ -80,15 +80,17 @@ function lvAwayClose(){lvEl('live-away').hidden=true;lvSeenPut()}
 function lvCopyUpdate(body){const a=lvEl('lv-copy'),long=body.save.length>LV_COPY_MAX;
   a.hidden=long;lvEl('lv-long').hidden=!long;if(!long)a.href='index.html#'+body.save}
 /* yesterday: the epoch a real day back, or the oldest one kept. Epochs in a real day follow from the clock, so a different pace needs no change here. */
+const LV_BACK_DOWN='Yesterday is not available just now. The island will carry on from here.';
 async function lvLookBack(){
   if(lvBack||!lvReady||lvDead)return;
   for(let i=0;lvHold&&i<50;i++)await lvSleep(200);   /* an epoch or a reboot is being taken: wait for it, ten seconds at most */
-  if(lvBack||lvHold||lvDead)return;
+  if(lvBack||lvDead)return;
+  if(lvHold){lvSay(LV_BACK_DOWN);return}   /* still held after ten seconds: the server is not answering, so say so and stay in the present */
   lvHold=true;
-  const per=Math.max(1,Math.round(86400e3/(lvCfg.clock.stepMs*lvCfg.epochSteps))),cur=lvEpoch;let n=Math.max(0,cur-per),body=null;
-  while(n<cur&&!body){try{const r=await fetch('/hearth-live/epoch/'+lvCfg.era+'-'+n+'.json',{cache:'no-store'});if(r.ok)body=await r.json()}catch(e){break}
+  const per=Math.max(1,Math.round(86400e3/(lvCfg.clock.stepMs*lvCfg.epochSteps))),cur=lvEpoch;let n=Math.max(0,cur-per),body=null,down=false;
+  while(n<cur&&!body){try{const r=await fetch('/hearth-live/epoch/'+lvCfg.era+'-'+n+'.json',{cache:'no-store'});if(r.ok)body=await r.json()}catch(e){down=true;break}
     if(!body)n++}
-  if(!body){lvHold=false;lvSay('Nothing earlier than this is kept yet.');return}
+  if(!body){lvHold=false;lvSay(down?LV_BACK_DOWN:'Nothing earlier than this is kept yet.');return}
   lvSeenPut();
   try{lvLoad(body)}catch(e){lvHold=false;return}
   lvBack={to:lvEpochStep(cur)};lvBackFrom=body.step;lvSay('');

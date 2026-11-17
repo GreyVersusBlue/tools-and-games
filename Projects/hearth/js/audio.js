@@ -166,7 +166,7 @@ function twoNote(){if(!AC||!audioOn)return;const f=ar(1700,2500),t=AC.currentTim
 // summer, by day: a dry buzz, noise through a high narrow band, chopped at insect speed
 function buzz(){if(!AC||!audioOn)return;const t=AC.currentTime,d=ar(.9,1.5),n=AC.createBufferSource();n.buffer=nBuf;n.loop=true;
   const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=ar(5200,6400);bp.Q.value=7;const g=AC.createGain(),pn=mkPan(ar(-.7,.7));
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.7,t+.25);g.gain.setValueAtTime(.7,t+d-.3);g.gain.linearRampToValueAtTime(0,t+d);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.4,t+.25);g.gain.setValueAtTime(.4,t+d-.3);g.gain.linearRampToValueAtTime(0,t+d);
   const ch=AC.createOscillator(),cg=AC.createGain();ch.type='square';ch.frequency.value=ar(48,70);cg.gain.value=.35;const base=AC.createGain();base.gain.value=.65;
   const am=AC.createGain();am.gain.value=0;ch.connect(cg).connect(am.gain);base.connect(am.gain);
   n.connect(bp).connect(am).connect(g).connect(pn).connect(ambG);n.start(t);n.stop(t+d+.05);ch.start(t);ch.stop(t+d+.05)}
@@ -231,7 +231,7 @@ function audioTick(dt){sfxN=0;if(!AC||!audioOn)return;const t=AC.currentTime,s=s
   {const e=edges(),f=dayFrac();
     murG.gain.setTargetAtTime(.1*murLevel(),t,1.2);
     callT-=dt;if(callT<=0){callT=ar(5,14);if(!night&&!rain&&wx!=='snow'){
-      if(s==='spring'&&Math.random()<.7)twoNote();else if(s==='summer'&&Math.random()<.6)buzz();else if(s==='winter'&&Math.random()<.25)caw()}}
+      if(s==='spring'&&Math.random()<.7)twoNote();else if(s==='summer'&&Math.random()<.2)buzz();else if(s==='winter'&&Math.random()<.25)caw()}}
     gooseT-=dt;if(gooseT<=0){gooseT=ar(1.4,3);if(s==='autumn')gooseCall()}
     owlT-=dt;if(owlT<=0){owlT=ar(10,26);if(night&&wx==='clear'&&s!=='winter')owl()}
     frogT-=dt;if(frogT<=0){frogT=ar(.7,2.2);if(isDusk()&&(s==='spring'||s==='summer')&&!rain){let b=null,bd=14;for(const sp of springs){const d=Math.hypot(sp.x-cur.x,sp.y-cur.y);if(d<bd){bd=d;b=sp}}if(b)frog(b.x,b.y)}}
