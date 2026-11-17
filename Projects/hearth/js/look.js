@@ -36,7 +36,7 @@ function skyAt(f,season,wx,snowLying){
   const w=SKYWX[wx];if(w){const y=.299*c[0]+.587*c[1]+.114*c[2];c=c.map(v=>(v+(y-v)*w[0])*w[1])}
   return c.map(v=>Math.max(0,Math.min(255,Math.round(v))))}
 /* when each of the three warm lights is lit, in the pre-rendered falloff sprites: built the first time they are wanted, never in a frame */
-const LSPR={win:'#ffd69a',fire:'#ffb45a',lamp:'#fff2b0'},LRAD=[8,18,28,46];let lightSp=null,lmCv=null,lmG=null,litHouses=new Set(),skyLum=1;
+const LSPR={win:'#ffd69a',fire:'#ffb45a',lamp:'#fff2b0'},LRAD=[8,18,28,46];let lightSp=null,lmCv=null,lmG=null,lmSolid=null,litHouses=new Set(),skyLum=1;
 function lightSprites(){
   if(lightSp)return lightSp;lightSp={};
   for(const k in LSPR){const c3=SKYH(LSPR[k]);lightSp[k]={};
@@ -55,7 +55,11 @@ function houseLights(L,f,e){
     if(!evening&&!morning)return;
     if(people.some(p=>!p.dead&&p.home===h&&(p.task==='sleep'||Math.hypot(p.x-(h.x+1),p.y-(h.y+2))<2)))out.add(h)});
   return out}
-/* the light map: the hour's colour over a canvas the size of the world, the lights stamped on with lighter. Returns the canvas. */
+/* the light map: the hour's colour over a canvas the size of the world, the lights stamped on with lighter. Returns the canvas. A14: lmSolid is the colour when
+   nothing was stamped (the whole map is that one colour, and the picture multiplies by a fill instead of by a map, which costs half), and null when something was. */
+/* does the world, under the view's transform, cover every pixel of the canvas? A fill and a map agree there; where the world's edge is on the canvas an edge pixel is covered
+   by a fraction, and a fill and a blit round it differently by a level or two, so the map is blitted */
+function worldFills(vk){const x0=cv.width/2-camX*T*vk,y0=cv.height/2-camY*T*vk;return x0<=0&&y0<=0&&x0+W*T*vk>=cv.width&&y0+H*T*vk>=cv.height}
 function lightMap(L,f,e,s){
   const lsc=lookQ<2?.5:1; /* A14: below tier 2 the map is built at half size and the picture stretches it back */
   if(!lmCv){lmCv=document.createElement('canvas');lmG=lmCv.getContext('2d')}
@@ -63,8 +67,8 @@ function lightMap(L,f,e,s){
   const m=lmG;m.setTransform(lsc,0,0,lsc,0,0);const c=skyAt(f,s,wx,snowD),k=flash,fk=1+.5*Math.min(1,fogA),fd=Math.min(1,fogA)*.6; /* A7: fog takes the colour out of the map and swells every light */
   if(fd>0){const y=.299*c[0]+.587*c[1]+.114*c[2];for(let q=0;q<3;q++)c[q]=Math.round(c[q]+(y-c[q])*fd)}skyLum=Math.min(1,(.299*c[0]+.587*c[1]+.114*c[2])/255+k);
   m.globalCompositeOperation='source-over';
-  m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);
-  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{m.globalAlpha=a;m.drawImage(sp[kind][r],Math.round(x-r*fk),Math.round(y-r*fk),Math.round(r*2*fk),Math.round(r*2*fk));m.globalAlpha=1};
+  m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);lmSolid=m.fillStyle;
+  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{lmSolid=null;m.globalAlpha=a;m.drawImage(sp[kind][r],Math.round(x-r*fk),Math.round(y-r*fk),Math.round(r*2*fk),Math.round(r*2*fk));m.globalAlpha=1};
   m.globalCompositeOperation='lighter';
   const dark=1-L;
   if(L<.7)stamp('fire',46,center.x*T,center.y*T-2,Math.min(1,(.7-L)/.4));
@@ -73,9 +77,9 @@ function lightMap(L,f,e,s){
   if(hall&&L<.5&&(storyDay===dayCount||people.some(p=>p.task==='abed'&&p.abedH)))stamp('win',28,hall.x*T+8,hall.y*T+10,1);
   const lh=getB('light');
   if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=RM?.6:animT*.9,al=(dark-.35)*.5*(wx==='fog'?1.6:1);stamp('lamp',18,lx,ly,Math.min(1,(dark-.35)*3));
-    m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
+    lmSolid=null;m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
   for(const q of farLamps(L,f,e))stamp('lamp',8,q.x,q.y,q.a); /* B5: one for each person over there, until the small hours */
-  for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
+  for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;lmSolid=null;m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
   if(dark>.65&&speed<FAST)for(const p of people){if(p.dead||p.inside||p.task!=='gohome'&&p.task!=='nurse'&&p.task!=='visit'&&p.task!=='voyage')continue;stamp('fire',8,p.x*T,p.y*T-3,Math.min(1,(dark-.65)*4))}
   m.globalCompositeOperation='source-over';
   return lmCv}
@@ -258,3 +262,19 @@ function drawFarLife(L){
   for(const c of farRec.cr){if(c.k==='name'||dayCount-c.d>=2)continue;
     const s2=mulberry(farRec.s^c.d*131),sx=x0+w/2+side*w*(.5+s2()*.25),sy=Math.round(h*2.3+s2()*3);
     g.globalAlpha=.85*wxk;g.fillStyle='#ece8dc';g.fillRect(Math.round(sx),sy-2,1,2);g.fillRect(Math.round(sx)+1,sy-1,1,1);g.fillStyle='#5a4a3a';g.fillRect(Math.round(sx)-1,sy,3,1);g.globalAlpha=1}}
+/* A14 (speed): a bare winter tree is about thirty one-pixel rects, 240 trees a frame, and building that path rect by rect cost more than filling it. The outline
+   depends on five things only (the tier, the wind's pixel, the radius, the shape, and where the tree stands), so it is built once as a Path2D, kept on the tree in
+   underscore fields (presentation reads the tree and writes only those), and rebuilt when one of the five moves. Runs of pixels are one rect: the same pixels
+   as before, the same fill rule, one path. Reads trees, draws nothing, never calls R(). */
+function pxLine(p,x0,y0,x1,y1){const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0,m=n||1;
+  for(let i=0;i<=n;i++)p.rect(Math.round(x0+(x1-x0)*i/m),Math.round(y0+(y1-y0)*i/m),1,1)}
+function bareTree(t,r,sh,sx,tips){
+  if(t._bq===lookQ&&t._bsx===sx&&t._br===r&&t._bsh===sh&&t._bx===t.x&&t._by===t.y)return t;
+  const tx0=t.x*T,by=t.y*T,cx=tx0+sx,fy=by-r*.9,p=new Path2D(),sn=new Path2D();
+  p.rect(tx0-1,by-r*1.0,2,r*1.3);
+  for(const [tx,ty] of tips){const ex=Math.round(cx+tx*r),ey=Math.round(by+ty*r);
+    if(lookQ<1){p.rect(ex,ey,1,1);p.rect((tx0+ex)>>1,(fy+ey)/2|0,1,1);continue}
+    pxLine(p,tx0,fy,ex,ey);if(lookQ>=2)pxLine(p,(tx0+ex)/2,(fy+ey)/2,(tx0+ex)/2+(tx<0?-.4:.4)*r,(fy+ey)/2-.35*r)}
+  for(const [tx,ty] of tips)sn.rect(Math.round(cx+tx*r)-1,Math.round(by+ty*r)-1,3,1);
+  sn.rect(Math.round(tx0)-1,Math.round(fy)-1,3,1);
+  t._bq=lookQ;t._bsx=sx;t._br=r;t._bsh=sh;t._bx=t.x;t._by=t.y;t._bp=p;t._bs=sn;return t}
