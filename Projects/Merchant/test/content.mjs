@@ -118,8 +118,8 @@ test('gradient: an unknown stop, an unknown good and a single stop are schema pr
   }
 });
 test('gradient: a gradient with no note or no source is a schema problem', () => {
-  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], sources: gradeSrc }]; })).some(p => p.path.includes('note')));
-  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], note: 'x' }]; })).some(p => p.path.includes('sources')));
+  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], sources: gradeSrc }]; })).some(p => p.message === 'missing "note"'));
+  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], note: 'x' }]; })).some(p => p.message === 'missing "sources"'));
 });
 test('gradient: gradientFailures alone, on plain stops', () => eq(gradientFailures({ good: 'g', from: ['a', 'b'] }, [{ id: 'a', sells: { g: { base: 5 } } }, { id: 'b', sells: { g: { base: 4 } } }], 'x').length, 1));
 test('gradient: cairo covers the directions the research records', () => {

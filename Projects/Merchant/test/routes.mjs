@@ -336,9 +336,10 @@ test('winter risk: a galley leg started in winter carries its risk times 1.5, a 
   const careful = C.agents.find(a => a.id === 'mariam');
   eq(R.WINTER_GALLEY, 1.5);
   const winter = 3, summer = 1;
-  eq([winter, summer].map(i => R.legRisk(C, hana, galley, i)), [0.06 * 1.5, 0.06]);
+  eq([winter, summer].map(i => R.legRisk(C, hana, galley, i)), [galley.risk * 1.5, galley.risk]);
   eq([winter, summer].map(i => R.legRisk(C, hana, caravan, i)), [0.04, 0.04], 'winter changes the galleys only');
-  eq(R.legRisk(C, careful, galley, winter), 0.06 * 1.5 * 0.5);
+  eq(R.legRisk(C, careful, galley, winter), galley.risk * 1.5 * 0.5);
+  eq(galley.risk, 0.09, 'the Alexandria to Famagusta leg is 0.09 (MER-51b moved it from 0.06); a pin that moves with the data is how this line was found');
 });
 
 test('winter risk: the roll itself is made against the winter figure for a galley that started in winter', () => {

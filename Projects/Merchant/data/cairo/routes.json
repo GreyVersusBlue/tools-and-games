@@ -14,8 +14,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -35,8 +35,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -62,8 +62,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -83,8 +83,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
     "note": "estimate",
     "sources": [
      {
@@ -112,8 +112,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
     "note": "estimate",
     "sources": [
      {
@@ -141,8 +141,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -168,8 +168,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -189,8 +189,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
     "note": "estimate",
     "sources": [
      {
@@ -218,8 +218,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 12,
     "note": "estimate",
     "sources": [
      {
@@ -247,8 +247,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 12,
     "note": "estimate",
     "sources": [
      {
@@ -276,8 +276,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 10,
     "note": "estimate",
     "sources": [
      {
@@ -305,8 +305,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -332,8 +332,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -353,8 +353,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 14,
     "when": {
      "year": [
       1345,
@@ -388,8 +388,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.09,
+    "toll": 14,
     "when": {
      "year": [
       1345,
@@ -423,8 +423,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -450,8 +450,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -471,8 +471,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 14,
     "note": "estimate",
     "sources": [
      {
@@ -500,8 +500,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 14,
     "note": "estimate",
     "sources": [
      {
@@ -529,8 +529,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -556,8 +556,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -577,8 +577,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 12,
     "note": "estimate",
     "sources": [
      {
@@ -606,8 +606,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.05,
-    "toll": 6,
+    "risk": 0.1,
+    "toll": 12,
     "note": "estimate",
     "sources": [
      {
@@ -635,8 +635,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.02,
-    "toll": 2,
+    "risk": 0.025,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -728,8 +728,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -753,8 +753,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -941,8 +941,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -965,8 +965,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -1083,8 +1083,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -1107,8 +1107,8 @@
      "winter",
      "spring"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -1127,8 +1127,8 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -1147,8 +1147,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -1265,8 +1265,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -1289,8 +1289,8 @@
      "winter",
      "spring"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -1308,8 +1308,8 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.1,
-    "toll": 8,
+    "risk": 0.08,
+    "toll": 6,
     "note": "estimate",
     "sources": [
      {
@@ -1327,8 +1327,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.1,
-    "toll": 8,
+    "risk": 0.08,
+    "toll": 6,
     "note": "estimate",
     "sources": [
      {
@@ -1347,8 +1347,8 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -1367,8 +1367,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -1485,8 +1485,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -1509,8 +1509,8 @@
      "winter",
      "spring"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -1528,8 +1528,8 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
     "note": "estimate",
     "sources": [
      {
@@ -1547,8 +1547,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
     "note": "estimate",
     "sources": [
      {
@@ -1567,8 +1567,8 @@
      "summer",
      "autumn"
     ],
-    "risk": 0.06,
-    "toll": 6,
+    "risk": 0.05,
+    "toll": 5,
     "note": "estimate",
     "sources": [
      {
@@ -1587,8 +1587,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.07,
-    "toll": 5,
+    "risk": 0.06,
+    "toll": 4,
     "note": "estimate",
     "sources": [
      {
@@ -2348,8 +2348,8 @@
      "winter",
      "spring"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
     "note": "estimate",
     "sources": [
      {
@@ -2367,8 +2367,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
     "note": "estimate",
     "sources": [
      {
@@ -2430,8 +2430,8 @@
      "winter",
      "spring"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
     "note": "estimate",
     "sources": [
      {
@@ -2450,8 +2450,8 @@
      "winter",
      "spring"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
     "note": "estimate",
     "sources": [
      {
@@ -2470,8 +2470,8 @@
      "winter",
      "spring"
     ],
-    "risk": 0.08,
-    "toll": 8,
+    "risk": 0.07,
+    "toll": 6,
     "note": "estimate",
     "sources": [
      {
@@ -2489,8 +2489,8 @@
      "autumn",
      "winter"
     ],
-    "risk": 0.14,
-    "toll": 10,
+    "risk": 0.12,
+    "toll": 8,
     "note": "estimate",
     "sources": [
      {

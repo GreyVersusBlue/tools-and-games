@@ -22,7 +22,7 @@
    },
    "gold": {
     "base": 100,
-    "depth": 12
+    "depth": 24
    },
    "porcelain": {
     "base": 90,
@@ -84,7 +84,7 @@
     "depth": 30
    },
    "silk": {
-    "base": 472,
+    "base": 462,
     "depth": 12
    },
    "gold": {
@@ -92,7 +92,7 @@
     "depth": 12
    },
    "porcelain": {
-    "base": 94,
+    "base": 92,
     "depth": 20
    },
    "glass": {
@@ -108,7 +108,7 @@
     "depth": 40
    },
    "incense": {
-    "base": 63,
+    "base": 61,
     "depth": 30
    },
    "copper": {
@@ -146,11 +146,11 @@
   },
   "sells": {
    "pepper": {
-    "base": 131,
+    "base": 133,
     "depth": 15
    },
    "silk": {
-    "base": 475,
+    "base": 518,
     "depth": 6
    },
    "gold": {
@@ -158,31 +158,31 @@
     "depth": 6
    },
    "porcelain": {
-    "base": 96,
+    "base": 98,
     "depth": 10
    },
    "glass": {
-    "base": 46,
+    "base": 50,
     "depth": 15
    },
    "linen": {
-    "base": 51,
+    "base": 56,
     "depth": 20
    },
    "sugar": {
-    "base": 51,
+    "base": 56,
     "depth": 20
    },
    "incense": {
-    "base": 66,
+    "base": 68,
     "depth": 15
    },
    "copper": {
-    "base": 25,
+    "base": 26,
     "depth": 15
    },
    "wool": {
-    "base": 59,
+    "base": 60,
     "depth": 15
    }
   },
@@ -212,11 +212,11 @@
   },
   "sells": {
    "pepper": {
-    "base": 110,
+    "base": 150,
     "depth": 30
    },
    "silk": {
-    "base": 389,
+    "base": 540,
     "depth": 12
    },
    "gold": {
@@ -224,27 +224,27 @@
     "depth": 12
    },
    "porcelain": {
-    "base": 75,
+    "base": 105,
     "depth": 20
    },
    "linen": {
-    "base": 40,
+    "base": 63,
     "depth": 40
    },
    "sugar": {
-    "base": 44,
+    "base": 68,
     "depth": 40
    },
    "incense": {
-    "base": 54,
+    "base": 77,
     "depth": 30
    },
    "copper": {
-    "base": 17,
+    "base": 24,
     "depth": 30
    },
    "wool": {
-    "base": 40,
+    "base": 52,
     "depth": 30
    }
   },
@@ -273,11 +273,11 @@
   },
   "sells": {
    "pepper": {
-    "base": 129,
+    "base": 138,
     "depth": 30
    },
    "silk": {
-    "base": 442,
+    "base": 540,
     "depth": 12
    },
    "gold": {
@@ -285,31 +285,31 @@
     "depth": 12
    },
    "porcelain": {
-    "base": 88,
+    "base": 100,
     "depth": 20
    },
    "glass": {
-    "base": 43,
+    "base": 54,
     "depth": 30
    },
    "linen": {
-    "base": 48,
+    "base": 61,
     "depth": 40
    },
    "sugar": {
-    "base": 48,
+    "base": 61,
     "depth": 40
    },
    "incense": {
-    "base": 63,
+    "base": 70,
     "depth": 30
    },
    "copper": {
-    "base": 20,
+    "base": 22,
     "depth": 30
    },
    "wool": {
-    "base": 53,
+    "base": 60,
     "depth": 30
    }
   },
@@ -339,7 +339,7 @@
   },
   "sells": {
    "pepper": {
-    "base": 140,
+    "base": 135,
     "depth": 15
    },
    "gold": {
@@ -347,27 +347,27 @@
     "depth": 6
    },
    "glass": {
-    "base": 47,
+    "base": 52,
     "depth": 15
    },
    "linen": {
-    "base": 52,
+    "base": 58,
     "depth": 20
    },
    "sugar": {
-    "base": 52,
+    "base": 58,
     "depth": 20
    },
    "incense": {
-    "base": 67,
+    "base": 69,
     "depth": 15
    },
    "copper": {
-    "base": 27,
+    "base": 28,
     "depth": 15
    },
    "wool": {
-    "base": 63,
+    "base": 66,
     "depth": 15
    }
   },
@@ -396,11 +396,11 @@
   },
   "sells": {
    "pepper": {
-    "base": 112,
+    "base": 90,
     "depth": 15
    },
    "porcelain": {
-    "base": 87,
+    "base": 72,
     "depth": 10
    },
    "linen": {
@@ -438,11 +438,11 @@
   },
   "sells": {
    "pepper": {
-    "base": 100,
+    "base": 85,
     "depth": 30
    },
    "porcelain": {
-    "base": 79,
+    "base": 67,
     "depth": 20
    },
    "glass": {
@@ -490,11 +490,11 @@
   },
   "sells": {
    "pepper": {
-    "base": 100,
+    "base": 85,
     "depth": 30
    },
    "porcelain": {
-    "base": 79,
+    "base": 67,
     "depth": 20
    },
    "glass": {
@@ -546,7 +546,7 @@
     "depth": 30
    },
    "porcelain": {
-    "base": 70,
+    "base": 66,
     "depth": 20
    },
    "glass": {
@@ -593,7 +593,7 @@
   },
   "sells": {
    "pepper": {
-    "base": 71,
+    "base": 70,
     "depth": 30
    },
    "salt": {
@@ -601,7 +601,7 @@
     "depth": 40
    },
    "porcelain": {
-    "base": 60,
+    "base": 58,
     "depth": 20
    },
    "glass": {
@@ -653,7 +653,7 @@
     "depth": 30
    },
    "porcelain": {
-    "base": 60,
+    "base": 56,
     "depth": 20
    },
    "copper": {
@@ -680,11 +680,11 @@
   },
   "sells": {
    "pepper": {
-    "base": 79,
+    "base": 77,
     "depth": 30
    },
    "porcelain": {
-    "base": 52,
+    "base": 60,
     "depth": 20
    },
    "sugar": {
@@ -722,7 +722,7 @@
   },
   "sells": {
    "pepper": {
-    "base": 152,
+    "base": 164,
     "depth": 30
    },
    "silk": {
@@ -734,7 +734,7 @@
     "depth": 12
    },
    "porcelain": {
-    "base": 107,
+    "base": 112,
     "depth": 20
    },
    "glass": {
@@ -750,7 +750,7 @@
     "depth": 40
    },
    "incense": {
-    "base": 73,
+    "base": 76,
     "depth": 30
    },
    "copper": {
@@ -939,7 +939,7 @@
   },
   "sells": {
    "gold": {
-    "base": 49,
+    "base": 46,
     "depth": 16
    },
    "salt": {
@@ -966,7 +966,7 @@
   },
   "sells": {
    "gold": {
-    "base": 45,
+    "base": 41,
     "depth": 16
    },
    "salt": {
