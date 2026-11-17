@@ -379,6 +379,22 @@ try {
     await test('reduced-motion page: no console error', async () => { eq(consoleErrors, []); });
     await page.close();
   }
+  // A popstate that arrives while the content is still loading must not throw (found by a double
+  // goto to #about in this suite: the router ran with no save slot yet).
+  {
+    const page = await prepPage(browser, BASE, { width: 1366, height: 768, dsf: 1 });
+    const errors = [];
+    page.on('pageerror', e => errors.push(String(e)));
+    const early = () => { const id = setInterval(() => dispatchEvent(new PopStateEvent('popstate')), 1); setTimeout(() => clearInterval(id), 400); };
+    await (page.evaluateOnNewDocument ?? page.addInitScript).call(page, early);
+    await page.goto(URL_, { waitUntil: 'load' });
+    await test('a popstate during loading does not throw, and the title still comes up', async () => {
+      await page.waitForSelector('#screen-title');
+      eq(errors, []);
+    });
+    await page.close();
+  }
+
   // ---- MER-43: the game. The engine runs the same seed in Node; the DOM must say what it says.
   const titleOf = (s, p) => {
     if (p.kind === 'notice') return nodeContent.events.find(e => e.id === p.ref).notice.title;
@@ -536,6 +552,10 @@ try {
       ok(b.source.startsWith('Source: Ibn Battuta, The Travels of Ibn Battuta') && !/https?:|www\./.test(b.source), b.source);
       eq(b.next, true);
       eq(b.order.at(-1), 'source', 'the source line is last, under the button');
+      // ARCHITECTURE 8.4: saved at once after the action, not on a timer or only on leaving
+      const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('merchant-save')));
+      delete saved.__v;
+      eq(saved, JSON.parse(JSON.stringify(eng.choose(model, nodeContent, 'p0-0', 'begin'))), 'the save after the first answer');
     });
 
     // The engine model for the rest of the pointer flow: letter 1, expedition 1 (opens the stub), neighbour 2.
@@ -656,6 +676,8 @@ try {
       await page.evaluate(() => {
         for (const key of ['1', '2', 'e', 'E']) document.dispatchEvent(new KeyboardEvent('keydown', { key, repeat: true, bubbles: true }));
       });
+      // the engine's state changes the moment a key acts, before any flip finishes on screen
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' }))), 'a held key changed the game');
       await sameScreen(page, eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' }), 'after held keys');
       eq((await screenOf(page)).face, 'front');
     });
