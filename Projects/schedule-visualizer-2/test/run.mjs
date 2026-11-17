@@ -174,6 +174,7 @@ export const GROUPS = {
     'browser/calendar.mjs', // SV2-80
     'browser/calendar-review.mjs', // SV2-80b
     'browser/marks-duties.mjs', // SV2-85
+    'browser/period-names.mjs', // SV2-129
     'browser/release.mjs', // SV2-93
     'browser/one-way.mjs', // SV2-91
     'browser/step-marks.mjs', // SV2-101b
@@ -317,6 +318,7 @@ export const BROWSER_SECONDS = {
   'browser/staff-views-b.mjs': 11,
   'browser/schedule.mjs': 11,
   'browser/marks-duties.mjs': 11,
+  'browser/period-names.mjs': 12,
   'browser/grid-pass.mjs': 10,
   'browser/movement-bells.mjs': 10,
   'browser/draw-keyboard.mjs': 9,
