@@ -101,11 +101,13 @@ test('one letter at most for an expedition in a season, whatever the pool holds'
   }
   ok(wrote > 60 && wrote < 140, `about half of 200 draws write (${wrote}); the chance is ${LETTER_CHANCE}`);
 });
-test('never for an expedition at home, or one just sent, or when no letter is in the pool', () => {
+test('never for an expedition at home (done, or still standing in Harbour), or one just sent, or when no letter is in the pool', () => {
   const home = sent(calm, 'mira', 'harbour-hilltown', { status: 'home', leg: 2 });
   const fresh = sent(calm, 'mira', 'harbour-hilltown', { leg: 0, status: 'out', left: 2, sent: 0 });
+  const leaving = sent(calm, 'mira', 'harbour-hilltown', { leg: 0, status: 'waiting', left: 0, sent: -9 }); // the first leg is closed: still standing in Harbour
+  const hereLetter = variant(calm, y => { y.letters[1].when = { at: 'harbour' }; y.letters[0].when = { at: 'harbour' }; }); // a letter that wants to be written at Harbour
   for (let r = 1; r <= 100; r++) {
-    for (const s of [home, fresh]) { const t = structuredClone(s); t.rng = r; letters(t, calm); eq(x0(t).post ?? [], [], `rng ${r}`); }
+    for (const s of [home, fresh, leaving]) { const t = structuredClone(s); t.rng = r; letters(t, hereLetter); eq(x0(t).post ?? [], [], `rng ${r}`); }
   }
   const spent = sent(calm, 'mira', 'harbour-hilltown', riding); spent.seen[QUESTION] = 1; // a once-only letter, already written
   const before = spent.rng;
