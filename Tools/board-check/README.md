@@ -394,6 +394,8 @@ taking a new one.
 | 8179 | `Projects/golden-hour-beach/test/bar.mjs` |
 | 8178 | `Projects/Closing Time/tools/browser.mjs` |
 | 8191 | `Projects/throneshard/tools/scripts/vfx_measure.mjs` (`VFX_PORT` moves it) |
+| 8190 | `Projects/Merchant/test/journey.mjs` |
+| 8193 | `Projects/Merchant/test/layout.mjs` |
 
 8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are
 never run in the same process, and neither is in the other's CI job. It is on the

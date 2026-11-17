@@ -35,15 +35,12 @@ table { font-variant-numeric: tabular-nums; }
 /* Focus ring: 3 px brass inside, 2 px night outside (5 px at board width) */
 :focus { outline: none; }
 :focus-visible {
-  outline: 3px solid var(--brass);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 5px var(--night);
+  outline: 2px solid transparent; /* forced-colors mode still draws this */
+  outline-offset: 0;
+  box-shadow: 0 0 0 3px var(--brass), 0 0 0 5px var(--night);
 }
 @media (min-width: 1600px) {
-  :focus-visible {
-    outline-width: 5px;
-    box-shadow: 0 0 0 8px var(--night);
-  }
+  :focus-visible { box-shadow: 0 0 0 5px var(--brass), 0 0 0 7px var(--night); }
 }
 
 /* A paper arrives by sliding up and fading in (3.5) */
