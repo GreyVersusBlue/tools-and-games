@@ -14,6 +14,7 @@
     "choices": [
       {
         "id": "go",
+        "ui": "outfit-first",
         "label": "Send Yusuf with ten loads of linen",
         "hint": "Damascus may pay more than Cairo does.",
         "requires": {

@@ -189,6 +189,7 @@ export function validateContent(raw, { art } = {}) {
   const choice = (isLetter) => (c, p) => obj(c, p, {
     id: idv, label: str, hint: str, requires: (x, q) => condition(x, q, isLetter),
     now: effects(isLetter ? 'letter-now' : 'now'), later,
+    ui: (x, q) => oneOf(['outfit-first'], x, q),
   }, ['id', 'label']);
   const choices = isLetter => (v, p) => {
     arr(v, p, choice(isLetter), 1);

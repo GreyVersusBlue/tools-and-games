@@ -220,6 +220,14 @@ test('a route leg may carry a when condition and a note; any other unknown key s
   const odd = structuredClone(r); odd[0].legs[0].colour = 'red';
   ok(problemsOf({ ...cairo, routes: odd }).length > 0, 'an unknown leg key is refused');
 });
+test('a choice may carry ui: "outfit-first" and nothing else in that key', () => {
+  const c = structuredClone(cairo.cards);
+  const first = c.find(x => x.id === 'first-expedition');
+  ok(first && first.choices.some(ch => ch.ui === 'outfit-first'), 'the first expedition card opens the one-press outfitting');
+  eq(problemsOf({ ...cairo, cards: c }), [], 'accepted');
+  first.choices.find(ch => ch.ui).ui = 'open-the-map';
+  ok(problemsOf({ ...cairo, cards: c }).length > 0, 'an unknown ui value is refused');
+});
 test('cairo has every file of ARCH 5, empty or minimal', async () => {
   for (const f of ['city', 'calendar', 'houses', 'goods', 'stops', 'routes', 'agents', 'events', 'notebook', 'terms', 'text', 'letters']) {
     await fs.access(path.join(ROOT, 'data/cairo', `${f}.json`));
