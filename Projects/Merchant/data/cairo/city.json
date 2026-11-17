@@ -112,5 +112,12 @@
     "winter": "desk-night",
     "lastAct": "desk-night",
     "map": "map-cairo"
+  },
+  "clusters": {
+    "delta": "Nile Delta",
+    "upper-egypt": "Upper Egypt",
+    "redsea": "Red Sea coast",
+    "levant": "Syria",
+    "niger": "Niger River"
   }
 }

@@ -30,8 +30,19 @@ function project(geo, lat, lon) {
   return { x: mix(top[0], bot[0], tr), y: mix(top[1], bot[1], tr) };
 }
 
-/** "Damascus and Aleppo" are the names of the stops, but a cluster is named by its id. */
-const clusterName = id => cap(String(id).replace(/-/g, ' '));
+/** The sides a label may sit on, tried in this order after the one stops.json names (DESIGN 4.7).
+    dx, dy: pixels from the dot's centre; ax, ay: the share of the label's own width and height
+    to pull back by, so a label on the left of its dot ends at the dot and one above it stands on it. */
+const SIDES = {
+  right: { dx: 12, dy: 0, ax: 0, ay: -0.5 }, left: { dx: -12, dy: 0, ax: -1, ay: -0.5 },
+  above: { dx: 0, dy: -11, ax: -0.5, ay: -1 }, below: { dx: 0, dy: 11, ax: -0.5, ay: 0 },
+  'above-right': { dx: 8, dy: -8, ax: 0, ay: -1 }, 'below-right': { dx: 8, dy: 8, ax: 0, ay: 0 },
+  'above-left': { dx: -8, dy: -8, ax: -1, ay: -1 }, 'below-left': { dx: -8, dy: 8, ax: -1, ay: 0 },
+};
+const ANCHOR_AX = { start: 0, middle: -0.5, end: -1 };
+const GAP = 3;                   // px kept clear around a label, so two never touch
+const hits = (a, b) => a.left < b.right + GAP && b.left < a.right + GAP && a.top < b.bottom + GAP && b.top < a.bottom + GAP;
+const inside = (a, f) => a.left >= f.left && a.right <= f.right && a.top >= f.top && a.bottom <= f.bottom;
 
 /** When an expedition is expected home, in words: "Winter 1325". Seasons count from the one being played. */
 function homeBy(app, seasonsAway) {
@@ -61,6 +72,9 @@ export function createMap(app, nav) {
   let opener = null;
   let typed = '', typedAt = 0;
   const pos = {};                  // stop id -> { x, y } in percent of the picture
+  let gone = false;                // destroy() ran, so an answer that arrives late draws nothing
+  /** What the map calls a group of close stops: city.json's `clusters`, else the id read as words. */
+  const clusterName = id => content.city.clusters?.[id] ?? cap(String(id).replace(/-/g, ' '));
 
   const asset = app.art.get('map-cairo');
   const img = h('img', { class: 'map-img', src: `assets/art/${asset?.file ?? 'map-cairo.webp'}`, alt: asset?.alt ?? 'A map of the lands around Cairo.', decoding: 'async', fetchpriority: 'high' });
@@ -124,7 +138,6 @@ export function createMap(app, nav) {
   function drawMap() {
     if (!geo) return;
     const v = app.view();
-    const shown = grouped() ? stops.filter(s => !members(s.cluster ?? '').length || members(s.cluster).length < 2 || !clusters().includes(s.cluster)) : stops;
     let k = 1, tx = 0, ty = 0;
     if (zoom) {
       const ps = members(zoom).map(s => pos[s.id]);
@@ -160,21 +173,24 @@ export function createMap(app, nav) {
     const out = [];
     const grp = grouped() ? clusters() : [];
     const drawn = new Set();
+    const pairs = [];              // each dot with its label, for placeLabels
     for (const s of stops) {
       if (grp.includes(s.cluster)) {
         if (drawn.has(s.cluster)) continue;
         drawn.add(s.cluster);
         const ms = members(s.cluster), x = ms.reduce((n, m) => n + pos[m.id].x, 0) / ms.length, y = ms.reduce((n, m) => n + pos[m.id].y, 0) / ms.length;
-        out.push(h('span', { class: 'dot cluster', style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } }),
-          h('span', { class: 'stop-label cluster-label', style: `left:${x}%;top:${y}%;--dx:12;--dy:0;--ax:0%`, dataset: { cluster: s.cluster } }, `${clusterName(s.cluster)}: ${ms.length} stops`));
+        const dot = h('span', { class: 'dot cluster', role: 'img', 'aria-label': `${clusterName(s.cluster)}, ${ms.length} stops`, style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } });
+        const label = h('span', { class: 'stop-label cluster-label', 'aria-hidden': 'true', style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } }, `${clusterName(s.cluster)}: ${ms.length} stops`);
+        out.push(dot, label); pairs.push({ dot, label, side: null, rank: 1 });
         continue;
       }
+      // The dot names the stop to a screen reader even when its label is hidden for want of room
       const p = pos[s.id], lab = s.label ?? { dx: 12, dy: 0, anchor: 'start' };
-      const ax = { start: '0%', end: '-100%', middle: '-50%' }[lab.anchor] ?? '0%';
-      out.push(h('span', { class: `dot${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, tabindex: '-1', 'aria-hidden': 'true', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id } }),
-        h('span', { class: `stop-label${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, 'aria-hidden': 'true', style: `left:${p.x}%;top:${p.y}%;--dx:${lab.dx};--dy:${lab.dy};--ax:${ax}`, dataset: { stop: s.id } }, s.name));
+      const dot = h('span', { class: `dot${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, role: 'img', 'aria-label': s.name, tabindex: '-1', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id } });
+      const label = h('span', { class: `stop-label${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, 'aria-hidden': 'true', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id } }, s.name);
+      out.push(dot, label);
+      pairs.push({ dot, label, side: { dx: lab.dx, dy: lab.dy, ax: ANCHOR_AX[lab.anchor] ?? 0, ay: -0.5 }, rank: s.id === home ? 0 : s.id === selected ? 1 : 2 });
     }
-    void shown;
     // expeditions as tokens along their leg; same leg and same place stack with a count
     const groups = new Map();
     for (const x of app.state.expeditions) {
@@ -200,6 +216,50 @@ export function createMap(app, nav) {
         h('p', { class: 'token-label' }, seal ? h('img', { class: 'token-seal', src: `assets/art/${seal.file}`, alt: '', width: 20, height: 20 }) : null, text)));
     }
     layer.replaceChildren(...out);
+    placeLabels(pairs);
+  }
+
+  /** Put each label on a side of its dot where it overlaps no other label, no dot, no token, and
+      stays whole inside the picture and clear of the price panel (DESIGN 4.7). The stop's own
+      `label` side goes first, then the other sides; a label that fits nowhere is hidden and its dot
+      stays, with the stop's name as its accessible name. Cairo and the selected stop choose first. */
+  function placeLabels(pairs) {
+    const fr = frame.getBoundingClientRect();
+    if (!fr.width || !fr.height) return;
+    const clip = { left: fr.left, right: fr.right, top: fr.top, bottom: fr.bottom };
+    const walls = [board, unzoom].filter(b => b && !b.hidden).map(b => b.getBoundingClientRect()).filter(r => r.width && r.height);
+    const centre = d => { const r = d.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const marks = pairs.map(p => ({ p, at: centre(p.dot), w: p.label.offsetWidth, h: p.label.offsetHeight }));
+    // a dot, or a token with its caption, is a thing a label must not cover
+    const solid = [...qsa('.dot', layer), ...qsa('.token', layer)].map(n => ({ el: n, r: n.getBoundingClientRect() }));
+    const placed = [];
+    for (const m of marks.slice().sort((a, b) => a.p.rank - b.p.rank)) {
+      // its own side, then every side close in, then every side one step further out (a crowd of
+      // dots on a phone leaves no room beside them); a label that fits nowhere is hidden
+      const out2 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 2.2, dy: t.dy * 2.2 }));
+      const tries = [m.p.side, ...Object.values(SIDES), ...out2].filter(Boolean);
+      let won = null;
+      // first a place that covers no other dot or token; failing that, one that covers a dot (the
+      // press still goes to the nearest stop, and the list names every stop) but never another label
+      for (const clear of [true, false]) {
+        for (const t of tries) {
+          const left = m.at.x + t.dx + t.ax * m.w, top = m.at.y + t.dy + t.ay * m.h;
+          const r = { left, top, right: left + m.w, bottom: top + m.h };
+          if (!inside(r, clip) || walls.some(w => hits(r, w)) || placed.some(q => hits(r, q))) continue;
+          if (clear && solid.some(o => o.el !== m.p.dot && hits(r, o.r))) continue;
+          won = { t, r };
+          break;
+        }
+        if (won) break;
+      }
+      const el = m.p.label;
+      el.hidden = !won;
+      if (won) {
+        placed.push(won.r);
+        el.style.setProperty('--dx', String(won.t.dx)); el.style.setProperty('--dy', String(won.t.dy));
+        el.style.setProperty('--ax', `${won.t.ax * 100}%`); el.style.setProperty('--ay', `${won.t.ay * 100}%`);
+      }
+    }
   }
 
   // ---- a press on the picture goes to the nearest stop within 48 px
@@ -234,7 +294,15 @@ export function createMap(app, nav) {
   function markLit() {
     list.setAttribute('aria-activedescendant', `stop-${lit}`);
     for (const o of qsa('[role="option"]', list)) o.classList.toggle('lit', o.dataset.stop === lit);
-    qs(`#stop-${lit}`, list)?.scrollIntoView?.({ block: 'nearest' });
+    const o = qs(`#stop-${lit}`, list);
+    if (!o) return;
+    const top = o.offsetTop, bottom = top + o.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (bottom > list.scrollTop + list.clientHeight) {
+      // stop on a row boundary, so the first row in view is a whole row and not a blank strip of one
+      const need = bottom - list.clientHeight;
+      list.scrollTop = [...list.children].find(c => c.offsetTop >= need)?.offsetTop ?? need;
+    }
   }
   function listKey(e) {
     const ids = order().map(s => s.id), i = ids.indexOf(lit);
@@ -371,6 +439,7 @@ export function createMap(app, nav) {
   addEventListener('resize', onResize);
   draw();
   loadGeo().then(g => {
+    if (gone) return;
     geo = g;
     for (const s of g.stops) pos[s.id] = { x: s.x / g.w * 100, y: s.y / g.h * 100 };
     for (const s of stops) {
@@ -381,7 +450,17 @@ export function createMap(app, nav) {
     draw();
     frame.dataset.ready = '1';
     el.dataset.ready = '1';
+    // the desk's one-press paper (DESIGN 7) asks for the sheet on the first stop: open it over this map
+    const first = app.outfitFor ?? null;
+    app.outfitFor = null;
+    if (first && stopOf(content, first)) {
+      if (first !== selected) select(first, { keepFocus: true });
+      const o = outfitState(first);
+      if (o.ok) nav.openOutfit(first); else showToast(o.reason);
+    }
   });
+  // label widths change when the page's own font arrives, and the placement was measured before it
+  document.fonts?.ready.then(() => { if (!gone && geo) drawMap(); });
 
   return {
     el, key, draw,
@@ -389,6 +468,6 @@ export function createMap(app, nav) {
     prepareOutfit: stopId => { pendingStop = stopId; },
     showOutfit, hideOutfit,
     focusFirst: () => boardTitle.focus(),
-    destroy() { removeEventListener('resize', onResize); hideOutfit(); },
+    destroy() { gone = true; removeEventListener('resize', onResize); hideOutfit(); },
   };
 }

@@ -11,7 +11,6 @@ const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 const REASONS = {
-  map: 'The map table opens in the next part of the game.',
   ledger: 'The ledger opens in a later part of the game.',
   notebook: 'The notebook opens in a later part of the game.',
 };
@@ -40,7 +39,6 @@ export function createDesk(app) {
   const { content } = app;
   let raised = null;       // id of the paper the player raised
   let backOf = null;       // { paper, now, fresh, outfit } while a card's back is being read
-  let stub = null;         // the first-expedition paper, until MER-44 makes the map table
   let busy = false;        // a flip is under way
   let seasonKey = null;
   let wasLive = false;
@@ -99,6 +97,16 @@ export function createDesk(app) {
     onclick: () => barNote(REASONS[key]),
   }, label, extra, h('span', { class: 'visually-hidden', id: `reason-${key}` }, ` ${REASONS[key]}`));
 
+  /** The map table is its own screen with its own hash (#map). `outfitFor` is a stop to open the
+      one-press sheet on once the map has drawn (DESIGN 7); the map reads it from the app and clears it. */
+  function toMap(outfitFor = null) {
+    if (busy) return;
+    if (backOf && !outfitFor) { barNote('Press Next first.'); return; }
+    if (app.state.phase !== 'desk') { barNote('The map table is for the seasons, not the years between.'); return; }
+    app.outfitFor = outfitFor;
+    location.hash = 'map';
+  }
+
   function drawBar(v) {
     const total = (content.calendar.lengths?.[app.state.length]?.acts ?? []).reduce((n, a) => n + a.to - a.from + 1, 0);
     const held = Object.values(app.state.stock).reduce((n, x) => n + x, 0);
@@ -112,7 +120,8 @@ export function createDesk(app) {
         h('button', { class: 'bar-btn loads', type: 'button', id: 'btn-warehouse', 'aria-disabled': 'true', 'aria-describedby': 'reason-ledger',
           onclick: () => barNote(REASONS.ledger) }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
       h('div', { class: 'bar-tools' },
-        soft('map', 'Map'), soft('ledger', 'Ledger'),
+        h('button', { class: 'bar-btn', type: 'button', id: 'btn-map', onclick: () => toMap() }, 'Map'),
+        soft('ledger', 'Ledger'),
         soft('notebook', 'Notebook', h('span', { class: 'bar-badge' }, String(app.state.notebook.length))),
         h('button', { class: 'bar-btn speaker', type: 'button', id: 'btn-sound', 'aria-pressed': sound ? 'true' : 'false', 'aria-label': 'Sound',
           onclick: () => { app.setSetting('sound', !app.settings.sound); drawBar(app.view()); } }, icon(sound ? ICONS.speakerOn : ICONS.speakerOff)),
@@ -125,9 +134,7 @@ export function createDesk(app) {
   const returnsSeen = () => app.state.log.filter(e => e.kind === 'return').length;
   const openPapers = () => app.state.desk.filter(p => p.state === 'open');
   function listed() {
-    const list = app.state.desk.filter(p => p.state === 'open' || p.id === backOf?.paper.id);
-    if (stub) list.push({ id: 'stub', kind: 'outfit', state: 'open' });
-    return list;
+    return app.state.desk.filter(p => p.state === 'open' || p.id === backOf?.paper.id);
   }
   function currentId(list) {
     if (backOf) return backOf.paper.id;
@@ -135,38 +142,13 @@ export function createDesk(app) {
     return list[0]?.id ?? null;
   }
 
-  function stubPaper() {
-    const stop = (content.stops ?? []).find(x => x.id === (content.city.firstStop ?? 'damascus'));
-    const plan = engine.suggestPlan(app.state, content, stop?.id); // a plan, or null when nothing fits
-    const agent = plan && (content.agents ?? []).find(a => a.id === plan.agent);
-    const goodsText = plan && Object.entries(plan.cargo ?? {}).map(([g, n]) =>
-      `${n} ${n === 1 ? 'load' : 'loads'} of ${(content.goods ?? []).find(x => x.id === g)?.name?.toLowerCase() ?? g}`).join(' and ');
-    const title = plan ? `Send ${agent.name} to ${stop.name}` : 'Nobody can set out yet';
-    const body = plan
-      ? `Everything is packed and filled in. ${agent.name} will carry ${goodsText} to ${stop.name}, with your own money behind it.`
-      : 'The house has nobody free to send, or nothing to send. You can try again next season.';
-    const titleId = 'paper-stub-title';
-    const button = plan
-      ? h('button', { class: 'button next', type: 'button', id: 'btn-send', onclick: () => sendStub(plan) }, `Send ${agent.name} to ${stop.name}`)
-      : h('button', { class: 'button next', type: 'button', id: 'btn-stub-dismiss', onclick: () => closeStub() }, 'Leave it for now');
-    return h('article', { class: 'paper sheet front kind-outfit', dataset: { paper: 'stub', kind: 'outfit', face: 'front' }, 'aria-labelledby': titleId },
-      h('div', { class: 'sheet-head' }, h('span', { class: 'seal seal-plain', 'aria-hidden': 'true' }), h('p', { class: 'sender' }, h('strong', null, 'The house'), h('span', null, ' Cairo'))),
-      h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, title),
-      h('p', { class: 'sheet-body', id: 'stub-body' }, body), button);
-  }
-  function sendStub(plan) {
-    try { app.act(s => engine.outfit(s, content, plan)); } catch (e) { qs('#stub-body', el).textContent = e.message.replace(/^outfit: /, ''); return; }
-    closeStub();
-  }
-  function closeStub() { stub = null; draw({ focus: 'next' }); }
-
   function drawStack(opts) {
     const list = listed();
     const cur = currentId(list);
     const phase = app.state.phase;
     sheetBox.replaceChildren(); edges.replaceChildren();
     if (phase !== 'desk') { sheetBox.append(phasePage(phase)); counter.textContent = ''; return; }
-    const left = openPapers().length + (stub ? 1 : 0);
+    const left = openPapers().length;
     counter.textContent = left ? `${left} ${left === 1 ? 'paper' : 'papers'} left` : 'No papers left';
 
     let node = null;
@@ -175,8 +157,7 @@ export function createDesk(app) {
       if (backOf) {
         node = back(app, paper, { now: backOf.now, fresh: backOf.fresh, onNext: next });
         node.dataset.face = 'back';
-      } else if (paper.id === 'stub') node = stubPaper();
-      else if (RECORD_KINDS.includes(paper.kind)) node = record(app, paper, { open: returnsSeen() > 1, onDone: () => answer(paper, { id: 'ok', now: [] }) });
+      } else if (RECORD_KINDS.includes(paper.kind)) node = record(app, paper, { open: returnsSeen() > 1, onDone: () => answer(paper, { id: 'ok', now: [] }) });
       else node = front(app, paper, { onChoose: (c) => answer(paper, c), locked: () => busy });
       const key = `${paper.id}:${backOf ? 'back' : 'front'}`;
       if (shown.has(key) && !opts.flipped) node.classList.add('still');
@@ -185,7 +166,7 @@ export function createDesk(app) {
     }
     for (const p of list) {
       if (p.id === cur) continue;
-      edges.append(edge(app, p.id === 'stub' ? { ...p, ref: null, title: 'Your first expedition' } : p, {
+      edges.append(edge(app, p, {
         tilt: tiltOf(app.state.seed, p.id), onRaise: () => { if (busy || backOf) return; raised = p.id; draw({ focus: 'raise' }); },
       }));
     }
@@ -239,7 +220,8 @@ export function createDesk(app) {
     if (busy || !backOf) return;
     const outfit = backOf.outfit;
     backOf = null; raised = null;
-    if (outfit) { stub = {}; raised = 'stub'; } // the paper that sends him comes next
+    // the one-press paper is the outfitting sheet over the map table, filled in for the first stop (DESIGN 7)
+    if (outfit) { toMap(content.city.firstStop ?? 'damascus'); return; }
     draw({ focus: 'next' });
   }
 
@@ -247,11 +229,6 @@ export function createDesk(app) {
     const can = engine.canEndSeason(app.state);
     if (app.state.phase !== 'desk') return { ok: false, reason: '' };
     if (backOf && can.ok) return { ok: false, reason: 'Press Next first.' };
-    if (stub) {
-      // The expedition paper is the page's, not the engine's: it is counted with the rest.
-      const left = openPapers().length + 1;
-      return { ok: false, reason: left === 1 ? 'The expedition paper is still on your desk.' : `${left} papers still need an answer.` };
-    }
     return can;
   }
 
@@ -260,7 +237,7 @@ export function createDesk(app) {
     const can = endState();
     if (!can.ok) { app.say(can.reason); return; }
     app.act(s => engine.endSeason(s, content));
-    raised = null; backOf = null; stub = null;
+    raised = null; backOf = null;
     draw({ focus: 'season' });
   }
 
@@ -294,7 +271,7 @@ export function createDesk(app) {
     const f = opts.focus;
     if (f === 'season' || f === 'raise' || f === 'back' || f === 'next') {
       const title = qs('.sheet-title', sheetBox);
-      const left = openPapers().length + (stub ? 1 : 0);
+      const left = openPapers().length;
       if (f === 'next' && !left && !backOf && app.state.phase === 'desk') endBtn.focus();
       else (title ?? endBtn).focus();
     }
@@ -320,9 +297,10 @@ export function createDesk(app) {
       return true;
     }
     if (k === 'e') { e.preventDefault(); endSeason(); return true; }
-    if (k === 'm' || k === 'l' || k === 'n') {
+    if (k === 'm') { e.preventDefault(); toMap(); return true; }
+    if (k === 'l' || k === 'n') {
       e.preventDefault();
-      barNote(REASONS[{ m: 'map', l: 'ledger', n: 'notebook' }[k]]);
+      barNote(REASONS[{ l: 'ledger', n: 'notebook' }[k]]);
       return true;
     }
     return false;

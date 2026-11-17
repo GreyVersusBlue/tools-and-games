@@ -232,6 +232,8 @@ export function validateContent(raw, { art } = {}) {
       score: (v, p) => obj(v, p, { wealthScale: (x, q) => arr(x, q, () => {}), ranks: (x, q) => arr(x, q, () => {}) }),
       stills: (v, p) => dict(v, p, str, (x, q) => { str(x, q); artRef(x, q); }),
       priceNews: bool,
+      // what the map calls each group of close stops (stops.json's `cluster`), in words a twelve-year-old reads; an id with no name here is shown as the id
+      clusters: (v, p) => dict(v, p, idv, str),
       // what a loss takes and who retires at the act jump (ARCHITECTURE 4.7); every key is optional and routes.js has a default for each
       jump: (v, p) => obj(v, p, {
         retires: (x, q) => num(x, q, 0, 1), wholeLoss: (x, q) => num(x, q, 0, 1), survivesWhole: (x, q) => num(x, q, 0, 1),
