@@ -30,7 +30,7 @@ function list(value) {
 
 function space(source) {
   if (source.kind === 'room') {
-    return {
+    const room = {
       id: source.id,
       kind: 'room',
       cells: list(source.cells).slice(),
@@ -42,6 +42,10 @@ function space(source) {
       shared: source.shared,
       doors: list(source.doors).map((door) => ({ cell: door.cell, side: door.side, stepFree: door.stepFree !== false })),
     };
+    // W7: a room's features, written only when it has some
+    const featureIds = list(source.featureIds).filter((id) => typeof id === 'string');
+    if (featureIds.length > 0) room.featureIds = featureIds;
+    return room;
   }
   return {
     id: source.id,
@@ -86,7 +90,41 @@ function connection(source) {
     out.kind = ELEVATOR_KIND;
     if (source.staffOnly === true) out.staffOnly = true;
     if (typeof source.car === 'string' && source.car !== '') out.car = source.car;
+  } else if (typeof source.well === 'string' && source.well.trim() !== '') {
+    // W7: the stairwell's letter, on a stairs connection only, when it has one
+    out.well = source.well;
   }
+  return out;
+}
+
+// The features a published room uses, in the building's list order, as { id, name } (W7). The list
+// is only what a published room names; absent when no room names one.
+function usedFeatures(building) {
+  const used = new Set();
+  for (const floorSource of list(building.floors)) for (const room of list(floorSource.spaces)) if (room.kind === 'room') for (const id of list(room.featureIds)) if (typeof id === 'string') used.add(id);
+  return list(building.features).filter((feature) => feature && typeof feature.id === 'string' && used.has(feature.id)).map((feature) => ({ id: feature.id, name: feature.name }));
+}
+
+// The custom period word, field by field (W7).
+function periodCustom(source) {
+  const out = { word: source.word };
+  if (typeof source.plural === 'string') out.plural = source.plural;
+  out.count = source.count;
+  return out;
+}
+
+// When a teacher is away, field by field (W7).
+function away(source) {
+  return list(source).filter((entry) => entry && typeof entry === 'object').map((entry) => ({ dayTypeIds: list(entry.dayTypeIds).slice(), weekdays: list(entry.weekdays).slice(), periods: list(entry.periods).slice() }));
+}
+
+// The custom word and the names, each only when there (W7).
+function writtenWordSettings(settings) {
+  const out = {};
+  const custom = settings.periodCustom;
+  const names = settings.periodNames;
+  if (custom && typeof custom === 'object') out.periodCustom = periodCustom(custom);
+  if (Array.isArray(names) && names.length > 0) out.periodNames = names.slice();
   return out;
 }
 
@@ -210,13 +248,20 @@ export function publishedModel(project, options) {
       elevatorWaitSeconds: elevatorSettings(settings).wait,
       elevatorSecondsPerFloor: elevatorSettings(settings).perFloor,
       elevatorPeoplePerTrip: elevatorSettings(settings).perTrip,
+      // W7: the custom period word and the periods' own names, only when the project has them
+      ...writtenWordSettings(settings),
     },
     building: {
       floors: list(project.building.floors).map(floor),
       connections: list(project.building.connections).map(connection),
+      ...(usedFeatures(project.building).length > 0 ? { features: usedFeatures(project.building) } : {}),
     },
     subjects: list(project.subjects).map((subject) => ({ id: subject.id, code: subject.code, name: subject.name, colour: subject.colour })),
-    teachers: list(project.teachers).map((teacher) => ({ id: teacher.id, name: teacher.name, subjectId: teacher.subjectId, roomIds: list(teacher.roomIds).slice(), notes: teacher.notes })),
+    teachers: list(project.teachers).map((teacher) => {
+      const out = { id: teacher.id, name: teacher.name, subjectId: teacher.subjectId, roomIds: list(teacher.roomIds).slice(), notes: teacher.notes };
+      if (away(teacher.away).length > 0) out.away = away(teacher.away);
+      return out;
+    }),
     // sameAs null and short "" when a project saved before them has none
     dayTypes: list(project.dayTypes).map((dayType) => ({
       id: dayType.id,

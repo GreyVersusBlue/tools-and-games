@@ -20,7 +20,7 @@ import { checkSchedule, dutyNamed, sometimesWords, MARK_AS_NAMED } from '../../e
 import { sortFindings, countBySeverity, SEVERITIES } from '../../engine/findings.js';
 import { teacherDays, entryRoomIds, isFree } from '../../engine/teacher-day.js';
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
-import { bellsFor, periodName, formatTime } from '../../engine/bells.js';
+import { bellsFor, periodName, periodWordForms, formatTime } from '../../engine/bells.js';
 import { findRoom } from '../../engine/schema.js';
 import { schoolMarkFor } from '../../engine/marks.js';
 import { count, list } from '../components/words.js';
@@ -144,7 +144,7 @@ function teacherGrid(project, dayType, entries) {
   const days = teacherDays(project, dayType.id);
   const bells = bellsFor(project, dayType.id);
   const { cells, rows } = gridMarks(project, dayType.id, days, entries);
-  const out = ['<section class="doc-section doc-section--grid new-sheet">', '<h2>' + esc('Teachers by ' + String(settings.periodWord).toLowerCase() + ': ' + dayType.name) + '</h2>'];
+  const out = ['<section class="doc-section doc-section--grid new-sheet">', '<h2>' + esc('Teachers by ' + periodWordForms(settings).oneLower + ': ' + dayType.name) + '</h2>'];
   if (project.teachers.length === 0) {
     out.push('<p class="doc-none">There are no teachers yet.</p>', '</section>');
     return out.join('\n');
@@ -169,7 +169,7 @@ function teacherGrid(project, dayType, entries) {
         // a free period that a duty or a school mark takes says what takes it
         const always = slot.duties.find((duty) => sometimesWords(duty) === '');
         const mark = isFree(slot) || always ? null : schoolMarkFor(project, dayType.id, slot.period);
-        const taken = isFree(slot) ? 'Planning' : always ? dutyNamed(always) : mark && typeof mark.label === 'string' && mark.label.trim() !== '' ? mark.label : MARK_AS_NAMED[slot.marked] || 'Planning';
+        const taken = isFree(slot) ? 'Planning' : slot.marked === 'away' ? MARK_AS_NAMED.away : always ? dutyNamed(always) : mark && typeof mark.label === 'string' && mark.label.trim() !== '' ? mark.label : MARK_AS_NAMED[slot.marked] || 'Planning';
         inside = '<span class="doc-grid__planning">' + esc(taken) + '</span>';
       } else {
         inside = slot.groups.map((taught) => {

@@ -334,13 +334,15 @@ export function describePeriodChange(project, periods) {
     }
     return scenario;
   });
-  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0 };
+  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0, names: 0, away: 0 };
   // the sentence's words for what the change takes, in the order the screen says it
   const lostWords = [];
   if (past.marks > 0) lostWords.push(count(past.marks, 'marked period', 'marked periods'));
   if (past.duties > 0) lostWords.push(count(past.duties, 'duty', 'duties'));
   if (past.release > 0) lostWords.push(count(past.release, 'staggered dismissal', 'staggered dismissals'));
-  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), marks: past.marks, duties: past.duties, release: past.release, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + scenarioLevers + past.marks + past.duties + past.release > 0 };
+  if (past.names > 0) lostWords.push(count(past.names, 'period name', 'period names'));
+  if (past.away > 0) lostWords.push(count(past.away, 'not-in-school entry', 'not-in-school entries'));
+  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), marks: past.marks, duties: past.duties, release: past.release, ...(past.names > 0 ? { periodNames: past.names } : {}), ...(past.away > 0 ? { away: past.away } : {}), marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + scenarioLevers + past.marks + past.duties + past.release + past.names + past.away > 0 };
 }
 
 // Periods per day. Going down removes the later periods from every day, every
@@ -360,7 +362,7 @@ export const setPeriods = action(
     const resized = resizeDays(patch(project, ['settings', 'periods'], () => periods), periods);
     // raising the count deletes nothing: a mark or duty kept past the old end
     // (repair keeps them) is a period that exists now
-    return periods < project.settings.periods ? dropPastPeriods(resized, periods) : resized;
+    return periods < project.settings.periods ? dropPastAway(dropPastNames(dropPastPeriods(resized, periods), periods), periods) : resized;
   },
 );
 
@@ -669,10 +671,27 @@ export const mergeTeachers = action(
       roomIds: Array.from(new Set(keep.roomIds.concat(gone.roomIds))),
       notes,
     };
+    // the kept teacher's not-in-school entries, then the merged one's that are
+    // not already there; written only when either had any
+    const away = mergedAway(keep.away, gone.away);
+    if (away.length > 0) merged.away = away;
     next = { ...next, teachers: next.teachers.filter((teacher) => teacher.id !== gone.id).map((teacher) => (teacher.id === keep.id ? merged : teacher)) };
     return swapTeacherInDuties(next, gone.id, keep.id);
   },
 );
+
+function mergedAway(kept, other) {
+  const list = Array.isArray(kept) ? kept.slice() : [];
+  const key = (entry) => JSON.stringify([entry.dayTypeIds || [], entry.weekdays || [], entry.periods || []]);
+  const held = new Set(list.map(key));
+  for (const entry of Array.isArray(other) ? other : []) {
+    if (!held.has(key(entry))) {
+      held.add(key(entry));
+      list.push(entry);
+    }
+  }
+  return list;
+}
 
 // ---------------------------------------------------------------- groups
 
@@ -1007,7 +1026,7 @@ export const setBells = action(
 
 const scheduleOutcomes = new WeakMap();
 
-function reporting(project, next, outcome) {
+export function reporting(project, next, outcome) {
   if (next !== project) scheduleOutcomes.set(next, outcome);
   return next;
 }
@@ -1252,11 +1271,13 @@ export function describeDayTypeDelete(project, dayTypeId) {
   const left = marksAndDutiesLeftNoDayType(project, dayTypeId);
   if (left.marks > 0) parts.push(count(left.marks, 'marked period', 'marked periods'));
   if (left.duties > 0) parts.push(count(left.duties, 'duty', 'duties'));
+  const awayLeft = awayLeftNoDayType(project, dayTypeId);
+  if (awayLeft > 0) parts.push(count(awayLeft, 'not-in-school entry', 'not-in-school entries'));
   const releases = releaseChanges(project, dropDayTypeFromRelease(project, dayTypeId));
   if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
   let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
   if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
-  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...leverKeys(project, dayTypeId), dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...leverKeys(project, dayTypeId), dates, weekdays, rotation, marks: left.marks, duties: left.duties, ...(awayLeft > 0 ? { away: awayLeft } : {}), release: releases.changed, releaseRemoved: releases.removed, text };
 }
 
 // payload: { dayTypeId }. The first day type cannot be deleted. The outcome
@@ -1274,7 +1295,7 @@ export const deleteDayType = action(
       dayTypes: project.dayTypes.filter((candidate) => candidate !== dayType).map((candidate) => (followers.has(candidate) ? { ...candidate, sameAs: null } : candidate)),
       groups: withoutDays(project.groups, dayType.id),
     };
-    next = dropDayTypeFromRelease(dropDayTypeFromMarksAndDuties(next, dayType.id), dayType.id);
+    next = dropDayTypeFromRelease(dropDayTypeFromAway(dropDayTypeFromMarksAndDuties(next, dayType.id), dayType.id), dayType.id);
     const calendar = calendarOf(project);
     if (calendar && (outcome.dates > 0 || outcome.weekdays.length > 0 || outcome.rotation > 0)) {
       const rotation = calendar.rotation.filter((id) => id !== dayType.id);
@@ -2224,9 +2245,29 @@ export const setRoomFields = action(
   { label: (before, payload) => 'Edit ' + spaceLabel(before, payload.roomId), bumps: roomBumps, focus: buildingFocus },
   (project, payload) => {
     if (payload.subjectId !== undefined && payload.subjectId !== null) need(project.subjects, payload.subjectId, 'subject');
-    return inBuilding(project, (building) => geometry.setRoomFields(building, payload));
+    const fields = inBuilding(project, (building) => geometry.setRoomFields(building, payload));
+    return payload.featureIds === undefined ? fields : withRoomFeatureIds(fields, payload.roomId, payload.featureIds);
   },
 );
+
+// A room's features (ARCHITECTURE 22.2): the ids given must be in the school's
+// list, each once, kept in the list's order; none at all removes the field, as
+// a room that never had one. Refused in words when one is not in the list.
+export function withRoomFeatureIds(project, roomId, featureIds) {
+  if (!Array.isArray(featureIds) || featureIds.some((id) => typeof id !== 'string')) refuse('The features of a room are a list of features from the school\'s list.', 'bad-value');
+  const list = Array.isArray(project.building.features) ? project.building.features : [];
+  for (const id of featureIds) if (!list.some((feature) => feature.id === id)) refuse('One of those features is no longer on the list. Pick the features again.', 'missing');
+  const wanted = list.map((feature) => feature.id).filter((id) => featureIds.includes(id));
+  if (!findRoom(project, roomId)) refuse('That room is no longer in the building.', 'missing');
+  return mapRooms(project, (room) => {
+    if (room.id !== roomId) return room;
+    const held = Array.isArray(room.featureIds) ? room.featureIds : [];
+    if (sameList(held, wanted) && (wanted.length > 0 || !('featureIds' in room))) return room;
+    if (wanted.length > 0) return { ...room, featureIds: wanted };
+    const { featureIds: dropped, ...rest } = room;
+    return rest;
+  });
+}
 
 // Clearing a room's details keeps the room, its cells and its doors, and
 // every slot that names it. payload: { roomId }.
@@ -2234,7 +2275,7 @@ export const clearRoomDetails = action(
   { label: (before, payload) => 'Clear the details of ' + spaceLabel(before, payload.roomId), bumps: roomBumps, focus: buildingFocus },
   (project, payload, ctx) => {
     const cleared = inBuilding(project, (building) => geometry.setRoomFields(building, { roomId: payload.roomId, number: '', subjectId: null, wing: '', capacity: null, shared: false }));
-    return setRoomTeachers(cleared, { roomId: payload.roomId, teacherIds: [] }, ctx);
+    return setRoomTeachers(withRoomFeatureIds(cleared, payload.roomId, []), { roomId: payload.roomId, teacherIds: [] }, ctx);
   },
 );
 
@@ -2831,7 +2872,7 @@ const PART_BUMPS = { building: [GEOMETRY, BUILDING, SCHEDULE], schedule: [BUILDI
 // period word, the two defaults and the checks move the schedule; the school
 // name, the colour scale and the time format move nothing. A settings import
 // never moves the geometry.
-const SETTING_BUMPS = { periods: [SCHEDULE], periodWord: [SCHEDULE], defaultPassingSeconds: [SCHEDULE], defaultHeadCount: [SCHEDULE], checks: [SCHEDULE], schoolName: [], colourScale: [], timeFormat: [] };
+const SETTING_BUMPS = { periods: [SCHEDULE], periodWord: [SCHEDULE], periodCustom: [SCHEDULE], periodNames: [SCHEDULE], defaultPassingSeconds: [SCHEDULE], defaultHeadCount: [SCHEDULE], checks: [SCHEDULE], schoolName: [], colourScale: [], timeFormat: [] };
 function takenBumps(summary) {
   const bumps = [];
   if (summary && Array.isArray(summary.taken)) {
@@ -4022,7 +4063,77 @@ function countPastPeriods(project, periods) {
     marks: marksOf(project).filter((mark) => Number.isInteger(mark.period) && mark.period >= periods).length,
     duties: dutiesOf(project).filter((duty) => duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods).length,
     release: releaseChanges(project, dropPastPeriodsFromRelease(project, periods)).changed,
+    names: pastNames(project, periods),
+    away: awayLostPast(project, periods),
   };
+}
+
+// Period names past the new end (ARCHITECTURE 22.17): trimmed with the periods.
+function pastNames(project, periods) {
+  const names = project.settings.periodNames;
+  return Array.isArray(names) ? names.slice(periods).filter((name) => typeof name === 'string' && name.trim() !== '').length : 0;
+}
+
+function dropPastNames(project, periods) {
+  const names = project.settings.periodNames;
+  if (!Array.isArray(names) || names.length <= periods) return project;
+  const kept = names.slice(0, periods);
+  while (kept.length > 0 && kept[kept.length - 1] === '') kept.pop();
+  if (kept.length > 0) return patch(project, ['settings', 'periodNames'], () => kept);
+  const { periodNames: dropped, ...rest } = project.settings;
+  return { ...project, settings: rest };
+}
+
+// An away entry that names periods: those past the end go, and one left with
+// none is dropped, never left as [] (which would mean the whole day).
+function trimAwayPeriods(entry, periods) {
+  if (!entry || !Array.isArray(entry.periods) || entry.periods.length === 0) return entry;
+  const kept = entry.periods.filter((period) => !Number.isInteger(period) || period < periods);
+  if (kept.length === entry.periods.length) return entry;
+  return kept.length === 0 ? null : { ...entry, periods: kept };
+}
+
+function awayLostPast(project, periods) {
+  let lost = 0;
+  for (const teacher of project.teachers) {
+    if (Array.isArray(teacher.away)) lost += teacher.away.filter((entry) => trimAwayPeriods(entry, periods) === null).length;
+  }
+  return lost;
+}
+
+function dropPastAway(project, periods) {
+  return changeAway(project, (entry) => trimAwayPeriods(entry, periods));
+}
+
+// Map every teacher's away entries; null drops one. A teacher left with none
+// has no `away` at all, as one that never had any.
+function changeAway(project, fn) {
+  return withKey(project, 'teachers', mapShared(project.teachers, (teacher) => {
+    if (!Array.isArray(teacher.away) || teacher.away.length === 0) return teacher;
+    const away = mapShared(teacher.away, (entry) => fn(entry)).filter((entry) => entry !== null);
+    if (away.length === teacher.away.length && away.every((entry, at) => entry === teacher.away[at])) return teacher;
+    if (away.length > 0) return { ...teacher, away };
+    const { away: gone, ...rest } = teacher;
+    return rest;
+  }));
+}
+
+// A day type is gone: out of every away entry's day types; an entry left with
+// none it had is dropped, not widened to every day type (ARCHITECTURE 22.9).
+function dropDayTypeFromAway(project, dayTypeId) {
+  return changeAway(project, (entry) => {
+    if (!entry || !Array.isArray(entry.dayTypeIds) || !entry.dayTypeIds.includes(dayTypeId)) return entry;
+    const dayTypeIds = entry.dayTypeIds.filter((id) => id !== dayTypeId);
+    return dayTypeIds.length === 0 ? null : { ...entry, dayTypeIds };
+  });
+}
+
+function awayLeftNoDayType(project, dayTypeId) {
+  let lost = 0;
+  for (const teacher of project.teachers) {
+    if (Array.isArray(teacher.away)) lost += teacher.away.filter((entry) => entry && Array.isArray(entry.dayTypeIds) && entry.dayTypeIds.length === 1 && entry.dayTypeIds[0] === dayTypeId).length;
+  }
+  return lost;
 }
 
 // ================================================================ SV2-83: marked periods and duties (end)

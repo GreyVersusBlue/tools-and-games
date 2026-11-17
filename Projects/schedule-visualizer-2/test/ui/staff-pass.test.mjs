@@ -37,10 +37,17 @@ import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, 
 import { GROUPS } from '../run.mjs';
 import { readTool } from '../publish/reader.mjs';
 
-test('the settings the preview is fed again for are the settings a published file carries: ten, the same ten, in the same order', () => {
+test('the settings the preview is fed again for are the settings a published file carries: ten, and the two W7 ones when the project has them, the same twelve in the same order', () => {
   const carried = Object.keys(publishedModel(school(), { clock }).settings);
   assert.equal(carried.length, 10);
-  assert.deepEqual(PUBLISHED_SETTINGS, carried);
+  assert.deepEqual(PUBLISHED_SETTINGS.slice(0, 10), carried);
+  // SV2-126: the custom period word and the periods' own names are written only when set
+  const project = school();
+  project.settings.periodCustom = { word: 'Class', plural: 'Classes', count: 'number' };
+  project.settings.periodNames = ['Advisory'];
+  const all = Object.keys(publishedModel(project, { clock }).settings);
+  assert.equal(all.length, 12);
+  assert.deepEqual(PUBLISHED_SETTINGS, all);
   // and none of them is a setting only the planner uses
   for (const key of ['theme', 'paper', 'defaultHeadCount', 'checks', 'colourScale']) assert.ok(!PUBLISHED_SETTINGS.includes(key), key);
 });
