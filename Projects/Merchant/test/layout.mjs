@@ -354,9 +354,6 @@ async function contrastOf(page, scopeSel, dsf) {
 // fixed. Each is matched by screen, check and text; a finding that matches is not a failure, and an
 // entry that matches nothing in a full run is one (delete it when the screen is fixed).
 const KNOWN = [
-  { screen: 'new-game', check: 'target', match: /^label "Three acts/, why: 'the length row is one line tall, 23 to 31 px' },
-  { screen: 'desk-return', check: 'target', match: /^summary "Show the account"/, why: 'the folded account summary is 23 to 31 px tall' },
-  { screen: 'outfit', check: 'contrast', match: /^#outfit-send "Send Yusuf/, why: 'paper text on --brass is 3.11:1; button text on brass fill wants --night or a darker fill' },
 ];
 const knownHits = KNOWN.map(() => 0);
 const unknown = (screen, check, list) => BREAK ? list : list.filter(f => {

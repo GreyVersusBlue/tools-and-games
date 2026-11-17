@@ -146,6 +146,7 @@ html.large-text .title-what { display: none; }
 .sheet.back .fresh { margin-top: var(--s2); font-family: var(--font-chrome); font-size: var(--step-0); }
 .sheet .next { margin: var(--s3) 0 var(--s2); }
 .sheet .source { font-size: var(--step--1); color: var(--ink-soft); margin-top: var(--s2); }
+.account summary { min-height: var(--hit); display: list-item; padding: var(--s2) 0; box-sizing: border-box; cursor: pointer; }
 .account table { width: 100%; border-collapse: collapse; margin-top: var(--s2); }
 .account th { text-align: left; font-weight: 400; }
 .account td { text-align: right; }
@@ -352,6 +353,8 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 .send-row .reasons { font-family: var(--font-chrome); color: var(--madder); }
 .send-row .reasons p { margin: 0 0 var(--s1); }
 .outfit .send { min-height: 56px; }
+/* paper text on the hover brass is 3.11:1; night on brass clears 4.5 */
+.outfit .send:hover:not([aria-disabled="true"]) { color: var(--night); }
 @media (max-width: 700px) and (min-height: 501px) {
   dialog.outfit { width: 100%; height: 100dvh; max-height: none; border-radius: 0; padding: var(--s3); }
   .send-row { margin: 0 calc(var(--s3) * -1) calc(var(--s3) * -1); padding: var(--s2) var(--s3) max(var(--s3), env(safe-area-inset-bottom)); }
