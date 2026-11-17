@@ -43,7 +43,8 @@
 // images this device holds; with it, each floor's image is marked missing or
 // not.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES, FEATURES_MOST, FEATURE_NAME_MOST, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WELL_MOST } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
+import { FEATURES_MOST, FEATURE_NAME_MOST, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WELL_MOST } from './schema.js'; // W7:LINE
 import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel, isCellScale, elevatorCars, isLiftCell } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, defaultWeekdays, spacelessKey, textLength } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
@@ -207,6 +208,7 @@ export function repair(input, options) {
   }
   const periods = settings.periods;
   choice(settings, 'periodWord', PERIOD_WORDS, defaults.periodWord, 'The period word');
+  // W7:BEGIN
   // W7 (ARCHITECTURE 22.2, 22.17): the custom period word and the periods' own names. Absent stays
   // absent; what cannot be read is removed; names are trimmed to the periods the day has.
   if (settings.periodCustom !== undefined && settings.periodCustom !== null) {
@@ -264,6 +266,7 @@ export function repair(input, options) {
       settings.periodNames = names;
     }
   }
+  // W7:END
   whole(settings, 'defaultPassingSeconds', RANGES.defaultPassingSeconds, defaults.defaultPassingSeconds, 'The default passing time');
   if (!published) whole(settings, 'defaultHeadCount', RANGES.headCount, defaults.defaultHeadCount, 'The default head count');
   whole(settings, 'secondsPerCell', RANGES.secondsPerCell, defaults.secondsPerCell, 'Seconds per corridor cell');
@@ -499,6 +502,7 @@ export function repair(input, options) {
   const roomNumbers = new Set();
   const floorById = new Map();
 
+  // W7:BEGIN
   // ---- room features (W7, ARCHITECTURE 22.2): absent stays absent; what cannot be read is removed
   if (building.features !== undefined) {
     if (!Array.isArray(building.features)) {
@@ -559,6 +563,7 @@ export function repair(input, options) {
     }
   }
   const featureOrder = new Map(Array.isArray(building.features) ? building.features.map((feature, h) => [feature.id, h]) : []);
+  // W7:END
 
   let rawFloors = objects(building.floors, 'floors');
   if (rawFloors.length === 0) {
@@ -667,6 +672,7 @@ export function repair(input, options) {
         if (teachers !== space.teacherIds) space.teacherIds = teachers;
         subjectRef(space, label);
         text(space, 'wing', '', 'The wing of ' + label);
+        // W7:BEGIN
         if (space.featureIds !== undefined) {
           if (!Array.isArray(space.featureIds)) {
             note('The features of ' + label + ' could not be read and were removed.');
@@ -682,6 +688,7 @@ export function repair(input, options) {
             }
           }
         }
+        // W7:END
         if (space.capacity !== null) {
           if (space.capacity === undefined) space.capacity = null;
           else if (typeof space.capacity !== 'number' || !Number.isFinite(space.capacity)) {
@@ -967,6 +974,7 @@ export function repair(input, options) {
     }
     building.connections = list;
 
+    // W7:BEGIN
     // 6b. stairwells (W7, ARCHITECTURE 22.2, 22.17): `well` is on stairs connections only, is
     // text of 1 to WELL_MOST characters, and names one chain of flights that no plain flight shares
     // a letter with. A part that does not join the first, or a well sharing a plain flight's
@@ -1039,6 +1047,7 @@ export function repair(input, options) {
         }
       }
     }
+    // W7:END
 
     // 7. a door facing a lift cell is removed; a malformed door flag is removed
     const anyLift = list.some(elevator) || building.floors.some((floor) => Array.isArray(floor.lifts) && floor.lifts.length > 0);
@@ -1569,6 +1578,7 @@ export function repair(input, options) {
     }
     return { kept, dropped, unreadable: false };
   };
+  // W7:BEGIN
   // ---- when a teacher is away (W7, ARCHITECTURE 22.2, 22.17). Absent stays absent. An entry that
   // cannot be read, or that named day types, weekdays or periods and has none left, is dropped,
   // never widened to every day or the whole day.
@@ -1623,6 +1633,7 @@ export function repair(input, options) {
       kept.push(entry);
     }
     if (changed || kept.some((entry, k) => JSON.stringify(entry) !== JSON.stringify(teacher.away[k]))) teacher.away = kept;
+  // W7:END
   }
 
   const cut = (value, most) => Array.from(value).slice(0, most).join('');

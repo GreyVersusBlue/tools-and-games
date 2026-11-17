@@ -22,7 +22,8 @@ import { isId, ID_LENGTH, ID_PREFIXES } from './ids.js';
 import { SCENARIOS_MOST, PROJECT_LABEL_MOST } from './scenario.js'; // W6:LINE
 import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST, ELEVATOR_KIND, elevatorCars, isLiftCell } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, spacelessKey, textLength } from './schema.js';
-import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, FEATURES_MOST, FEATURE_NAME_MOST, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WELL_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
+import { FEATURES_MOST, FEATURE_NAME_MOST, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WELL_MOST } from './schema.js'; // W7:LINE
 import { isCalendarDate, daysBetween } from './calendar.js';
 
 function isObject(value) {
@@ -85,6 +86,7 @@ export function validate(project) {
     if (!inRange(settings.periods, RANGES.periods)) add('settings.periods', 'Periods per day is a whole number from ' + rangeText(RANGES.periods) + '.');
     else periods = settings.periods;
     if (!PERIOD_WORDS.includes(settings.periodWord)) add('settings.periodWord', 'The period word is one of ' + PERIOD_WORDS.join(', ') + '.');
+    // W7:BEGIN
     // W7 (ARCHITECTURE 22.2, 22.17): the custom period word and the periods' own names. Form only:
     // names past the period count are not refused (an older planner may have shortened the day).
     if (settings.periodCustom !== undefined && settings.periodCustom !== null) {
@@ -106,6 +108,7 @@ export function validate(project) {
         });
       }
     }
+    // W7:END
     if (!inRange(settings.defaultPassingSeconds, RANGES.defaultPassingSeconds)) add('settings.defaultPassingSeconds', 'The default passing time is a whole number of seconds from ' + rangeText(RANGES.defaultPassingSeconds) + '.');
     if (project.format !== PUBLISHED_FORMAT && !inRange(settings.defaultHeadCount, RANGES.headCount)) add('settings.defaultHeadCount', 'The default head count is a whole number from ' + rangeText(RANGES.headCount) + '.');
     if (!inRange(settings.secondsPerCell, RANGES.secondsPerCell)) add('settings.secondsPerCell', 'Seconds per corridor cell is a whole number from ' + rangeText(RANGES.secondsPerCell) + '.');
@@ -420,9 +423,11 @@ export function validate(project) {
                 });
               }
               if (space.subjectId !== null && !subjectIds.has(space.subjectId)) add(sp + '.subjectId', 'A room\'s subject is null or the id of a subject on the list.');
+              // W7:BEGIN
               if (space.featureIds !== undefined) {
                 if (!Array.isArray(space.featureIds) || !space.featureIds.every(isString) || new Set(space.featureIds).size !== space.featureIds.length) add(sp + '.featureIds', 'A room\'s features are a list of feature ids, each once, or absent.');
               }
+              // W7:END
               if (!isString(space.wing)) add(sp + '.wing', 'A wing is text.');
               if (space.capacity !== null && !inRange(space.capacity, RANGES.capacity)) add(sp + '.capacity', 'A capacity is empty or a whole number from ' + rangeText(RANGES.capacity) + '.');
               if (typeof space.shared !== 'boolean') add(sp + '.shared', 'Shared space is true or false.');
@@ -577,7 +582,9 @@ export function validate(project) {
           if (isBlank(connection.car)) add(path + '.car', 'An elevator\'s letter is text that is not empty, or absent.');
           else if (!elevator) add(path + '.car', 'Only an elevator connection has an elevator letter.');
         }
+        // W7:BEGIN
         if (connection.well !== undefined && (isBlank(connection.well) || textLength(connection.well) > WELL_MOST)) add(path + '.well', 'A stairwell\'s letter is text of 1 to ' + WELL_MOST + ' characters, or absent.'); // not-on-an-elevator is repair's rule (22.17)
+        // W7:END
         const a = whereIs(connection.a);
         const b = whereIs(connection.b);
         if (elevator) {
@@ -693,6 +700,7 @@ export function validate(project) {
       });
     }
 
+    // W7:BEGIN
     // room features (W7): the list's form; names unique by name are an action rule, not checked here
     if (building.features !== undefined) {
       if (!Array.isArray(building.features) || building.features.length > FEATURES_MOST) {
@@ -708,6 +716,7 @@ export function validate(project) {
       }
     }
 
+    // W7:END
     // zones
     if (project.format === PUBLISHED_FORMAT && building.zones === undefined) {
       // a published file carries no zones
@@ -746,6 +755,7 @@ export function validate(project) {
       }
       if (teacher.subjectId !== null && !subjectIds.has(teacher.subjectId)) add(path + '.subjectId', 'A teacher\'s subject is null or the id of a subject on the list.');
       if (!isString(teacher.notes)) add(path + '.notes', 'Notes are text.');
+      // W7:BEGIN
       if (teacher.away !== undefined) {
         const ap = path + '.away';
         if (!Array.isArray(teacher.away) || teacher.away.length > AWAY_MOST) {
@@ -762,6 +772,7 @@ export function validate(project) {
           });
         }
       }
+      // W7:END
       if (!Array.isArray(teacher.roomIds)) {
         add(path + '.roomIds', 'The rooms of a teacher are a list of room ids.');
       } else {
