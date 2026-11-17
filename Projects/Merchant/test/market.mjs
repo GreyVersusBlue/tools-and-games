@@ -16,7 +16,7 @@ const CITIES = {
   cairo: { content: await loadContent('cairo', { fs }), house: 'spice', stop: 'damascus', good: 'linen', far: 'tabriz', farLag: 4, nearLag: 1, foldAt: 1 },
 };
 for (const c of Object.values(CITIES)) c.orig = c.content;
-for (const c of Object.values(CITIES)) c.content = { ...c.content, letters: c.content.letters.length ? c.content.letters : LETTERS };
+for (const c of Object.values(CITIES)) c.content = { ...c.content, city: { ...c.content.city, priceNews: true }, letters: c.content.letters.length ? c.content.letters : LETTERS };
 
 /** First choice whose requirement holds, for every open paper. */
 function answer(s, content) {
@@ -56,7 +56,8 @@ for (const [name, C] of Object.entries(CITIES)) {
   });
 
   test(T('drift is repeatable by seed, differs by seed, and never draws from state.rng'), () => {
-    const a = play(game(), content, 3), b = play(game(), content, 3), c = play(game({ seed: 8 }), content, 3);
+    // two seasons, not three: testport's third season crosses the act gap, where ARCH 4.7 resets markets
+    const a = play(game(), content, 2), b = play(game(), content, 2), c = play(game({ seed: 8 }), content, 2);
     const fs_ = s => JSON.stringify(Object.values(s.market).map(m => Object.values(m).map(e => e.f)));
     eq(fs_(a), fs_(b));
     ok(fs_(a) !== fs_(c), 'a different seed drifts differently');
