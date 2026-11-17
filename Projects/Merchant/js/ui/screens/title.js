@@ -24,7 +24,9 @@ export function renderTitle({ onAbout, onSettings }) {
       h('p', { class: 'title-tagline' }, TITLE_TEXT.tagline)),
     h('div', { class: 'title-body' },
       h('div', { class: 'paper title-menu' },
-        h('button', { class: 'choice', type: 'button', id: 'btn-new', disabled: true, 'aria-describedby': reasonId }, 'New game'),
+        // aria-disabled, not disabled: a Tab user reaches it and hears the reason.
+        // The handler is empty on purpose; there is no game to start yet.
+        h('button', { class: 'choice', type: 'button', id: 'btn-new', 'aria-disabled': 'true', 'aria-describedby': reasonId, onclick: () => {} }, 'New game'),
         h('p', { class: 'title-reason', id: reasonId }, TITLE_TEXT.notReady),
         h('p', { class: 'title-what' }, TITLE_TEXT.about.join(' ')),
         h('button', { class: 'choice', type: 'button', id: 'btn-about', onclick: e => onAbout(e.currentTarget) }, 'About this game'),

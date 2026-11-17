@@ -1,0 +1,6 @@
+[
+  { "id": "plain", "name": "The Plain House", "blurb": "A small house with one trader.", "difficulty": 1,
+    "money": 500, "stock": { "wool": 10 }, "agents": ["mira"], "rep": {}, "multiplier": 1.0 },
+  { "id": "rich", "name": "The Rich House", "blurb": "A larger house with two traders.", "difficulty": 2,
+    "money": 900, "stock": { "wool": 10, "salt": 6 }, "agents": ["mira", "tobin"], "rep": { "partners": 1 }, "multiplier": 1.2 }
+]

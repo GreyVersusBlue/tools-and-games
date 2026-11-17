@@ -1,0 +1,36 @@
+[
+  {
+    "id": "testport",
+    "tab": "places",
+    "title": "Testport",
+    "body": "An invented harbour town for tests.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  },
+  {
+    "id": "harbour-town",
+    "tab": "places",
+    "title": "The harbour",
+    "body": "The quay where the carts and boats meet.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  },
+  {
+    "id": "trade-in-people",
+    "tab": "terms",
+    "title": "A hard part of the story",
+    "body": "Some traders also dealt in slaves. This game leaves that trade out of its choices.",
+    "context": "d5",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  }
+]

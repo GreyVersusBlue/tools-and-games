@@ -4,6 +4,7 @@
 /* A flat night ground with a gradient standing in for the A18 still: a dusk
    sky over low ground. The upper left third stays plain sky for the title. */
 body { background: var(--night); }
+/* The gradient's stops are tokens (tokens.css): --dawn-1, --dawn-2, --brass, --night. */
 .title-screen {
   min-height: 100svh;
   min-height: 100dvh;
@@ -15,7 +16,7 @@ body { background: var(--night); }
   color: var(--paper);
   background:
     linear-gradient(180deg, rgba(20,17,13,0) 0%, var(--night) 100%) bottom / 100% 45% no-repeat,
-    linear-gradient(180deg, #2b3a52 0%, #6d5a58 38%, #a8792c 62%, var(--night) 100%),
+    linear-gradient(180deg, var(--dawn-1) 0%, var(--dawn-2) 38%, var(--brass) 62%, var(--night) 100%),
     var(--night);
 }
 .title-head { max-width: 34em; }
@@ -26,9 +27,15 @@ body { background: var(--night); }
 }
 .title-tagline {
   margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
   font-size: var(--step-1);
   font-style: italic;
-  text-shadow: 0 .1rem .5rem rgba(0,0,0,.6);
+  /* A scrim, so the line keeps 4.5:1 over any stop of the gradient, brass
+     included, at every frame and in Large text: paper on this over brass is
+     above 9:1 (the journey computes it). */
+  background: rgba(20, 17, 13, .72);
+  border-radius: var(--radius);
+  width: fit-content;
 }
 .title-body { margin-top: auto; }
 .title-menu { padding: var(--s3); display: grid; gap: var(--s2); max-width: 26em; }
@@ -56,3 +63,8 @@ body { background: var(--night); }
   .title-menu { max-width: none; padding: var(--s2); gap: var(--s1); }
   .title-what { font-size: var(--step--1); line-height: 1.3; padding: var(--s1) var(--s3); }
 }
+
+/* Large text makes the menu taller than the frame on the short ones. The
+   paragraph that says what the game will be is also the first line of the
+   About panel, so it steps aside rather than push a button out of view. */
+html.large-text .title-what { display: none; }

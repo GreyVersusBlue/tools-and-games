@@ -1,0 +1,5 @@
+[
+  { "id": "testport-fiction", "author": "The Merchant project", "title": "Testport, an invented town for tests", "year": 2026,
+    "publisher": null, "kind": "scholarship", "volume": null, "translator": null, "contested": false,
+    "period": "none; invented", "note": "Not history. Every name, price and event in data/testport/ is made up." }
+]

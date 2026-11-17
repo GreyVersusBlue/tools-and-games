@@ -1,0 +1,13 @@
+[
+  { "id": "wool-due", "group": "followups",
+    "from": { "name": "Nell the broker", "role": "Testport", "seal": null },
+    "title": "The wool is ready",
+    "body": "Nell sends word that a buyer wants the wool you bought. He will pay more than you did.",
+    "choices": [
+      { "id": "sell", "label": "Sell it to him", "now": [ { "money": 60 }, { "stock": "wool", "by": -4 } ],
+        "later": [ { "in": 1, "do": [ { "rep": "partners", "by": 1 } ] } ] },
+      { "id": "keep", "label": "Keep the wool", "now": [ { "rep": "partners", "by": 0 } ],
+        "later": [ { "in": 2, "do": [ { "money": 20 } ] } ] }
+    ],
+    "note": "An invented card for testing.", "sources": [ { "src": "testport-fiction" } ] }
+]

@@ -1,0 +1,5 @@
+[
+  { "id": "wool", "name": "Wool", "unit": "load", "sigma": 0.1, "revert": 0.2, "sources": [ { "src": "testport-fiction" } ] },
+  { "id": "salt", "name": "Salt", "unit": "load", "sigma": 0.05, "revert": 0.3, "sources": [ { "src": "testport-fiction" } ] },
+  { "id": "lamps", "name": "Lamps", "unit": "load", "sigma": 0.15, "revert": 0.1, "sources": [ { "src": "testport-fiction" } ] }
+]
