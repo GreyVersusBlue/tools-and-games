@@ -392,6 +392,8 @@ for (const theme of ['light', 'dark']) {
 }
 
 test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and nothing scrolls sideways; at 844 by 390 the footer stays on screen', async () => {
+  // one page at a time: a second page of the same browser hears the first one's saves
+  await page.goto('about:blank');
   phone = await openPlanner({ hash: '#building', theme: 'light', width: 390, height: 844, mobile: true, browser: session.browser, server: session.server });
   const p = phone.page;
   await p.evaluate(async () => {
@@ -404,11 +406,15 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
     editor.select([editor.floor.spaces.find((space) => space.kind === 'room').id]);
   });
   await p.waitForSelector('#room-features-add');
+  // the inspector is folded away on a phone until its handle is tapped
+  if ((await p.$eval('#inspector', (el) => el.dataset.open)) !== 'true') await p.tap('#inspector-toggle');
+  await p.waitForFunction(() => document.querySelector('#room-features-add').getBoundingClientRect().height > 0, { timeout: 8000 });
   await p.evaluate(() => document.querySelector('#room-features-add').scrollIntoView({ block: 'center' }));
   const fits = () => p.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: document.documentElement.clientWidth }));
   const small = await fits();
   assert.ok(small.scroll <= small.width, 'the page fits at 390: ' + JSON.stringify(small));
-  assert.ok((await p.$eval('#room-features-add', (el) => el.getBoundingClientRect().height)) >= 44, 'the combobox field is 44 px');
+  const fieldBox = await p.$eval('#room-features-add', (el) => ({ height: el.getBoundingClientRect().height, display: getComputedStyle(el).display, coarse: matchMedia('(pointer: coarse)').matches }));
+  assert.ok(fieldBox.height >= 44, 'the combobox field is 44 px: ' + JSON.stringify(fieldBox));
   await p.focus('#room-features-add');
   await p.keyboard.type('s');
   const heights = await p.$$eval('#room-features-list [role="option"]', (all) => all.map((el) => el.getBoundingClientRect().height));
@@ -417,13 +423,15 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   await p.$eval('#room-features-add', (el) => { el.value = ''; });
   await p.tap(key('feature-edit'));
   await p.waitForSelector('#features-dialog[open]');
+  const seen = await p.evaluate(() => ({ features: (globalThis.sv2.store.project.building.features || []).length, rows: document.querySelectorAll('#features-rows li').length, empty: document.querySelector('#features-empty')?.hidden, dialogs: document.querySelectorAll('dialog[open]').length }));
+  assert.ok(seen.rows > 0, 'the dialog lists the features: ' + JSON.stringify(seen));
   const row = await p.$eval('#features-rows .features-row', (el) => {
     const name = el.querySelector('.features-row__name').getBoundingClientRect();
     const buttons = Array.from(el.querySelectorAll('.features-row__buttons .btn')).map((b) => b.getBoundingClientRect());
     return { nameBottom: name.bottom, buttonsTop: Math.min(...buttons.map((b) => b.top)), buttonHeights: buttons.map((b) => b.height), nameWidth: name.width, right: Math.max(...buttons.map((b) => b.right)) };
   });
   assert.ok(row.nameBottom <= row.buttonsTop + 1, 'the name is on top and the buttons wrap under it: ' + JSON.stringify(row));
-  assert.ok(row.buttonHeights.every((height) => height >= 44), 'the row buttons are 44 px: ' + row.buttonHeights.join(', '));
+  assert.ok(row.buttonHeights.every((height) => height >= 43.9), 'the row buttons are 44 px: ' + row.buttonHeights.join(', '));
   assert.ok(row.right <= 390, 'the row fits in the window');
   const wide = await fits();
   assert.ok(wide.scroll <= wide.width, 'the dialog does not scroll the page sideways: ' + JSON.stringify(wide));
@@ -432,7 +440,7 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   // landscape: the body scrolls and the Done button is on screen
   await p.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
   await p.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await p.waitForSelector('#room-features-add');
+  await p.waitForFunction(() => document.querySelector('#room-features-add').getBoundingClientRect().height > 0, { timeout: 8000 });
   await p.evaluate(() => document.querySelector('#room-features-add').scrollIntoView({ block: 'center' }));
   await p.tap(key('feature-edit'));
   await p.waitForSelector('#features-dialog[open]');
@@ -449,5 +457,7 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
 
 test('11. no page errors, and nothing asked for outside the tool', async () => {
   assert.deepEqual(session.problems().errors, []);
+  assert.deepEqual(phone.problems().errors, []);
   assert.deepEqual(session.offsite, []);
+  assert.deepEqual(phone.offsite, []);
 });

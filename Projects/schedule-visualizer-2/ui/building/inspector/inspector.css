@@ -617,3 +617,9 @@
     flex-basis: 100%;
   }
 }
+
+.bi-features .field__input,
+.features-dialog .field__input,
+.bi-popover .field__input {
+  min-height: 44px;
+}
