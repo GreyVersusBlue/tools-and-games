@@ -8,8 +8,10 @@ import { loadContent } from '../js/data.js';
 import * as R from '../js/engine/routes.js';
 import { decide, WAIT, ON } from '../js/engine/letters.js';
 import { SCALE, scaleWords, stepOf, UNFAIR, BLAMED } from '../js/engine/agents.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, view } from '../js/engine/index.js';
+import { apply } from '../js/engine/effects.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, suggestPlan, checkPlan, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
+import { seasonIndex } from '../js/engine/calendar.js';
 
 const T = await loadContent('testport', { fs });
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
@@ -125,26 +127,69 @@ test('rule 4 an agent with two unfair memories refuses an own contract in words 
   eq(checkPlan(s, calm, { ...WOOL, contract: 'qirad', partners: 100, purse: 100 }).ok, true, 'a qirad share is what they ask for');
 });
 
-// ---- rule 5: reputation with agents follows the season's trust
+// ---- rule 5: reputation with agents follows the season's net trust change among hired agents
 
-test('rule 5 rep.agents moves by the season\'s trust changes, one step at most', () => {
+test('rule 5 rep.agents moves one step only when the net change is 2 or more either way', () => {
   const after = edit => { let s = game(); edit(s); return step(s, calm).rep.agents; };
   eq(after(() => {}), 0, 'nothing changed');
-  eq(after(s => { s.agents.mira.trust = 1; }), 1, 'one up');
+  eq(after(s => { s.agents.mira.trust = 1; }), 0, 'one up is not enough');
+  eq(after(s => { s.agents.mira.trust = -1; }), 0, 'one down is not enough');
+  eq(after(s => { s.agents.mira.trust = 2; }), 1, 'two up');
   eq(after(s => { s.agents.mira.trust = 3; s.agents.tobin.trust = 2; }), 1, 'five up is still one step');
-  eq(after(s => { s.agents.mira.trust = -1; }), -1, 'one down');
-  eq(after(s => { s.agents.mira.trust = -2; s.agents.tobin.trust = -2; }), -1, 'four down is still one step');
+  eq(after(s => { s.agents.mira.trust = -1; s.agents.tobin.trust = -1; }), -1, 'two down, from two agents');
   eq(after(s => { s.agents.mira.trust = 2; s.agents.tobin.trust = -2; }), 0, 'the changes add: up two, down two');
 });
 
 test('rule 5 the change is counted once, and the season after it is a new count', () => {
   const quiet = variant(calm, x => { for (const c of x.cards) c.weight = 0; x.city.opening = {}; });     // no card moves anyone's trust in the second season
   let s = newGame(quiet, { seed: 7, length: 'full', house: 'rich' });
-  s.agents.mira.trust = 1;
+  s.agents.mira.trust = 2;
   s = step(s, quiet);
   eq(s.rep.agents, 1);
   s = step(s, quiet);
   eq(s.rep.agents, 1, 'no change in the second season, so no second step');
+});
+
+test('rule 5 only hired agents count: one who is not hired moves nothing', () => {
+  let s = game();
+  s.agents.tobin.hired = false;
+  s.agents.tobin.trust = 3;
+  s.agents.mira.trust = 1;
+  eq(step(s, calm).rep.agents, 0, 'tobin\'s +3 is not the house\'s to count, and mira\'s +1 is too little');
+});
+
+test('rule 5 a card\'s direct rep.agents step is not counted again for the trust change beside it', () => {
+  let s = game();
+  s.agents.mira.trust = 2;
+  s.rep.agents = 1;                                              // what a card that moves both does
+  eq(step(s, calm).rep.agents, 1, 'one step, not two');
+  let o = game();
+  o.agents.mira.trust = 2;
+  o.rep.agents = -1;                                             // a direct step the other way does not cancel the net change
+  eq(step(o, calm).rep.agents, 0, 'down one by hand, up one by trust');
+});
+
+test('rule 5 a trust change in the season before an act jump, and in the last season, counts', () => {
+  const quiet = variant(calm, x => { for (const c of x.cards) c.weight = 0; x.city.opening = {}; });
+  let s = newGame(quiet, { seed: 7, length: 'acts', house: 'rich' });
+  let jumped = false;
+  for (let i = 0; i < 40 && !jumped; i++) {
+    const at = seasonIndex(s, quiet);
+    const plain = step(s, quiet);
+    if (plain.phase === 'recall' || seasonIndex(plain, quiet) - at === 1) { s = plain; continue; }
+    jumped = true;
+    eq(plain.rep.agents, 0, 'nothing moved without a change');
+    s.agents.mira.trust += 2;                                    // up two in the season before the jump
+    eq(step(s, quiet).rep.agents, 1, 'the season before the jump moved it');
+  }
+  ok(jumped, 'the testport acts game has a jump');
+  let l = newGame(quiet, { seed: 7, length: 'acts', house: 'rich' });
+  while (!view(l, quiet).last) l = step(l, quiet);
+  for (const a of Object.values(l.agents)) Object.assign(a, { hired: true, where: 'harbour' });   // the quiet game's agents retire at the jump
+  const held = l.rep.agents;
+  l.agents.mira.trust = -1; l.agents.tobin.trust = -1;
+  l = step(l, quiet);
+  eq([l.phase, l.rep.agents], ['recall', held - 1], 'the last season\'s change reaches rep.agents before the ending');
 });
 
 // ---- rule 6: one table of words for trust and reputation
@@ -167,6 +212,71 @@ test('rule 6 seven numbers fall in five steps, each step is reached, and no two 
   eq(new Set(SCALE.group).size, 5);
   eq(new Set(SCALE.agent).size, 5);
   eq(scaleWords(0, 'agent'), SCALE.agent[2]);
+});
+
+// ---- rule 2 again: an agent at -2 or lower takes no new trip
+
+test('rule 2 an agent who comes home at -2 refuses every new trip in words, so the house cannot keep them out to dodge the leaving', () => {
+  let s = homeWith('own', { purse: 0, money: 0 });
+  s.agents.mira.trust = -1;                                       // the short wage on this return takes it to -2
+  s = step(s, calm);
+  eq([s.agents.mira.trust, s.agents.mira.hired, s.agents.mira.where], [-2, true, 'harbour'], 'home for this desk and still hired');
+  s.money = 1000; s.stock = { wool: 20 };
+  const own = checkPlan(s, calm, WOOL);
+  eq(own.reasons, ['Mira has lost faith in the house and will not go out again.']);
+  eq(checkPlan(s, calm, { ...WOOL, contract: 'qirad', partners: 100, purse: 100 }).reasons, own.reasons, 'a qirad does not change it');
+  throws(() => outfit(s, calm, WOOL), /Mira has lost faith in the house/);
+  eq(checkPlan(s, calm, { ...WOOL, agent: 'tobin' }).ok, true, 'the others go');
+  eq(suggestPlan(s, calm, 'hilltown').agent, 'tobin', 'suggestPlan passes them over');
+  s.agents.tobin.hired = false;
+  eq(suggestPlan(s, calm, 'hilltown'), null, 'and offers nothing when they are the only one free');
+  s.agents.tobin.hired = true;
+  eq(step(s, calm).agents.mira.where, 'gone', 'and at the next opening they leave');
+});
+
+// ---- rule 4 again: no qirad in the city
+
+const noQirad = variant(calm, x => { x.city.contracts = {}; });
+
+test('rule 4 in a city with no qirad the refusal does not offer one', () => {
+  const s = newGame(noQirad, { seed: 7, length: 'full', house: 'rich' });
+  s.agents.mira.memory.push({ at: 0, kind: UNFAIR }, { at: 1, kind: UNFAIR });
+  eq(checkPlan(s, noQirad, WOOL).reasons, ['Mira will not go for a wage again, because the house did not pay what it promised before.']);
+});
+
+test('rule 4 suggestPlan tries the next free agent when the first refuses', () => {
+  const s = newGame(noQirad, { seed: 7, length: 'full', house: 'rich' });
+  s.agents.mira.memory.push({ at: 0, kind: UNFAIR }, { at: 1, kind: UNFAIR });
+  s.agents.mira.traits = undefined;
+  const plan = suggestPlan(s, noQirad, 'hilltown');
+  ok(plan, 'a plan is made');
+  eq(plan.agent, 'tobin');
+  eq(checkPlan(s, noQirad, plan).ok, true);
+});
+
+// ---- the leave notice survives the played season, and gone agents stay gone
+
+test('hire of an agent who has gone is refused with a reason', () => {
+  let s = game();
+  s.agents.tobin.trust = -2;
+  s = step(s, calm);
+  eq(s.agents.tobin.where, 'gone');
+  throws(() => apply(s, calm, { hire: 'tobin' }), /Tobin has gone to work for another house/);
+  eq(s.agents.tobin.hired, false);
+});
+
+test('a queued trust or memory effect naming an agent who has gone is dropped and logged, whole', () => {
+  let s = game();
+  s.agents.tobin.trust = -2;
+  s.agents.tobin.hired = false; s.agents.tobin.where = 'gone';     // gone at an earlier opening
+  const idx = seasonIndex(s, calm);
+  s.queue.push({ at: idx, from: 'test/later', do: [{ money: 5 }, { trust: 'tobin', by: 1 }, { memory: 'tobin', kind: 'blamed' }] });
+  s = step(s, calm);
+  eq(s.agents.tobin.trust, -2, 'no trust moved');
+  eq(s.agents.tobin.memory, [], 'no memory written');
+  const d = s.log.find(e => e.kind === 'dropped' && e.ref === 'test/later');
+  ok(d && /Tobin has left the house/.test(d.reason), 'logged with the reason');
+  eq(s.queue.some(q => q.from === 'test/later'), false, 'and it does not fire again');
 });
 
 await done();

@@ -50,6 +50,13 @@ export function migrate(state, from) {
 
 // ---- repair (ARCHITECTURE 8.3)
 
+/** A notice that carries its own words (the `agent-left` notice has no event behind it): a headline
+    or a body in its own `data`. One with neither and no event to read from is blank and is dropped. */
+const saysItself = p => isObject(p.data) && [p.data.headline, p.data.body].some(w => typeof w === 'string' && w.trim() !== '');
+
+/** The log's one `trust` entry (agents.js): a number for every agent it names, or it is dropped. */
+const trustNote = e => isObject(e.trust) && Object.values(e.trust).every(isNum);
+
 /** An expedition's orders: only { go: wait | on | home, letter, at } with `at` a season; the rest are dropped. */
 const repairOrders = orders => (Array.isArray(orders) ? orders : [])
   .filter(o => isObject(o) && GOES.includes(o.go) && isStr(o.letter) && Number.isInteger(o.at) && o.at >= 0)
@@ -198,7 +205,7 @@ export function repair(state, content) {
   // the desk: papers whose card, event or letter is gone are dropped; never over the cap
   const known = { card: cards, notice: events, letter: letters };
   out.desk = (Array.isArray(s.desk) ? s.desk : [])
-    .filter(p => isObject(p) && (!(p.kind in known) || known[p.kind].has(p.ref)))
+    .filter(p => isObject(p) && (!(p.kind in known) || known[p.kind].has(p.ref) || (p.kind === 'notice' && saysItself(p))))
     .map(p => {
       const q = { ...p, id: typeof p.id === 'string' ? p.id : null, state: p.state === 'done' ? 'done' : 'open' };
       if (q.agent !== undefined && !agents.has(q.agent)) delete q.agent;
@@ -222,8 +229,9 @@ export function repair(state, content) {
   out.notebook = [...new Set((Array.isArray(s.notebook) ? s.notebook : []).filter(id => book.has(id)))];
 
   // the log is a record; entries stay even when the thing they name is gone. choose logs a string.
-  out.log = (Array.isArray(s.log) ? s.log : []).filter(e => isObject(e) && isNum(e.at) && typeof e.kind === 'string')
-    .map(e => ({ ...e, at: count(e.at), ...(e.choice !== undefined ? { choice: String(e.choice) } : {}) }));
+  out.log = (Array.isArray(s.log) ? s.log : []).filter(e => isObject(e) && isNum(e.at) && typeof e.kind === 'string' && (e.kind !== 'trust' || trustNote(e)))
+    .map(e => ({ ...e, at: count(e.at), ...(e.choice !== undefined ? { choice: String(e.choice) } : {}) }))
+    .map(e => { if (e.kind === 'trust' && 'rep' in e && !isNum(e.rep)) delete e.rep; return e; });
   out.score = isObject(s.score) ? s.score : null;
   return out;
 }
