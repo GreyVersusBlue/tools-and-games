@@ -94,9 +94,15 @@ are played. The balance bots run both.
 
 | Act | Draft years | What it is about | Draft set pieces |
 |---|---|---|---|
-| 1 | 1324 to 1326 | Learning the routes with a small house | Mansa Musa's pilgrimage passes through Cairo and gold loses value; a young traveller named Ibn Battuta arrives |
-| 2 | 1335 to 1336 | A larger house, more at risk | The Mongol state in Persia breaks up and the road east turns dangerous |
-| 3 | 1346 to 1347 | Reading the warnings | Rumours from the Black Sea, then the plague; recall your people or gamble |
+| 1 | Spring 1324 to Winter 1325 | Learning the routes with a small house | Mansa Musa's pilgrimage passes through Cairo, and al-Umari later wrote that gold lost value; the Aydhab road shut by war |
+| 2 | Spring 1335 to Winter 1336 | A larger house, more at risk | Abu Said's death ends the Ilkhanate's unity and the road east turns dangerous; grain shortage in 1336 |
+| 3 | Winter 1345 to Autumn 1347 | Reading the warnings | Venice's galleys return in 1345; rumours from the Black Sea; pepper's price leaps in 1347; the plague reaches Alexandria; recall your people or gamble |
+
+Corrected in M0 from the checked research (orchestrator, 2026-11-17): Ibn
+Battuta reached Egypt in spring 1326, after act one, so he appears on the page
+between acts one and two. The plague reached Alexandria in 1347 and was worst
+in Cairo in November and December 1348; the game ends in Autumn 1347 and the
+closing page says what came after.
 
 The three-act game is one sitting of about 30 minutes. Both lengths save
 after every turn.
@@ -106,7 +112,7 @@ after every turn.
 - **Routes and seasons.** Each leg of a route has a length in seasons and the
   seasons it is open. The monsoon decides when a ship can cross to India and
   when it can come back. The Sahara is crossed in the cool months. Mountain
-  passes shut in winter. Mediterranean sailing mostly stops in winter. Sending
+  passes shut in winter. Mediterranean sailing in winter is risky, though not forbidden in practice (corrected in M0). Sending
   at the wrong time is the game's "ford the river" mistake.
 - **Goods and prices.** Eight to twelve goods (ART.md v1 draws twelve). Each city has its own price for each,
   which drifts and reacts to events. The player's own sales push a local price
@@ -143,12 +149,12 @@ after every turn.
 
 | Direction | Draft stops | Draft goods back |
 |---|---|---|
-| North by river and sea | Alexandria, then Venice, Constantinople, Tunis | Wool cloth, glass, timber, copper |
+| North by river and sea | Alexandria, then Famagusta, Venice (direct only from 1345), Constantinople, Tunis | Wool cloth, timber, copper |
 | South and east by Nile, desert and sea | Qus, Aydhab, Aden, Calicut | Pepper, incense, porcelain |
-| West across the Sahara | The oasis road to Timbuktu and Mali | Gold, salt along the way |
+| West across the Sahara | By Tuat to Walata and Gao | Gold, salt along the way |
 | East by land | Damascus, Aleppo, Tabriz, Samarkand | Silk, paper |
 
-What Cairo sells: linen, sugar, glass, and everything it re-exports. The final
+What Cairo sells: linen, sugar, glass (made in Alexandria and Cairo), and everything it re-exports. Paper is not a good in the game: nothing sourced gives it a price or a direction in these years. The final
 list of goods is M1's.
 
 Corrected in M0 from the first research (orchestrator, 2026-11-16): Caffa is

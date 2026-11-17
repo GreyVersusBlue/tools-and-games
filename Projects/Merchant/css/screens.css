@@ -4,12 +4,8 @@
 /* A flat night ground with a gradient standing in for the A18 still: a dusk
    sky over low ground. The upper left third stays plain sky for the title. */
 body { background: var(--night); }
-/* The two sky colours of the gradient. They belong in tokens.css (DESIGN 3.2);
-   MER-06 may not edit that file, so they are named here for the move. The
-   third stop is --brass and the ground is --night. */
+/* The gradient's stops are tokens (tokens.css): --dawn-1, --dawn-2, --brass, --night. */
 .title-screen {
-  --dawn-1: #2b3a52;
-  --dawn-2: #6d5a58;
   min-height: 100svh;
   min-height: 100dvh;
   padding: max(var(--s4), env(safe-area-inset-top)) max(var(--s4), env(safe-area-inset-right))

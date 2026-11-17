@@ -214,7 +214,13 @@ try {
       await page.click('#btn-about');
       // Back then Forward in one turn: the first dialog's close event is still
       // queued when #about arrives again. It must not take the new dialog with it.
-      await page.evaluate(() => { history.back(); setTimeout(() => history.forward(), 0); });
+      // Forward is sent from the popstate that Back fires (after the app's own
+      // listener has run), not from a timer: a timer can reach Chromium before
+      // Back has landed, and Chromium then drops the Forward (flaked 2 in 6).
+      await page.evaluate(() => {
+        addEventListener('popstate', () => history.forward(), { once: true });
+        history.back();
+      });
       await page.waitForFunction(() => document.getElementById('panel-about')?.open && location.hash === '#about');
       await new Promise(r => setTimeout(r, 300));
       eq(await panelOpen(page, 'about'), true);
