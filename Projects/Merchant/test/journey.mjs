@@ -884,6 +884,280 @@ try {
     await page.close();
   }
 
+  // ---- MER-44: the map table, the price board and outfitting.
+  // The Map button on the desk is MER-43's file and still says "next part", so these cases
+  // arrive at the map table by its hash, as a bookmark or the back button would.
+  const FIRST = { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' };
+  const goMap = async page => { await page.evaluate(() => { location.hash = '#map'; }); await page.waitForSelector('#screen-map[data-ready]'); };
+  const goDesk = async page => { await page.evaluate(() => { location.hash = '#desk'; }); await page.waitForSelector('#screen-desk .sheet, #screen-desk #btn-end'); };
+  const answerFirst = async (page, how) => {
+    const picks = [['p0-0', 'begin', 1], ['p0-1', 'wait', 2], ['p0-2', 'keep', 2]];
+    for (const [p, id, n] of picks) {
+      if (how === 'pointer') { await page.$eval(`#choice-${p}-${id}`, b => b.scrollIntoView({ block: 'center' })); await page.click(`#choice-${p}-${id}`); }
+      else { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press(String(n)); }
+      await page.waitForSelector('.sheet[data-face="back"]');
+      if (how === 'pointer') { await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' })); await page.click('#btn-next'); } else await page.keyboard.press('Enter');
+      await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"][data-face="back"]`), {}, p);
+    }
+  };
+  const modelFirst = s => { for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, nodeContent, p.id, FIRST[p.ref]); return s; };
+  // the same policy both sides play every later season: the first choice that is open, other papers set aside
+  const modelSeason = s => {
+    for (const p of s.desk) {
+      if (p.state !== 'open') continue;
+      const cs = eng.paperChoices(s, nodeContent, p.id);
+      const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
+      s = eng.choose(s, nodeContent, p.id, c.id);
+      if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+    }
+    return eng.endSeason(s, nodeContent);
+  };
+  const uiSeason = async (page, how) => {
+    for (let guard = 0; guard < 14; guard++) {
+      if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
+      const k = await page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
+      if (k.face === 'back') { await page.click('#btn-next'); continue; }
+      if (k.kind === 'outfit') { await page.click('#btn-send, #btn-stub-dismiss'); continue; }
+      if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
+      await page.click('.sheet .choice:not([aria-disabled="true"])');
+      await page.waitForSelector('.sheet[data-face="back"]');
+    }
+    if (how === 'keyboard') { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press('e'); } else await page.click('#btn-end');
+  };
+  const tokens = page => page.$$eval('.token', ts => ts.map(t => ({ ids: t.dataset.expedition, count: t.dataset.count, left: parseFloat(t.style.left), top: parseFloat(t.style.top), label: t.querySelector('.token-label').textContent })));
+  const FRAME = FRAMES[0];
+
+  // one expedition, sent from the map table and followed home, by pointer then by keyboard
+  for (const how of ['pointer', 'keyboard']) {
+    const { page, consoleErrors } = await open(FRAME);
+    await start(page, how);
+    await answerFirst(page, how);
+    let model = modelFirst(eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' }));
+    await goMap(page);
+
+    await test(`${how}: the map table opens on Damascus, with a label from stops.json on every stop and the title focused`, async () => {
+      eq(await hashOf(page), '#map');
+      eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
+      eq(await page.evaluate(() => document.activeElement.id), 'board-title');
+      const labels = await page.$$eval('.stop-label[data-stop]', ls => ls.map(l => [l.dataset.stop, l.textContent]));
+      eq(labels.sort((a, b) => (a[0] < b[0] ? -1 : 1)), nodeContent.stops.map(s => [s.id, s.name]).sort((a, b) => (a[0] < b[0] ? -1 : 1)), 'one label per stop, its name');
+      // the label sits where stops.json says: its anchor and offset are the data's
+      const cairo = nodeContent.stops.find(s => s.id === 'cairo');
+      const st = await page.$eval('.stop-label[data-stop="cairo"]', l => ({ dx: l.style.getPropertyValue('--dx'), ax: l.style.getPropertyValue('--ax') }));
+      eq([st.dx, st.ax], [String(cairo.label.dx), '0%'], 'Cairo label offset and anchor');
+      eq(await page.$$eval('.dot[data-stop]', ds => ds.every(d => d.getAttribute('tabindex') === '-1')), true, 'dots are not tab stops');
+      eq((await tokens(page)), [], 'nothing is on the road yet');
+    });
+
+    if (how === 'pointer') {
+      await test('pointer: a press goes to the nearest stop within 48 px and to none beyond it', async () => {
+        const at = async id => page.$eval(`.dot[data-stop="${id}"]`, d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+        const [ax, ay] = await at('samarkand');
+        await page.mouse.click(ax + 30, ay + 10); // 31.6 px away: a dot is 14 px wide, so this misses the dot itself
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Samarkand');
+        eq(await page.$eval('#stop-samarkand', e => e.getAttribute('aria-selected')), 'true');
+        const [bx, by] = await at('aden');
+        await page.mouse.click(bx - 40, by + 30);   // 50 px away: nothing is that close
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Samarkand', 'a press 50 px from every stop selects nothing');
+        const [dx, dy] = await at('damascus');
+        await page.mouse.click(dx + 20, dy - 6);
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
+      });
+    } else {
+      await test('keyboard: the stop list is a listbox, typeahead jumps and Enter selects', async () => {
+        await page.keyboard.press('Tab');
+        eq(await page.evaluate(() => document.activeElement.id), 'stoplist');
+        eq(await page.$eval('#stoplist', e => e.getAttribute('role')), 'listbox');
+        for (const ch of 'alex') await page.keyboard.press(ch);
+        eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-alexandria');
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus', 'moving the highlight selects nothing');
+        await page.keyboard.press('Enter');
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Alexandria');
+        await page.keyboard.press('ArrowDown');
+        eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-aydhab');
+        await page.waitForFunction(() => true); await new Promise(r => setTimeout(r, 1100)); // the typeahead buffer clears
+        for (const ch of 'dam') await page.keyboard.press(ch);
+        eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-damascus');
+        await page.keyboard.press('Enter');
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
+      });
+    }
+
+    await test(`${how}: the price board says each price with the season it was written and its age, from the engine's view`, async () => {
+      const v = await page.evaluate(() => window.__merchant.view.prices);
+      const rows = await page.$$eval('#prices tbody tr', trs => trs.map(t => ({ good: t.querySelector('th').textContent, here: t.querySelector('td.here').textContent, there: t.querySelector('td.there')?.textContent })));
+      const goods = nodeContent.stops.find(s => s.id === 'damascus').sells;
+      eq(rows.map(r => r.good).sort(), Object.keys(goods).map(g => nodeContent.goods.find(x => x.id === g).name).sort());
+      const linen = rows.find(r => r.good === 'Linen');
+      const pd = v.damascus.linen, pc = v.cairo.linen;
+      ok(pd.p == null ? linen.here === 'no news' : linen.here.includes(`${pd.p} dinars`) && linen.here.includes(pd.written) && linen.here.includes(pd.ageWords), `Damascus linen: ${linen.here}`);
+      ok(linen.there.includes(`${pc.p} dinars`) && linen.there.includes(pc.written) && linen.there.includes(pc.ageWords), `Cairo linen: ${linen.there}`);
+      ok(rows.some(r => r.here === 'no news'), 'a good with no news says so');
+    });
+
+    await test(`${how}: Outfit opens #outfit, one press, filled in; the contract is not on the sheet`, async () => {
+      if (how === 'pointer') await page.click('#btn-outfit');
+      else { await page.keyboard.press('Tab'); eq(await page.evaluate(() => document.activeElement.id), 'btn-outfit'); await page.keyboard.press('Enter'); }
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      eq(await hashOf(page), '#outfit');
+      eq(await page.evaluate(() => document.activeElement.id), 'panel-outfit-title');
+      eq(await page.$eval('#panel-outfit-title', e => e.textContent), 'Outfit an expedition to Damascus');
+      eq(await page.$eval('#panel-outfit', d => d.getAttribute('aria-labelledby')), 'panel-outfit-title');
+      const plan = eng.suggestPlan(model, nodeContent, 'damascus');
+      eq(await page.$eval('#summary-who', e => e.textContent), 'Yusuf (careful, knows Damascus).');
+      ok((await page.$eval('#summary-carry', e => e.textContent)).startsWith(`${plan.cargo.linen} loads of linen`), 'cargo is the engine plan');
+      eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry'], 'three sections: the contract is met at the second expedition');
+      eq(await page.$eval('#outfit-send', b => [b.textContent, b.getAttribute('aria-disabled')]), ['Send Yusuf to Damascus', 'false']);
+    });
+
+    await test(`${how}: a reload on #outfit returns to the map table with nothing sent`, async () => {
+      const before = await engineState(page);
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('#screen-map[data-ready]');
+      eq(await hashOf(page), '#map');
+      eq(await page.evaluate(() => !!document.getElementById('panel-outfit')), false);
+      eq(await engineState(page), before, 'the reload sent nothing');
+      if (how === 'pointer') await page.click('#btn-outfit'); else { await page.evaluate(() => document.getElementById('btn-outfit').focus()); await page.keyboard.press('Enter'); }
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+    });
+
+    await test(`${how}: Send sends the engine's plan, the sheet closes to the map and a token stands in Cairo`, async () => {
+      if (how === 'pointer') await page.click('#outfit-send');
+      else {
+        // Tab order on the sheet: three Change links, Back to the map, Send
+        await page.evaluate(() => document.getElementById('panel-outfit-title').focus());
+        for (let i = 0; i < 5; i++) await page.keyboard.press('Tab');
+        eq(await page.evaluate(() => document.activeElement.id), 'outfit-send');
+        await page.keyboard.press('Enter');
+      }
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      eq(await hashOf(page), '#map');
+      eq(await page.evaluate(() => document.activeElement.id), 'btn-outfit', 'focus returns to the button that opened the sheet');
+      model = eng.outfit(model, nodeContent, eng.suggestPlan(model, nodeContent, 'damascus'));
+      eq(await engineState(page), JSON.parse(JSON.stringify(model)), 'the page sent what the engine would');
+      const ts = await tokens(page);
+      eq(ts.length, 1);
+      ok(ts[0].label.startsWith('Yusuf, home about '), ts[0].label);
+      const cairoDot = await page.$eval('.dot[data-stop="cairo"]', d => [parseFloat(d.style.left), parseFloat(d.style.top)]);
+      eq([ts[0].left, ts[0].top], cairoDot, 'a sent expedition is at its first stop');
+      ok((await page.$eval('#map-toast', e => e.textContent)).includes('Yusuf set out for Damascus'));
+    });
+
+    await test(`${how}: the expedition is followed home season by season, and the token leaves the map when it arrives`, async () => {
+      let lastLeft = null, moved = 0;
+      for (let season = 0; season < 14 && model.expeditions.length; season++) {
+        if (how === 'pointer') await page.click('#map-desk'); else await page.keyboard.press('Escape');
+        await page.waitForSelector('#screen-desk #btn-end');
+        eq(await hashOf(page), '#desk');
+        model = modelSeason(model);
+        await uiSeason(page, how);
+        await page.waitForFunction(n => window.__merchant.state.t === n, {}, model.t);
+        eq(await engineState(page), JSON.parse(JSON.stringify(model)), `after season ${model.t}`);
+        await goMap(page);
+        const ts = await tokens(page);
+        eq(ts.length, model.expeditions.length, 'one token for each expedition on the road');
+        if (ts.length) {
+          ok(ts[0].label.startsWith('Yusuf, home about '));
+          const x = model.expeditions[0], route = nodeContent.routes.find(r => r.id === x.route), leg = route.legs[x.leg];
+          const sp = id => page.$eval(`.dot[data-stop="${id}"]`, d => [parseFloat(d.style.left), parseFloat(d.style.top)]);
+          const [a, b] = [await sp(leg.from), await sp(leg.to)];
+          const frac = x.status === 'out' ? 1 - x.left / leg.seasons : 0;
+          ok(Math.abs(ts[0].left - (a[0] + (b[0] - a[0]) * frac)) < 3 && Math.abs(ts[0].top - (a[1] + (b[1] - a[1]) * frac)) < 3, `token ${JSON.stringify(ts[0])} is not at ${frac} of ${leg.from} to ${leg.to}`);
+          if (lastLeft !== null && ts[0].left !== lastLeft) moved++;
+          lastLeft = ts[0].left;
+        }
+      }
+      eq(model.expeditions.length, 0, 'it came home within fourteen seasons');
+      ok(moved >= 1, 'the token moved at least once on the way');
+      eq(await tokens(page), [], 'no token once it is home');
+      ok(model.desk.some(p => p.kind === 'return'), 'a return paper waits on the desk');
+    });
+    await test(`${how}: map table, no console error, nothing offsite`, async () => { eq(consoleErrors, []); eq(page.__blocked, []); });
+    if (how === 'pointer') {
+      // the second expedition: four sections, steppers as buttons with role spinbutton, refusals in words, a qirad in words
+      await test('second expedition: four sections, steppers, refusals in words and the qirad written out', async () => {
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-contract']);
+        eq(await page.$$eval('.agent', a => a.length) >= 1, true, 'free agents are seal cards');
+        // steppers: a group with role spinbutton, minus and plus as buttons, the number as text
+        const st = await page.$eval('#step-cargo-linen', e => ({ role: e.getAttribute('role'), kids: [...e.children].map(c => c.tagName), val: e.getAttribute('aria-valuenow'), input: !!e.querySelector('input') }));
+        eq([st.role, st.kids, st.input], ['spinbutton', ['BUTTON', 'SPAN', 'BUTTON'], false]);
+        await page.focus('#step-cargo-linen');
+        await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
+        eq(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')), String(Number(st.val) + 2), 'arrow keys raise the number');
+        await page.click('#step-cargo-linen-minus');
+        eq(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')), String(Number(st.val) + 1), 'the minus button lowers it');
+        // nothing carried: a refusal in words, and Send says it cannot
+        for (const id of await page.$$eval('[id^="step-cargo-"][role="spinbutton"]', es => es.map(e => e.id))) { await page.focus(`#${id}`); await page.keyboard.press('Home'); }
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true', 'nothing carried: Send is disabled');
+        ok((await page.$eval('#outfit-reasons', e => e.textContent)).includes('Send some goods or some dinars'), await page.$eval('#outfit-reasons', e => e.textContent));
+        // a qirad: the share in words, partners as a stepper
+        await page.$eval('#contract-qirad', b => b.scrollIntoView({ block: 'center' }));
+        eq(await page.$eval('#contract-qirad', b => { const r = b.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return b.contains(t); }), true, 'the qirad choice is not under the Send bar');
+        await page.click('#contract-qirad');
+        ok((await page.$eval('#contract-qirad', e => e.textContent)).includes('keeps one third of the profit'), await page.$eval('#contract-qirad', e => e.textContent));
+        eq(await page.$eval('#contract-qirad', e => e.getAttribute('aria-checked')), 'true', 'the qirad is the chosen contract');
+        eq(await page.$eval('#step-partners', e => e.getAttribute('role')), 'spinbutton');
+        await page.focus('#step-purse'); await page.keyboard.press('PageUp');
+        eq(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow')), '50');
+        await page.click('#outfit-send');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+        const x = await page.evaluate(() => window.__merchant.state.expeditions.at(-1));
+        eq([x.contract.kind, x.contract.agentShare, x.contract.of, x.purse], ['qirad', 1, 3, 50]);
+        ok(x.staked.partners > 0, 'partners put money in');
+      });
+    }
+    await page.close();
+  }
+
+  // the board needs no horizontal scroll and the map table can be used at every frame
+  for (const frame of FRAMES) {
+    const { page, consoleErrors } = await open(frame);
+    await start(page, 'pointer');
+    await answerFirst(page, 'pointer');
+    await goMap(page);
+    await page.screenshot({ path: path.join(SHOTS, `map-${frame.name}.png`) });
+    await test(`${frame.name}: the map table has no horizontal overflow, its buttons are 44 px, the picture is whole`, async () => {
+      const m = await page.evaluate(() => {
+        const f = document.getElementById('map-frame').getBoundingClientRect();
+        return { doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth], frame: [Math.round(f.width / f.height * 100) / 100, f.left >= -1, f.right <= innerWidth + 1],
+          hits: [...document.querySelectorAll('#btn-outfit, #map-desk, #map-desk-top, .stoplist .option')].map(b => { const r = b.getBoundingClientRect(); return [b.id || b.className, Math.round(r.height)]; }) };
+      });
+      eq(m.doc[0], m.doc[1]);
+      eq(m.frame, [1.78, true, true], 'the 16:9 picture is shown whole');
+      for (const [id, hgt] of m.hits) ok(hgt >= 44, `${id} is ${hgt} px tall`);
+    });
+    if (frame.width < 700) {
+      await test(`${frame.name}: close stops are one cluster label and pressing it zooms to an inset`, async () => {
+        const cl = await page.$$eval('.cluster-label', ls => ls.map(l => l.textContent));
+        ok(cl.includes('Delta: 2 stops') && cl.includes('Levant: 2 stops') && cl.includes('Niger: 2 stops'), cl.join(' | '));
+        eq(await page.$('.stop-label[data-stop="cairo"]'), null, 'Cairo has no label of its own until the inset');
+        const [x, y] = await page.$eval('.dot.cluster[data-cluster="delta"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+        await page.mouse.click(x + 10, y + 6);
+        await page.waitForSelector('#map-unzoom:not([hidden])');
+        ok(await page.$('.stop-label[data-stop="cairo"]') && await page.$('.stop-label[data-stop="alexandria"]'), 'both stops are named in the inset');
+        const [cx, cy] = await page.$eval('.dot[data-stop="alexandria"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+        await page.mouse.click(cx + 12, cy - 12);
+        eq(await page.$eval('#stop-alexandria', e => e.getAttribute('aria-selected')), 'true');
+        await page.click('#map-unzoom');
+        eq(await page.$('.stop-label[data-stop="cairo"]'), null);
+      });
+    }
+    if (frame.name === 'phone-upright') {
+      await test('phone upright: the price board is a full-screen dialog opened by a button, closed by Esc, focus back on the button', async () => {
+        eq(await page.$eval('#prices-box', e => getComputedStyle(e).display), 'none');
+        await page.click('#btn-prices');
+        eq(await page.$eval('#prices-box', e => [e.getAttribute('role'), e.getAttribute('aria-modal'), Math.round(e.getBoundingClientRect().width) === innerWidth]), ['dialog', 'true', true]);
+        await page.keyboard.press('Escape');
+        eq(await page.$eval('#prices-box', e => getComputedStyle(e).display), 'none');
+        eq(await page.evaluate(() => document.activeElement.id), 'btn-prices');
+      });
+    }
+    await test(`${frame.name}: map table, no offsite request, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.close();
+  }
+
 } finally {
   await browser.close();
   server.close();

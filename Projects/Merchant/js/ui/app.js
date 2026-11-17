@@ -11,8 +11,10 @@ import { renderTitle, TITLE_TEXT } from './screens/title.js';
 import { newGameBody } from './screens/newgame.js';
 import { settingsBody, applySettings } from './screens/settings.js';
 import { createDesk } from './screens/desk.js';
+import { createMap } from './screens/map.js';
 
-const SCREENS = new Set(['title', 'desk']);
+const SCREENS = new Set(['title', 'desk', 'map']);
+const NEEDS_GAME = new Set(['desk', 'map']);
 const PANELS = new Set(['about', 'settings', 'newgame']);
 const WORDS = ['one', 'two', 'three', 'four'];
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -46,6 +48,7 @@ const app = {
 
 let screen = null;       // 'title' | 'desk', what is drawn behind the panels
 let desk = null;
+let map = null;         // the map table, and under it the #outfit sheet
 let openPanel = null;    // { name, dialog, opener }
 
 const hashName = () => location.hash.replace(/^#/, '');
@@ -223,8 +226,20 @@ function goTo(name, replace = false) {
 
 function renderScreen(name) {
   desk?.destroy(); desk = null;
+  map?.destroy(); map = null;
   screen = name;
   document.documentElement.removeAttribute('data-season');
+  if (name === 'map') {
+    map = createMap(app, {
+      toDesk: () => goTo('desk'),
+      openOutfit: stopId => { map.prepareOutfit(stopId); history.pushState({ panel: 'outfit' }, '', '#outfit'); route(); },
+      // Esc, Back to the map and a send all land here: the sheet is gone, so the hash steps back to #map
+      outfitClosed: () => { if (hashName() === 'outfit') history.back(); },
+    });
+    root.replaceChildren(map.el);
+    map.focusFirst();
+    return;
+  }
   if (name === 'desk') {
     desk = createDesk(app);
     root.replaceChildren(desk.el);
@@ -244,7 +259,16 @@ function renderScreen(name) {
 }
 
 function route() {
-  const name = hashName();
+  let name = hashName();
+  // #outfit is the sheet over the map. Its draft lives in memory, so a reload (or a hash typed in)
+  // has nothing to show and goes to the map table instead (DESIGN 4.8).
+  if (name === 'outfit') {
+    if (screen === 'map' && map?.hasDraft()) { closeFromHistory(); map.showOutfit(); return; }
+    history.replaceState(null, '', '#map');
+    name = 'map';
+  } else if (name === 'map' && screen === 'map') {
+    map?.hideOutfit();
+  }
   if (PANELS.has(name)) {
     if (!screen) renderScreen('title');
     // A panel hash arriving while another panel is open closes the first.
@@ -254,11 +278,11 @@ function route() {
   }
   closeFromHistory();
   // A reload on #desk with a save in this browser picks the game up where it was.
-  if (name === 'desk' && !app.running) {
+  if (NEEDS_GAME.has(name) && !app.running) {
     const saved = app.slots.game.load();
     if (saved) { app.state = saved; app.running = true; }
   }
-  const want = SCREENS.has(name) && (name !== 'desk' || app.running) ? name : app.running ? 'desk' : 'title';
+  const want = SCREENS.has(name) && (!NEEDS_GAME.has(name) || app.running) ? name : app.running ? 'desk' : 'title';
   // An unknown or unplayable hash is replaced, never pushed, so Back never meets it twice.
   if (want !== name) history.replaceState(null, '', `#${want}`);
   if (screen !== want) renderScreen(want);
@@ -266,7 +290,7 @@ function route() {
 
 // ---- keyboard, save on leaving
 
-addEventListener('keydown', e => { desk?.key(e); });
+addEventListener('keydown', e => { desk?.key(e); map?.key(e); });
 addEventListener('pagehide', () => app.persist());
 
 // ---- boot
