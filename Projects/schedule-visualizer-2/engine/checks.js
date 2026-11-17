@@ -183,7 +183,7 @@ export function teachingRunEnd(day, start, schoolMarks) {
   for (let next = start + 1; next < day.length; next += 1) {
     if (day[next].kind === 'teaching') end = next;
     else if (schoolMarks && (schoolMarks[next] === 'lunch' || schoolMarks[next] === 'noclass')) break;
-    else if (day[next].marked === 'away') break; // not in school: the run ends, whatever else is there
+    // an away period is neither a duty nor a meeting, so it ends the run, whatever else is there
     else if (day[next].marked !== 'duty' && day[next].marked !== 'meeting') break;
   }
   return end;
