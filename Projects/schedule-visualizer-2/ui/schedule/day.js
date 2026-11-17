@@ -32,6 +32,7 @@ import {
   addDayType, deleteDayType, reorderDayType, setDayTypeKind, setDayTypeShort, describeDayTypeKind, copyDay,
   addBellSchedule, setBellSchedule, deleteBellSchedule, addMark, setMark, deleteMark,
 } from '../../engine/actions.js';
+import { setPeriodCustom, setPeriodName } from '../../engine/w7-actions.js';
 import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { markFor } from '../../engine/marks.js';
@@ -39,9 +40,9 @@ import { releaseOf, RELEASE_MOST } from '../../engine/schema.js';
 import { addRelease, setRelease, removeRelease } from '../../engine/actions.js';
 import { releaseEditor, releaseParts, releaseSentence, releaseDraftOf, releasePayload, releaseMissing, releaseEntryOf, syncReleaseDraft, signature as releaseSignature } from './release.js';
 import { isOwnCopy, baseDayType, effectiveDayType, ownDayTypes, dayShort, bellsShort } from '../../engine/day-types.js';
-import { bellsFor, bellFindings, periodName, formatTime } from '../../engine/bells.js';
+import { bellsFor, bellFindings, periodName, periodNumberName, periodWordForms, formatTime } from '../../engine/bells.js';
 import { formatDuration } from '../../engine/findings.js';
-import { PERIOD_WORDS, RANGES, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, MARK_KINDS, MARK_LABEL_MOST, bellSchedulesOf, marksOf, spacelessKey } from '../../engine/schema.js';
+import { PERIOD_WORDS, PERIOD_COUNTS, PERIOD_NAME_MOST, PERIOD_WORD_MOST, RANGES, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, MARK_KINDS, MARK_LABEL_MOST, bellSchedulesOf, marksOf, spacelessKey } from '../../engine/schema.js';
 import { fill, apply, button, keyed, freeName, dragRows, grip, collator } from './common.js';
 import { unappliedOn, dropPointless } from './grid/staged.js';
 import { MARK_WORDS } from './grid/words.js';
@@ -158,14 +159,168 @@ export function offSentence(settings, name, off, periods) {
     else runs.push([period, period]);
   }
   // "Period 5" without its word, "C" for Block C, "2nd" for the 2nd Hour
-  const bare = (period) => periodName(settings, period).replace(/^(Period|Mod|Block) /, '').replace(/ Hour$/, '');
-  const hours = settings.periodWord === 'Hour';
+  const forms = periodWordForms(settings);
+  const bare = (period) => periodNumberName(settings, period).replace(forms.count === 'ordinal' ? ' ' + forms.one : forms.one + ' ', '');
+  const hours = periodWordForms(settings).count === 'ordinal';
   const pieces = runs.map(([from, to]) => {
     if (from === to) return periodName(settings, from);
     const span = bare(from) + (to === from + 1 ? ' and ' : ' to ') + bare(to);
     return hours ? span + ' ' + words.Many : words.Many + ' ' + span;
   });
   return list(pieces) + (off.length === 1 ? ' does' : ' do') + ' not meet.';
+}
+
+// ---------------------------------------------------------------- the period word (DESIGN 16.5)
+
+const COUNT_WORDS = { number: '1, 2, 3', letter: 'A, B, C', ordinal: '1st, 2nd, 3rd' };
+
+// What the period word's control remembers within the page, per store: whether
+// Other word is open before a word is typed, and the custom word a school
+// left, so choosing Other word again brings it back.
+const wordMemory = new WeakMap();
+
+// "Lesson 1, Lesson 2, … Lesson 8": the sample under the Other word fields.
+export function customSample(custom, periods) {
+  const settings = { periodCustom: custom };
+  const name = (index) => periodNumberName(settings, index);
+  if (periods <= 3) return Array.from({ length: Math.max(periods, 1) }, (_, at) => name(at)).join(', ');
+  return name(0) + ', ' + name(1) + ', … ' + name(periods - 1);
+}
+
+// The period word as a radio group: the four words and Other word… (a word,
+// its plural and how the periods are counted, with a sample). Used by the Day
+// tab's first card and by Settings. `redraw(key)` is called when only the
+// control's own state changed (Other word opened); `key` names what takes the
+// focus. Returns { element, sync(project) }.
+export function periodWordControl(ctx, options) {
+  const store = ctx.store;
+  if (!wordMemory.has(store)) wordMemory.set(store, { open: false, remembered: null });
+  const memory = wordMemory.get(store);
+  const keyFor = (part) => (options.prefix || 'word') + ':' + part;
+  const run = (action, payload) => {
+    try {
+      store.apply(action, payload);
+      return true;
+    } catch (error) {
+      ctx.toast({ kind: 'problem', text: error && error.message ? error.message : 'That could not be done. Try again.' });
+      return false;
+    }
+  };
+  const customOf = (project) => project.settings.periodCustom || null;
+  const shown = (project) => (customOf(project) || memory.open ? 'other' : project.settings.periodWord);
+
+  const group = choice({
+    name: options.name,
+    labelledBy: options.labelledBy,
+    describedBy: options.describedBy,
+    options: PERIOD_WORDS.map((value) => ({ value, label: value })).concat([{ value: 'other', label: 'Other word…' }]),
+    value: shown(store.project),
+    onChange: (value) => {
+      const project = store.project;
+      const custom = customOf(project);
+      if (value === 'other') {
+        memory.open = true;
+        if (!custom && memory.remembered && !run(setPeriodCustom, memory.remembered)) memory.open = false;
+        options.redraw(keyFor('custom-word'));
+        return;
+      }
+      memory.open = false;
+      if (!custom) {
+        if (value !== project.settings.periodWord) run(setSetting, { key: 'periodWord', value });
+        return;
+      }
+      // leaving Other word: the custom word is cleared from the project (one
+      // undo step), and a different one of the four is set after it
+      memory.remembered = custom;
+      let steps = 0;
+      if (!run(setPeriodCustom, null)) return;
+      steps += 1;
+      if (value !== store.project.settings.periodWord && run(setSetting, { key: 'periodWord', value })) steps += 1;
+      ctx.toast({ text: 'The word ' + custom.word + ' is gone.', action: { label: 'Undo', run: () => {
+        for (let i = 0; i < steps; i += 1) ctx.undo();
+        options.redraw(keyFor('word:other'));
+      } } });
+    },
+  });
+  group.element.querySelectorAll('input').forEach((input) => keyed(input, keyFor('word:' + input.value)));
+
+  const wordField = field({
+    label: 'Word',
+    value: '',
+    name: 'periodCustomWord',
+    placeholder: 'Lesson',
+    width: '10rem',
+    commit: (value) => {
+      const held = customOf(store.project);
+      const word = value.trim();
+      // a plural the school typed stays; one that is only the word and "s" follows the word
+      const plural = held ? (held.plural !== held.word + 's' ? held.plural : undefined) : pluralField.input.value.trim() !== '' ? pluralField.input.value : undefined;
+      store.apply(setPeriodCustom, { word, plural, count: held ? held.count : memory.count || 'number' });
+    },
+  });
+  keyed(wordField.input, keyFor('custom-word'));
+  wordField.input.maxLength = PERIOD_WORD_MOST * 2;
+  const pluralField = field({
+    label: 'Plural',
+    value: '',
+    name: 'periodCustomPlural',
+    placeholder: 'Lessons',
+    width: '10rem',
+    commit: (value) => {
+      const held = customOf(store.project);
+      if (!held) {
+        // nothing to keep yet: the plural waits for the word
+        return;
+      }
+      store.apply(setPeriodCustom, { word: held.word, plural: value.trim() === '' ? undefined : value, count: held.count });
+    },
+  });
+  keyed(pluralField.input, keyFor('custom-plural'));
+  pluralField.input.maxLength = PERIOD_WORD_MOST * 2;
+
+  const countLabel = uid('count-as');
+  const counts = choice({
+    name: options.name + '-count',
+    labelledBy: countLabel,
+    options: PERIOD_COUNTS.map((value) => ({ value, label: COUNT_WORDS[value] })),
+    value: 'number',
+    onChange: (value) => {
+      memory.count = value;
+      const held = customOf(store.project);
+      if (held) run(setPeriodCustom, { word: held.word, plural: held.plural, count: value });
+      else sample();
+    },
+  });
+  counts.element.querySelectorAll('input').forEach((input) => keyed(input, keyFor('count:' + input.value)));
+  const sampleLine = h('p', { class: 'sch-hint sch-wordsample', data: { part: 'word-sample' } });
+  function sample() {
+    const held = customOf(store.project);
+    const word = held ? held.word : wordField.input.value.trim();
+    const settings = store.project.settings;
+    sampleLine.textContent = word === '' ? 'Type a word to see how it reads.' : customSample({ word, plural: held ? held.plural : word + 's', count: held ? held.count : memory.count || 'number' }, settings.periods);
+  }
+  const other = h('div', { class: 'sch-wordother', data: { part: 'word-other' } },
+    h('div', { class: 'sch-wordother__fields' }, wordField.element, pluralField.element),
+    h('div', { class: 'field' }, h('span', { class: 'field__label', id: countLabel }, 'Count as'), counts.element),
+    sampleLine);
+  const element = h('div', { class: 'sch-periodword' }, group.element, other);
+
+  function sync(project) {
+    const custom = customOf(project);
+    group.set(shown(project));
+    other.hidden = !(custom || memory.open);
+    if (custom) {
+      if (document.activeElement !== wordField.input) wordField.set(custom.word);
+      if (document.activeElement !== pluralField.input) pluralField.set(custom.plural || custom.word + 's');
+      counts.set(custom.count || 'number');
+      memory.count = custom.count || 'number';
+    } else {
+      counts.set(memory.count || 'number');
+    }
+    sample();
+  }
+  sync(store.project);
+  return { element, sync };
 }
 
 // ---------------------------------------------------------------- marked periods (DESIGN 11.3, card 5)
@@ -306,18 +461,104 @@ export function mount(env) {
     });
     keyed(periods.input, 'day-periods');
     const wordLabel = uid('word');
-    const word = choice({
-      name: 'sch-period-word',
-      labelledBy: wordLabel,
-      options: PERIOD_WORDS.map((value) => ({ value, label: value })),
-      value: project.settings.periodWord,
-      onChange: (value) => apply(env, setSetting, { key: 'periodWord', value }),
-    });
-    word.element.querySelectorAll('input').forEach((input) => keyed(input, 'day-word:' + input.value));
+    const wordHint = uid('word-hint');
+    const word = periodWordControl(ctx, { name: 'sch-period-word', labelledBy: wordLabel, describedBy: wordHint, prefix: 'day-word', redraw: (key) => env.render(key) });
     return h('div', { class: 'sch-daytab__basics' },
       h('div', null, periods.element, h('p', { class: 'sch-hint', id: periodsHint }, 'From ' + RANGES.periods[0] + ' to ' + RANGES.periods[1] + '. Taking some away asks first, and says what would go.')),
       h('div', { class: 'field' }, h('span', { class: 'field__label', id: wordLabel }, 'What the school calls one'), word.element,
-        h('p', { class: 'sch-hint' }, 'Blocks are lettered and hours are counted: ' + periodName({ periodWord: 'Block' }, 2) + ', ' + periodName({ periodWord: 'Hour' }, 2) + '.')));
+        h('p', { class: 'sch-hint', id: wordHint }, 'Blocks are lettered and hours are counted: ' + periodNumberName({ periodWord: 'Block' }, 2) + ', ' + periodNumberName({ periodWord: 'Hour' }, 2) + '.')),
+      periodNamesPart(project));
+  }
+
+  // ------------------------------------------------------------ period names (DESIGN 16.5, 16.12 items 3 and 9)
+
+  // Names that read as a kind of mark, and the mark kind each offers.
+  const NAMED_KINDS = { lunch: 'lunch', recess: 'activity', advisory: 'advisory', homeroom: 'advisory' };
+
+  // The kind of school mark a period's name suggests when no school mark of
+  // that kind covers the period on every day type, else null.
+  function nudgeKind(project, period) {
+    const names = project.settings.periodNames;
+    const name = Array.isArray(names) && typeof names[period] === 'string' ? names[period].trim().toLowerCase() : '';
+    const kind = NAMED_KINDS[name];
+    if (!kind) return null;
+    const covered = marksOf(project).some((mark) => mark.kind === kind && mark.scope === 'school' && mark.period === period && (!Array.isArray(mark.dayTypeIds) || mark.dayTypeIds.length === 0));
+    return covered ? null : kind;
+  }
+
+  function namedCount(project) {
+    const names = Array.isArray(project.settings.periodNames) ? project.settings.periodNames : [];
+    return names.slice(0, project.settings.periods).filter((name) => typeof name === 'string' && name.trim() !== '').length;
+  }
+
+  function markAsNamed(period, kind) {
+    const project = ctx.store.project;
+    const name = periodName(project.settings, period);
+    if (!apply(env, addMark, { kind, label: '', period, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] })) return;
+    const marks = marksOf(ctx.store.project);
+    const added = marks[marks.length - 1];
+    ctx.toast({ text: periodNumberName(ctx.store.project.settings, period) + ' (' + name + ') is marked as ' + MARK_WORDS[kind].toLowerCase() + ' for the whole school.', action: { label: 'Undo', run: undoTo('names:' + period + ':name') } });
+    ctx.announce('Added ' + markSentence(ctx.store.project, added, added.id) + '.');
+    env.render('names:' + period + ':name');
+  }
+
+  function nameRow(project, period) {
+    const settings = project.settings;
+    const names = Array.isArray(settings.periodNames) ? settings.periodNames : [];
+    const stored = typeof names[period] === 'string' ? names[period] : '';
+    const hintId = uid('name-hint');
+    const control = field({
+      label: periodNumberName(settings, period),
+      value: stored,
+      name: 'periodName',
+      placeholder: 'No name',
+      width: '12rem',
+      describedBy: hintId,
+      commit: (value) => {
+        const before = ctx.store.project;
+        ctx.store.apply(setPeriodName, { period, name: value });
+        const after = ctx.store.project;
+        if (after === before) return;
+        const kind = nudgeKind(after, period);
+        const said = view.nudged || (view.nudged = new Set());
+        const key = period + ':' + value.trim().toLowerCase();
+        if (kind && !said.has(key)) {
+          said.add(key);
+          ctx.toast({ text: periodNumberName(after.settings, period) + ' is named ' + value.trim() + ', but it is still counted as a teaching or free period. Mark it as ' + MARK_WORDS[kind].toLowerCase() + ' under its name.' });
+        }
+      },
+    });
+    keyed(control.input, 'names:' + period + ':name');
+    control.input.maxLength = PERIOD_NAME_MOST * 2;
+    const twin = stored.trim() !== '' && names.some((other, at) => at !== period && at < settings.periods && typeof other === 'string' && spacelessKey(other) === spacelessKey(stored));
+    const kind = nudgeKind(project, period);
+    const notes = [];
+    if (twin) notes.push(h('p', { class: 'sch-hint sch-names__twin', role: 'status' }, 'Two periods are named ' + stored.trim() + '; imports match them by number.'));
+    if (kind) {
+      notes.push(h('p', { class: 'sch-hint sch-names__nudge', data: { nudge: String(period) } },
+        'Named ' + stored.trim() + ', but still counted as a teaching or free period. ',
+        button('Mark it as ' + MARK_WORDS[kind].toLowerCase() + ' for the whole school', () => markAsNamed(period, kind), { key: 'names:' + period + ':mark', action: 'mark-named', small: true })));
+    }
+    return h('li', { class: 'sch-names__row', data: { period: String(period) } }, control.element, h('div', { id: hintId }, notes));
+  }
+
+  // Behind a disclosure, so the card stays short for a school with no names.
+  function periodNamesPart(project) {
+    const open = view.namesOpen === true;
+    const panelId = uid('names');
+    const toggle = keyed(h('button', { type: 'button', class: 'btn sch-names__toggle', 'aria-expanded': String(open), 'aria-controls': panelId, data: { action: 'names-toggle' }, on: { click: () => {
+      view.namesOpen = !open;
+      env.render('names:toggle');
+    } } }, 'Name periods (Lunch, Advisory)…'), 'names:toggle');
+    const n = namedCount(project);
+    const panel = h('div', { class: 'sch-names__panel', id: panelId, hidden: !open },
+      open ? [
+        h('p', { class: 'sch-hint' }, 'A name replaces the number on screens and in the staff browser (Lunch, Advisory). The number stays in files and imports.'),
+        h('ul', { class: 'sch-names__list' }, Array.from({ length: project.settings.periods }, (_, at) => nameRow(project, at))),
+      ] : null);
+    return h('div', { class: 'sch-names', data: { part: 'period-names' } },
+      h('div', { class: 'sch-names__head' }, toggle, h('span', { class: 'sch-names__count', data: { part: 'named-count' } }, n + ' named')),
+      panel);
   }
 
   // ------------------------------------------------------------ bell tables

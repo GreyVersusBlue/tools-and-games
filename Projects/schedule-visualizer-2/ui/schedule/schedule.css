@@ -2290,3 +2290,98 @@
   font-size: var(--t-sm);
   color: var(--ink-2);
 }
+
+/* ---------- SV2-129: the period word and period names (DESIGN 16.5) ---------- */
+
+.sch-periodword {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.sch-wordother {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--card);
+  min-width: 0;
+}
+
+.sch-wordother[hidden] {
+  display: none;
+}
+
+.sch-wordother__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-4);
+}
+
+.sch-wordsample {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sch-names {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.sch-names__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+}
+
+.sch-names__count {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.sch-names__panel {
+  margin-top: var(--s-3);
+}
+
+.sch-names__panel[hidden] {
+  display: none;
+}
+
+.sch-names__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--s-3) var(--s-5);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sch-names__row {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sch-names__row .field__input {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .sch-names__list {
+    grid-template-columns: 1fr;
+  }
+
+  .sch-periodword .seg__label,
+  .sch-names__toggle {
+    min-height: 44px;
+  }
+}
+
+@media (pointer: coarse) {
+  .sch-periodword .seg__label,
+  .sch-names__toggle,
+  .sch-names__nudge .btn {
+    min-height: 44px;
+  }
+}
