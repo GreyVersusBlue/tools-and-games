@@ -882,8 +882,8 @@
       "name": "Your agent",
       "role": "Venice"
     },
-    "title": "The galleys are still in the dock",
-    "body": "I am at Venice. The sultan has made a treaty, and Venice's galleys will sail to Alexandria again. They are still in the dock, a month from sailing. I paid 30 of your money for a place on a ship that leaves now.",
+    "title": "The galleys sail again",
+    "body": "I am at Venice. The sultan made a treaty, and Venice's galleys sail to Alexandria again. The next galley is a month from sailing. I paid 30 of your money for a place on a ship that leaves now.",
     "when": {
       "all": [
         {
@@ -892,7 +892,7 @@
         {
           "year": [
             1345,
-            1345
+            1347
           ]
         }
       ]
