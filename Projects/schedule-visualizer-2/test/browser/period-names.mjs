@@ -210,9 +210,9 @@ test('5. leaving Other word says so in the toast, and Undo brings the word back 
   await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSetting, { key: 'schoolName', value: 'Oak Test' }));
   await settled();
   assert.equal((await settings()).schoolName, 'Oak Test');
-  await page.evaluate(() => document.querySelector('.toast__action')?.click());
-  await settled();
-  assert.equal((await settings()).schoolName, 'Oak Test', 'the later edit is not undone by the toast');
+  // the toast closes with its Undo when a newer change is made, so the later edit cannot be taken by it
+  assert.equal(await exists('.toast__action'), false, 'the toast’s Undo is gone once another edit was made');
+  assert.equal((await settings()).schoolName, 'Oak Test', 'the later edit stays');
   assert.equal((await settings()).periodCustom, undefined, 'and neither is the word brought back');
   await page.evaluate(() => { globalThis.sv2.store.undo(); globalThis.sv2.store.undo(); });
   await settled();
@@ -225,9 +225,8 @@ test('5. leaving Other word says so in the toast, and Undo brings the word back 
   await page.evaluate(() => globalThis.sv2.store.undo());
   await settled();
   const afterShortcut = await page.evaluate(() => JSON.stringify(globalThis.sv2.store.project.settings));
-  await page.evaluate(() => document.querySelector('.toast__action')?.click());
-  await settled();
-  assert.equal(await page.evaluate(() => JSON.stringify(globalThis.sv2.store.project.settings)), afterShortcut, 'the toast Undo after the shortcut does nothing more');
+  assert.equal(await exists('.toast__action'), false, 'the toast’s Undo is gone after the shortcut took the step back');
+  assert.equal(await page.evaluate(() => JSON.stringify(globalThis.sv2.store.project.settings)), afterShortcut, 'and nothing more was undone');
   // leaving again, and choosing Other word again, brings the word it left
   await closeToast();
   await page.click(radio('Hour'));
@@ -294,6 +293,7 @@ test('7. the same name on two periods is allowed and said under both', async () 
   await typeInto('.sch-names__row[data-period="6"] input', 'study');
   await settled();
   for (const period of [1, 6]) assert.equal(await text('.sch-names__row[data-period="' + period + '"] .sch-names__twin'), 'Two periods are named ' + (period === 1 ? 'Study' : 'study') + '; imports match them by number.');
+  assert.equal(await page.$eval('.sch-names__twin', (el) => el.getAttribute('role')), null, 'the note is in the field’s description, not a live region that is rebuilt on every draw');
   await typeInto('.sch-names__row[data-period="1"] input', '');
   await typeInto('.sch-names__row[data-period="6"] input', '');
   await settled();
@@ -343,6 +343,19 @@ async function case9() {
   assert.equal((await marks()).length, before, 'one undo takes the mark and only the mark');
   assert.equal((await settings()).periodNames[4], 'Lunch');
   assert.equal(await exists(nudge), true, 'and the offer is back');
+  // a school mark naming every one of the day types covers the period as well as one naming none
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const everyDay = await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { sv2modules } = globalThis;
+    const ids = store.project.dayTypes.map((dayType) => dayType.id);
+    store.apply(sv2modules.actions.addMark, { kind: 'lunch', label: '', period: 4, dayTypeIds: ids, scope: 'school', grades: [], groupIds: [] });
+    return ids.length;
+  });
+  assert.ok(everyDay >= 1, 'the school has a day type');
+  await shows(() => document.querySelector('.sch-names__row[data-period="4"] .sch-names__nudge') === null);
+  await undo();
+  assert.equal(await exists(nudge), true, 'and with that mark undone the offer is back');
   // an Advisory name offers the advisory mark
   await typeInto('.sch-names__row[data-period="5"] input', 'advisory');
   await settled();
