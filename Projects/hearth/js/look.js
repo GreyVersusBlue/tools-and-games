@@ -36,7 +36,7 @@ function skyAt(f,season,wx,snowLying){
   const w=SKYWX[wx];if(w){const y=.299*c[0]+.587*c[1]+.114*c[2];c=c.map(v=>(v+(y-v)*w[0])*w[1])}
   return c.map(v=>Math.max(0,Math.min(255,Math.round(v))))}
 /* when each of the three warm lights is lit, in the pre-rendered falloff sprites: built the first time they are wanted, never in a frame */
-const LSPR={win:'#ffd69a',fire:'#ffb45a',lamp:'#fff2b0'},LRAD=[8,18,28,46];let lightSp=null,lmCv=null,lmG=null,lmSolid=null,litHouses=new Set(),skyLum=1;
+const LSPR={win:'#ffd69a',fire:'#ffb45a',lamp:'#fff2b0'},LRAD=[8,18,28,46];let lightSp=null,lmCv=null,lmG=null,lmSolid=null,lmBase='',lmBoxes=[],litHouses=new Set(),skyLum=1;
 function lightSprites(){
   if(lightSp)return lightSp;lightSp={};
   for(const k in LSPR){const c3=SKYH(LSPR[k]);lightSp[k]={};
@@ -60,6 +60,29 @@ function houseLights(L,f,e){
 /* does the world, under the view's transform, cover every pixel of the canvas? A fill and a map agree there; where the world's edge is on the canvas an edge pixel is covered
    by a fraction, and a fill and a blit round it differently by a level or two, so the map is blitted */
 function worldFills(vk){const x0=cv.width/2-camX*T*vk,y0=cv.height/2-camY*T*vk;return x0<=0&&y0<=0&&x0+W*T*vk>=cv.width&&y0+H*T*vk>=cv.height}
+/* the picture multiplies by the map. Most of the map is the hour's one colour and the lights are small, so the colour goes on as fills over everything the lights do not
+   touch and the map goes on only over boxes round the lights, in whole device pixels: the same value in every pixel, at a third of the cost of blitting all of it. Falls
+   back to the whole map when the world does not fill the canvas, when there are many boxes, or when they cover over half of it. The transform is the view's and is put back. */
+function lightMultiply(lm,vk){
+  const cw=cv.width,ch=cv.height,tx=cw/2-camX*T*vk,ty=ch/2-camY*T*vk;
+  if(!worldFills(vk)){g.drawImage(lm,0,0,W*T,H*T);return}
+  if(lmSolid){g.fillStyle=lmSolid;g.fillRect(0,0,W*T,H*T);return}
+  const bx=[];
+  for(let i=0;i<lmBoxes.length;i+=4){let x0=Math.max(0,Math.floor(tx+lmBoxes[i]*vk)-1),y0=Math.max(0,Math.floor(ty+lmBoxes[i+1]*vk)-1),x1=Math.min(cw,Math.ceil(tx+lmBoxes[i+2]*vk)+1),y1=Math.min(ch,Math.ceil(ty+lmBoxes[i+3]*vk)+1);
+    if(x1>x0&&y1>y0)bx.push([x0,y0,x1,y1])}
+  for(let again=true;again;){again=false; /* overlapping or touching boxes become one, so no pixel is blitted twice */
+    for(let i=0;i<bx.length&&!again;i++)for(let j=i+1;j<bx.length;j++){const a=bx[i],b=bx[j];
+      if(a[0]<=b[2]&&b[0]<=a[2]&&a[1]<=b[3]&&b[1]<=a[3]){a[0]=Math.min(a[0],b[0]);a[1]=Math.min(a[1],b[1]);a[2]=Math.max(a[2],b[2]);a[3]=Math.max(a[3],b[3]);bx.splice(j,1);again=true;break}}}
+  let area=0;for(const b of bx)area+=(b[2]-b[0])*(b[3]-b[1]);
+  if(bx.length>24||area>cw*ch*.5){g.drawImage(lm,0,0,W*T,H*T);return}
+  g.setTransform(1,0,0,1,0,0);g.fillStyle=lmBase;
+  const ys=[0,ch];for(const b of bx){ys.push(b[1],b[3])}ys.sort((p,q)=>p-q); /* the rest of the canvas, as bands of fills on whole pixels */
+  for(let i=0;i<ys.length-1;i++){const y0=ys[i],y1=ys[i+1];if(y1<=y0)continue;
+    const row=bx.filter(b=>b[1]<=y0&&b[3]>=y1).sort((p,q)=>p[0]-q[0]);let x=0;
+    for(const b of row){if(b[0]>x)g.fillRect(x,y0,b[0]-x,y1-y0);x=Math.max(x,b[2])}
+    if(x<cw)g.fillRect(x,y0,cw-x,y1-y0)}
+  g.save();g.beginPath();for(const b of bx)g.rect(b[0],b[1],b[2]-b[0],b[3]-b[1]);g.clip(); /* the map itself goes through the same transform as before, clipped to the boxes: the same texel in every pixel */
+  g.setTransform(vk,0,0,vk,tx,ty);g.drawImage(lm,0,0,W*T,H*T);g.restore();g.setTransform(vk,0,0,vk,tx,ty)}
 function lightMap(L,f,e,s){
   const lsc=lookQ<2?.5:1; /* A14: below tier 2 the map is built at half size and the picture stretches it back */
   if(!lmCv){lmCv=document.createElement('canvas');lmG=lmCv.getContext('2d')}
@@ -67,8 +90,8 @@ function lightMap(L,f,e,s){
   const m=lmG;m.setTransform(lsc,0,0,lsc,0,0);const c=skyAt(f,s,wx,snowD),k=flash,fk=1+.5*Math.min(1,fogA),fd=Math.min(1,fogA)*.6; /* A7: fog takes the colour out of the map and swells every light */
   if(fd>0){const y=.299*c[0]+.587*c[1]+.114*c[2];for(let q=0;q<3;q++)c[q]=Math.round(c[q]+(y-c[q])*fd)}skyLum=Math.min(1,(.299*c[0]+.587*c[1]+.114*c[2])/255+k);
   m.globalCompositeOperation='source-over';
-  m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);lmSolid=m.fillStyle;
-  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{lmSolid=null;m.globalAlpha=a;m.drawImage(sp[kind][r],Math.round(x-r*fk),Math.round(y-r*fk),Math.round(r*2*fk),Math.round(r*2*fk));m.globalAlpha=1};
+  m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);lmSolid=lmBase=m.fillStyle;lmBoxes.length=0;
+  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{lmSolid=null;const bx=Math.round(x-r*fk),by=Math.round(y-r*fk),bs=Math.round(r*2*fk);lmBoxes.push(bx,by,bx+bs,by+bs);m.globalAlpha=a;m.drawImage(sp[kind][r],bx,by,bs,bs);m.globalAlpha=1};
   m.globalCompositeOperation='lighter';
   const dark=1-L;
   if(L<.7)stamp('fire',46,center.x*T,center.y*T-2,Math.min(1,(.7-L)/.4));
@@ -77,9 +100,9 @@ function lightMap(L,f,e,s){
   if(hall&&L<.5&&(storyDay===dayCount||people.some(p=>p.task==='abed'&&p.abedH)))stamp('win',28,hall.x*T+8,hall.y*T+10,1);
   const lh=getB('light');
   if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=RM?.6:animT*.9,al=(dark-.35)*.5*(wx==='fog'?1.6:1);stamp('lamp',18,lx,ly,Math.min(1,(dark-.35)*3));
-    lmSolid=null;m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
+    lmSolid=null;lmBoxes.push(lx-121,ly-121,lx+121,ly+121);m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
   for(const q of farLamps(L,f,e))stamp('lamp',8,q.x,q.y,q.a); /* B5: one for each person over there, until the small hours */
-  for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;lmSolid=null;m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
+  for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;lmSolid=null;lmBoxes.push(Math.round(fl.x*T-1)-1,Math.round(fl.y*T-3)-1,Math.round(fl.x*T-1)+4,Math.round(fl.y*T-3)+4);m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
   if(dark>.65&&speed<FAST)for(const p of people){if(p.dead||p.inside||p.task!=='gohome'&&p.task!=='nurse'&&p.task!=='visit'&&p.task!=='voyage')continue;stamp('fire',8,p.x*T,p.y*T-3,Math.min(1,(dark-.65)*4))}
   m.globalCompositeOperation='source-over';
   return lmCv}

@@ -308,7 +308,7 @@ function draw(){
   if(wx==='snow')drawSnowfall(wind); /* A7 (look.js): two depths of flake, leaning with the wind */
   // sky: the hour's colour (look.js), cloud, fog
   const f=dayFrac(),e=edges();
-  g.globalCompositeOperation='multiply';{const lm=lightMap(L,f,e,s);if(lmSolid&&worldFills(vk)){g.fillStyle=lmSolid;g.fillRect(0,0,W*T,H*T)}else g.drawImage(lm,0,0,W*T,H*T)}g.globalCompositeOperation='source-over'; // the hour is a colour, and the lights are in it (look.js)
+  g.globalCompositeOperation='multiply';lightMultiply(lightMap(L,f,e,s),vk);g.globalCompositeOperation='source-over'; // the hour is a colour, and the lights are in it (look.js)
   const skyY=.3+.7*skyLum; // fog and mist are painted after the multiply, so they take the hour's brightness themselves
   // a rainbow hangs where the rain just was (sprint 16): one cached sprite, fading over half a minute of sim time
   if(rbUntil>time&&L>.35&&!rain&&wx!=='fog'){g.globalAlpha=Math.min(1,(rbUntil-time)/8)*.38;
