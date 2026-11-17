@@ -105,8 +105,45 @@ test('repair: a repaired fresh state is the fresh state', () => {
 });
 test('repair: missing fields come back from a fresh state', () => {
   const s = copy(fresh());
-  for (const k of ['loans', 'stock', 'market', 'known', 'expeditions', 'agents', 'rep', 'desk', 'done', 'queue', 'flags', 'seen', 'notebook', 'log', 'score', 'money', 'rng']) delete s[k];
+  for (const k of ['loans', 'stock', 'market', 'known', 'expeditions', 'post', 'agents', 'rep', 'desk', 'done', 'queue', 'flags', 'seen', 'notebook', 'log', 'score', 'money', 'rng']) delete s[k];
   eq(repair(s, content), fresh());
+});
+// a game with one expedition on the road and one letter in the house's post, as the engine writes them
+const withPost = () => {
+  const s = fresh();
+  s.expeditions.push({ id: 'x1', agent: 'tobin', route: 'harbour-hilltown', leg: 0, left: 1, waiting: 0, status: 'out', cargo: {}, purse: 0, sent: 0, orders: [] });
+  s.agents.tobin.where = 'road';
+  s.post.push({ id: 'rain-on-the-pass', kind: 'question', expedition: 'x1', agent: 'tobin', stop: 'hilltown', standing: false, written: 1, lag: 2, arrive: 3 });
+  return s;
+};
+test('repair: the house\'s post keeps a sound entry and drops every malformed one (MER-60b rule 9)', () => {
+  const good = withPost().post[0];
+  const bad = copy(withPost());
+  bad.post = [null, 7, 'x', [], {}, { id: 'rain-on-the-pass' }, { ...good, id: 'no-such-letter' }, { ...good, kind: 'rumour' }, { ...good, stop: 'atlantis' }, { ...good, agent: 'nobody' },
+    { ...good, expedition: '' }, { ...good, lag: 0 }, { ...good, lag: 1.5 }, { ...good, arrive: 'soon' }, { ...good, written: -1 }, good];
+  eq(repair(bad, content).post, [good]);
+  bad.post = 'junk';
+  eq(repair(bad, content).post, []);
+  delete bad.post;
+  eq(repair(bad, content).post, [], 'a save from before the post has none');
+  const s = withPost();
+  eq(repair(s, content).post, s.post, 'a sound post comes through unchanged');
+});
+test('repair: an expedition keeps only orders with a go of wait, on or home, a letter and a season (MER-60b rule 9)', () => {
+  const s = withPost();
+  s.expeditions[0].orders = [null, 'wait', { go: 'press', letter: 'a', at: 4 }, { go: 'wait', letter: 'a' }, { go: 'wait', letter: 'a', at: -2 }, { go: 'on', letter: 7, at: 4 }, { go: 'on', letter: 'a', at: 4.5 },
+    { go: 'wait', letter: 'a', at: 4 }, { go: 'on', letter: 'b', at: 5, used: true }, { go: 'home', letter: 'c', at: 6, used: 'yes', extra: 1 }];
+  eq(repair(s, content).expeditions[0].orders, [{ go: 'wait', letter: 'a', at: 4 }, { go: 'on', letter: 'b', at: 5, used: true }, { go: 'home', letter: 'c', at: 6 }]);
+  delete s.expeditions[0].orders;
+  eq(repair(s, content).expeditions[0].orders, [], 'an expedition from before orders has none');
+});
+test('repair: letters an earlier build kept on the expedition move into the post, delivered ones are dropped', () => {
+  const s = withPost(), entry = s.post.pop();
+  s.expeditions[0].post = [{ id: entry.id, kind: entry.kind, stop: entry.stop, leg: 0, written: 1, lag: 2, arrive: 3, def: 'hold', delivered: false },
+    { id: 'salt-toll', kind: 'report', stop: 'saltmarsh', leg: 1, written: 0, lag: 1, arrive: 1, delivered: true }];
+  const r = repair(s, content);
+  eq(r.post, [{ ...entry, standing: true }]);
+  eq('post' in r.expeditions[0], false);
 });
 test('repair: a missing agent record or market entry is rebuilt', () => {
   const s = copy(fresh());

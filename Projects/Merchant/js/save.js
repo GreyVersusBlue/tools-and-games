@@ -8,6 +8,7 @@
 import { createSaveSlot } from '../../../assets/js/gvb-save.js';
 import { playedSeasons } from './engine/calendar.js';
 import { freshState, REP_GROUPS, SAVE_VERSION, MAX_PAPERS } from './engine/state.js';
+import { GOES } from './engine/letters.js';
 
 export const SAVE_KEY = 'merchant-save';
 export const SETTINGS_KEY = 'merchant-settings';
@@ -48,6 +49,11 @@ export function migrate(state, from) {
 }
 
 // ---- repair (ARCHITECTURE 8.3)
+
+/** An expedition's orders: only { go: wait | on | home, letter, at } with `at` a season; the rest are dropped. */
+const repairOrders = orders => (Array.isArray(orders) ? orders : [])
+  .filter(o => isObject(o) && GOES.includes(o.go) && isStr(o.letter) && Number.isInteger(o.at) && o.at >= 0)
+  .map(o => ({ go: o.go, letter: o.letter, at: o.at, ...(o.used === true ? { used: true } : {}) }));
 
 function repairMarket(m, fresh, stops, goods) {
   const out = {};
@@ -162,9 +168,26 @@ export function repair(state, content) {
       left: count(x.left), waiting: count(x.waiting), cargo, purse,
       contract: isObject(x.contract) ? x.contract : { kind: 'own' },
       staked: isObject(x.staked) ? x.staked : { house: 0, partners: 0 },
-      orders: Array.isArray(x.orders) ? x.orders : [],
+      orders: repairOrders(x.orders),
       sent: count(x.sent),
     });
+  }
+  // the house's post: letters on the way (the expedition's own `post` of the first letters build moves here)
+  out.post = [];
+  const mail = [...(Array.isArray(s.post) ? s.post : [])];
+  for (const x of Array.isArray(s.expeditions) ? s.expeditions : []) {
+    if (!isObject(x) || !Array.isArray(x.post)) continue;
+    for (const p of x.post) if (isObject(p) && !p.delivered) mail.push({ standing: true, ...p, expedition: x.id, agent: x.agent });
+  }
+  for (const p of mail) {
+    if (!isObject(p) || !letters.has(p.id) || !['question', 'report'].includes(p.kind) || !stops.has(p.stop) || !agents.has(p.agent) || !isStr(p.expedition)) continue;
+    if (![p.written, p.lag, p.arrive].every(n => Number.isInteger(n) && n >= 0) || p.lag < 1) continue;
+    out.post.push({ id: p.id, kind: p.kind, expedition: p.expedition, agent: p.agent, stop: p.stop, standing: p.standing !== false, written: p.written, lag: p.lag, arrive: p.arrive });
+  }
+  for (const x of out.expeditions) {
+    delete x.post;
+    if ('held' in x) x.held = count(x.held);
+    if ('hold' in x && x.hold !== true) delete x.hold;
   }
   // an agent shown on the road with no expedition under them is at home
   const onRoad = new Set(out.expeditions.map(x => x.agent));

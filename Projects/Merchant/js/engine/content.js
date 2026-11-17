@@ -138,7 +138,7 @@ export function validateContent(raw, { art } = {}) {
         break;
       case 'unlock': refOf('notebook')(v, `${p}.unlock`); break;
       case 'order':
-        if (!isObj(v) || !Object.keys(v).length) schema(`${p}.order`, 'needs a non-empty object');
+        obj(v, `${p}.order`, { go: (x, q) => oneOf(['wait', 'on', 'home'], x, q) }, ['go']);
         if (where !== 'letter-now') schema(p, 'an order goes only in a letter choice\'s now list');
         break;
     }

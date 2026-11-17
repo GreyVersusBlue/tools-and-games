@@ -235,7 +235,7 @@ test('validate: a bad condition is an error', () => {
 });
 test('validate: a letter\'s when may test the expedition, a card\'s may not', () => {
   const letter = { id: 'road-1', kind: 'question', title: 'A question from the road', body: 'Mira asks what to do.', when: { leg: { by: 'mules' } },
-    choices: [{ id: 'go', label: 'Go on', now: [{ order: { do: 'go' } }] }, { id: 'wait', label: 'Wait', now: [{ order: { do: 'wait' } }] }],
+    choices: [{ id: 'go', label: 'Go on', now: [{ order: { go: 'on' } }] }, { id: 'wait', label: 'Wait', now: [{ order: { go: 'wait' } }] }],
     note: 'An invented letter.', sources: [{ src: 'testport-fiction' }] };
   eq(problemsOf(variant(c => { c.letters = [letter]; })), []);
   ok(problemsOf(variant(c => { c.letters = [{ ...letter, kind: 'report', choices: letter.choices }]; })).some(x => /not orders/.test(x.message)));

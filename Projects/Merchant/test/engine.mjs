@@ -100,12 +100,12 @@ test('state: freshState has every field of ARCHITECTURE 3 with the right type', 
   const s = fresh();
   const want = { v: 'number', city: 'string', length: 'string', house: 'string', seed: 'number', rng: 'number', t: 'number', phase: 'string', money: 'number' };
   for (const [k, t] of Object.entries(want)) eq(typeof s[k], t, k);
-  for (const k of ['loans', 'expeditions', 'desk', 'done', 'queue', 'notebook', 'log']) ok(Array.isArray(s[k]), k);
+  for (const k of ['loans', 'expeditions', 'post', 'desk', 'done', 'queue', 'notebook', 'log']) ok(Array.isArray(s[k]), k);
   for (const k of ['stock', 'market', 'known', 'agents', 'rep', 'flags', 'seen']) ok(s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]), k);
   eq(s.score, null);
   eq(s.phase, 'desk');
   eq(Object.keys(s).sort(), ['agents', 'city', 'desk', 'done', 'expeditions', 'flags', 'house', 'known', 'length', 'loans', 'log', 'market',
-    'money', 'notebook', 'phase', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
+    'money', 'notebook', 'phase', 'post', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
 });
 test('state: the house sets money, stock, hired agents and reputation; the market starts level', () => {
   const s = fresh();

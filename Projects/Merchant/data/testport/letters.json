@@ -11,7 +11,7 @@
     "default": "hold",
     "choices": [
       { "id": "hold", "label": "Wait for the road to dry", "hint": "It costs a season, and it is safe.", "now": [ { "order": { "go": "wait" } } ] },
-      { "id": "press", "label": "Press on through the mud", "hint": "It is faster, and it is not safe.", "now": [ { "order": { "go": "press" } } ] }
+      { "id": "press", "label": "Press on through the mud", "hint": "It is faster, and it is not safe.", "now": [ { "order": { "go": "on" } } ] }
     ],
     "note": "An invented letter for testing.",
     "sources": [ { "src": "testport-fiction" } ]
