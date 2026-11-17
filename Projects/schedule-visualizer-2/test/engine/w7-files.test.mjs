@@ -21,7 +21,9 @@ import { collectIds } from '../../engine/ids.js';
 import { ELEVATOR_KIND } from '../../engine/schema.js';
 import { periodName, periodNumberName } from '../../engine/bells.js';
 import { sampleSchool } from '../../data/sample-school.js';
-import { emptyProject, clone, makeIds, assertValid, clock } from './helpers.mjs';
+import { emptyProject, clone, makeIds, assertValid, clock, tickingClock } from './helpers.mjs';
+import { createStore } from '../../engine/store.js';
+import * as actions from '../../engine/actions.js';
 
 const LAB = 'hlab000001';
 const SINK = 'hsink00001';
@@ -272,7 +274,7 @@ test('applySchedule with takeSettings takes the period word, the custom word and
   const result = applySchedule(project, file, { ...OPTIONS, takeSettings: true });
   assert.deepEqual(result.project.settings.periodCustom, file.settings.periodCustom);
   assert.deepEqual(result.project.settings.periodNames, file.settings.periodNames);
-  assert.ok(result.summary.settingsTaken.includes('periodWord'));
+  assert.ok(result.summary.settingsTaken.some((taken) => (taken && taken.key) === 'periodWord'), 'the entry says the word and names changed');
   // a file that has the word and no extras clears the extras here: they were the word's
   const bare = clone(schedulePart(sampleSchool({ level: true })).file);
   const withCustom = { ...project, settings: { ...project.settings, periodCustom: { word: 'Class', plural: 'Classes', count: 'number' } } };
@@ -421,4 +423,135 @@ test('an empty project has none of the new fields in any file it writes', () => 
   for (const text of [writeProjectFile(project), writeBuildingFile(project), writeScheduleFile(project)]) {
     for (const field of ['"features"', '"featureIds"', '"periodCustom"', '"periodNames"', '"away"', '"well"']) assert.equal(text.includes(field), false, field);
   }
+});
+
+
+// ---------------------------------------------------------------- review fixes (SV2-126b)
+
+test('applyBuilding: a room carries only the features the incoming building lists', () => {
+  const target = sampleSchool({ level: true });
+  const file = clone(buildingPart(read(carrying())).file);
+  const room = file.building.floors.flatMap((floor) => floor.spaces).find((space) => space.kind === 'room' && space.featureIds && space.featureIds.length === 2);
+  room.featureIds = [LAB, 'hgone00000', SINK];
+  const only = file.building.floors.flatMap((floor) => floor.spaces).find((space) => space.kind === 'room' && space.featureIds && space.featureIds.length === 1);
+  only.featureIds = ['hgone00000'];
+  const { project } = applyBuilding(target, file, { ids: makeIds(9), unnumberedText: 'not in the building' });
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces);
+  assert.deepEqual(rooms.find((space) => space.id === room.id).featureIds, [LAB, SINK]);
+  assert.equal('featureIds' in rooms.find((space) => space.id === only.id), false, 'all of them gone: absent, not an empty list');
+  assertValid(project);
+  // a file with no feature list carries none of its rooms' ids
+  const bare = clone(file);
+  delete bare.building.features;
+  const swapped = applyBuilding(target, bare, { ids: makeIds(9), unnumberedText: 'not in the building' }).project;
+  assert.equal(swapped.building.floors.flatMap((floor) => floor.spaces).some((space) => space.featureIds && space.featureIds.length > 0), false);
+});
+
+test('applySchedule takeSettings: the names are cut to the periods the project ends with', () => {
+  const project = sampleSchool({ level: true });
+  const periods = project.settings.periods;
+  const file = clone(schedulePart(carrying()).file);
+  file.settings.periodNames = Array.from({ length: periods + 3 }, (_, k) => 'N' + k);
+  const out = applySchedule(project, file, { ...OPTIONS, takeSettings: true }).project;
+  assert.equal(out.settings.periodNames.length, periods, 'the names the file had past the day\'s end are not kept');
+  assert.equal(out.settings.periodNames[periods - 1], 'N' + (periods - 1));
+  const merged = applySettings(project, { periodWord: 'Period', periodNames: file.settings.periodNames }).project;
+  assert.equal(merged.settings.periodNames.length, merged.settings.periods);
+  // a list that is blank once cut is not written as a list of blanks
+  const blank = clone(file);
+  blank.settings.periodNames = [...Array(periods).fill(''), 'Past the end'];
+  const none = applySchedule(project, blank, { ...OPTIONS, takeSettings: true }).project;
+  assert.equal('periodNames' in none.settings, false);
+});
+
+test('applySchedule takeSettings: a file with no custom word or names over a project that has them says they went', () => {
+  const project = carrying();
+  const bare = clone(schedulePart(sampleSchool({ level: true })).file);
+  const { project: out, summary } = applySchedule(project, bare, { ...OPTIONS, takeSettings: true });
+  assert.equal('periodCustom' in out.settings && out.settings.periodCustom !== undefined, false);
+  assert.equal('periodNames' in out.settings, false);
+  const entry = summary.settingsTaken.find((taken) => taken && typeof taken === 'object');
+  assert.ok(entry, 'an entry with from and to');
+  assert.equal(entry.key, 'periodWord');
+  assert.match(entry.from, /Lesson and 2 period names/);
+  assert.equal(entry.to, 'Period');
+  // and with none of them on either side the entry is the plain key, as before
+  const plain = sampleSchool({ level: true });
+  const word = clone(schedulePart(plain).file);
+  word.settings.periodWord = 'Block';
+  assert.deepEqual(applySchedule(plain, word, { ...OPTIONS, takeSettings: true }).summary.settingsTaken, ['periodWord']);
+});
+
+test('the schedule file writes periodNames only when some name is not blank', () => {
+  const project = carrying();
+  project.settings.periodNames = ['', '  ', ''];
+  assert.equal('periodNames' in JSON.parse(writeScheduleFile(project)).settings, false);
+  assert.equal('periodNames' in schedulePart(project).file.settings, false);
+  project.settings.periodNames = [];
+  assert.equal('periodNames' in JSON.parse(writeScheduleFile(project)).settings, false);
+  project.settings.periodNames = ['', 'Lunch'];
+  assert.deepEqual(JSON.parse(writeScheduleFile(project)).settings.periodNames, ['', 'Lunch']);
+});
+
+test('publish: periodNames only when some name is not blank, featureIds only those published, away day types only those published', () => {
+  const project = carrying();
+  project.settings.periodNames = ['', ' ', ''];
+  assert.equal('periodNames' in published(project).settings, false);
+  project.settings.periodNames = [];
+  assert.equal('periodNames' in published(project).settings, false);
+  // a room naming a feature the building does not list: the id is not published
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces).filter((space) => space.kind === 'room');
+  rooms[0].featureIds = [LAB, 'hgone00000'];
+  rooms[2].featureIds = ['hgone00000'];
+  const model = published(project);
+  const out = model.building.floors.flatMap((floor) => floor.spaces).filter((space) => space.kind === 'room');
+  assert.deepEqual(out.find((room) => room.id === rooms[0].id).featureIds, [LAB]);
+  assert.equal('featureIds' in out.find((room) => room.id === rooms[2].id), false);
+  // away: a day type the data does not have is dropped, an entry left naming none is dropped, never widened
+  const day = project.dayTypes[0].id;
+  project.teachers[0].away = [
+    { dayTypeIds: [day, 'dgone00000'], weekdays: [1], periods: [] },
+    { dayTypeIds: ['dgone00000'], weekdays: [], periods: [] },
+    { dayTypeIds: [], weekdays: [], periods: [2] },
+  ];
+  const teachers = published(project).teachers;
+  assert.deepEqual(teachers[0].away, [{ dayTypeIds: [day], weekdays: [1], periods: [] }, { dayTypeIds: [], weekdays: [], periods: [2] }]);
+  project.teachers[0].away = [{ dayTypeIds: ['dgone00000'], weekdays: [], periods: [] }];
+  assert.equal('away' in published(project).teachers[0], false);
+});
+
+test('merge: the period word, the custom word and the names are taken together, and the store\'s schedule counter moves', () => {
+  const store = (project) => createStore({ project, clock: tickingClock(), ids: makeIds(3) });
+  const bring = (target, file) => target.apply(actions.importPart, { part: 'settings', read: read(file), fileName: 'next-year.json' });
+  // only the custom word and names differ: the key stands for the three, and the schedule moves
+  const here = emptyProject();
+  const there = clone(here);
+  there.settings.periodCustom = { word: 'Class', plural: 'Classes', count: 'number' };
+  there.settings.periodNames = ['Advisory'];
+  const a = store(here);
+  bring(a, there);
+  assert.deepEqual(a.project.settings.periodCustom, there.settings.periodCustom);
+  assert.deepEqual(a.project.settings.periodNames, ['Advisory']);
+  assert.deepEqual([a.geometryVersion, a.buildingVersion, a.scheduleVersion], [0, 0, 1]);
+  // and a file that has neither takes them away from a project that has them
+  const b = store(there);
+  bring(b, here);
+  assert.equal(b.project.settings.periodCustom, undefined);
+  assert.equal(b.project.settings.periodNames, undefined);
+  assert.deepEqual([b.geometryVersion, b.buildingVersion, b.scheduleVersion], [0, 0, 1]);
+  // names alone
+  const names = clone(here);
+  names.settings.periodNames = ['Lunch'];
+  const c = store(here);
+  bring(c, names);
+  assert.deepEqual(c.project.settings.periodNames, ['Lunch']);
+  assert.equal(c.scheduleVersion, 1);
+});
+
+test('validate: the published format with every new field present is valid', () => {
+  const project = carrying();
+  const model = published(project);
+  const text = JSON.stringify(model);
+  assert.ok(['"features"', '"featureIds"', '"periodCustom"', '"periodNames"', '"away"', '"well"'].every((field) => text.includes(field)), 'every new field is published');
+  assert.deepEqual(validate(JSON.parse(text)), []);
 });

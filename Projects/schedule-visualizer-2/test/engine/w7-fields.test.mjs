@@ -8,13 +8,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 
 import { validate } from '../../engine/validate.js';
 import { repair } from '../../engine/repair.js';
 import { ID_PREFIXES, collectIds, isId, createIds, seededRandom } from '../../engine/ids.js';
-import { CELL_STAIRS, newFloor, newRoom, ELEVATOR_KIND, stairwells } from '../../engine/schema.js';
+import { CELL_STAIRS, newFloor, newRoom, ELEVATOR_KIND, stairwells, nextConnectionLabel } from '../../engine/schema.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { emptyProject, clone, assertValid } from './helpers.mjs';
 
@@ -153,6 +152,12 @@ test('validate: periodCustom is null or { word 1 to 16, plural 1 to 16 when pres
   assert.deepEqual(at((s) => { s.periodCustom.word = 7; }), ['settings.periodCustom.word']);
   assert.deepEqual(at((s) => { s.periodCustom.word = 'x'.repeat(17); }), ['settings.periodCustom.word']);
   assert.deepEqual(at((s) => { s.periodCustom.word = 'x'.repeat(16); }), []);
+  // a space before or after is refused (the field is new), so repair's trim never changes a valid project
+  assert.deepEqual(at((s) => { s.periodCustom.word = ' Lesson'; }), ['settings.periodCustom.word']);
+  assert.deepEqual(at((s) => { s.periodCustom.word = 'Lesson '; }), ['settings.periodCustom.word']);
+  assert.deepEqual(at((s) => { s.periodCustom.plural = ' Lessons'; }), ['settings.periodCustom.plural']);
+  assert.deepEqual(at((s) => { s.periodCustom.plural = 'Lessons '; }), ['settings.periodCustom.plural']);
+  assert.deepEqual(at((s) => { s.periodCustom.word = 'Two words'; }), [], 'a space inside is fine');
   assert.deepEqual(at((s) => { s.periodCustom.plural = ''; }), ['settings.periodCustom.plural']);
   assert.deepEqual(at((s) => { s.periodCustom.plural = 'x'.repeat(17); }), ['settings.periodCustom.plural']);
   assert.deepEqual(at((s) => { s.periodCustom.count = 'roman'; }), ['settings.periodCustom.count']);
@@ -193,6 +198,7 @@ test('validate: away is a list of at most 12 entries of three lists', () => {
   assert.deepEqual(at((t) => { t.away[0].weekdays = [-1]; }), ['t.away[0].weekdays']);
   assert.deepEqual(at((t) => { t.away[0].weekdays = [1, 1]; }), ['t.away[0].weekdays']);
   assert.deepEqual(at((t) => { t.away[0].weekdays = [0, 6]; }), []);
+  assert.deepEqual(at((t) => { t.away[0].weekdays = [4, 0]; }), ['t.away[0].weekdays'], 'in order, as periods are');
   assert.deepEqual(at((t) => { t.away[0].periods = [2, 1]; }), ['t.away[0].periods'], 'in order');
   assert.deepEqual(at((t) => { t.away[0].periods = [1, 1]; }), ['t.away[0].periods']);
   assert.deepEqual(at((t) => { t.away[0].periods = [-1]; }), ['t.away[0].periods']);
@@ -283,21 +289,22 @@ test('repair: duplicate names are made unique, a long name is cut, and the list 
   assert.ok(notes.some((note) => /at most 40 room features/.test(note)));
 });
 
-test('repair: featureIds are filtered to the list, each once, in the list\'s order, with a note', () => {
+test('repair: featureIds are filtered to the list and each once, in the room\'s own order, with a note', () => {
   const project = carrying();
   const room = project.building.floors.flatMap((f) => f.spaces).find((space) => space.featureIds && space.featureIds.length === 2);
   room.featureIds = [SINK, 'hgone00000', LAB, SINK];
   const { project: out, notes } = mended(project);
   const after = out.building.floors.flatMap((f) => f.spaces).find((space) => space.id === room.id);
-  assert.deepEqual(after.featureIds, [LAB, SINK]);
+  assert.deepEqual(after.featureIds, [SINK, LAB], 'the first of each, in the order the room had them');
   assert.equal(notes.length, 1);
   assert.match(notes[0], /named 2 features that are not on the building's list, or the same one twice/);
 
   const ordered = carrying();
   ordered.building.floors.flatMap((f) => f.spaces).find((space) => space.id === room.id).featureIds = [SINK, LAB];
-  const again = mended(ordered);
-  assert.deepEqual(again.project.building.floors.flatMap((f) => f.spaces).find((space) => space.id === room.id).featureIds, [LAB, SINK]);
-  assert.match(again.notes[0], /put in the order of the building's list/);
+  const again = repair(ordered);
+  assert.deepEqual(validate(ordered), []);
+  assert.equal(again.project, ordered);
+  assert.deepEqual(again.notes, [], 'an order the list does not have is valid, so repair leaves it');
 
   const bad = carrying();
   bad.building.floors.flatMap((f) => f.spaces).find((space) => space.id === room.id).featureIds = 'Lab';
@@ -520,76 +527,219 @@ test('repair: a stair connection with no letter is not given a well\'s letter', 
   assert.notEqual(out.building.connections[1].label, 'A');
 });
 
-// ---------------------------------------------------------------- an older planner
+// ---------------------------------------------------------------- repair(valid) is valid
 
-// An older planner has no rule for these fields: its repair copies what it does
-// not know and its validate does not look at it. The new rules are marked in the
-// source with W7 comments, so this test takes them out of a copy of the engine
-// and runs that copy, rather than writing a second version of what an older
-// planner does.
-function olderEngine() {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const engine = path.join(here, '..', '..', 'engine');
-  const dir = mkdtempSync(path.join(tmpdir(), 'sv2-older-w7-'));
-  mkdirSync(path.join(dir, 'engine'));
-  const changed = [];
-  for (const name of readdirSync(engine)) {
-    if (!name.endsWith('.js')) continue;
-    let text = readFileSync(path.join(engine, name), 'utf8');
-    const before = text;
-    text = text.replace(/^[ \t]*\/\/ W7:BEGIN[^\n]*\n[\s\S]*?^[ \t]*\/\/ W7:END[^\n]*\n/gm, '');
-    text = text.replace(/^[^\n]*\/\/ W7:LINE[^\n]*\n/gm, '');
-    if (text !== before) changed.push(name);
-    writeFileSync(path.join(dir, 'engine', name), text);
-  }
-  return { dir, changed, url: (name) => pathToFileURL(path.join(dir, 'engine', name)).href };
+// Every new field in a form validate accepts and nothing about it is ordinary: a feature name with a
+// space either side, a room's features in an order the list does not have and an empty list, a custom word
+// of 16 characters with no plural, names that are blank or spaces, as long as the day, a teacher with 12
+// entries of every shape, a weekday list in order. (Wells are in the next case: they need a building of joined flights.)
+function unusual() {
+  const project = carrying();
+  const periods = project.settings.periods;
+  project.building.features.push({ id: 'hhood00001', name: ' Fume hood ' }, { id: 'hlong00001', name: 'x'.repeat(30) });
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room'));
+  rooms[0].featureIds = [SINK, 'hhood00001', LAB];
+  rooms[1].featureIds = [];
+  rooms[2].featureIds = ['hlong00001'];
+  project.settings.periodCustom = { word: 'x'.repeat(16), count: 'ordinal' };
+  project.settings.periodNames = ['', '   ', ' Lunch ', 'y'.repeat(24), ...Array(periods).fill('Block')].slice(0, periods);
+  const day = project.dayTypes[0].id;
+  project.teachers[0].away = [
+    { dayTypeIds: [day], weekdays: [0, 6], periods: [0] },
+    { dayTypeIds: [], weekdays: [], periods: [] },
+    { dayTypeIds: [], weekdays: [1, 2, 3], periods: [0, 1, periods - 1] },
+    ...Array.from({ length: 9 }, (_, k) => ({ dayTypeIds: [], weekdays: [k % 7], periods: [] })),
+  ];
+  project.teachers[1].away = [];
+  return project;
 }
 
-test('an older planner: a project with every new field goes through repair and validate with the W7 rules removed and comes out byte for byte', async () => {
-  const older = olderEngine();
-  try {
-    assert.deepEqual(older.changed.sort(), ['ids.js', 'repair.js', 'validate.js'], 'the three modules that hold W7 rules');
-    const oldRepair = (await import(older.url('repair.js'))).repair;
-    const oldValidate = (await import(older.url('validate.js'))).validate;
-    const oldIds = await import(older.url('ids.js'));
-    assert.equal(oldIds.ID_PREFIXES.feature, undefined, 'the copy knows no feature prefix');
-    assert.deepEqual(oldIds.collectIds(carrying()).filter((id) => id === LAB), [], 'and does not walk features');
+test('repair is the identity on a project carrying every new field in valid but unusual forms', () => {
+  const project = unusual();
+  assert.deepEqual(validate(project), [], 'it is valid');
+  assert.equal(project.teachers[0].away.length, 12);
+  const text = JSON.stringify(project);
+  const result = repair(project);
+  assert.deepEqual(result.notes, []);
+  assert.equal(result.project, project, 'the same object');
+  assert.equal(JSON.stringify(result.project), text);
+});
 
+test('repair is the identity on wells in valid forms: a letter with a space inside, lower case, a flight alone, joined flights', () => {
+  const project = wells([
+    ['c00000001a', 'A', [0, 7], [1, 7], { well: 'ab cd' }], ['c00000001b', 'B', [1, 7], [2, 7], { well: 'ab cd' }],
+    ['c00000001c', 'C', [0, 9], [1, 9], { well: 'x'.repeat(8) }],
+    ['c00000001d', 'D', [0, 13], [1, 13]],
+  ]);
+  assert.deepEqual(validate(project), []);
+  const result = repair(project);
+  assert.deepEqual(result.notes, []);
+  assert.equal(result.project, project);
+});
+
+test('repair(valid) is valid: what validate accepts, repair does not change, one field at a time', () => {
+  for (const [what, change] of [
+    ['weekdays in order', (p) => { p.teachers[0].away[0].weekdays = [2, 5]; }],
+    ['a period word with a space inside', (p) => { p.settings.periodCustom.word = 'Two words'; }],
+    ['a feature name with spaces round it', (p) => { p.building.features[0].name = ' Lab '; }],
+    ['periodNames of every period', (p) => { p.settings.periodNames = Array(p.settings.periods).fill(' '); }],
+    ['null for the custom word', (p) => { p.settings.periodCustom = null; }],
+  ]) {
     const project = carrying();
-    // a well in one chain (a flight, then another that joins it), on the plan's real stairs cells
+    change(project);
+    assert.deepEqual(validate(project), [], what + ' is valid');
+    const result = repair(project);
+    assert.equal(result.project, project, what);
+    assert.deepEqual(result.notes, [], what);
+  }
+});
+
+test('repair: weekdays out of order are put in order with a note that says so (validate refuses them)', () => {
+  const project = carrying();
+  project.teachers[0].away[0].weekdays = [4, 0];
+  assert.deepEqual(paths(project), ['teachers[0].away[0].weekdays']);
+  const { project: out, notes } = mended(project);
+  assert.deepEqual(out.teachers[0].away[0].weekdays, [0, 4]);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /weekdays of an entry .* were put in order/);
+  const periods = carrying();
+  periods.teachers[0].away[0].periods = [2, 1];
+  const mendedPeriods = mended(periods);
+  assert.deepEqual(mendedPeriods.project.teachers[0].away[0].periods, [1, 2]);
+  assert.match(mendedPeriods.notes[0], /periods of an entry .* were put in order/);
+});
+
+test('repair: an away entry\'s note says its cause, one note for each', () => {
+  const project = carrying();
+  const day = project.dayTypes[0].id;
+  const end = project.settings.periods;
+  project.teachers[0].away = [{ dayTypeIds: ['dgone00000', day, day], weekdays: [9, 1, 1], periods: [end + 2, 1, 1, -3] }];
+  const { notes } = mended(project);
+  const said = (pattern) => notes.filter((note) => pattern.test(note)).length;
+  assert.equal(said(/1 day type that is not in the project/), 1);
+  assert.equal(said(/listed a day type twice/), 1);
+  assert.equal(said(/1 weekday that does not exist/), 1);
+  assert.equal(said(/listed a weekday twice/), 1);
+  assert.equal(said(/1 period that is not a period number from 0/), 1);
+  assert.equal(said(/listed a period twice/), 1);
+  assert.equal(said(/1 period past the end of the day/), 1);
+  assert.equal(notes.length, 7, notes.join('\n'));
+  // a note names a cause only when it is the cause
+  const only = carrying();
+  only.teachers[0].away = [{ dayTypeIds: [], weekdays: [], periods: [end + 1, 2] }];
+  assert.deepEqual(mended(only).notes.map((note) => note.replace(/^.*away /, '')), ['named 1 period past the end of the day; it was removed.']);
+});
+
+test('repair: the custom word with spaces is trimmed and the note says it was trimmed', () => {
+  const project = carrying();
+  project.settings.periodCustom = { word: ' Lesson', plural: 'Lessons ', count: 'letter' };
+  assert.deepEqual(paths(project), ['settings.periodCustom.word', 'settings.periodCustom.plural']);
+  const { project: out, notes } = mended(project);
+  assert.deepEqual(out.settings.periodCustom, { word: 'Lesson', plural: 'Lessons', count: 'letter' });
+  assert.equal(notes.length, 2);
+  assert.ok(notes.every((note) => /was trimmed or cut/.test(note)));
+});
+
+test('repair: "1 period name was not text" and "2 period names were not text"', () => {
+  const one = carrying();
+  one.settings.periodNames = ['a', 5];
+  assert.match(mended(one).notes[0], /^1 period name was not text and was cleared\.$/);
+  const two = carrying();
+  two.settings.periodNames = [5, 'a', null];
+  assert.match(mended(two).notes[0], /^2 period names were not text and were cleared\.$/);
+});
+
+test('repair: a duplicate feature name is trimmed before it is made unique', () => {
+  const project = carrying();
+  project.building.features = [{ id: LAB, name: 'lab' }, { id: SINK, name: ' lab ' }];
+  project.building.floors.flatMap((floor) => floor.spaces).forEach((space) => { delete space.featureIds; });
+  const { project: out } = mended(project);
+  assert.deepEqual(out.building.features.map((feature) => feature.name), ['lab', 'lab (2)']);
+});
+
+test('repair: flights of a well written "W" and "w" end with one letter string, the first\'s', () => {
+  const project = wells([['c00000001a', 'A', [0, 7], [1, 7], { well: 'W' }], ['c00000001b', 'B', [1, 7], [2, 7], { well: 'w' }]]);
+  assert.deepEqual(validate(project), []);
+  const { project: out, notes } = mended(project);
+  assert.deepEqual(flightsOf(out), [['A', 'W'], ['B', 'W']]);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /was also written "w"/);
+});
+
+test('repair: a well whose letter is an elevator\'s label gets a fresh letter, and the elevator keeps its own', () => {
+  const project = wells([['c00000001a', 'E', [0, 7], [1, 7], { kind: ELEVATOR_KIND, car: 'A' }], ['c00000001b', 'B', [0, 9], [1, 9], { well: 'e' }], ['c00000001c', 'C', [1, 9], [2, 9], { well: 'E' }]]);
+  const { project: out, notes } = mended(project);
+  assert.equal(out.building.connections[0].label, 'E');
+  const [b, c] = out.building.connections.slice(1).map((connection) => connection.well);
+  assert.equal(b, c);
+  assert.ok(!['E', 'e', 'B', 'C'].includes(b), 'fresh: ' + b);
+  assert.equal(notes.length, 1);
+});
+
+// ---------------------------------------------------------------- an older planner
+
+// The real pre-W7 engine, frozen: the modules repair.js and validate.js of commit e1455dc8 import,
+// followed to the end, in test/fixtures/engine-pre-w7/ (see its README.txt). The test does not
+// remove anything from today's engine: what an older planner does with a W7 field is what its code does.
+const OLD = new URL('../fixtures/engine-pre-w7/', import.meta.url);
+const old = {
+  repair: (await import(new URL('repair.js', OLD).href)).repair,
+  validate: (await import(new URL('validate.js', OLD).href)).validate,
+  ids: await import(new URL('ids.js', OLD).href),
+  schema: await import(new URL('schema.js', OLD).href),
+};
+
+test('an older planner: its code is the pre-W7 code (no feature prefix, no W7 rule in its sources)', () => {
+  assert.equal(old.ids.ID_PREFIXES.feature, undefined, 'the frozen ids.js knows no feature prefix');
+  assert.deepEqual(old.ids.collectIds(carrying()).filter((id) => id === LAB), [], 'and does not walk features');
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const dir = path.join(here, '..', 'fixtures', 'engine-pre-w7');
+  for (const name of ['repair.js', 'validate.js', 'ids.js']) assert.equal(/W7/.test(readFileSync(path.join(dir, name), 'utf8')), false, name + ' has no W7 mark');
+});
+
+test('an older planner: repair and validate keep every new field byte for byte and refuse nothing', () => {
+  for (const [what, make] of [['a project carrying every field', carrying], ['the same in unusual forms', unusual]]) {
+    const project = make();
     const [first, second] = project.building.connections;
     first.well = 'W';
     second.well = 'W';
     const text = JSON.stringify(project);
-    assert.ok(text.includes('"features"') && text.includes('"periodCustom"') && text.includes('"periodNames"') && text.includes('"away"') && text.includes('"well"') && text.includes('"featureIds"'), 'every new field is in the project');
-    const result = oldRepair(JSON.parse(text));
-    assert.equal(JSON.stringify(result.project), text, 'repair leaves every new field as it found it');
-    assert.deepEqual(result.notes, []);
-    assert.deepEqual(oldValidate(JSON.parse(text)), []);
-
-    // what the new rules refuse or mend, an older planner takes without a finding: that is why validate checks form only
-    const odd = clone(project);
-    odd.building.features = 'Lab';
-    odd.settings.periodCustom = 'Lesson';
-    odd.settings.periodNames = 7;
-    odd.teachers[0].away = { never: 'a list' };
-    odd.building.connections[0].well = 4;
-    const oddText = JSON.stringify(odd);
-    assert.deepEqual(oldValidate(JSON.parse(oddText)), [], 'the copy has no rule for any of them');
-    assert.equal(JSON.stringify(oldRepair(JSON.parse(oddText)).project), oddText, 'nor does its repair touch them');
-    assert.notDeepEqual(validate(JSON.parse(oddText)), [], 'the real validate has');
-    assert.notEqual(JSON.stringify(repair(JSON.parse(oddText)).project), oddText, 'the real repair does');
-  } finally {
-    rmSync(older.dir, { recursive: true, force: true });
+    assert.ok(text.includes('"features"') && text.includes('"periodCustom"') && text.includes('"periodNames"') && text.includes('"away"') && text.includes('"well"') && text.includes('"featureIds"'), what + ': every new field is in the project');
+    const result = old.repair(JSON.parse(text));
+    assert.equal(JSON.stringify(result.project), text, what + ': repair leaves every new field as it found it');
+    assert.deepEqual(result.notes, [], what);
+    assert.deepEqual(old.validate(JSON.parse(text)), [], what + ': validate refuses nothing');
+    assert.deepEqual(validate(JSON.parse(text)), [], what + ': nor does today\'s');
   }
 });
 
-test('an older planner: what a real repair and validate give back for a project with every new field is the same bytes', () => {
-  const project = carrying();
+test('an older planner takes what today\'s validate refuses and its repair does not touch it (why validate checks form only)', () => {
+  const odd = carrying();
+  odd.building.features = 'Lab';
+  odd.settings.periodCustom = 'Lesson';
+  odd.settings.periodNames = 7;
+  odd.teachers[0].away = { never: 'a list' };
+  odd.building.connections[0].well = 4;
+  const text = JSON.stringify(odd);
+  assert.deepEqual(old.validate(JSON.parse(text)), [], 'the old code has no rule for any of them');
+  assert.equal(JSON.stringify(old.repair(JSON.parse(text)).project), text, 'nor does its repair touch them');
+  assert.notDeepEqual(validate(JSON.parse(text)), [], 'today\'s validate has');
+  assert.notEqual(JSON.stringify(repair(JSON.parse(text)).project), text, 'today\'s repair does');
+});
+
+test('an older planner draws a plain flight the letter of a well; today\'s repair gives the well a fresh letter', () => {
+  const flights = [{ label: 'A' }, { label: 'C', well: 'B' }];
+  const drawn = old.schema.nextConnectionLabel(flights);
+  assert.equal(drawn, 'B', 'the old nextConnectionLabel does not look at wells');
+  assert.equal(nextConnectionLabel(flights), 'D', 'today\'s does');
+  const project = wells([['c00000001a', 'A', [0, 13], [1, 13]], ['c00000001c', 'C', [0, 7], [1, 7], { well: 'B' }], ['c00000001b', drawn, [0, 9], [1, 9]]]);
   const text = JSON.stringify(project);
-  const result = repair(JSON.parse(text));
-  assert.equal(JSON.stringify(result.project), text);
-  assert.deepEqual(validate(JSON.parse(text)), []);
+  assert.equal(JSON.stringify(old.repair(JSON.parse(text)).project), text, 'the older planner finds nothing wrong');
+  assert.deepEqual(validate(JSON.parse(text)), [], 'and today\'s validate accepts it (form only)');
+  const { project: out, notes } = mended(project);
+  assert.deepEqual(flightsOf(out), [['A', undefined], ['C', 'D'], ['B', undefined]], 'the plain flight keeps B, the well is given D');
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /Stairwell B had the same letter/);
 });
 
 test('newRoom carries featureIds only when asked (so a project that never uses features stays as it was)', () => {
