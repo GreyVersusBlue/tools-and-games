@@ -460,7 +460,7 @@
         ]
       }
     ],
-    "note": "A letter found in the Geniza told a merchant not to let a local broker buy middling flax for him. Flax is the plant that linen is made from. He was told not to pay the broker in debased coins either.",
+    "note": "A Geniza letter asked a merchant in a flax town to watch a broker. Flax is the plant that linen is made from. He was not to let the broker buy middling flax for the writer. He was also not to pay the broker in debased coins, so the broker would not turn against the writer.",
     "unlocks": [
       "term-broker",
       "term-load"
@@ -468,7 +468,7 @@
     "sources": [
       {
         "src": "udovitch-1999",
-        "at": "pp. 279 to 280; the broker, the middling flax and the debased dinars"
+        "at": "pp. 278 to 279; the broker, the middling flax and the debased dinars"
       }
     ]
   },
@@ -658,7 +658,7 @@
         ]
       }
     ],
-    "note": "One historian says Mamluk cloth and metalwork were the biggest exports to the Far East. This was from the 1200s to the 1400s.",
+    "note": "A historian of Mamluk cloth writes that cloth and metalwork were the largest Mamluk exports to the Far East. This was from the 1200s to the 1400s. She takes it from two earlier writers. She does not say which cloths.",
     "unlocks": [
       "term-dinar",
       "term-load"
@@ -666,7 +666,7 @@
     "sources": [
       {
         "src": "walker-2000",
-        "at": "pp. 168 to 172; Mamluk textiles among the largest exports to the Far East"
+        "at": "p. 168, citing Mackie 1984 and Bloom 1999; Mamluk fabrics and metalwork among the largest exports to the Far East"
       }
     ]
   }

@@ -896,15 +896,11 @@
         ]
       }
     ],
-    "note": "In 1326 Ibn Battuta rode from Cairo to Damascus with a caravan in 21 to 23 days. The inns along the road had water and shops.",
+    "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182; Cairo to Damascus, 21 to 23 days"
-      },
-      {
-        "src": "ibn-battuta-1929",
-        "at": "Egypt excerpt; the khans on the road, no page in the teaching copy"
+        "at": "vol. 1, p. 71 n. 1, pp. 71 to 72, and p. 118 n. 182; the stations in the sands of Sinai, and the days counted by Gibb from the dates"
       }
     ]
   },
@@ -1184,7 +1180,7 @@
         ]
       }
     ],
-    "note": "A letter found in the Geniza told a merchant not to let a broker buy middling flax for him.",
+    "note": "A letter found in the Geniza told a merchant not to let a broker buy middling flax for the writer.",
     "unlocks": [
       "term-dinar",
       "term-broker",
@@ -1193,7 +1189,7 @@
     "sources": [
       {
         "src": "udovitch-1999",
-        "at": "pp. 279 to 280; the broker, the middling flax and the debased dinars"
+        "at": "pp. 278 to 279; the broker, the middling flax and the debased dinars"
       }
     ]
   },

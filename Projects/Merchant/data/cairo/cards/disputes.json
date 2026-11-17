@@ -364,10 +364,6 @@
       {
         "src": "goitein-1964",
         "at": "p. 327; a manager who broke the conditions of the contract"
-      },
-      {
-        "src": "harris-2007",
-        "at": "the commenda: the traveller repaid a loss only when he broke the terms"
       }
     ]
   },
@@ -459,14 +455,14 @@
         ]
       }
     ],
-    "note": "In one case from the Geniza papers a Muslim judge asked a Jewish judge to help. The quarrel was between a Muslim and a Jew. The case is not dated.",
+    "note": "In one case from the Geniza papers a Muslim judge asked a Jewish judge to help. The quarrel was between a Muslim and a Jew. The case is not dated. Edwards and Ogilvie report it from the historian Moshe Gil.",
     "unlocks": [
       "term-dinar"
     ],
     "sources": [
       {
         "src": "edwards-ogilvie-2008",
-        "at": "p. 18; the Muslim judge who asked for the Jewish judge"
+        "at": "p. 18, citing Gil 2003, pp. 281 to 282 (not read); the Muslim judge who asked for the Jewish judge"
       }
     ]
   }

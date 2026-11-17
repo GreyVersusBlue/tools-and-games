@@ -62,14 +62,14 @@
         ]
       }
     ],
-    "note": "A caravan was a group that travelled together, to share water and guard each other. In 1326 Ibn Battuta crossed the desert from Edfu to Aydhab with one in 15 days.",
+    "note": "A caravan was a group that travelled together, to share water and guard each other. In 1326 Ibn Battuta crossed the desert from Edfu to Aydhab in 15 days. He hired camels and went with a party of Arabs.",
     "unlocks": [
       "term-caravan"
     ],
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 67; the desert crossing from Edfu to Aydhab in 15 days"
+        "at": "vol. 1, p. 67; the desert crossing from Edfu to Aydhab in 15 days, with camels hired and a party of Arabs"
       }
     ]
   },
@@ -186,7 +186,7 @@
         {
           "year": [
             1340,
-            1347
+            1343
           ]
         }
       ]
@@ -247,7 +247,7 @@
         ]
       }
     ],
-    "note": "In 1340 the ruler of Tabriz seized the goods of many Genoese merchants. Genoa then stopped trade there.",
+    "note": "In 1340 the ruler of Tabriz seized the goods of many Genoese merchants. Genoa then banned trade with Tabriz. A historian of medieval trade reports this.",
     "unlocks": [
       "place-tabriz",
       "person-genoese",
@@ -256,7 +256,7 @@
     "sources": [
       {
         "src": "greif-2006",
-        "at": "ch. 4, citing Lopez 1943, pp. 183 to 184; the seizure of 1340 and the embargo"
+        "at": "ch. 4, the Genoese ban of Tabriz; Lopez 1943, pp. 183 to 184, is the page Greif cites for the paragraph, not for the ban itself"
       }
     ]
   },
@@ -328,7 +328,7 @@
         ]
       }
     ],
-    "note": "A caravan took Ibn Battuta from Cairo to Damascus in 21 to 23 days in 1326. He wrote that the khans on the road had water wheels and shops.",
+    "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
     "unlocks": [
       "term-caravan",
       "term-caravanserai"
@@ -336,11 +336,7 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182; Cairo to Damascus in 21 to 23 days"
-      },
-      {
-        "src": "ibn-battuta-1929",
-        "at": "Egypt excerpt; the khans on the road, no page in the teaching copy"
+        "at": "vol. 1, p. 71 n. 1, pp. 71 to 72, and p. 118 n. 182; the stations in the sands of Sinai, and the days counted by Gibb from the dates"
       }
     ]
   },
@@ -419,12 +415,12 @@
         ]
       }
     ],
-    "note": "Ibn Battuta wrote that the money of Aydhab was shared by the sultan and the king of the Beja. One third went to the sultan.",
+    "note": "Ibn Battuta wrote that one third of Aydhab was the sultan's. He wrote that two thirds was the king of the Beja's.",
     "unlocks": [],
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, pp. 68 to 69; the revenue split of Aydhab"
+        "at": "vol. 1, p. 68; one third of the town the sultan's and two thirds the Beja king's"
       }
     ]
   },
@@ -436,7 +432,7 @@
       "role": "Aydhab"
     },
     "title": "The wind for India",
-    "body": "I am at Aydhab. Ahead is the long sea road south. At its far end the ships for India sail when the monsoon turns, a wind that blows one way for months. A trip that follows the monsoon takes a year or more. I can go on, wait at each port for the wind, or turn back toward home.",
+    "body": "I am at Aydhab. Ahead is the long sea road south. At its far end the ships for India sail with the monsoon. That is a wind that blows one way for months and then turns. I can go on, wait at each port for the wind, or turn back toward home.",
     "when": {
       "at": "aydhab"
     },
@@ -503,18 +499,18 @@
         ]
       }
     ],
-    "note": "A monsoon is a wind that blows one way for months and then turns. Ships crossed the Indian Ocean only when the wind was right, so the trade ran by its calendar.",
+    "note": "A monsoon is a wind that blows one way for months and then turns.",
     "unlocks": [
       "term-monsoon"
     ],
     "sources": [
       {
         "src": "chaudhuri-1985",
-        "at": "monsoon timing and the Red Sea trade"
+        "at": "the plain definition of the monsoon only; no page was reached for the sailing calendar"
       },
       {
         "src": "hourani-1951",
-        "at": "dhows and the monsoons"
+        "at": "the plain definition of the monsoon only; no page was reached for the sailing calendar"
       }
     ]
   },
@@ -593,7 +589,7 @@
         ]
       }
     ],
-    "note": "In June 1326 Ibn Battuta came to Aydhab and found the crossing shut. The king of the Beja was at war with the sultan's soldiers, so he turned back.",
+    "note": "In 1326 (about June by Gibb's count) Ibn Battuta came to Aydhab and found the crossing shut. The king of the Beja was at war with the sultan's soldiers, so he turned back.",
     "unlocks": [
       "person-beja",
       "place-aydhab"
@@ -601,11 +597,11 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, pp. 68 to 69; the war of 1326"
+        "at": "vol. 1, pp. 68 to 69; the war of 1326, and Gibb's count for the month"
       },
       {
         "src": "peacock-2008",
-        "at": "pp. 35 and 38"
+        "at": "p. 38"
       }
     ]
   },
@@ -677,7 +673,7 @@
         ]
       }
     ],
-    "note": "At Calicut a wrecked ship's cargo stayed with its owners. Ibn Battuta said this made the city rich and busy. Ships came there from China, Java and Yemen.",
+    "note": "At Calicut a wrecked ship's cargo stayed with its owners. Everywhere else on that coast it went to the ruler. Ibn Battuta said this made Calicut a flourishing and busy city. Men came there from China, Java, Yemen and Persia.",
     "unlocks": [
       "place-calicut",
       "term-ships",
@@ -686,7 +682,7 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 4, pp. 809 to 816; Calicut and the wrecked ship's cargo"
+        "at": "vol. 4, pp. 812 and 815 to 816; the men who came to Calicut, and the wrecked ship's cargo"
       },
       {
         "src": "chaudhuri-1985",
@@ -768,7 +764,7 @@
         ]
       }
     ],
-    "note": "In 1323 Venice banned trade with Egypt, under pressure from the pope. Its state galleys came back only after a treaty with the sultan in 1345. In between, much of the trade ran by way of Cyprus.",
+    "note": "In 1323 Venice banned trade with Egypt, under pressure from the pope. Its state galleys sailed to Alexandria again in 1345. Meanwhile Venetian trade went through Famagusta in Cyprus, and other Italians, such as the Genoese, kept trading with Alexandria.",
     "unlocks": [
       "term-ships",
       "person-venetians"
@@ -776,7 +772,11 @@
     "sources": [
       {
         "src": "jacoby-2018",
-        "at": "pp. 133 and 135 to 137; the ban of 1323, the treaty of 1345 and the trade through Cyprus"
+        "at": "pp. 135 to 137; the ban of 1323, Famagusta as go-between, and the galleys of 1345"
+      },
+      {
+        "src": "hill-2017",
+        "at": "p. 49; no sign that the Genoese stopped trading with Alexandria"
       }
     ]
   },
@@ -858,7 +858,7 @@
         ]
       }
     ],
-    "note": "Venice kept its ships out of Egypt, but the Genoese did not. Genoese clerks wrote contracts in Cyprus for trade to Egypt, and Hill finds no sign that Genoa stopped trading with Egypt.",
+    "note": "Venice kept its ships out of Egypt, but the Genoese did not stop. A historian of the popes finds no sign that Genoa or Catalonia stopped trading with Alexandria. Genoese clerks had written contracts in Cyprus and Cilicia for trade to Egypt since at least 1274.",
     "unlocks": [
       "term-ships",
       "person-genoese",
@@ -866,12 +866,12 @@
     ],
     "sources": [
       {
-        "src": "jacoby-2018",
-        "at": "the passage on Genoese notaries in Cyprus and Cilicia; the page was not recorded"
-      },
-      {
         "src": "hill-2017",
         "at": "p. 49"
+      },
+      {
+        "src": "jacoby-2018",
+        "at": "p. 125; Genoese notary contracts of 1274 at Laiazzo and of 1302 at Famagusta"
       }
     ]
   },
@@ -892,7 +892,7 @@
         {
           "year": [
             1345,
-            1347
+            1345
           ]
         }
       ]
@@ -953,7 +953,7 @@
         ]
       }
     ],
-    "note": "In August 1344 Venice sent an envoy to the sultan. A treaty followed, and in 1345 the state galleys sailed to Alexandria again.",
+    "note": "In August 1344 Venice decided to send an envoy to the sultan. A treaty was made in 1345, and that year the state galleys sailed to Alexandria again.",
     "unlocks": [
       "term-ships",
       "person-venetians"
@@ -961,7 +961,7 @@
     "sources": [
       {
         "src": "jacoby-2018",
-        "at": "pp. 135 to 137; the envoy of August 1344, the treaty and the galleys of 1345"
+        "at": "pp. 136 to 137; the decision of August 1344, the treaty and the galleys of 1345"
       }
     ]
   },
@@ -977,9 +977,17 @@
     "when": {
       "all": [
         {
-          "leg": {
-            "by": "caravan"
-          }
+          "any": [
+            {
+              "at": "tuat"
+            },
+            {
+              "at": "walata"
+            },
+            {
+              "at": "gao"
+            }
+          ]
         },
         {
           "trait": "bold"
@@ -1049,7 +1057,7 @@
         ]
       }
     ],
-    "note": "A caravan planned its days by the wells. In 1352 Ibn Battuta wrote that beyond Taghaza in the Sahara came ten days with no water, or very little.",
+    "note": "A caravan planned its days by the wells. In 1352 Ibn Battuta wrote that it was ten days' travel beyond Taghaza in the Sahara with no water, or only rarely. He himself found rain pools.",
     "unlocks": [
       "term-caravan",
       "place-sahara"
@@ -1057,7 +1065,7 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 4, pp. 946 to 950; Taghaza on day 25, and ten days without water"
+        "at": "vol. 4, p. 946 for Taghaza on day 25, and p. 947 for the ten days without water"
       }
     ]
   },
@@ -1129,7 +1137,7 @@
         ]
       }
     ],
-    "note": "In 1352 Ibn Battuta reached Walata two months after he left Sijilmasa. He wrote that a load of salt sold there for eight to ten mithqals of gold.",
+    "note": "In 1352 Ibn Battuta reached Walata two months after he left Sijilmasa. At Taghaza he was told what salt sold for. A load fetched eight to ten mithqals at Walata and twenty to thirty at Mali.",
     "unlocks": [
       "place-walata",
       "term-load",
@@ -1139,11 +1147,7 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 4, p. 950"
-      },
-      {
-        "src": "ibn-battuta-1929",
-        "at": "the Sahara and Mali excerpt; the salt price, no page in the teaching copy"
+        "at": "vol. 4, p. 947 for the salt prices, told to him at Taghaza, and p. 950 for the two months"
       }
     ]
   }
