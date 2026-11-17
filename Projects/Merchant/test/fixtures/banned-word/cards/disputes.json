@@ -1,0 +1,63 @@
+[
+  {
+    "id": "salt-dispute",
+    "group": "disputes",
+    "from": {
+      "name": "Odo the carter",
+      "role": "Testport",
+      "seal": null
+    },
+    "title": "Who pays for the spilled salt?",
+    "body": "A cart tipped on the quay and some salt was lost. Odo says the house should pay for it.",
+    "weight": 3,
+    "repeat": true,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Say the debt ends the servitude",
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse to pay",
+        "now": [
+          {
+            "rep": "agents",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 1,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "An invented card for testing.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  }
+]

@@ -1,0 +1,150 @@
+/* Reset, fonts, paper, buttons, focus, dialogs. DESIGN 3 and 6. */
+
+@font-face { font-family: 'Alegreya'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('../assets/fonts/alegreya-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Alegreya'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('../assets/fonts/alegreya-latin-400-italic.woff2') format('woff2'); }
+@font-face { font-family: 'Alegreya'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('../assets/fonts/alegreya-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Public Sans'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('../assets/fonts/public-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Public Sans'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('../assets/fonts/public-sans-latin-600-normal.woff2') format('woff2'); }
+
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+
+html, body { min-height: 100%; }
+body {
+  background: var(--night);
+  color: var(--ink);
+  font-family: var(--font-paper);
+  font-size: var(--step-0);
+  line-height: var(--leading);
+  overflow-x: hidden;
+}
+img, svg { display: block; max-width: 100%; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; padding: 0; text-align: left; }
+button:disabled { cursor: not-allowed; }
+h1, h2, h3 { font-weight: 700; line-height: 1.15; }
+p + p { margin-top: var(--s2); }
+[hidden] { display: none !important; }
+table { font-variant-numeric: tabular-nums; }
+
+/* Focus ring: 3 px brass inside, 2 px night outside (5 px at board width) */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid transparent; /* forced-colors mode still draws this */
+  outline-offset: 0;
+  box-shadow: 0 0 0 3px var(--brass), 0 0 0 5px var(--night);
+}
+@media (min-width: 1600px) {
+  :focus-visible { box-shadow: 0 0 0 5px var(--brass), 0 0 0 7px var(--night); }
+}
+
+/* A paper arrives by sliding up and fading in (3.5) */
+@keyframes arrive {
+  from { opacity: 0; transform: translateY(var(--arrive-rise)); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The paper panel */
+.paper {
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--s4);
+  max-width: var(--measure);
+  animation: arrive var(--arrive-time) var(--arrive-ease) both;
+}
+.paper h2 { font-size: var(--step-2); margin-bottom: var(--s2); }
+
+/* The ruled choice: a line ruled on the paper with a brass edge on the left */
+.choice {
+  display: block;
+  width: 100%;
+  min-height: var(--hit);
+  padding: var(--s2) var(--s3);
+  border-left: .3rem solid var(--brass);
+  border-bottom: 1px solid var(--ink-soft);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-paper);
+  font-size: var(--step-1);
+}
+.choice:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--paper-shade); }
+.choice:active:not(:disabled):not([aria-disabled="true"]) { background: var(--paper-shade); color: var(--brass-dark); }
+.choice[aria-disabled="true"] { cursor: not-allowed; }
+.choice:disabled,
+.choice[aria-disabled="true"] {
+  background: var(--paper-shade);
+  border-left-color: var(--ink-soft);
+  color: var(--ink-soft);
+}
+.choice .hint { display: block; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
+
+/* A plain button for panels (Close, switches' labels) */
+.button {
+  min-height: var(--hit);
+  min-width: var(--hit);
+  padding: var(--s2) var(--s3);
+  background: var(--paper-shade);
+  border: 1px solid var(--brass);
+  border-radius: var(--radius);
+  color: var(--brass-dark);
+  font-family: var(--font-chrome);
+  font-weight: 600;
+  text-align: center;
+}
+.button:hover { background: var(--paper); }
+
+/* Dialogs: native <dialog>, paper on a veil */
+dialog.paper {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  border: 0;
+  width: min(34em, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+dialog.paper::backdrop { background: var(--veil); }
+dialog.paper .panel-actions { margin-top: var(--s3); display: flex; justify-content: flex-end; }
+
+/* Switch rows in Settings */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: var(--hit);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--paper-shade);
+  font-family: var(--font-chrome);
+}
+.switch-row input { width: 1.5rem; height: 1.5rem; flex: none; accent-color: var(--brass-dark); }
+.switch-row label { flex: 1; cursor: pointer; }
+.switch-row small { display: block; color: var(--ink-soft); font-size: var(--step--1); }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* prefers-reduced-motion and the Reduce motion setting: no slide, no flip,
+   no move, no fade (3.5). The tokens already go to 0; this covers the rest. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}

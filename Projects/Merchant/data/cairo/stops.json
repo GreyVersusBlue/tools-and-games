@@ -1,0 +1,292 @@
+[
+ {
+  "id": "cairo",
+  "name": "Cairo",
+  "lat": 30.04,
+  "lon": 31.24,
+  "region": "Egypt",
+  "cluster": "delta",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "alexandria",
+  "name": "Alexandria",
+  "lat": 31.2,
+  "lon": 29.92,
+  "region": "Egypt",
+  "cluster": "delta",
+  "label": {
+   "dx": -12,
+   "dy": 0,
+   "anchor": "end"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "famagusta",
+  "name": "Famagusta",
+  "lat": 35.12,
+  "lon": 33.95,
+  "region": "Cyprus",
+  "label": {
+   "dx": -12,
+   "dy": 0,
+   "anchor": "end"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "venice",
+  "name": "Venice",
+  "lat": 45.44,
+  "lon": 12.33,
+  "region": "Italy",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "constantinople",
+  "name": "Constantinople",
+  "lat": 41.01,
+  "lon": 28.98,
+  "region": "Byzantine lands",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "tunis",
+  "name": "Tunis",
+  "lat": 36.8,
+  "lon": 10.18,
+  "region": "North Africa",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "qus",
+  "name": "Qus",
+  "lat": 25.92,
+  "lon": 32.76,
+  "region": "Upper Egypt",
+  "cluster": "upper-egypt",
+  "label": {
+   "dx": -12,
+   "dy": 0,
+   "anchor": "end"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "quseir",
+  "name": "Quseir",
+  "lat": 26.1,
+  "lon": 34.28,
+  "region": "Red Sea coast",
+  "cluster": "upper-egypt",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "aydhab",
+  "name": "Aydhab",
+  "lat": 22.33,
+  "lon": 36.49,
+  "region": "Red Sea coast",
+  "cluster": "redsea",
+  "label": {
+   "dx": -12,
+   "dy": 0,
+   "anchor": "end"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "jeddah",
+  "name": "Jeddah",
+  "lat": 21.49,
+  "lon": 39.19,
+  "region": "Arabia",
+  "cluster": "redsea",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "aden",
+  "name": "Aden",
+  "lat": 12.79,
+  "lon": 45.03,
+  "region": "Arabia",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "calicut",
+  "name": "Calicut",
+  "lat": 11.25,
+  "lon": 75.78,
+  "region": "India",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "hormuz",
+  "name": "Hormuz",
+  "lat": 27.1,
+  "lon": 56.45,
+  "region": "the Gulf",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "damascus",
+  "name": "Damascus",
+  "lat": 33.51,
+  "lon": 36.29,
+  "region": "Syria",
+  "cluster": "levant",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "aleppo",
+  "name": "Aleppo",
+  "lat": 36.2,
+  "lon": 37.16,
+  "region": "Syria",
+  "cluster": "levant",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "tabriz",
+  "name": "Tabriz",
+  "lat": 38.08,
+  "lon": 46.29,
+  "region": "Persia",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "samarkand",
+  "name": "Samarkand",
+  "lat": 39.65,
+  "lon": 66.96,
+  "region": "Central Asia",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "tuat",
+  "name": "Tuat",
+  "lat": 27.87,
+  "lon": -0.29,
+  "region": "the Sahara",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "walata",
+  "name": "Walata",
+  "lat": 17.28,
+  "lon": -7.03,
+  "region": "the Sahel",
+  "cluster": "niger",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ },
+ {
+  "id": "gao",
+  "name": "Gao",
+  "lat": 16.27,
+  "lon": -0.04,
+  "region": "the Sahel",
+  "cluster": "niger",
+  "label": {
+   "dx": 12,
+   "dy": 0,
+   "anchor": "start"
+  },
+  "sells": {},
+  "buys": []
+ }
+]

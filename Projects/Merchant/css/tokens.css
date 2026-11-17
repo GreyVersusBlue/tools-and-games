@@ -1,0 +1,75 @@
+/* Design tokens, DESIGN 3.2 to 3.5. Every colour, size, space and time in the
+   game comes from this file. */
+:root {
+  /* 3.2 colour */
+  --paper: #efe6d2;
+  --paper-shade: #e2d6bc;
+  --ink: #2a2118;
+  --ink-soft: #5b4d3c;
+  --brass: #a8792c;
+  --brass-dark: #7a561b;
+  --lapis: #284c78;
+  --nile: #4f6b3a;
+  --madder: #9b2f22;
+  --night: #14110d;
+  --dawn-1: #2b3a52;   /* title gradient, top (stands in for A18's sky) */
+  --dawn-2: #6d5a58;   /* title gradient, middle */
+  --veil: rgba(20, 17, 13, .55);
+
+  /* 3.3 type scale, off the root size set below */
+  --step--1: 0.85rem;
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.6rem;
+  --step-3: 2.2rem;
+  --step-4: 3.2rem;
+  --font-paper: 'Alegreya', Georgia, 'Times New Roman', serif;
+  --font-chrome: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --leading: 1.45;
+  --measure: 34em;
+
+  /* 3.4 spacing, shape, depth */
+  --s1: .25rem;
+  --s2: .5rem;
+  --s3: 1rem;
+  --s4: 2rem;
+  --s5: 3rem;
+  --radius: 2px;
+  --shadow: 0 .3rem 1.2rem rgba(0, 0, 0, .35);
+  --hit: 44px;
+
+  /* 3.5 motion */
+  --arrive-time: 220ms;
+  --arrive-rise: 2rem;
+  --arrive-ease: ease-out;
+  --flip-time: 260ms;
+  --season-fade-time: 600ms;
+  --token-move-time: 900ms;
+}
+
+html {
+  font-size: clamp(1rem, 0.55vw + 11px, 26px);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Settings: Large text multiplies the root by 1.25 */
+html.large-text { font-size: calc(clamp(1rem, 0.55vw + 11px, 26px) * 1.25); }
+
+/* Settings: Reduce motion turns every duration into an instant change */
+html.reduce-motion {
+  --arrive-time: 0ms;
+  --arrive-rise: 0rem;
+  --flip-time: 0ms;
+  --season-fade-time: 0ms;
+  --token-move-time: 0ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --arrive-time: 0ms;
+    --arrive-rise: 0rem;
+    --flip-time: 0ms;
+    --season-fade-time: 0ms;
+    --token-move-time: 0ms;
+  }
+}

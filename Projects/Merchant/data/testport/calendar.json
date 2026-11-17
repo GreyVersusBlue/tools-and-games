@@ -1,0 +1,8 @@
+{
+  "base": 1200,
+  "lengths": {
+    "acts": { "acts": [ { "from": 0, "to": 2 }, { "from": 8, "to": 10 } ] },
+    "full": { "acts": [ { "from": 0, "to": 10 } ] }
+  },
+  "end": { "season": 10, "event": "fair-closes" }
+}

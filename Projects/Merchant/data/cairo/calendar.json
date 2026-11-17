@@ -1,0 +1,8 @@
+{
+  "base": 1324,
+  "lengths": {
+    "acts": { "acts": [ { "from": 0, "to": 7 }, { "from": 44, "to": 51 }, { "from": 87, "to": 94 } ] },
+    "full": { "acts": [ { "from": 0, "to": 94 } ] }
+  },
+  "end": { "season": 94, "event": "plague-reaches-egypt" }
+}
