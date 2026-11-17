@@ -210,6 +210,20 @@ try {
       eq(await hashOf(page), '#title');
     });
 
+    await test('a panel closed by Back does not step history again when the same panel comes straight back', async () => {
+      await page.click('#btn-about');
+      // Back then Forward in one turn: the first dialog's close event is still
+      // queued when #about arrives again. It must not take the new dialog with it.
+      await page.evaluate(() => { history.back(); setTimeout(() => history.forward(), 0); });
+      await page.waitForFunction(() => document.getElementById('panel-about')?.open && location.hash === '#about');
+      await new Promise(r => setTimeout(r, 300));
+      eq(await panelOpen(page, 'about'), true);
+      eq(await hashOf(page), '#about');
+      await page.goBack();
+      await gone(page, 'about');
+      await page.waitForFunction(() => location.hash === '#title');
+    });
+
     await test('Close restores the hash and takes the pushed entry with it', async () => {
       const before = await page.evaluate(() => history.length);
       await page.click('#btn-about');
