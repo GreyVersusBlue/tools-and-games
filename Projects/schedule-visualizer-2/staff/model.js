@@ -4,11 +4,12 @@
 // a bell time is engine/bells.js's, a route is engine/routing.js's: the same
 // functions the planner uses, run on the published data.
 
-import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, stairsLetter } from '../engine/schema.js';
+import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, stairsLetter, nameKey } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule, effectiveDayType, dayShort, bellsShort } from '../engine/day-types.js';
 import { bellsFor, findBellSchedule, periodName, periodLabel, periodWordForms, parseTime, formatTime } from '../engine/bells.js';
 import { dayOn, calendarDays, isCalendarDate, addDays, daysBetween, weekdayOf, dateWords } from '../engine/calendar.js';
-import { teacherDay } from '../engine/teacher-day.js';
+import { teacherDay, awayWords } from '../engine/teacher-day.js';
+import { awayEntries } from '../engine/marks.js';
 import { roomName, formatDuration } from '../engine/findings.js';
 import { buildGraph } from '../engine/graph.js';
 import { routingGraph, route } from '../engine/routing.js';
@@ -28,6 +29,46 @@ export function isElevatorLink(link) {
 // (the views reach the engine only through the school).
 export function letterOfStairs(link) {
   return stairsLetter(link);
+}
+
+// The one-way stairs that touch a floor, grouped by letter (a stairwell's
+// flights are one letter, compared as names are), in the building's order:
+// [{ id, letter, ways, text, sentence }]. `ways` is each distinct way a flight
+// there may be walked, { way: 'up only' | 'down only' | 'one way only', from,
+// to } by floor name (between floors the way goes by floor level; on one floor
+// it is "one way only"). A letter whose flights all go one way reads
+// "Stairs B (up only)" as a `text` and "Stairs B is up only." as a `sentence`;
+// one with flights of different ways says each, "Stairs A: up only from Floor 1
+// to Floor 2, down only from Floor 3 to Floor 2", never two sentences that
+// contradict. A stair that runs both ways is not listed.
+export function oneWayGroups(data, floor) {
+  const building = data && data.building ? data.building : {};
+  const floors = Array.isArray(building.floors) ? building.floors : [];
+  const links = Array.isArray(building.connections) ? building.connections : [];
+  const at = (id) => floors.find((each) => each && each.id === id) || { level: 0, name: '' };
+  const touches = (end) => Boolean(end) && end.floorId === floor.id;
+  const groups = new Map();
+  for (const link of links) {
+    if (!link || isElevatorLink(link) || (link.direction !== 'ab' && link.direction !== 'ba') || !(touches(link.a) || touches(link.b))) continue;
+    const from = link.direction === 'ab' ? link.a : link.b;
+    const to = link.direction === 'ab' ? link.b : link.a;
+    const rise = at(to.floorId).level - at(from.floorId).level;
+    const way = { way: rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only', from: at(from.floorId).name, to: at(to.floorId).name };
+    const letter = letterOfStairs(link);
+    const key = nameKey(letter);
+    if (!groups.has(key)) groups.set(key, { id: link.id, letter, ways: [] });
+    const held = groups.get(key).ways;
+    if (!held.some((other) => other.way === way.way && other.from === way.from && other.to === way.to)) held.push(way);
+  }
+  return Array.from(groups.values()).map((group) => {
+    const kinds = new Set(group.ways.map((each) => each.way));
+    if (kinds.size === 1) {
+      const way = group.ways[0].way;
+      return { ...group, ways: group.ways, text: 'Stairs ' + group.letter + ' (' + way + ')', sentence: 'Stairs ' + group.letter + ' is ' + way + '.' };
+    }
+    const said = group.ways.map((each) => (each.way === 'one way only' ? 'one way only on ' + each.from : each.way + ' from ' + each.from + ' to ' + each.to)).join(', ');
+    return { ...group, text: 'Stairs ' + group.letter + ': ' + said, sentence: 'Stairs ' + group.letter + ': ' + said + '.' };
+  });
 }
 
 export function openSchool(data) {
@@ -60,6 +101,12 @@ export function openSchool(data) {
     },
     teacher(id) {
       return findById(data.teachers, id);
+    },
+    // The teacher's away entries that apply to a day type (always and
+    // sometimes), in words: [{ words, sometimes, periods }], for a day card.
+    // An entry that holds nowhere is not listed (engine/marks.js awayEntry).
+    awayOf(teacherId, dayTypeId) {
+      return awayEntries(findById(data.teachers, teacherId), dayTypeId, { project: data }).map((read) => ({ words: awayWords(data.settings, read.entry, data.dayTypes), sometimes: read.sometimes, periods: read.periods }));
     },
     group(id) {
       return findById(data.groups, id);

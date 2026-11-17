@@ -45,7 +45,7 @@
 // This module is one a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
-import { DOOR_SIDES, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell, spaceOwners, stairsLetter } from './schema.js';
+import { DOOR_SIDES, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell, spaceOwners, stairsLetter, nameKey } from './schema.js';
 import { roomName } from './findings.js';
 
 const NONE = 4;
@@ -336,8 +336,14 @@ export function directions(project, route, units) {
       const fromFloor = floors.get(cells[start].floorId);
       const toFloor = floors.get(cells[i].floorId);
       const way = toFloor.level > fromFloor.level ? 'up' : toFloor.level < fromFloor.level ? 'down' : null;
-      // flights of one stairwell in a row are one letter, said once
-      const labels = ids.map((id) => stairsLetter(connections.get(id))).filter((label, index, all) => index === 0 || label !== all[index - 1]);
+      // flights of one stairwell in a row are one letter, said once: only when
+      // both carry a stairwell letter of their own, equal as names are; plain
+      // labels and blank ones are never taken for one stairwell
+      const wellOf = (id) => {
+        const well = connections.get(id) && connections.get(id).well;
+        return typeof well === 'string' && well.trim() !== '' ? nameKey(well) : null;
+      };
+      const labels = ids.filter((id, index) => index === 0 || wellOf(id) === null || wellOf(id) !== wellOf(ids[index - 1])).map((id) => stairsLetter(connections.get(id)));
       const parts = [words('Take ')];
       labels.forEach((label, index) => {
         parts.push(words((index > 0 ? ', then ' : '') + 'stairs '), typed(label));

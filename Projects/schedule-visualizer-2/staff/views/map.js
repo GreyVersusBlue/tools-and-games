@@ -8,7 +8,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
-import { isElevatorLink, letterOfStairs } from '../model.js';
+import { oneWayGroups } from '../model.js';
 import { floorMap, besideMap, stepFreeNotes } from '../map.js';
 import { countOf, subjectChipOf, listPart } from './teacher.js';
 
@@ -22,19 +22,13 @@ export function roomsInOrder(floor) {
   });
 }
 
-// The one-way stairs that touch a floor, each as the words "Stairs B (up only)"
-// (SV2-90b, DESIGN 12.6): the list in words says what the chevrons on the
-// picture say. Between floors the way goes by floor level; on one floor it is
-// "one way only". A stair that runs both ways draws no chevron and is not
-// listed. [{ id, text }], in the building's order.
+// The one-way stairs that touch a floor, one line a letter: "Stairs B (up only)"
+// (SV2-90b, DESIGN 12.6), and for a letter whose flights go different ways,
+// each way said (model.js oneWayGroups). The list in words says what the
+// chevrons on the picture say. A stair that runs both ways draws no chevron and
+// is not listed. [{ id, text }], in the building's order.
 export function oneWayStairs(data, floor) {
-  const floors = data && data.building && Array.isArray(data.building.floors) ? data.building.floors : [];
-  const links = data && data.building && Array.isArray(data.building.connections) ? data.building.connections : [];
-  const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
-  return links.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => {
-    const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
-    return { id: link.id, text: 'Stairs ' + letterOfStairs(link) + ' (' + (rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only') + ')' };
-  }).filter((item, index, all) => all.findIndex((other) => other.text === item.text) === index);
+  return oneWayGroups(data, floor).map((group) => ({ id: group.id, text: group.text }));
 }
 
 // The subjects a floor's rooms have, in the school's own order, and whether

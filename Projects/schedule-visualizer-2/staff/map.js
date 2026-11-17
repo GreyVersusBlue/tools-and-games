@@ -27,7 +27,7 @@
 
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
-import { isElevatorLink, letterOfStairs } from './model.js';
+import { isElevatorLink, letterOfStairs, oneWayGroups } from './model.js';
 
 export const MAP_TAP_RADIUS = 22;
 // Two rooms are "close" when the second is within the radius and less than
@@ -399,15 +399,6 @@ export function stepFreeNotes(school, floor) {
     if (exit.stepFree === false) out.push({ id: 'exit:' + exit.id, kind: 'exit', text: 'Steps outside ' + (typeof exit.doorName === 'string' && exit.doorName.trim() !== '' ? 'exit ' + exit.doorName : 'an exit with no name') });
   }
   return out;
-}
-
-// "up only", "down only", or "one way only" on one floor, for a connection
-// that is one-way. Stairs only: an elevator always runs both ways.
-function wayOf(school, link) {
-  const floors = school.data.building.floors;
-  const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
-  const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
-  return rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only';
 }
 
 function paint(canvas, school, floor, plan, theme, marks, lines) {
@@ -790,7 +781,7 @@ export function floorMap(ctx, options) {
 
   function chrome() {
     const floor = state.floor;
-    const oneWay = school.data.building.connections.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => 'Stairs ' + letterOfStairs(link) + ' is ' + wayOf(school, link) + '.').filter((sentence, index, all) => all.indexOf(sentence) === index);
+    const oneWay = oneWayGroups(school.data, floor).map((group) => group.sentence);
     const marked = stepFreeNotes(school, floor).filter((note) => note.kind === 'elevator' || note.kind === 'refuge').map((note) => (note.kind === 'elevator' ? note.label + (note.staffOnly ? ' (staff only)' : '') + '.' : note.text + '.'));
     canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.' + (oneWay.length > 0 ? ' ' + oneWay.join(' ') : '') + (marked.length > 0 ? ' ' + marked.join(' ') : ''));
     tabs.replaceChildren(...(near ? [] : school.floors).map((each) => {
