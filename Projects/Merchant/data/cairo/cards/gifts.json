@@ -162,5 +162,219 @@
         "at": "merchants asking correspondents to look after others, as Edwards and Ogilvie (2008), p. 18 report"
       }
     ]
+  },
+  {
+    "id": "ilyas-sends-his-nephew",
+    "group": "gifts",
+    "from": {
+      "name": "Ilyas, a merchant",
+      "role": "Damascus",
+      "seal": null
+    },
+    "title": "A gift, and a nephew",
+    "body": "Ilyas is a merchant in Damascus. He sends your house two loads of Damascus glass as a gift. He asks you to take his nephew Tadros as an agent for one trip. Tadros is careful, and he knows the road to Qus.",
+    "when": {
+      "all": [
+        {
+          "agent": "tadros",
+          "hired": false
+        },
+        {
+          "rep": "foreign",
+          "gte": 0
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "take",
+        "label": "Take Tadros and keep the glass",
+        "hint": "It costs 20 dinars for his road. Ilyas will owe you.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "stock": "glass",
+            "by": 2
+          },
+          {
+            "money": -20
+          },
+          {
+            "hire": "tadros"
+          },
+          {
+            "trust": "tadros",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ],
+            "card": "tadros-first-trip"
+          }
+        ]
+      },
+      {
+        "id": "place",
+        "label": "Keep the glass and find Tadros a place with a friend",
+        "hint": "It costs 10 dinars. Ilyas will notice.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "stock": "glass",
+            "by": 2
+          },
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "return",
+        "label": "Send the gift back with thanks",
+        "hint": "You owe nothing. Ilyas will think it odd.",
+        "now": [
+          {
+            "flag": "ilyas-gift-returned",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 5
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a letter of the Geniza papers one merchant tells another: he serves there and I serve here. Merchants in different cities did each other favours and expected the same.",
+    "unlocks": [
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; he serves there and I serve here"
+      }
+    ]
+  },
+  {
+    "id": "samir-found-a-buyer",
+    "group": "gifts",
+    "from": {
+      "name": "A grateful buyer",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "A gift meant for Samir",
+    "body": "On the road Samir found a buyer who paid more than the house had hoped. The buyer sends 20 dinars to your desk as a gift for the man who found him. The gift came to the house, but it was meant for Samir.",
+    "when": {
+      "all": [
+        {
+          "agent": "samir",
+          "hired": true
+        },
+        {
+          "notebook": "term-agent-pay"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "give",
+        "label": "Give Samir the 20 dinars",
+        "hint": "It costs you nothing you had. Samir will tell others.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Give Samir ten and keep ten",
+        "hint": "You gain 10 dinars. Samir shrugs.",
+        "now": [
+          {
+            "money": 10
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep it for the house",
+        "hint": "You gain 20 dinars. Samir is not told.",
+        "now": [
+          {
+            "money": 20
+          },
+          {
+            "trust": "samir",
+            "by": -1
+          },
+          {
+            "memory": "samir",
+            "kind": "unfair"
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers a commission was paid for a special service and not for the friendship. A merchant who did a favour was repaid by a favour.",
+    "unlocks": [
+      "term-dinar",
+      "term-agent-pay"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the commission paid for a special service, and the favour repaid by a favour"
+      }
+    ]
   }
 ]

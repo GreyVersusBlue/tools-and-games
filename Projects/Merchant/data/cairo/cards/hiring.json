@@ -269,5 +269,266 @@
         "at": "p. 327; a manager who broke the contract's terms paid the whole loss"
       }
     ]
+  },
+  {
+    "id": "mariam-asks-for-work",
+    "group": "hiring",
+    "from": {
+      "name": "Mariam, a trader",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Mariam names her terms",
+    "body": "Mariam is a Coptic Christian trader. She is careful, and her word is good. She has heard how your house treats its people. She asks to carry your goods, and she offers two ways to pay her.",
+    "when": {
+      "all": [
+        {
+          "agent": "mariam",
+          "hired": false
+        },
+        {
+          "rep": "agents",
+          "gte": 1
+        },
+        {
+          "notebook": "term-qirad"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Give her a third of the profit",
+        "hint": "She carries the risk of her work, and you the loss.",
+        "now": [
+          {
+            "hire": "mariam"
+          },
+          {
+            "trust": "mariam",
+            "by": 1
+          },
+          {
+            "rep": "agents",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": -30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Pay her a plain wage",
+        "hint": "It costs 20 dinars now. She is paid even if the trip fails.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "hire": "mariam"
+          },
+          {
+            "rep": "agents",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Ask her to come back after the next trip",
+        "hint": "She will wait a little.",
+        "now": [
+          {
+            "flag": "mariam-waits",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "unlocks": [
+      "term-qirad",
+      "term-dinar",
+      "term-agent-pay"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's share, normally one third, and no loss for him"
+      }
+    ]
+  },
+  {
+    "id": "matteo-for-one-load",
+    "group": "hiring",
+    "from": {
+      "name": "Matteo, a Genoese trader",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Matteo wants one job",
+    "body": "Matteo is a trader from Genoa who is in Cairo for the season. He drives a hard bargain. He asks to carry two loads of your linen to Alexandria for a fee of his own. After that he may take more work from you.",
+    "when": {
+      "all": [
+        {
+          "agent": "matteo",
+          "hired": false
+        },
+        {
+          "rep": "foreign",
+          "gte": 1
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "fee",
+        "label": "Pay him a fee for the one job",
+        "hint": "He is hired for this trip. You pay 20 dinars now.",
+        "requires": {
+          "all": [
+            {
+              "money": {
+                "gte": 20
+              }
+            },
+            {
+              "stock": "linen",
+              "gte": 2
+            }
+          ]
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "hire": "matteo"
+          },
+          {
+            "stock": "linen",
+            "by": -2
+          },
+          {
+            "trust": "matteo",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 105
+              }
+            ],
+            "card": "matteo-comes-back"
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Hire him on a plain wage",
+        "hint": "It costs 40 dinars. You keep what the linen earns.",
+        "requires": {
+          "all": [
+            {
+              "money": {
+                "gte": 40
+              }
+            },
+            {
+              "stock": "linen",
+              "gte": 2
+            }
+          ]
+        },
+        "now": [
+          {
+            "money": -40
+          },
+          {
+            "hire": "matteo"
+          },
+          {
+            "stock": "linen",
+            "by": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 130
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "letter",
+        "label": "Ask him to bring a letter from someone you know",
+        "hint": "He will come back, or he will not.",
+        "now": [
+          {
+            "flag": "matteo-asked-for-letter",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers an agent who did a special job was paid a commission, a fee for that job alone. It was not a payment for the friendship.",
+    "unlocks": [
+      "term-agent-pay",
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the commission paid for a special service"
+      }
+    ]
   }
 ]

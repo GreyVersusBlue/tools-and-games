@@ -1108,5 +1108,410 @@
         "at": "p. 152; Zaki al-Din al-Kharrubi and the title"
       }
     ]
+  },
+  {
+    "id": "bales-middling",
+    "group": "followups",
+    "from": {
+      "name": "Salih, the broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Two bales were poor",
+    "body": "Two seasons ago Salih bought six loads of linen for you. When the bales were opened, two were poor. Salih says the grower mixed them in. He offers to make it right.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "fee",
+        "label": "Ask him to pay for the two poor bales",
+        "hint": "You win back 30 dinars. Brokers talk.",
+        "now": [
+          {
+            "money": 30
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sell",
+        "label": "Sell the two poor bales cheaply",
+        "hint": "You lose some linen and gain 50 dinars.",
+        "now": [
+          {
+            "stock": "linen",
+            "by": -2
+          },
+          {
+            "money": 50
+          }
+        ]
+      },
+      {
+        "id": "lesson",
+        "label": "Call it a lesson",
+        "hint": "You gain nothing. Salih will be more careful.",
+        "now": [
+          {
+            "flag": "bales-lesson",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A letter found in the Geniza told a merchant not to let a broker buy middling flax for him.",
+    "unlocks": [
+      "term-dinar",
+      "term-broker",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "udovitch-1999",
+        "at": "pp. 279 to 280; the broker, the middling flax and the debased dinars"
+      }
+    ]
+  },
+  {
+    "id": "yusuf-asks-in-writing",
+    "group": "followups",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Yusuf wants it in writing",
+    "body": "Yusuf has not forgotten the fee. Before he rides again he asks you to write down what the house owes him for each trip. He says words on paper last longer than words in the air.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "write",
+        "label": "Write it down and seal it",
+        "hint": "It costs a clerk's time. Yusuf feels easier.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "spoken",
+        "label": "Say your word is good enough",
+        "hint": "It costs nothing. Yusuf is more uneasy.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": -1
+          },
+          {
+            "memory": "yusuf",
+            "kind": "unfair"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 5
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers partners made up their accounts every year.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 327; accounts made every year"
+      }
+    ]
+  },
+  {
+    "id": "samir-wants-a-share",
+    "group": "followups",
+    "from": {
+      "name": "Samir, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Samir wants a share, not a wage",
+    "body": "Samir has not forgotten the count. He says he will not go for a plain wage again. He asks for a third of the profit, so that he is paid by what he earns.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "grant",
+        "label": "Give him a third of the profit",
+        "hint": "He carries the risk of his own work.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Keep him on a wage",
+        "hint": "It costs less. He may not stay.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "let-go",
+        "label": "Let him go",
+        "hint": "He goes to another house.",
+        "now": [
+          {
+            "dismiss": "samir"
+          },
+          {
+            "money": 10
+          },
+          {
+            "rep": "agents",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's share, normally one third"
+      }
+    ]
+  },
+  {
+    "id": "matteo-comes-back",
+    "group": "followups",
+    "from": {
+      "name": "Matteo, a Genoese trader",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Matteo has sold the linen",
+    "body": "Matteo has sold your two loads at Alexandria and kept his fee. He asks to carry for the house again. This time he wants the house's seal on his paper, so that other traders know who he works for.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "seal",
+        "label": "Give him the house's seal",
+        "hint": "He carries your name. It costs you nothing.",
+        "now": [
+          {
+            "trust": "matteo",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "fee",
+        "label": "Pay him a fee for one more job",
+        "hint": "It costs 15 dinars. He stays free to go.",
+        "requires": {
+          "money": {
+            "gte": 15
+          }
+        },
+        "now": [
+          {
+            "money": -15
+          },
+          {
+            "trust": "matteo",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "thanks",
+        "label": "Thank him and let him go",
+        "hint": "He leaves you a small gift.",
+        "now": [
+          {
+            "money": 10
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers a special job was paid with a fee of its own.",
+    "unlocks": [
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the commission paid for a special service"
+      }
+    ]
+  },
+  {
+    "id": "tadros-first-trip",
+    "group": "followups",
+    "from": {
+      "name": "Tadros, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Tadros has finished his first trip",
+    "body": "Tadros has come back from his first trip. He did well, and Ilyas has written to ask how he behaved. Tadros asks if the house will keep him on, and if it will write back to his uncle.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "keep",
+        "label": "Keep him on and write well of him",
+        "hint": "It costs a clerk's time. Ilyas will be glad.",
+        "now": [
+          {
+            "trust": "tadros",
+            "by": 1
+          },
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "thank",
+        "label": "Thank him and let him return to his uncle",
+        "hint": "Ilyas gets his nephew back.",
+        "now": [
+          {
+            "dismiss": "tadros"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a letter of the Geniza papers one merchant tells another: he serves there and I serve here. Merchants in different cities did each other favours and expected the same.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; he serves there and I serve here"
+      }
+    ]
   }
 ]

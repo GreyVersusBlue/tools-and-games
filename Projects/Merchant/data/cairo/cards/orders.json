@@ -376,5 +376,298 @@
         "at": "pp. 149 and 150; the loose confederation and the funduqs built for common purposes"
       }
     ]
+  },
+  {
+    "id": "broker-bales",
+    "group": "orders",
+    "from": {
+      "name": "Salih, a broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Salih will buy the linen",
+    "body": "Salih is a broker, a go-between who finds goods and buyers. He knows a grower with six loads of linen to sell. He offers to buy all of it for your house while you stay at your desk.",
+    "when": {
+      "notebook": "term-load"
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "alone",
+        "label": "Let Salih buy it alone",
+        "hint": "It is quick, but some bales may be poor.",
+        "requires": {
+          "money": {
+            "gte": 180
+          }
+        },
+        "now": [
+          {
+            "money": -180
+          },
+          {
+            "stock": "linen",
+            "by": 6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "bales-middling"
+          }
+        ]
+      },
+      {
+        "id": "look",
+        "label": "Go with him and look at every bale",
+        "hint": "It costs a day, and you get good linen.",
+        "requires": {
+          "money": {
+            "gte": 170
+          }
+        },
+        "now": [
+          {
+            "money": -170
+          },
+          {
+            "stock": "linen",
+            "by": 5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Not this time",
+        "hint": "Salih will look for another buyer.",
+        "now": [
+          {
+            "flag": "broker-bales-passed",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "A letter found in the Geniza told a merchant not to let a local broker buy middling flax for him. Flax is the plant that linen is made from. He was told not to pay the broker in debased coins either.",
+    "unlocks": [
+      "term-broker",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "udovitch-1999",
+        "at": "pp. 279 to 280; the broker, the middling flax and the debased dinars"
+      }
+    ]
+  },
+  {
+    "id": "yusuf-carries-cloth",
+    "group": "orders",
+    "from": {
+      "name": "Rizq, a draper",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Rizq has a job for Yusuf",
+    "body": "Rizq is a draper, a cloth seller. He asks Yusuf to take a bundle of fine cloth to Damascus and sell it. For this special job he will pay a fee of 30 dinars. He pays it to the house, but the job is Yusuf's.",
+    "when": {
+      "all": [
+        {
+          "agent": "yusuf",
+          "hired": true,
+          "where": "cairo"
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "his-fee",
+        "label": "Tell Rizq the fee is Yusuf's",
+        "hint": "You gain nothing. Yusuf will feel it.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "split",
+        "label": "Split the fee with Yusuf",
+        "hint": "You gain a little. Yusuf is content.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 15
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep the whole fee for the house",
+        "hint": "You gain 30 dinars. Yusuf will know.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": -1
+          },
+          {
+            "memory": "yusuf",
+            "kind": "unfair"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ],
+            "card": "yusuf-asks-in-writing"
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers an agent who did a special job was paid a commission, a fee for that job alone. It did not pay for the friendship.",
+    "unlocks": [
+      "term-agent-pay",
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the commission paid for a special service, not for the relationship"
+      }
+    ]
+  },
+  {
+    "id": "cloth-for-the-east",
+    "group": "orders",
+    "from": {
+      "name": "Wadud, a cloth dealer",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Wadud wants linen for the east",
+    "body": "Wadud sells cloth to merchants who ship it far to the east. He has heard that your house keeps its word. He asks for four loads of linen from your warehouse. He offers 200 dinars, or he will take two loads now and ask for more later.",
+    "when": {
+      "all": [
+        {
+          "rep": "partners",
+          "gte": 1
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "four",
+        "label": "Sell him four loads",
+        "hint": "He pays at once. He will tell others.",
+        "requires": {
+          "stock": "linen",
+          "gte": 4
+        },
+        "now": [
+          {
+            "stock": "linen",
+            "by": -4
+          },
+          {
+            "money": 200
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "two",
+        "label": "Sell him two loads",
+        "hint": "You keep half your linen, and half the money.",
+        "requires": {
+          "stock": "linen",
+          "gte": 2
+        },
+        "now": [
+          {
+            "stock": "linen",
+            "by": -2
+          },
+          {
+            "money": 100
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep the linen for your own trips",
+        "hint": "Wadud will buy from someone else.",
+        "now": [
+          {
+            "flag": "wadud-passed",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "One historian says Mamluk cloth and metalwork were the biggest exports to the Far East. This was from the 1200s to the 1400s.",
+    "unlocks": [
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "walker-2000",
+        "at": "pp. 168 to 172; Mamluk textiles among the largest exports to the Far East"
+      }
+    ]
   }
 ]
