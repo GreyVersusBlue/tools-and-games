@@ -1,1 +1,20 @@
-[]
+[
+ {"word":"qirad","forms":["qirads"],"entry":"term-qirad"},
+ {"word":"monsoon","forms":["monsoons"],"entry":"term-monsoon"},
+ {"word":"caravan","forms":["caravans"],"entry":"term-caravan"},
+ {"word":"caravanserai","forms":["caravanserais","khan","khans","funduq","wikala"],"entry":"term-caravanserai"},
+ {"word":"broker","forms":["brokers"],"entry":"term-broker"},
+ {"word":"muhtasib","forms":["muhtasibs"],"entry":"term-muhtasib"},
+ {"word":"dinar","forms":["dinars","mithqal","mithqals"],"entry":"term-dinar"},
+ {"word":"dirham","forms":["dirhams"],"entry":"term-dirham"},
+ {"word":"load","forms":["loads"],"entry":"term-load"},
+ {"word":"sporta","forms":["sportas"],"entry":"term-load"},
+ {"word":"toll","forms":["tolls"],"entry":"term-toll"},
+ {"word":"customs","forms":[],"entry":"term-customs"},
+ {"word":"factor","forms":["factors"],"entry":"term-factor"},
+ {"word":"geniza","forms":[],"entry":"term-geniza"},
+ {"word":"pilgrimage","forms":["pilgrimages","hajj"],"entry":"term-pilgrimage"},
+ {"word":"ramadan","forms":[],"entry":"term-ramadan"},
+ {"word":"dhow","forms":["dhows"],"entry":"term-ships"},
+ {"word":"galley","forms":["galleys"],"entry":"term-ships"}
+]
