@@ -7,6 +7,12 @@
 // its forms), a stop name, a good name or a word of a real person's name counts as two
 // syllables whatever its length, and a {template} slot counts as one two-syllable word, so a
 // place name does not push a sentence over. A numeral counts as two syllables.
+//
+// Fragments (a title, a choice label, a hint: a few words with no sentence in them) are
+// graded and held to the sentence ceiling, but they stay out of a file's mean grade
+// (DECISIONS 2026-11-17: a one-word title like "Porcelain" scores 20 and says nothing about
+// how hard a file is to read). Each fragment still has its own ceiling: none is set yet, so
+// the sentence length is the one that bites; a unit here that names a ceiling for one has it.
 import { pathToFileURL } from 'node:url';
 import { loadCity, parseArgs, report, normalize } from './lint-content.mjs';
 
@@ -17,6 +23,9 @@ export const CEILINGS = {
   fileMean: 6.5,    // the mean grade over all units of one file
   sentence: 22,     // words in one sentence, any unit
 };
+
+/** Unit kinds that are fragments and so stay out of a file's mean grade. */
+export const FRAGMENTS = ['title', 'label', 'hint'];
 
 // ---- syllables
 // The usual vowel-group rule with silent-e, -ed and -es corrections, a split for vowel pairs
@@ -78,7 +87,9 @@ export function longestSentence(text) {
 /** Every player-facing text of a loaded city: { file, path, kind, text, ceiling }. */
 export function unitsOf(content) {
   const out = [];
-  const add = (file, path, kind, text, ceiling) => { if (typeof text === 'string' && text.trim()) out.push({ file, path, kind, text, ceiling }); };
+  const add = (file, path, kind, text, ceiling) => {
+    if (typeof text === 'string' && text.trim()) out.push({ file, path, kind, text, ceiling, fragment: FRAGMENTS.includes(kind) });
+  };
   const paper = (file, p, x, bodyKind) => {
     add(file, `${p}.title`, 'title', x.title, null);
     add(file, `${p}.body`, bodyKind, x.body, CEILINGS.body);
@@ -166,7 +177,8 @@ export function readingLevel(content) {
   }
   const means = {};
   for (const [file, list] of byFile) {
-    const graded = list.filter(u => u.grade !== null);
+    const graded = list.filter(u => u.grade !== null && !u.fragment);
+    if (!graded.length) continue;
     const mean = graded.reduce((a, u) => a + u.grade, 0) / graded.length;
     means[file] = mean;
     if (mean > CEILINGS.fileMean) fail('file mean', file, `mean grade ${mean.toFixed(2)} over ${graded.length} units, ceiling ${CEILINGS.fileMean.toFixed(1)}`, { grade: mean });
@@ -207,7 +219,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log(`reading-level: ${city}: ${failures.length} problem${failures.length === 1 ? '' : 's'}`);
       process.exitCode = 1;
     } else {
-      const graded = units.filter(u => u.grade !== null);
+      const graded = units.filter(u => u.grade !== null && !u.fragment);
       const mean = graded.length ? graded.reduce((a, u) => a + u.grade, 0) / graded.length : 0;
       console.log(`reading-level: ${city}: ok (${graded.length} units, mean grade ${mean.toFixed(1)}, ${Object.keys(means).length} files)`);
     }

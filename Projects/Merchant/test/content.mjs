@@ -295,12 +295,35 @@ test('rule 2: a card, letter, event with a note and notebook entry with no sourc
   eq(r2(c => { c.letters = [{ id: 'l', kind: 'question', title: 'T', body: 'B.', choices: [{ id: 'a', label: 'A', now: [{ money: 1 }] }, { id: 'b', label: 'B', now: [{ money: 2 }] }], note: 'N.' }]; }), ['letters[l]']);
 });
 test('reading level: the file mean fails on its own when every unit is under its own ceiling', () => {
+  // Every body and note sits under its own ceiling (7.0 and 8.0) and the mean over them is above 6.5.
   const hard = 'Negotiate considerable administrative documentation';
-  const c = variant(c2 => { for (const ch of c2.cards[0].choices) ch.label = hard; });
+  const c = variant(c2 => { for (const card of c2.cards) { card.body = hard + '.'; card.note = hard + '.'; } });
   const { failures, means } = readingLevel(c);
-  eq(failures.map(f => f.rule), ['file mean'], JSON.stringify(failures));
-  ok(means['cards/orders.json'] > 6.5);
+  ok(failures.every(f => f.rule === 'file mean' || f.rule === 'grade ceiling'), JSON.stringify(failures));
+  ok(means['cards/orders.json'] > 6.5, `mean ${means['cards/orders.json']}`);
+  ok(failures.some(f => f.rule === 'file mean'), 'no file mean failure');
   eq(readingLevel(content).failures, []);
+});
+test('reading level: titles, labels and hints stay out of the file mean (DECISIONS 2026-11-17)', () => {
+  // Hard fragments only: the labels, hints and titles of every card grade far above 6.5, the
+  // bodies and notes are untouched. Counted, they would push the mean over; left out, it passes.
+  const hard = 'Negotiate considerable administrative documentation';
+  const c = variant(c2 => {
+    for (const card of c2.cards) { card.title = hard; for (const ch of card.choices) { ch.label = hard; ch.hint = hard; } }
+  });
+  const { failures, units } = readingLevel(c);
+  eq(failures, [], JSON.stringify(failures));
+  const frag = units.filter(u => u.fragment && u.file.startsWith('cards/')), rest = units.filter(u => !u.fragment && u.file.startsWith('cards/'));
+  ok(frag.length > 0 && frag.every(u => u.grade > 6.5), 'the fragments should grade hard');
+  ok(rest.every(u => ['card body', 'note'].includes(u.kind)), 'only bodies and notes are in the mean');
+  const withFragments = [...frag, ...rest].filter(u => u.file === 'cards/orders.json');
+  const mean = withFragments.reduce((a, u) => a + u.grade, 0) / withFragments.length;
+  ok(mean > 6.5, `counting the fragments the mean would be ${mean.toFixed(2)}, so a regression to counting them would fail the suite`);
+});
+test('reading level: a fragment still has the sentence ceiling', () => {
+  const long = Array(23).fill('word').join(' ');
+  const c = variant(c2 => { c2.cards[0].choices[0].hint = long; });
+  eq(readingLevel(c).failures.map(f => f.rule), ['sentence length']);
 });
 test('reading level: a term is allowed when the card unlocks it by an effect or requires it in when', () => {
   const termed = edit => variant(c => {
