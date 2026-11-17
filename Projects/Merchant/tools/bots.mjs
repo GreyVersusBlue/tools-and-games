@@ -37,6 +37,17 @@ export const LIMITS = {
   tripMedian: [0.10, 0.30],// careful's and greedy's median profit on a round trip after the wage, as a share of the house's stake. 10 to 30 percent is a design target (DECISIONS 2026-11-17 08:50), not a recorded figure; the one recorded anchor is Goitein, Letters of Medieval Jewish Traders, 1973, p. 35 note 27: profits were as a rule surprisingly low and a near doubling exceptional (so tripMedianMax)
   tripMedianMax: 1.0,      // no bot's median round trip reaches a doubling
 };
+// the four directions a destination belongs to (MER-51): a bot's trips are counted by where the road ends
+export const DIRECTIONS = {
+  mediterranean: ['venice', 'constantinople', 'tunis', 'famagusta', 'alexandria'],
+  'levant-persia': ['damascus', 'aleppo', 'tabriz', 'samarkand'],
+  'redsea-india': ['qus', 'quseir', 'aydhab', 'jeddah', 'aden', 'calicut', 'hormuz'],
+  sahara: ['tuat', 'walata', 'gao'],
+};
+LIMITS.directionMin = 0.08;        // over the careful, greedy and qirad bots' trips together, each direction but the Mediterranean carries at least this share...
+LIMITS.mediterraneanMax = 0.60;    // ...and the Mediterranean at most this share. An estimate of balance, not a recorded figure: the long roads were risky and paid the most, so a sensible bot uses them sometimes
+export const SENSIBLE = ['careful', 'greedy', 'qirad'];
+export const directionOf = dest => Object.keys(DIRECTIONS).find(d => DIRECTIONS[d].includes(dest)) ?? null;
 export const DEFAULTS = { games: 2000, seed0: 1000, length: 'acts' };
 export const BOTS = ['careful', 'greedy', 'random', 'qirad'];
 
@@ -53,7 +64,25 @@ function priceOf(state, content, stop, good) {
 
 const stopOf = (content, id) => content.stops.find(s => s.id === id);
 
-/** Every (destination, good) the house could send now, with the margin by what the bot knows. */
+/** The good the bot would buy at the far end to bring home: the one cheapest there against its home price, if
+    that is under 80 percent of it (by what the bot knows). Null when none is. `except` is the good it carries out. */
+function bestBack(state, content, home, d, except) {
+  let best = null;
+  for (const b of Object.keys(stopOf(content, d.stop).sells ?? {})) {
+    if (b === except) continue;
+    const homeB = truePrice(state, content, home, b);
+    if (homeB === null) continue;
+    const thereB = priceOf(state, content, d.stop, b);
+    if (thereB >= homeB * 0.8) continue;
+    const ratio = homeB / thereB;
+    if (!best || ratio > best.ratio) best = { good: b, ratio, homeB, thereB };
+  }
+  return best;
+}
+
+/** Every (destination, good) the house could send now, with the margin by what the bot knows: the margin of the
+    round trip, goods out sold at the far price and the best good bought there carried home. `good` is null for a
+    trip that sends money only and buys goods there (the Sahara's way, where the house has nothing the stop buys). */
 function offers(state, content) {
   const home = cityOf(content, 'bots').home;
   const out = [];
@@ -63,8 +92,11 @@ function offers(state, content) {
       const homeP = truePrice(state, content, home, g);
       if (homeP === null) continue;
       const there = priceOf(state, content, d.stop, g);
-      out.push({ ...d, good: g, homeP, there, margin: there / homeP - 1 });
+      const back = bestBack(state, content, home, d, g);
+      out.push({ ...d, good: g, homeP, there, back, margin: (there / homeP) * (back ? back.ratio : 1) - 1 });
     }
+    const back = bestBack(state, content, home, d, null);
+    if (back) out.push({ ...d, good: null, homeP: back.homeB, there: back.thereB, back, margin: back.ratio - 1 });
   }
   return out;
 }
@@ -97,24 +129,31 @@ function plan(bot, state, content, agent, roll) {
   }
   const dest = stopOf(content, pick.stop);
   const g = pick.good;
-  const have = state.stock[g] ?? 0;
-  const afford = Math.floor((state.money * share) / pick.homeP);
-  const depth = stopOf(content, home).sells[g]?.depth ?? 20;
-  let n = Math.min(cap, depth, bot === 'careful' ? Math.max(have > 0 ? have : 0, afford) : have + afford);
-  if (bot === 'careful' && have > 0) n = Math.min(n, Math.max(have, 1));
-  // back: goods that are cheaper there than at home by what the bot knows
-  const back = Object.keys(dest.sells).filter(b => b !== g && truePrice(state, content, home, b) !== null
+  // back: the good the offer was valued on first, then others cheaper there than at home by what the bot knows
+  const others = Object.keys(dest.sells).filter(b => b !== g && b !== pick.back?.good && truePrice(state, content, home, b) !== null
     && priceOf(state, content, pick.stop, b) < truePrice(state, content, home, b) * 0.8)
-    .sort((a, b) => (priceOf(state, content, pick.stop, a) / truePrice(state, content, home, a)) - (priceOf(state, content, pick.stop, b) / truePrice(state, content, home, b)))
-    .slice(0, buyBack);
-  const base = { agent: agent.id, route: pick.route, purse: 0, sell: [g], buy: back };
+    .sort((a, b) => (priceOf(state, content, pick.stop, a) / truePrice(state, content, home, a)) - (priceOf(state, content, pick.stop, b) / truePrice(state, content, home, b)));
+  const back = (pick.back ? [pick.back.good, ...others] : others).slice(0, Math.max(buyBack, pick.back ? 1 : 0));
+  const base = { agent: agent.id, route: pick.route, sell: g ? [g] : [], buy: back };
+  const capitalOf = n => (g ? n * pick.homeP : n * pick.there);
+  let n;
+  if (g === null) {
+    // money only: n units of the good bought there, paid for out of a purse (a toll's worth over)
+    const depthThere = dest.sells[pick.back.good].depth;
+    n = Math.min(cap, depthThere, Math.floor((state.money * share) / pick.there));
+  } else {
+    const have = state.stock[g] ?? 0;
+    const afford = Math.floor((state.money * share) / pick.homeP);
+    const depth = stopOf(content, home).sells[g]?.depth ?? 20;
+    n = Math.min(cap, depth, bot === 'careful' ? Math.max(have > 0 ? have : 0, afford) : have + afford);
+    if (bot === 'careful' && have > 0) n = Math.min(n, Math.max(have, 1));
+  }
   // shrink until the engine takes it (it checks money, stock and every rule in words)
   for (; n >= 1; n = n > 4 ? Math.floor(n * 0.7) : n - 1) {
-    const p = { ...base, cargo: { [g]: n } };
+    const p = g === null ? { ...base, cargo: {}, purse: Math.ceil(n * pick.there) } : { ...base, cargo: { [g]: n }, purse: 0 };
     if (contract === 'qirad') {
-      const capital = n * pick.homeP;
       p.contract = 'qirad';
-      p.partners = Math.max(1, Math.floor(capital * 0.5));
+      p.partners = Math.max(1, Math.floor(capitalOf(n) * 0.5));
     }
     try { outfit(state, content, p); return p; } catch { /* smaller */ }
   }
@@ -163,7 +202,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   if (!BOTS.includes(bot)) throw new Error(`bots: no bot called "${bot}"`);
   const roll = dice(seed);
   let s = newGame(content, { seed, length, house });
-  const out = { bot, seed, house, trips: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, offers: {}, multi: {}, takes: {} };
+  const out = { bot, seed, house, trips: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
   for (let guard = 0; guard < 500; guard++) {
     if (s.phase === 'interlude') { s = openSeason(s, content); continue; }
     if (s.phase === 'recall') {
@@ -199,7 +238,17 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
     if (broke && out.brokeBy === null) out.brokeBy = s.t + 1;
     const can = canEndSeason(s);
     if (!can.ok) throw new Error(`bots: ${can.reason}`);
+    const stakes = Object.fromEntries(s.expeditions.map(x => [x.id, x.staked.house]));
     s = endSeason(s, content);
+    if (s.phase === 'interlude') {
+      // an expedition still on the road at the act jump is settled off stage (ARCHITECTURE 4.7): it counts as a
+      // trip here, so a road too long to finish inside an act of eight seasons is judged like any other
+      const jumped = s.log[s.log.length - 1];
+      for (const line of jumped?.kind === 'jump' ? jumped.settled : []) {
+        if (line.result === 'lost') out.lost++;
+        else if (stakes[line.expedition] > 0) { out.trips.push(line.houseNet / stakes[line.expedition]); out.settled++; }
+      }
+    }
   }
   if (s.phase !== 'ended') throw new Error(`bots: game ${bot}/${seed} did not end (phase ${s.phase})`);
   out.worth = netWorth(s, content);
@@ -258,6 +307,19 @@ if (!isMainThread && workerData?.lane) {
   });
 }
 
+/** The share of the expeditions sent that ended in each direction, over a list of games. */
+export function directionShares(content, games) {
+  const dest = Object.fromEntries(content.routes.map(r => [r.id, r.to]));
+  const n = Object.fromEntries(Object.keys(DIRECTIONS).map(d => [d, 0]));
+  let all = 0;
+  for (const g of games) for (const [r, c] of Object.entries(g.routes)) {
+    const d = directionOf(dest[r]);
+    if (d === null) throw new Error(`bots: route "${r}" ends at "${dest[r]}", which belongs to no direction`);
+    n[d] += c; all += c;
+  }
+  return Object.fromEntries(Object.entries(n).map(([d, c]) => [d, all ? c / all : 0]));
+}
+
 /** Every threshold against a run. Returns { rows: [{ name, value, limit, ok, note }], ok }. */
 export function check({ content, results, offered, taken, games }) {
   const rows = [];
@@ -290,6 +352,15 @@ export function check({ content, results, offered, taken, games }) {
     const m = quantile(trips, 0.5);
     add(`${bot}: median round trip stays under a doubling`, m, LIMITS.tripMedianMax, m < LIMITS.tripMedianMax, `${trips.length} trips`);
   }
+  // directions: where the sensible bots' trips went (MER-51)
+  const sensible = SENSIBLE.filter(b => results[b]);
+  if (sensible.length) {
+    const share = directionShares(content, sensible.flatMap(b => results[b]));
+    for (const d of Object.keys(DIRECTIONS)) {
+      if (d === 'mediterranean') add('mediterranean: share of careful, greedy and qirad trips at most', share[d], LIMITS.mediterraneanMax, share[d] <= LIMITS.mediterraneanMax, `${sensible.join(', ')}`);
+      else add(`${d}: share of careful, greedy and qirad trips at least`, share[d], LIMITS.directionMin, share[d] >= LIMITS.directionMin, `${sensible.join(', ')}`);
+    }
+  }
   // cards drawn: the union over every bot's games, per card
   const total = Object.values(results).reduce((n, l) => n + l.length, 0);
   const drawn = {};
@@ -312,7 +383,7 @@ export function check({ content, results, offered, taken, games }) {
   return { rows, ok: rows.every(r => r.ok) };
 }
 
-export function table({ results, houses, games, startWorth }, checked) {
+export function table({ content, results, houses, games, startWorth }, checked) {
   const lines = [];
   lines.push(`${games} games per bot, three acts, houses: ${houses.join(', ')}`);
   lines.push('');
@@ -329,6 +400,17 @@ export function table({ results, houses, games, startWorth }, checked) {
   lines.push('worth by house (median; start is the house before its first season):');
   for (const h of houses) {
     lines.push(`  ${h.padEnd(9)}start ${num(startWorth[h])}   ${Object.entries(results).map(([b, l]) => `${b} ${num(quantile(l.filter(g => g.house === h).map(g => g.worth), 0.5))}`).join('   ')}`);
+  }
+  lines.push('');
+  lines.push('trips by direction (share of expeditions sent):');
+  const names = Object.keys(DIRECTIONS);
+  for (const [bot, list] of Object.entries(results)) {
+    const sh = directionShares(content, list);
+    lines.push(`  ${bot.padEnd(9)}${names.map(d => `${d} ${pct(sh[d], 0)}`).join('   ')}`);
+  }
+  if (SENSIBLE.every(b => results[b])) {
+    const sh = directionShares(content, SENSIBLE.flatMap(b => results[b]));
+    lines.push(`  ${'together'.padEnd(9)}${names.map(d => `${d} ${pct(sh[d], 0)}`).join('   ')}   (careful, greedy, qirad)`);
   }
   lines.push('');
   lines.push('routes sent (share of all expeditions):');
