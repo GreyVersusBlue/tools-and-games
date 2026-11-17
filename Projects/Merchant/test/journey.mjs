@@ -41,6 +41,11 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
   { name: 'phone-side', width: 844, height: 390, mobile: true },
 ];
+// A back is settled when it lies flat: desk.js keeps `data-flip` on it from its first frame until the
+// turn ends. Pressing Next on a sheet that is edge-on clicks on nothing (the CI flake of PR #603: a
+// slow runner kept the sheet edge-on at the click, and answerFirst then waited 30 s for a paper to
+// leave a back it had never pressed).
+const BACK = '.sheet[data-face="back"]:not([data-flip])';
 const BUTTONS = ['New game', 'About this game', 'Settings'];
 
 const server = await serve(PORT);
@@ -552,7 +557,7 @@ try {
 
     await test('answering by pointer: front goes inert, the back says what happened, the note and the source, focus on its heading', async () => {
       await page.click('#choice-p0-0-begin');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       const b = await page.evaluate(() => {
         const sheet = document.querySelector('.sheet');
         return { heading: document.activeElement.textContent, tag: document.activeElement.tagName,
@@ -583,7 +588,7 @@ try {
 
       // the expedition card: first choice, outfit-first
       await page.click('#choice-p0-1-go');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       const m1 = eng.choose(m0, nodeContent, 'p0-1', 'go');
       eq(await page.$eval('.sheet-title', e => e.textContent), 'You paid 20 dinars.');
       await page.click('#btn-next');
@@ -606,7 +611,7 @@ try {
 
       // the neighbour, second choice ("Keep them")
       await page.click('#choice-p0-2-keep');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       const m2 = eng.choose(m1b, nodeContent, 'p0-2', 'keep');
       await page.click('#btn-next');
       await page.waitForFunction(() => document.activeElement.id === 'btn-end');
@@ -706,13 +711,13 @@ try {
     let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
     await test('keyboard: 1 answers, Enter presses Next, 1 on the expedition, Enter on Send in the sheet, Esc back to the desk, 1 on the neighbour, E ends the season', async () => {
       await page.keyboard.press('1');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       model = eng.choose(model, nodeContent, 'p0-0', 'begin');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.face === 'front' && document.querySelector('.sheet-title').textContent === 'Yusuf is ready to go');
       await sameScreen(page, model, 'keyboard after letter');
       await page.keyboard.press('1');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       model = eng.choose(model, nodeContent, 'p0-1', 'go');
       await page.keyboard.press('Enter');
       await page.waitForSelector('#outfit-send');
@@ -723,7 +728,7 @@ try {
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.kind === 'card');
       await page.keyboard.press('1');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       model = eng.choose(model, nodeContent, 'p0-2', 'sell');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.activeElement.id === 'btn-end');
@@ -835,7 +840,7 @@ try {
         if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
         if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
         await page.click('.sheet .choice:not([aria-disabled="true"])');
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
       }
       await page.click('#btn-end');
     };
@@ -903,7 +908,7 @@ try {
         const p = id === 'begin' ? 'p0-0' : id === 'go' ? 'p0-1' : 'p0-2';
         await page.$eval(`#choice-${p}-${id}`, b => b.scrollIntoView({ block: 'center' }));
         await page.click(`#choice-${p}-${id}`);
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
         await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' }));
         await page.click('#btn-next');
         if (id === 'go') { await page.waitForSelector('#outfit-send'); await sendFromMap(page); }
@@ -928,7 +933,7 @@ try {
     for (const [p, id, n] of picks) {
       if (how === 'pointer') { await page.$eval(`#choice-${p}-${id}`, b => b.scrollIntoView({ block: 'center' })); await page.click(`#choice-${p}-${id}`); }
       else { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press(String(n)); }
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       if (how === 'pointer') { await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' })); await page.click('#btn-next'); } else await page.keyboard.press('Enter');
       await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"][data-face="back"]`), {}, p);
     }
@@ -952,7 +957,7 @@ try {
       if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
       if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
       await page.click('.sheet .choice:not([aria-disabled="true"])');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
     }
     if (how === 'keyboard') { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press('e'); } else await page.click('#btn-end');
   };
@@ -1306,7 +1311,7 @@ try {
         if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
         if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
         await page.click('.sheet .choice:not([aria-disabled="true"])');
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
       }
       await page.click('#btn-end');
     };
@@ -1329,7 +1334,7 @@ try {
         }
         const n = await page.$$eval('.sheet .choice', cs => cs.findIndex(c => c.getAttribute('aria-disabled') !== 'true'));
         await page.keyboard.press(String(n + 1));
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
       }
       await page.keyboard.press('e');
     };
@@ -1585,6 +1590,172 @@ try {
         }
       });
       await test(`${frame.name}: ledger and notebook, no offsite request, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
+  // ---- MER-63: letters from the road on the desk, an agent's leave notice, the outfit sheet's refusal
+  // and the flip that a click has to wait out. The engine runs the same seed in Node. A letter is put
+  // in `state.post` (its written season, lag and arrival) and the engine's own endSeason delivers it,
+  // so the paper, view().letters and choose() are the engine's; only the draw (every cairo letter has
+  // weight 0 until MER-66 lands its ten) is placed by hand.
+  {
+    const FIRSTC = { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' };
+    const afterFirst = () => {
+      let s = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') {
+        s = eng.choose(s, nodeContent, p.id, FIRSTC[p.ref]);
+        if (p.ref === 'first-expedition') s = eng.outfit(s, nodeContent, eng.suggestPlan(s, nodeContent, 'damascus'));
+      }
+      return s;
+    };
+    const withLetter = (id, kind, stop, lag, standing) => {
+      const s = afterFirst(), x = s.expeditions[0];
+      s.post.push({ id, kind, expedition: x.id, agent: x.agent, stop, standing, written: s.t, lag, arrive: s.t + 1 });
+      return eng.endSeason(s, nodeContent);
+    };
+    const question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
+    const report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
+    const letterOf = s => s.desk.find(p => p.kind === 'letter' && p.state === 'open');
+    const loadSave = async (page, st, hash = '#desk') => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+      await page.waitForSelector('#screen-desk .sheet-title, #screen-map');
+    };
+    // the parts of a letter in the order a screen reader meets them
+    const partsOf = page => page.evaluate(() => {
+      const sheet = document.querySelector('.sheet[data-kind="letter"]');
+      const q = s => sheet.querySelector(s);
+      const parts = ['.sheet-head', '.letter-line', '.sheet-title', '.sheet-body', '.choices', '.letter-answer'].map(s => q(s));
+      const order = parts.map((e, i) => e ? i : -1).filter(i => i >= 0);
+      const inOrder = parts.filter(Boolean).every((e, i, a) => !i || (a[i - 1].compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING));
+      return {
+        inOrder, order, id: sheet.dataset.paper, seal: !!q('.sheet-head .seal'), sender: q('.sender')?.textContent,
+        line: q('.letter-line')?.textContent, answer: q('.letter-answer')?.textContent, title: q('.sheet-title').textContent,
+        body: q('.sheet-body').textContent, labels: [...sheet.querySelectorAll('.choice .label')].map(l => l.textContent),
+        described: q('.choices').getAttribute('aria-describedby'), answerId: q('.letter-answer')?.id ?? null,
+      };
+    });
+
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const p = letterOf(question), v = eng.view(question, nodeContent), def = nodeContent.letters.find(l => l.id === p.ref);
+      await loadSave(page, question);
+      await test('a question on the desk: seal, where and when it was written, when it came, the choices, then how long the answer takes, in that order', async () => {
+        const got = await partsOf(page);
+        eq(got.id, p.id);
+        eq(got.order, [0, 1, 2, 3, 4, 5], 'all six parts are there');
+        ok(got.inOrder, 'the parts follow each other in the document');
+        ok(got.seal, 'the agent\'s seal is at the head');
+        eq(got.line, v.letters[p.id].line, 'the line is the engine\'s');
+        eq(got.line, 'From Yusuf, on the road to Damascus. Written in Spring 1324. It reached you in Summer 1324.');
+        eq(got.answer, v.letters[p.id].answer, 'the answer line is the engine\'s');
+        eq(got.answer, 'Your answer will reach Yusuf in two seasons.');
+        eq([got.title, got.body, got.labels], [def.title, def.body, def.choices.map(c => c.label)]);
+        eq(got.described, got.answerId, 'the choices are described by the answer line');
+      });
+      await test('a question answered by keyboard: the engine\'s order reaches the expedition and the back says what changed', async () => {
+        await page.evaluate(() => document.activeElement.blur());
+        await page.keyboard.press('2');                       // "Take the quicker road"
+        await page.waitForSelector(BACK);
+        const model = eng.choose(question, nodeContent, p.id, 'go-on');
+        const got = await engineState(page);
+        eq(got.expeditions, JSON.parse(JSON.stringify(model.expeditions)), 'orders on the expedition');
+        eq(got.expeditions[0].orders.map(o => o.go), ['on']);
+        eq(got.desk, JSON.parse(JSON.stringify(model.desk)), 'the desk');
+        eq(await page.$eval('.sheet-title', e => e.textContent), 'Nothing changed at once.');
+        eq(await page.$eval('.sheet .note p', e => e.textContent), def.note);
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"]`) || document.querySelector(`[data-paper="${pp}"][data-face="front"]`) === null, {}, p.id);
+        await sameScreen(page, model, 'after the question', { raisedFirst: false });
+      });
+      await test('letters: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const p = letterOf(report), v = eng.view(report, nodeContent), def = nodeContent.letters.find(l => l.id === p.ref);
+      await loadSave(page, report);
+      await test('a report on the desk: its line, no answer line, and the three responses', async () => {
+        const got = await partsOf(page);
+        eq(got.order, [0, 1, 2, 3, 4], 'five parts, no answer line');
+        ok(got.inOrder);
+        eq(got.line, v.letters[p.id].line);
+        eq(got.line, 'From Yusuf, at Aydhab. Written in Spring 1324. It reached you in Summer 1324.');
+        eq(got.answer, undefined);
+        eq(got.labels, ['You did right', 'You should have argued', 'Complain to the court in Cairo']);
+        eq(got.labels, def.choices.map(c => c.label));
+        eq(got.described, null);
+      });
+      await test('a report answered by pointer: trust and money are the engine\'s, after the report\'s own cost was taken on arrival', async () => {
+        await page.click(`#choice-${p.id}-argue`);
+        await page.waitForSelector(BACK);
+        const model = eng.choose(report, nodeContent, p.id, 'argue');
+        const got = await engineState(page);
+        eq([got.money, got.agents.yusuf.trust], [model.money, model.agents.yusuf.trust]);
+        eq([got.money, got.agents.yusuf.trust], [report.money, -1], 'a lesser reply costs nothing and costs one trust');
+        await page.click('#btn-next');
+        await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"][data-face="back"]`), {}, p.id);
+        eq((await engineState(page)).desk, JSON.parse(JSON.stringify(model.desk)));
+      });
+      await test('report: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    // a notice whose words are in paper.data (MER-61b's leave notice): the engine writes it at the opening
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      let s = afterFirst(); s.agents.ali.trust = -3; s = eng.endSeason(s, nodeContent);
+      const n = s.desk.find(x => x.kind === 'notice' && x.ref === 'agent-left' && x.state === 'open');
+      await test('the engine writes the leave notice when an agent at home has lost faith (setup for the page case)', async () => { ok(n, 'no agent-left notice on the desk'); eq(n.data.title, 'Ali has left'); });
+      await loadSave(page, s);
+      await page.click(`.edge[data-paper="${n.id}"]`).catch(() => {});
+      await test('the leave notice shows its own title and words, not "A paper"', async () => {
+        await page.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, n.id);
+        eq(await page.$eval('.sheet-title', e => e.textContent), n.data.title);
+        eq(await page.$eval('.sheet .sheet-body', e => e.textContent), n.data.body);
+        ok(!(await page.$$eval('.edge', es => es.map(e => e.textContent))).includes('A paper'), 'an edge still says "A paper"');
+      });
+      await test('leave notice: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    // the outfit sheet says the engine's refusal for an agent who has lost faith (MER-61b)
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      let s = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, nodeContent, p.id, FIRSTC[p.ref]);
+      s.agents.yusuf.trust = -2;
+      const reason = eng.checkPlan(s, nodeContent, { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 10 }, purse: 0, contract: 'own' }).reasons;
+      await test('the engine refuses a trip for an agent at trust -2, in words (setup for the page case)', async () => { eq(reason, ['Yusuf has lost faith in the house and will not go out again.']); });
+      await loadSave(page, s, '#map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await test('the outfit sheet shows the refusal in the reasons, beside a Send that is disabled, and the agents\' trust words are the engine\'s', async () => {
+        await page.click('#change-who');
+        await page.waitForSelector('#agent-yusuf');
+        const trust = eng.view(s, nodeContent).trust;
+        eq(await page.$eval('#agent-ali .trust', e => e.textContent), `Ali ${trust.ali.words}.`);
+        eq(await page.$eval('#agent-yusuf .trust', e => e.textContent), `Yusuf ${trust.yusuf.words}.`);
+        await page.click('#agent-yusuf');
+        await page.waitForFunction(() => document.getElementById('agent-yusuf')?.getAttribute('aria-checked') === 'true');
+        eq(await page.$$eval('#outfit-reasons p', ps => ps.map(p => p.textContent)), reason);
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+      });
+      await test('outfit refusal: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    // a click on Next cannot land on a sheet that is edge-on: the back says `data-flip` until it lies flat
+    {
+      const { page } = await open(FRAMES[0]);
+      await loadSave(page, question);
+      await test('the back of an answered paper carries data-flip while it turns and loses it when it lies flat', async () => {
+        await page.evaluate(() => document.documentElement.style.setProperty('--flip-time', '1600ms'));
+        await page.click('#choice-' + letterOf(question).id + '-go-on');
+        await page.waitForSelector('.sheet[data-face="back"][data-flip="in"]', { timeout: 5000 });
+        await page.waitForSelector(BACK, { timeout: 5000 });
+        eq(await page.$eval('.sheet[data-face="back"]', e => e.getAnimations().filter(a => a.constructor.name === 'Animation').length), 0, 'the turn itself is over once the attribute is gone');
+      });
       await page.close();
     }
   }

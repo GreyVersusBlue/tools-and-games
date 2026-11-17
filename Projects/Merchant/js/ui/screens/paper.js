@@ -76,6 +76,8 @@ export function choicesOf(app, paper) {
 /** The definition a paper was made from: a card, a letter, or the event behind a notice. */
 export function sourceOf(content, paper) {
   if (paper.kind === 'notice') {
+    // a notice the engine wrote itself carries its words (the `agent-left` notice has no event behind it)
+    if (paper.data?.title) return { title: paper.data.title, body: paper.data.body ?? paper.data.headline, from: { name: 'Word in the city', role: 'Cairo', seal: null }, unlocks: [] };
     const ev = (content.events ?? []).find(e => e.id === paper.ref);
     return { ...ev?.notice, from: { name: 'Word in the city', role: 'Cairo', seal: null }, note: ev?.note, sources: ev?.sources, unlocks: [] };
   }
@@ -103,10 +105,17 @@ export function paperTitle(content, paper) {
 /** Who a paper is from: the agent's seal on a return or a loss, a plain mark on the rest. */
 export function senderOf(content, paper) {
   const agent = paper.agent && (content.agents ?? []).find(a => a.id === paper.agent);
-  if (agent) return { name: agent.name, role: paper.kind === 'lost' ? 'Word from the road' : 'Home from the road', seal: agent.seal };
+  if (agent && paper.kind === 'letter') return { name: agent.name, role: 'Word from the road', seal: agent.seal };
+  if (agent && paper.kind !== 'notice') return { name: agent.name, role: paper.kind === 'lost' ? 'Word from the road' : 'Home from the road', seal: agent.seal };
   if (paper.kind === 'news') return { name: 'Price letters', role: 'Cairo', seal: null };
   if (paper.kind === 'accounts') return { name: 'Your clerk', role: 'The house, Cairo', seal: null };
   return sourceOf(content, paper).from ?? null;
+}
+
+/** What a letter says about itself, from the engine's view (DESIGN 4.5): where and when it was
+    written, when it reached the desk, and for a question how long the answer takes. */
+export function letterNotes(app, paper) {
+  return paper.kind === 'letter' ? app.view().letters?.[paper.id] ?? null : null;
 }
 
 /** "Source: Author, Title, year, where." The line a teacher reads; never an address. */
@@ -139,10 +148,11 @@ export function head(app, from) {
 export function front(app, paper, { onChoose, locked }) {
   const s = sourceOf(app.content, paper);
   const titleId = `paper-${paper.id}-title`;
+  const note = letterNotes(app, paper);
   const choices = paper.kind === 'notice'
     ? [{ id: 'ok', label: 'Noted', available: true, seen: [] }]
     : choicesOf(app, paper);
-  const list = h('div', { class: 'choices', role: 'group', 'aria-labelledby': titleId },
+  const list = h('div', { class: 'choices', role: 'group', 'aria-labelledby': titleId, 'aria-describedby': note?.answer ? `paper-${paper.id}-answer` : null },
     choices.map((c, i) => h('button', {
       class: 'choice', type: 'button', id: `choice-${paper.id}-${c.id}`, dataset: { choice: c.id },
       'aria-disabled': c.available ? null : 'true',
@@ -157,10 +167,12 @@ export function front(app, paper, { onChoose, locked }) {
         c.prices ? h('span', { class: 'prices' }, c.prices) : null) : null)
       : h('span', { class: 'costline why' }, c.why))));
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
-    head(app, s.from),
+    head(app, senderOf(app.content, paper)),
+    note?.line ? h('p', { class: 'letter-line', id: `paper-${paper.id}-line` }, note.line) : null,
     h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(app.content, paper)),
     h('p', { class: 'sheet-body' }, s.body ?? ''),
-    list);
+    list,
+    note?.answer ? h('p', { class: 'letter-answer', id: `paper-${paper.id}-answer` }, note.answer) : null);
 }
 
 /** The back of an answered paper: what happened now, the note, new notebook entries, Next,

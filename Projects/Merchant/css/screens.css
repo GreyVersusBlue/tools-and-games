@@ -128,6 +128,9 @@ html.large-text .title-what { display: none; }
 .sheet-title { font-size: var(--step-2); margin-bottom: var(--s2); }
 .sheet-title:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
 .sheet-body { margin-bottom: var(--s3); }
+/* a letter's own lines (DESIGN 4.5): where and when it was written, and under the choices how long the answer takes */
+.letter-line { margin: 0 0 var(--s2); font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
+.letter-answer { margin: var(--s2) 0 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
 .choices { display: grid; gap: var(--s2); }
 .choices .choice { display: grid; grid-template-columns: 1.6rem 1fr; column-gap: var(--s2); align-items: baseline; }
 .choice .key { grid-row: 1 / span 2; font-family: var(--font-chrome); font-weight: 600; color: var(--brass-dark);
@@ -322,7 +325,10 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 .outfit .lead { font-family: var(--font-chrome); margin: 0 0 var(--s2); }
 .outfit .step { padding: var(--s2) 0 var(--s3); border-top: 1px solid var(--paper-shade); }
 .outfit .step h3 { margin: 0 0 var(--s2); font-size: var(--step-1); }
-.outfit .summary { margin: 0; display: flex; gap: var(--s3); align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: var(--step-1); }
+.outfit .summary { margin: 0; display: flex; gap: var(--s3); align-items: center; justify-content: space-between; flex-wrap: nowrap; font-size: var(--step-1); }
+/* the line takes the room it can and wraps inside itself; the Change link keeps its own column, on the row's line (MER-63) */
+.outfit .summary > span { flex: 1 1 0; min-width: 0; }
+.outfit .summary .change { flex: none; }
 .outfit .change { min-height: var(--hit); min-width: var(--hit); padding: 0 var(--s2); background: none; color: var(--lapis); text-decoration: underline;
   font-family: var(--font-chrome); font-weight: 600; font-size: var(--step-0); }
 .outfit .none, .outfit .total { font-family: var(--font-chrome); margin: var(--s2) 0 0; }

@@ -191,6 +191,7 @@ export function createDesk(app) {
   function flip(node, then) {
     const half = cssMs('--flip-time') / 2;
     if (!half || !node.animate) { then(); return; }
+    node.dataset.flip = 'out';
     node.animate([{ transform: 'rotateY(0)' }, { transform: 'rotateY(90deg)' }], { duration: half, easing: 'ease-in' }).finished.then(then, then);
   }
 
@@ -209,7 +210,14 @@ export function createDesk(app) {
       backOf = { paper: answered, now, fresh, outfit: choice.ui === 'outfit-first' };
       busy = false;
       draw({ focus: 'back', flipped: true });
-      if (node) { const b = qs('.sheet', sheetBox); b?.animate?.([{ transform: 'rotateY(90deg)' }, { transform: 'rotateY(0)' }], { duration: cssMs('--flip-time') / 2, easing: 'ease-out' }); }
+      // `data-flip` is on the back from its first frame until it lies flat: a press or a click on
+      // Next while the sheet is edge-on lands on nothing, so a caller waits for the attribute to go
+      const b = qs('.sheet', sheetBox);
+      if (b?.animate && cssMs('--flip-time')) {
+        b.dataset.flip = 'in';
+        const flat = () => { delete b.dataset.flip; };
+        b.animate([{ transform: 'rotateY(90deg)' }, { transform: 'rotateY(0)' }], { duration: cssMs('--flip-time') / 2, easing: 'ease-out' }).finished.then(flat, flat);
+      }
     };
     flip(node ?? document.createElement('div'), done);
   }
