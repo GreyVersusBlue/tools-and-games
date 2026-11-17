@@ -7,10 +7,11 @@
 // mergeTeachers, clearRoomDetails and setRoomFields keep every reference true
 // in actions.js itself.
 
-import { action, ActionError, patch, mapRooms, mapShared, reporting, withRoomFeatureIds, BUILDING, SCHEDULE } from './actions.js';
-import { FEATURES_MOST, FEATURE_NAME_MOST, COMMON_FEATURES, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WEEKDAY_NAMES } from './schema.js';
+import { action, ActionError, patch, mapRooms, mapShared, reporting, withRoomFeatureIds, clearNumberNames, normalAway, awayKey, awayIsNever, BUILDING, SCHEDULE } from './actions.js';
+import { RANGES, FEATURES_MOST, FEATURE_NAME_MOST, COMMON_FEATURES, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WEEKDAY_NAMES } from './schema.js';
 import { nameKey, spacelessKey, textLength, findRoom, nameOfRoom, allRooms } from './schema.js';
 import { periodNumberName } from './bells.js';
+import { periodByNumber, columnRoleOf, roleWords } from './import-groups.js';
 import { isId, collectIds } from './ids.js';
 import { awayWords } from './teacher-day.js';
 
@@ -194,7 +195,8 @@ function needWord(value, what) {
 export const setPeriodCustom = action(
   { label: (before, payload) => (payload ? 'Use ' + (typeof payload.word === 'string' ? payload.word.trim() : '') + ' as the period word' : 'Go back to the period word of the settings'), bumps: [SCHEDULE], focus: () => ({ section: 'project' }) },
   (project, payload) => {
-    if (payload === null) return withSetting(project, 'periodCustom', undefined);
+    // a new word has new number names: a period name equal to one is cleared
+    if (payload === null) return clearNumberNames(project, withSetting(project, 'periodCustom', undefined));
     if (typeof payload !== 'object' || Array.isArray(payload)) refuse('The custom period word is a word, its plural and how the periods are counted, or null.', 'bad-value');
     const word = needWord(payload.word, 'The period word');
     const plural = payload.plural === undefined || (typeof payload.plural === 'string' && payload.plural.trim() === '') ? word + 's' : needWord(payload.plural, 'The plural of the period word');
@@ -202,7 +204,7 @@ export const setPeriodCustom = action(
     if (!PERIOD_COUNTS.includes(count)) refuse('The periods are counted by number, letter or ordinal.', 'bad-value');
     const held = project.settings.periodCustom;
     if (held && held.word === word && held.plural === plural && held.count === count) return project;
-    return withSetting(project, 'periodCustom', { word, plural, count });
+    return clearNumberNames(project, withSetting(project, 'periodCustom', { word, plural, count }));
   },
 );
 
@@ -234,9 +236,18 @@ export const setPeriodName = action(
     if ((names[payload.period] || '') === name) return project;
     if (name !== '') {
       if (/^[0-9]+$/.test(name)) refuse('A period name cannot be just a number: "' + name + '" would be taken for period ' + name + ' when a file is read. Add a word, like "Lunch" or "Advisory".', 'bad-name');
-      for (let at = 0; at < settings.periods; at += 1) {
-        if (spacelessKey(periodNumberName(settings, at)) === spacelessKey(name)) refuse('"' + name + '" is the number name of ' + (at === payload.period ? 'this period' : 'another period') + ', and a file would match it to ' + (at === payload.period ? 'it' : 'that one') + '. Type another name.', 'bad-name');
+      // every period a day could have counts, not only today's: a longer day
+      // would make the name the number name of a period that has it
+      for (let at = 0; at < RANGES.periods[1]; at += 1) {
+        if (spacelessKey(periodNumberName(settings, at)) === spacelessKey(name)) {
+          const which = at === payload.period ? 'this period' : at < settings.periods ? 'another period' : 'a period a longer day would have';
+          refuse('"' + name + '" is the number name of ' + which + ', and a file would match it to ' + (at === payload.period ? 'it' : 'that one') + '. Type another name.', 'bad-name');
+        }
       }
+      const role = columnRoleOf(name);
+      if (role !== null) refuse('"' + name + '" is a column heading an import reads as the ' + roleWords(role) + ', so a period called that would never be matched. Type another name.', 'bad-name');
+      const reads = periodByNumber(name, settings);
+      if (reads !== -1) refuse('"' + name + '" would be read as ' + periodNumberName(settings, reads) + ' when a file is read, whatever this period is called. Type another name.', 'bad-name');
     }
     names[payload.period] = name;
     while (names.length > 0 && names[names.length - 1] === '') names.pop();
@@ -263,12 +274,9 @@ function needAwayEntry(project, entry, at) {
   for (const id of lists.dayTypeIds) if (!project.dayTypes.some((dayType) => dayType.id === id)) refuse(which + ' names a day type that is no longer in the project. Pick the day types again.', 'missing');
   for (const day of lists.weekdays) if (!Number.isInteger(day) || day < 0 || day >= WEEKDAY_NAMES.length) refuse(which + ': a weekday is 0 (Monday) to 6 (Sunday).', 'bad-value');
   for (const period of lists.periods) if (!Number.isInteger(period) || period < 0 || period >= project.settings.periods) refuse(which + ' names a period that is not in the school day. The day has ' + project.settings.periods + ' periods.', 'bad-value');
-  const dayTypeIds = project.dayTypes.map((dayType) => dayType.id).filter((id) => lists.dayTypeIds.includes(id));
-  const weekdays = Array.from(new Set(lists.weekdays)).sort((a, b) => a - b);
-  const periods = Array.from(new Set(lists.periods)).sort((a, b) => a - b);
-  const everyDay = dayTypeIds.length === 0 || dayTypeIds.length === project.dayTypes.length;
-  if (everyDay && weekdays.length === 0 && periods.length === 0) refuse('A teacher who is never in school is not a teacher of this school; remove them instead.', 'never-in-school');
-  return { dayTypeIds, weekdays, periods };
+  const normal = normalAway(project, lists);
+  if (awayIsNever(project.dayTypes, project.settings.periods, normal)) refuse('A teacher who is never in school is not a teacher of this school; remove them instead.', 'never-in-school');
+  return { dayTypeIds: normal.dayTypeIds, weekdays: normal.weekdays, periods: normal.periods };
 }
 
 // payload: { teacherId, away }, away the teacher's whole list of entries (at
@@ -282,9 +290,13 @@ export const setTeacherAway = action(
     if (!teacher) refuse('That teacher is no longer in the project.', 'missing');
     if (!Array.isArray(payload.away)) refuse('When a teacher is not in school is a list of entries, or an empty list for always.', 'bad-value');
     if (payload.away.length > AWAY_MOST) refuse('A teacher has at most ' + AWAY_MOST + ' entries for when they are not in school, and this is ' + payload.away.length + '. Combine some.', 'limit');
-    const away = payload.away.map((entry, at) => needAwayEntry(project, entry, at));
-    const held = Array.isArray(teacher.away) ? teacher.away : [];
-    if (JSON.stringify(away) === JSON.stringify(held)) return project;
+    const given = payload.away.map((entry, at) => needAwayEntry(project, entry, at));
+    // an entry that says what an earlier one says is kept once
+    const seen = new Set();
+    const away = given.filter((entry) => !seen.has(awayKey(entry)) && seen.add(awayKey(entry)));
+    // the stored list in the same form, so saving what is there changes nothing
+    const held = (Array.isArray(teacher.away) ? teacher.away : []).map((entry) => normalAway(project, entry));
+    if (away.length === held.length && away.every((entry, at) => awayKey(entry) === awayKey(held[at]))) return project;
     return { ...project, teachers: mapShared(project.teachers, (candidate) => {
       if (candidate !== teacher) return candidate;
       if (away.length > 0) return { ...candidate, away };
