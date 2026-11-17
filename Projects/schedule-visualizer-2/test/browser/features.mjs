@@ -1,0 +1,463 @@
+// Room features in the planner, in a real browser: node test/browser/features.mjs
+//
+// A room's Features chips and the combobox that adds one (near matches, "Add"
+// as the last option, what Enter takes, the live region, where the focus goes
+// after an add and a removal, "Removed Lab" with its Undo); the Edit the
+// features list… dialog (rows, moves, rename, delete with its confirm and
+// toast, Add common ones on an empty list, the count from 30, the most of 40,
+// the footer pinned at 844 by 390, the rows wrapped at 390); the Rooms tab's
+// Features column sorted by count and its popover; the room list print and
+// the batch pages listing features, and the batch headers reading a custom
+// period word; axe on the dialog in both themes. Driven by pointer and by
+// keyboard at 1280 by 900 and at 390 by 844 with touch. Every wait is on a
+// state the page sets (the store's features, an announcement, a toast's words,
+// the dialog's rows, the plan at rest with `still`), never on a first paint or
+// a sleep.
+
+import test, { after, before } from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+
+import { openPlanner, assertTouch, still, TOOL_DIR } from './harness.mjs';
+
+const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
+const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
+const HOSTILE = '<b>Lab</b> "Q" 名前';
+
+let session;
+let page;
+let phone = null;
+let roomId = null;
+
+const shows = (fn, ...args) => page.waitForFunction(fn, { timeout: 8000 }, ...args);
+const text = (selector) => page.$eval(selector, (el) => el.textContent);
+const names = () => page.evaluate(() => (globalThis.sv2.store.project.building.features || []).map((feature) => feature.name));
+const idOf = (name) => page.evaluate((wanted) => (globalThis.sv2.store.project.building.features || []).find((feature) => feature.name === wanted)?.id, name);
+const roomHas = () => page.evaluate((id) => {
+  const project = globalThis.sv2.store.project;
+  const room = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === id);
+  const list = project.building.features || [];
+  return (room.featureIds || []).map((held) => list.find((feature) => feature.id === held)?.name);
+}, roomId);
+const activeKey = () => page.evaluate(() => document.activeElement?.dataset.key || null);
+const activeId = () => page.evaluate(() => document.activeElement?.id || null);
+const announced = (words) => shows((wanted) => document.querySelector('#announcer')?.textContent === wanted, words);
+const toastWords = () => page.evaluate(() => document.querySelector('.toast .toast__text')?.textContent || null);
+const key = (name) => '[data-key="' + name + '"]';
+const optionLabels = () => page.$$eval('#room-features-list [role="option"]', (all) => all.map((el) => el.textContent));
+const chips = () => page.$$eval('#room-features-chips button', (all) => all.map((el) => el.querySelector('.bi-chip__name').textContent));
+
+async function apply(name, payload) {
+  await page.evaluate(async (action, data) => {
+    const w7 = await import('./engine/w7-actions.js');
+    globalThis.sv2.store.apply(w7[action], data);
+  }, name, payload);
+}
+
+async function undoKey() {
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.down('Control');
+  await page.keyboard.press('z');
+  await page.keyboard.up('Control');
+}
+
+async function selectRoom(id) {
+  await page.evaluate((wanted) => document.querySelector('.bld').editor.select([wanted]), id);
+  await page.waitForSelector('#room-features-add');
+}
+
+async function typeInField(selector, words) {
+  await page.click(selector);
+  await page.keyboard.type(words);
+}
+
+async function openDialog() {
+  await page.click(key('feature-edit'));
+  await page.waitForSelector('#features-dialog[open]');
+}
+
+async function closeDialog() {
+  await page.keyboard.press('Escape');
+  await shows(() => document.querySelector('#features-dialog') === null);
+}
+
+before(async () => {
+  session = await openPlanner({ hash: '#building', theme: 'light' });
+  page = session.page;
+  await page.evaluate(async () => {
+    const actions = await import('./engine/actions.js');
+    globalThis.sv2.store.apply(actions.setOnboarding, { dismissed: true });
+  });
+  await still(page);
+  roomId = await page.evaluate(() => document.querySelector('.bld').editor.floor.spaces.find((space) => space.kind === 'room').id);
+  await selectRoom(roomId);
+});
+
+after(async () => {
+  if (phone) await phone.close();
+  if (session) await session.close();
+});
+
+test('1. a feature typed in the combobox is added to the list and the room in one step, and the field keeps the focus', async () => {
+  assert.equal(await page.$eval('#room-features-chips', (el) => el.hidden), true, 'no chips for a room with no features');
+  assert.match(await text('#room-features-none'), /no features yet/);
+  assert.equal(await page.$eval('#room-features-add', (el) => el.getAttribute('role')), 'combobox');
+  await typeInField('#room-features-add', 'Lab');
+  assert.deepEqual(await optionLabels(), ['Add ‘Lab’ to the list']);
+  await page.click('#room-features-list [role="option"]');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).length === 1);
+  await announced('Lab added');
+  assert.deepEqual(await names(), ['Lab']);
+  assert.deepEqual(await roomHas(), ['Lab']);
+  assert.equal(await activeId(), 'room-features-add', 'the field keeps the focus');
+  assert.equal(await page.$eval('#room-features-add', (el) => el.value), '', 'and is empty again');
+  assert.equal(await page.$eval('#room-features-add', (el) => el.getAttribute('aria-expanded')), 'false');
+  assert.deepEqual(await chips(), ['Lab']);
+  const label = await page.$eval('#room-features-chips button', (el) => el.getAttribute('aria-label'));
+  assert.match(label, /^Remove Lab from \S/);
+  // one step: a single Undo takes the feature off the list and off the room
+  await undoKey();
+  await shows(() => (globalThis.sv2.store.project.building.features || []).length === 0);
+  assert.deepEqual(await roomHas(), []);
+});
+
+test('2. Enter takes the only option, "Add"; Backspace in an empty field reaches the last chip; a chip removes with Enter, says so, and Undo brings it back', async () => {
+  await page.focus('#room-features-add');
+  await page.keyboard.type('Lab');
+  await page.keyboard.press('Enter');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).length === 1);
+  await page.keyboard.type('Sink');
+  await page.keyboard.press('Enter');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).length === 2);
+  assert.deepEqual(await chips(), ['Lab', 'Sink']);
+  await page.keyboard.press('Backspace');
+  const sink = await idOf('Sink');
+  const lab = await idOf('Lab');
+  assert.equal(await activeKey(), 'feature:' + sink, 'Backspace in the empty field focuses the last chip');
+  await page.keyboard.press('Enter');
+  await shows(() => document.querySelector('.toast .toast__text')?.textContent === 'Removed Sink');
+  assert.equal(await page.$eval('.toast .toast__action', (el) => el.textContent), 'Undo');
+  assert.deepEqual(await roomHas(), ['Lab']);
+  assert.equal(await activeKey(), 'feature:' + lab, 'the focus goes to the next chip');
+  await page.click('.toast .toast__action');
+  await shows(() => document.querySelectorAll('#room-features-chips button').length === 2);
+  assert.deepEqual(await roomHas(), ['Lab', 'Sink']);
+  // the last chips: the focus ends in the field
+  await page.click('#room-features-chips button');
+  await shows(() => document.querySelectorAll('#room-features-chips button').length === 1);
+  assert.equal(await activeKey(), 'feature:' + sink);
+  await page.keyboard.press('Space');
+  await shows(() => document.querySelectorAll('#room-features-chips button').length === 0);
+  assert.equal(await activeId(), 'room-features-add', 'no chip left: the focus goes to the field');
+});
+
+test('3. near matches come first and Add is last; Enter takes Add only when an arrow chose it or nothing is near', async () => {
+  await page.focus('#room-features-add');
+  await page.keyboard.type('Lap');
+  assert.deepEqual(await optionLabels(), ['Lab', 'Add ‘Lap’ to the list']);
+  await page.keyboard.press('Enter');
+  await shows(() => /^Use the arrow keys to choose Lab/.test(document.querySelector('#announcer')?.textContent || ''));
+  assert.deepEqual(await roomHas(), [], 'Enter chose nothing when an arrow had not');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.$eval('#room-features-add', (el) => el.getAttribute('aria-activedescendant') === document.querySelector('#room-features-list [role="option"]').id), true);
+  await page.keyboard.press('Enter');
+  await announced('Lab added');
+  assert.deepEqual(await roomHas(), ['Lab']);
+  assert.deepEqual(await names(), ['Lab', 'Sink'], 'the list did not grow: Lab was taken, not Lap');
+  // Lab is on the room now, so nothing is near and Add is the one option
+  await page.keyboard.type('Lap');
+  assert.deepEqual(await optionLabels(), ['Add ‘Lap’ to the list']);
+  await page.keyboard.press('Enter');
+  await announced('Lap added');
+  assert.deepEqual(await names(), ['Lab', 'Sink', 'Lap']);
+  // an arrow moved onto Add, with a near match above it
+  await page.keyboard.type('Sin');
+  assert.deepEqual(await optionLabels(), ['Sink', 'Add ‘Sin’ to the list']);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await announced('Sin added');
+  assert.deepEqual(await roomHas(), ['Lab', 'Lap', 'Sin']);
+  // Escape shuts the list and keeps what was typed
+  await page.keyboard.type('Ki');
+  assert.equal(await page.$eval('#room-features-list', (el) => el.hidden), false);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('#room-features-list', (el) => el.hidden), true);
+  assert.equal(await page.$eval('#room-features-add', (el) => el.value), 'Ki');
+  await page.$eval('#room-features-add', (el) => { el.value = ''; });
+});
+
+test('4. a name is shown as typed, never as markup', async () => {
+  await page.focus('#room-features-add');
+  await page.keyboard.type(HOSTILE);
+  await page.keyboard.press('Enter');
+  await announced(HOSTILE + ' added');
+  assert.ok((await chips()).includes(HOSTILE));
+  assert.equal(await page.$eval('#room-features-chips', (el) => el.querySelectorAll('b').length), 0, 'no <b> element came out of the name');
+});
+
+test('5. the list dialog: rows, moves, rename and its refusal, delete with and without a confirm, and the way back', async () => {
+  await openDialog();
+  const first = await page.evaluate(() => globalThis.sv2.store.project.building.features[0].id);
+  assert.equal(await activeKey(), 'name:' + first, 'the focus goes to the first name');
+  assert.equal(await text('#features-note'), 'Renaming changes it in every room.');
+  assert.equal(await page.$$eval('#features-rows .features-row', (all) => all.length), 5);
+  assert.equal(await page.$eval(key('up:' + first), (el) => el.disabled), true, 'the top row cannot move up');
+  assert.match(await text(key('down:' + first)), /^Move Lab down$/);
+  // move Lab down: the list and the focus
+  await page.click(key('down:' + first));
+  await shows(() => globalThis.sv2.store.project.building.features[0].name === 'Sink');
+  assert.deepEqual(await names(), ['Sink', 'Lab', 'Lap', 'Sin', HOSTILE]);
+  assert.equal(await activeKey(), 'down:' + first, 'the focus stays on the button used');
+  await page.keyboard.press('Enter');
+  await shows(() => globalThis.sv2.store.project.building.features[2].name === 'Lab');
+  assert.deepEqual(await roomHas(), ['Lap', 'Lab', 'Sin', HOSTILE], 'a room keeps its features in the list\u2019s order');
+  // rename Sin: kept on Enter; a name already on the list is refused inline and Escape puts it back
+  const sin = await idOf('Sin');
+  await page.click(key('name:' + sin), { clickCount: 3 });
+  await page.keyboard.type('Sinks');
+  await page.keyboard.press('Enter');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sinks'));
+  await page.click(key('name:' + sin), { clickCount: 3 });
+  await page.keyboard.type('lab ');
+  await page.keyboard.press('Enter');
+  await shows((id) => document.querySelector('[data-key="name:' + id + '"]').getAttribute('aria-invalid') === 'true', sin);
+  assert.match(await page.$eval(key('name:' + sin) + ' + .field__refusal', (el) => el.textContent), /already a feature called "Lab"/);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval(key('name:' + sin), (el) => el.value), 'Sinks');
+  assert.equal(await page.$eval('#features-dialog', (el) => el.open), true, 'Escape in a field puts the name back and keeps the dialog');
+  // delete: Sink is on no room, so no question; the way back is in the dialog
+  const sink = await idOf('Sink');
+  await page.click(key('delete:' + sink));
+  await shows(() => !(globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));
+  assert.equal(await toastWords(), 'Deleted Sink');
+  assert.equal(await text('#features-undo'), 'Deleted Sink · Undo');
+  assert.match(await activeKey(), /^name:/, 'the focus goes to a name');
+  await page.click('#features-undo button');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));
+  assert.equal(await page.$eval('#features-undo', (el) => el.hidden), true, 'the way back goes when it was used');
+  // delete a feature that is on a room: a question first
+  await page.click(key('delete:' + sin));
+  await page.waitForSelector('dialog[open]:not(#features-dialog)');
+  assert.equal(await text('dialog[open]:not(#features-dialog) .dialog__title'), 'Delete Sinks? It is on 1 room.');
+  const answers = await page.$$eval('dialog[open]:not(#features-dialog) .dialog__buttons button', (all) => all.map((el) => el.textContent));
+  assert.deepEqual(answers, ['Delete Sinks', 'Keep it']);
+  await page.keyboard.press('Escape');
+  await shows(() => document.querySelectorAll('dialog[open]').length === 1);
+  assert.ok((await names()).includes('Sinks'), 'Keep it keeps it');
+  await page.click(key('delete:' + sin));
+  await page.waitForSelector('dialog[open]:not(#features-dialog)');
+  await page.click('dialog[open]:not(#features-dialog) .dialog__buttons button');
+  await shows(() => !(globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sinks'));
+  assert.equal(await toastWords(), 'Deleted Sinks from 1 room');
+  assert.equal(await text('#features-undo'), 'Deleted Sinks from 1 room · Undo');
+  assert.ok(!(await roomHas()).includes('Sinks'));
+  await page.click('#features-undo button');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sinks'));
+  assert.ok((await roomHas()).includes('Sinks'), 'Undo gave the feature back to the room');
+  // Escape closes, and the focus returns to the button that opened it
+  await closeDialog();
+  assert.equal(await activeKey(), 'feature-edit');
+});
+
+test('6. an empty list offers the common ones; the count shows from 30; 40 is the most', async () => {
+  for (const name of await names()) await apply('deleteFeature', { id: await idOf(name) });
+  await shows(() => (globalThis.sv2.store.project.building.features || []).length === 0);
+  await openDialog();
+  assert.equal(await page.$eval('#features-empty', (el) => el.hidden), false);
+  assert.match(await text('#features-empty'), /Add 8 common features; delete any you do not need\./);
+  assert.equal(await activeKey(), 'common', 'the focus goes to Add common ones');
+  await page.keyboard.press('Enter');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).length === 8);
+  assert.deepEqual(await names(), ['Lab', 'Sink', 'Projector', 'Computers', 'Stage', 'Kiln', 'Ovens', 'Studio sound']);
+  assert.equal(await page.$eval('#features-empty', (el) => el.hidden), true);
+  for (let n = 9; n <= 29; n += 1) await apply('addFeature', { name: 'Extra ' + n });
+  await shows(() => document.querySelectorAll('#features-rows .features-row').length === 29);
+  assert.equal(await page.$eval('#features-count', (el) => el.hidden), true, 'no count below 30');
+  await page.click('#features-add');
+  await page.keyboard.type('Extra 30');
+  await page.keyboard.press('Enter');
+  await shows(() => document.querySelectorAll('#features-rows .features-row').length === 30);
+  assert.equal(await text('#features-count'), '30 of 40 features.');
+  assert.equal(await activeId(), 'features-add', 'the Add field keeps the focus');
+  for (let n = 31; n <= 40; n += 1) await apply('addFeature', { name: 'Extra ' + n });
+  await shows(() => document.querySelectorAll('#features-rows .features-row').length === 40);
+  await page.keyboard.type('One more');
+  await page.click('#features-dialog .features-dialog__addrow button');
+  await shows(() => !document.querySelector('#features-add-refusal').hidden);
+  assert.match(await text('#features-add-refusal'), /at most 40/);
+  assert.equal(await page.$eval('#features-add', (el) => el.getAttribute('aria-invalid')), 'true');
+  await closeDialog();
+  for (let n = 9; n <= 40; n += 1) await apply('deleteFeature', { id: await idOf('Extra ' + n) });
+  await shows(() => (globalThis.sv2.store.project.building.features || []).length === 8);
+});
+
+test('7. the Rooms tab: a Features column that sorts by count, and a popover with the same picker', async () => {
+  const rooms = await page.evaluate(() => document.querySelector('.bld').editor.floor.spaces.filter((space) => space.kind === 'room').map((space) => space.id));
+  assert.ok(rooms.length >= 3, 'the plain sample has rooms on its first floor');
+  const lab = await idOf('Lab');
+  const sink = await idOf('Sink');
+  const kiln = await idOf('Kiln');
+  await apply('setRoomFeatures', { roomId: rooms[0], featureIds: [lab] });
+  await apply('setRoomFeatures', { roomId: rooms[1], featureIds: [lab, sink, kiln] });
+  await apply('setRoomFeatures', { roomId: rooms[2], featureIds: [sink, kiln] });
+  await page.click('#inspector [data-tab="rooms"]');
+  await page.waitForSelector('#rooms-table table');
+  const counts = () => page.$$eval('#rooms-table tbody tr', (all) => all.map((row) => {
+    const words = row.querySelector('.bi-features-cell').textContent;
+    return words === 'None' ? 0 : words.split(', ').length;
+  }));
+  const sortButton = async () => {
+    const buttons = await page.$$('#rooms-table th button.table__sort');
+    for (const button of buttons) if ((await button.evaluate((el) => el.textContent)).startsWith('Features')) return button;
+    throw new Error('no Features column heading');
+  };
+  await (await sortButton()).click();
+  await shows(() => document.querySelector('#rooms-table th[aria-sort="ascending"]')?.textContent.startsWith('Features'));
+  const up = await counts();
+  assert.deepEqual(up, up.slice().sort((a, b) => a - b), 'ascending by count: ' + up.join(','));
+  assert.equal(up[up.length - 1], 3);
+  await (await sortButton()).click();
+  await shows(() => document.querySelector('#rooms-table th[aria-sort="descending"]')?.textContent.startsWith('Features'));
+  const down = await counts();
+  assert.deepEqual(down, down.slice().sort((a, b) => b - a), 'descending by count: ' + down.join(','));
+  assert.equal(down[0], 3);
+  // the popover: the picker adds a feature to that row's room
+  const cell = key(rooms[0] + ':features');
+  assert.match(await page.$eval(cell, (el) => el.getAttribute('aria-label')), /^Features of \S.*: Lab\. Change$/);
+  await page.click(cell);
+  await shows(() => document.querySelector('#rooms-features-pop')?.matches(':popover-open'));
+  assert.equal(await activeId(), 'rooms-features-add', 'the focus goes to the field');
+  await page.keyboard.type('Stag');
+  assert.deepEqual(await page.$$eval('#rooms-features-list [role="option"]', (all) => all.map((el) => el.textContent)), ['Stage', 'Add ‘Stag’ to the list']);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await announced('Stage added');
+  await shows((id) => document.querySelector('[data-key="' + id + ':features"]').textContent === 'Lab, Stage', rooms[0]);
+  assert.equal(await page.$eval(cell, (el) => el.textContent), 'Lab, Stage');
+  await page.keyboard.press('Escape');
+  await shows(() => !document.querySelector('#rooms-features-pop').matches(':popover-open'));
+  assert.equal(await activeKey(), rooms[0] + ':features', 'the focus returns to the cell');
+  await page.click('#inspector [data-tab="properties"]');
+});
+
+test('8. the room list print and the batch pages list features, and the batch heads read a custom period word', async () => {
+  const made = await page.evaluate(async () => {
+    const roomList = await import('./ui/prints/room-list.js');
+    const batch = await import('./ui/prints/batch.js');
+    const now = new Date('2026-01-01T12:00:00Z');
+    const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    const hostile = project.building.features.find((feature) => feature.name === 'Stage');
+    hostile.name = '<i>Stage</i> & "Q"';
+    const list = roomList.render(project, null, { floorId: 'all', now }).html;
+    const sorted = roomList.render(project, null, { floorId: 'all', now, sort: { column: 'features', direction: 'descending' } }).html;
+    const rooms = batch.render(project, null, { batch: 'rooms', now }).html;
+    const bare = JSON.parse(JSON.stringify(project));
+    delete bare.building.features;
+    for (const floor of bare.building.floors) for (const space of floor.spaces) delete space.featureIds;
+    const plain = roomList.render(bare, null, { floorId: 'all', now }).html;
+    const word = JSON.parse(JSON.stringify(project));
+    word.settings.periodCustom = { word: 'Lesson', plural: 'Lessons', count: 'number' };
+    const teachers = batch.render(word, null, { batch: 'teachers', now }).html;
+    const roomsWord = batch.render(word, null, { batch: 'rooms', now }).html;
+    return { list, sorted, rooms, plain, teachers, roomsWord };
+  });
+  assert.match(made.list, /<th scope="col">Features<\/th>/);
+  assert.match(made.list, /<td>Lab, &lt;i&gt;Stage&lt;\/i&gt;/);
+  assert.doesNotMatch(made.list, /<i>Stage/, 'a feature name is never markup on paper');
+  const firstRow = made.sorted.split('<tbody>')[1].split('</tr>')[0];
+  assert.match(firstRow, /Lab, Sink, Kiln/, 'sorted by count, the room with three features is first: ' + firstRow);
+  assert.doesNotMatch(made.plain, /<th scope="col">Features<\/th>/, 'a school with no features prints no column');
+  assert.match(made.rooms, /Features: [^<]*Lab/);
+  assert.match(made.rooms, /Features: [^<]*&lt;i&gt;Stage&lt;\/i&gt;/);
+  assert.match(made.teachers, /<th scope="col">Lesson<\/th>/, 'the batch teacher heads read the custom word');
+  assert.match(made.roomsWord, /<th scope="col">Lesson<\/th>/);
+  assert.doesNotMatch(made.teachers, /<th scope="col">Period<\/th>/);
+});
+
+for (const theme of ['light', 'dark']) {
+  test('9. axe finds nothing on the features dialog, in the ' + theme + ' theme', async () => {
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
+    await selectRoom(roomId);
+    await openDialog();
+    await page.addScriptTag({ path: AXE });
+    await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+    const found = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#features-dialog'), { runOnly: { type: 'tag', values: tags } }), TAGS);
+    assert.ok(found.passes.length > 5, 'axe ran very few rules');
+    assert.deepEqual(found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', ')), [], 'the features dialog, ' + theme);
+    await closeDialog();
+    const inspector = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#room-features'), { runOnly: { type: 'tag', values: tags } }), TAGS);
+    assert.deepEqual(inspector.violations.map((violation) => violation.id), [], 'the Features part of Properties, ' + theme);
+  });
+}
+
+test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and nothing scrolls sideways; at 844 by 390 the footer stays on screen', async () => {
+  // one page at a time: a second page of the same browser hears the first one's saves
+  await page.goto('about:blank');
+  phone = await openPlanner({ hash: '#building', theme: 'light', width: 390, height: 844, mobile: true, browser: session.browser, server: session.server });
+  const p = phone.page;
+  await p.evaluate(async () => {
+    const actions = await import('./engine/actions.js');
+    const w7 = await import('./engine/w7-actions.js');
+    globalThis.sv2.store.apply(actions.setOnboarding, { dismissed: true });
+    globalThis.sv2.store.apply(w7.addCommonFeatures, undefined);
+    for (let n = 9; n <= 14; n += 1) globalThis.sv2.store.apply(w7.addFeature, { name: 'A long feature name number ' + n });
+    const editor = document.querySelector('.bld').editor;
+    editor.select([editor.floor.spaces.find((space) => space.kind === 'room').id]);
+  });
+  await p.waitForSelector('#room-features-add');
+  // the inspector is folded away on a phone until its handle is tapped
+  if ((await p.$eval('#inspector', (el) => el.dataset.open)) !== 'true') await p.tap('#inspector-toggle');
+  await p.waitForFunction(() => document.querySelector('#room-features-add').getBoundingClientRect().height > 0, { timeout: 8000 });
+  await p.evaluate(() => document.querySelector('#room-features-add').scrollIntoView({ block: 'center' }));
+  const fits = () => p.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: document.documentElement.clientWidth }));
+  const small = await fits();
+  assert.ok(small.scroll <= small.width, 'the page fits at 390: ' + JSON.stringify(small));
+  const fieldBox = await p.$eval('#room-features-add', (el) => ({ height: el.getBoundingClientRect().height, display: getComputedStyle(el).display, coarse: matchMedia('(pointer: coarse)').matches }));
+  assert.ok(fieldBox.height >= 44, 'the combobox field is 44 px: ' + JSON.stringify(fieldBox));
+  await p.focus('#room-features-add');
+  await p.keyboard.type('s');
+  const heights = await p.$$eval('#room-features-list [role="option"]', (all) => all.map((el) => el.getBoundingClientRect().height));
+  assert.ok(heights.length > 0 && heights.every((height) => height >= 43.9), 'options are 44 px: ' + heights.join(', '));
+  await p.keyboard.press('Escape');
+  await p.$eval('#room-features-add', (el) => { el.value = ''; });
+  await p.tap(key('feature-edit'));
+  await p.waitForSelector('#features-dialog[open]');
+  const seen = await p.evaluate(() => ({ features: (globalThis.sv2.store.project.building.features || []).length, rows: document.querySelectorAll('#features-rows li').length, empty: document.querySelector('#features-empty')?.hidden, dialogs: document.querySelectorAll('dialog[open]').length }));
+  assert.ok(seen.rows > 0, 'the dialog lists the features: ' + JSON.stringify(seen));
+  const row = await p.$eval('#features-rows .features-row', (el) => {
+    const name = el.querySelector('.features-row__name').getBoundingClientRect();
+    const buttons = Array.from(el.querySelectorAll('.features-row__buttons .btn')).map((b) => b.getBoundingClientRect());
+    return { nameBottom: name.bottom, buttonsTop: Math.min(...buttons.map((b) => b.top)), buttonHeights: buttons.map((b) => b.height), nameWidth: name.width, right: Math.max(...buttons.map((b) => b.right)) };
+  });
+  assert.ok(row.nameBottom <= row.buttonsTop + 1, 'the name is on top and the buttons wrap under it: ' + JSON.stringify(row));
+  assert.ok(row.buttonHeights.every((height) => height >= 43.9), 'the row buttons are 44 px: ' + row.buttonHeights.join(', '));
+  assert.ok(row.right <= 390, 'the row fits in the window');
+  const wide = await fits();
+  assert.ok(wide.scroll <= wide.width, 'the dialog does not scroll the page sideways: ' + JSON.stringify(wide));
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => document.querySelector('#features-dialog') === null);
+  // landscape: the body scrolls and the Done button is on screen
+  await p.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+  await p.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await p.waitForFunction(() => document.querySelector('#room-features-add').getBoundingClientRect().height > 0, { timeout: 8000 });
+  await p.evaluate(() => document.querySelector('#room-features-add').scrollIntoView({ block: 'center' }));
+  await p.tap(key('feature-edit'));
+  await p.waitForSelector('#features-dialog[open]');
+  const pinned = await p.evaluate(() => {
+    const body = document.querySelector('#features-dialog .dialog__body');
+    const buttons = document.querySelector('#features-dialog .dialog__buttons').getBoundingClientRect();
+    return { scrolls: body.scrollHeight > body.clientHeight, bottom: buttons.bottom, top: buttons.top, window: window.innerHeight };
+  });
+  assert.ok(pinned.scrolls, 'the rows scroll inside the dialog');
+  assert.ok(pinned.top >= 0 && pinned.bottom <= pinned.window, 'the Done button is on screen at 844 by 390: ' + JSON.stringify(pinned));
+  await p.keyboard.press('Escape');
+  await assertTouch(p, 'the phone');
+});
+
+test('11. no page errors, and nothing asked for outside the tool', async () => {
+  assert.deepEqual(session.problems().errors, []);
+  assert.deepEqual(phone.problems().errors, []);
+  assert.deepEqual(session.offsite, []);
+  assert.deepEqual(phone.offsite, []);
+});
