@@ -84,11 +84,44 @@ function periodsNamed(text, settings) {
   return found;
 }
 
-// "period 3", "per. 3", "p3", "mod 3", "block c", "3rd hour", "hour 3", "3",
-// "lesson 3" (the school's word), and a period's own name ("lunch"): the
-// period's index from 0, or -1 when the text is not a period header. A bare
-// letter is a period only in a school that letters its periods. The number
-// name wins over an own name, an own name over the looser forms.
+// The forms that read as a period by its number: the school's own number name
+// ("Block C", "Lesson 3"), then "period 3", "per. 3", "p3", "mod 3", "block c",
+// "3rd hour", "hour 3", "3", and in a school that letters its periods a bare
+// letter. The period's index from 0, or -1. Never reads a period's own name.
+export function periodByNumber(text, settings) {
+  const key = headerKey(text);
+  for (let index = 0; index < RANGES.periods[1]; index += 1) {
+    if (spacelessKey(key) === spacelessKey(periodNumberName(settings, index))) return index;
+  }
+  let match = key.match(/^(?:period|per|pd|p|mod|hour|hr|block|blk)\.? ?(\d{1,2})(?:st|nd|rd|th)?$/);
+  if (!match) match = key.match(/^(\d{1,2})(?:st|nd|rd|th)? ?(?:period|mod|hour|block)?$/);
+  if (match) {
+    const number = Number(match[1]);
+    return number >= 1 ? number - 1 : -1;
+  }
+  match = key.match(/^(?:block|blk) ?([a-z])$/);
+  if (match) return letterIndex(match[1]);
+  if (periodWordForms(settings).count === 'letter' && /^[a-z]$/.test(key)) return letterIndex(key);
+  return -1;
+}
+
+// The role an import would give a column headed `text` (name, grade,
+// headCount, colour, dayType), or null: the words guessColumns reads before it
+// looks for a period. A period called one of them would never be matched.
+export function columnRoleOf(text) {
+  const key = headerKey(text);
+  if (NAME_WORDS.includes(key)) return 'name';
+  if (GRADE_WORDS.includes(key)) return 'grade';
+  if (HEAD_COUNT_WORDS.includes(key)) return 'headCount';
+  if (COLOUR_WORDS.includes(key)) return 'colour';
+  if (DAY_TYPE_WORDS.includes(key)) return 'dayType';
+  return null;
+}
+
+// "period 3", "3rd hour", "hour 3", "3", "lesson 3" (the school's word), and a
+// period's own name ("lunch"): the period's index from 0, or -1 when the text
+// is not a period header. The number name wins over an own name, an own name
+// over the looser forms.
 function periodIndex(text, settings) {
   for (let index = 0; index < RANGES.periods[1]; index += 1) {
     if (spacelessKey(text) === spacelessKey(periodNumberName(settings, index))) return index;
@@ -96,16 +129,7 @@ function periodIndex(text, settings) {
   const named = periodsNamed(text, settings);
   if (named.length === 1) return named[0];
   if (named.length > 1) return -1;
-  let match = text.match(/^(?:period|per|pd|p|mod|hour|hr|block|blk)\.? ?(\d{1,2})(?:st|nd|rd|th)?$/);
-  if (!match) match = text.match(/^(\d{1,2})(?:st|nd|rd|th)? ?(?:period|mod|hour|block)?$/);
-  if (match) {
-    const number = Number(match[1]);
-    return number >= 1 ? number - 1 : -1;
-  }
-  match = text.match(/^(?:block|blk) ?([a-z])$/);
-  if (match) return letterIndex(match[1]);
-  if (periodWordForms(settings).count === 'letter' && /^[a-z]$/.test(text)) return letterIndex(text);
-  return -1;
+  return periodByNumber(text, settings);
 }
 
 // A period header may name its day type: "A Day Period 1", "Period 1 B Day",
@@ -140,11 +164,8 @@ export function guessColumns(header, project) {
   const mapping = cells.map((cell, column) => {
     const text = String(cell);
     const key = headerKey(text);
-    if (NAME_WORDS.includes(key)) return once(column, text, 'name');
-    if (GRADE_WORDS.includes(key)) return once(column, text, 'grade');
-    if (HEAD_COUNT_WORDS.includes(key)) return once(column, text, 'headCount');
-    if (COLOUR_WORDS.includes(key)) return once(column, text, 'colour');
-    if (DAY_TYPE_WORDS.includes(key)) return once(column, text, 'dayType');
+    const role = columnRoleOf(text);
+    if (role !== null) return once(column, text, role);
     let split = { dayTypeId: null, rest: key };
     let period = periodIndex(key, settings);
     if (period === -1) {
@@ -187,7 +208,7 @@ export function guessColumns(header, project) {
   return mapping;
 }
 
-function roleWords(role) {
+export function roleWords(role) {
   if (role === 'name') return 'group name';
   if (role === 'headCount') return 'head count';
   if (role === 'dayType') return 'day type';

@@ -18,6 +18,7 @@ import { deleteGroup, deleteSpaces, revertToBase, setPeriods, setSlot, ActionErr
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { allRooms } from '../../engine/schema.js';
 import { seededRandom } from '../../engine/ids.js';
+import { setPeriodCustom, setPeriodName } from '../../engine/w7-actions.js';
 import { school, clone, assertValid, room, group, teacher } from './helpers.mjs';
 
 const A = 'dsample00a';
@@ -1140,4 +1141,37 @@ test('reconcileLevers drops a way lever on an elevator, with a sentence that say
   const plain = reconcileLevers(school(), { levers: [way(WAY_A, 'ab')] });
   assert.deepEqual(plain.levers, [way(WAY_A, 'ab')], 'a building with no elevator reconciles as it did');
   assert.deepEqual(plain.dropped, []);
+});
+
+// ---------------------------------------------------------------- SV2-127b: the school's own word and period names
+
+const CUSTOM_WORDS = [
+  [{ word: 'Lesson', count: 'number' }, 'Lesson 2', 'Lesson 8', 'Lesson'],
+  [{ word: 'Class', plural: 'Classes', count: 'letter' }, 'Class B', 'Class H', 'Class'],
+  [{ word: 'Session', count: 'ordinal' }, '2nd Session', '8th Session', 'Session'],
+];
+
+test('reconcile says a period by the school\'s word in number, letter and ordinal counts: the same word as typed, the number name of a period', () => {
+  for (const [custom, second, eighth, word] of CUSTOM_WORDS) {
+    const project = setPeriodCustom(school(), custom, { clock: () => '2026-09-01T12:00:00.000Z' });
+    const replaced = reconcile(project, { changes: [move(G7C, 1, 'rsample204'), swapPeriods(G7C, 1, 2)] }).dropped.map((entry) => entry.sentence);
+    assert.deepEqual(replaced, ['7C · A Day · ' + second + ': 203 → 204, taught by Mme. Dufrêne instead of Ms. Vandermeer: a later change to the same ' + word + ' replaces it.'], word);
+    const gone = reconcile(setPeriods(project, { periods: 6 }), { changes: [move(G7C, 7, 'rsample204')] }).dropped.map((entry) => entry.sentence);
+    assert.deepEqual(gone, ['7C · A Day · ' + eighth + ': ? → 204: ' + eighth + ' is no longer in the school day, which has 6.'], word);
+  }
+});
+
+test('reconcile and the file comparison say a period by its own name where it has one, and the plural as typed ("Classes")', () => {
+  const named = setPeriodName(setPeriodCustom(school(), CUSTOM_WORDS[1][0], { clock: () => '2026-09-01T12:00:00.000Z' }), { period: 1, name: 'Advisory' }, { clock: () => '2026-09-01T12:00:00.000Z' });
+  const replaced = reconcile(named, { changes: [move(G7C, 1, 'rsample204'), swapPeriods(G7C, 1, 2)] }).dropped[0].sentence;
+  assert.match(replaced, /^7C · A Day · Advisory: 203 → 204.*: a later change to the same Class replaces it\.$/);
+  // a file with a shorter day, in a school whose word is Class: "6 Classes"
+  const other = setPeriods(setPeriodCustom(proposal(), CUSTOM_WORDS[1][0], { clock: () => '2026-09-01T12:00:00.000Z' }), { periods: 6 });
+  const { skipped } = scenarioFromDiff(setPeriodName(school(), { period: 7, name: 'Late' }, { clock: () => '2026-09-01T12:00:00.000Z' }), other);
+  assert.deepEqual(skipped.filter((entry) => entry.reason === 'period').map((entry) => entry.sentence), [
+    'Period 7: the file\'s day has 6 Classes, so it is not compared.',
+    'Late: the file\'s day has 6 Classes, so it is not compared.',
+  ]);
+  const longer = scenarioFromDiff(setPeriods(setPeriodCustom(school(), CUSTOM_WORDS[1][0], { clock: () => '2026-09-01T12:00:00.000Z' }), { periods: 7 }), proposal()).skipped;
+  assert.deepEqual(longer.map((entry) => entry.sentence), ['Period 8 of the file: this project\'s day has 7 Classes, so it is not compared.']);
 });
