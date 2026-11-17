@@ -64,7 +64,9 @@ export function wordsOf(sentence) {
 }
 
 /** Flesch-Kincaid grade of a text, or null when it has no words. `fixed` is a Set of
-    normalized words that count as two syllables. */
+    normalized words (terms, names of stops, goods and real people) that count as at most
+    two syllables, so a long name does not push a sentence over and a short one ("gold",
+    "salt") does not count for more than it is. */
 export function fkGrade(text, fixed = new Set()) {
   const ss = sentences(text);
   let words = 0, syl = 0;
@@ -72,7 +74,7 @@ export function fkGrade(text, fixed = new Set()) {
     for (const t of wordsOf(s)) {
       words++;
       const k = normalize(t).replace(/['’]s$/, '').replace(/[^a-z0-9]/g, '');
-      syl += t[0] === '{' || /^\d/.test(t) || fixed.has(k) ? 2 : syllables(t);
+      syl += t[0] === '{' || /^\d/.test(t) ? 2 : fixed.has(k) ? Math.min(2, syllables(t)) : syllables(t);
     }
   }
   if (!words || !ss.length) return null;

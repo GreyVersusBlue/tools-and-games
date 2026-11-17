@@ -380,10 +380,12 @@ test('grade: a hard sentence grades far above the ceiling and a plain one far be
   ok(fkGrade('The negotiation concerning transportation insurance necessitates considerable administrative documentation.') > CEILINGS.body + 10);
   ok(fkGrade('Nell has wool. She wants to sell it.') < CEILINGS.body - 4);
 });
-test('grade: a term, a place name or a real person counts as two syllables whatever its length', () => {
+test('grade: a term, a place name, a good or a real person counts as at most two syllables', () => {
   const plain = fkGrade('Hasan went to Alexandria today.');
   const fixed = fkGrade('Hasan went to Alexandria today.', new Set(['alexandria']));
   ok(fixed < plain, `${fixed} should be under ${plain}`);
+  // ...and a one-syllable name counts as one, not two (gold, salt: MER-31's goods pushed a note over)
+  eq(fkGrade('Gold came to Cairo.', new Set(['gold', 'cairo'])), fkGrade('Gold came to Cairo.', new Set(['cairo'])));
 });
 test('grade: a {template} slot is one two-syllable word', () => {
   eq(fkGrade('{agent} paid {money} dinars.'), 0.39 * 4 + 11.8 * 7 / 4 - 15.59, 'four words, seven syllables');

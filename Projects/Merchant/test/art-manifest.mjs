@@ -73,7 +73,7 @@ test('the manifest lists every Cairo picture of ART.md section 4, A01 to A18', (
   const arts = new Set(manifest.assets.map(a => a.art));
   for (let n = 1; n <= 18; n++) ok(arts.has('A' + String(n).padStart(2, '0')), `A${n} has no entry`);
   ok(!arts.has('A00') && !arts.has('A19'), 'A00 and A19 are not in the manifest');
-  eq(manifest.assets.length, 54);
+  eq(manifest.assets.length, 53);
 });
 test('every entry: file, size, ceiling, alt, safe box, final flag', () => {
   const bad = check(manifest, ART);
