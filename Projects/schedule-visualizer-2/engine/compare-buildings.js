@@ -77,7 +77,12 @@
 //              the label) and so keep their row when the floors they serve
 //              change. Stairs are matched by label and floor names; a stairs
 //              whose label is the only one of that label on each side is
-//              matched with the other even when its floor names differ.
+//              matched with the other even when its floor names differ. Stairs
+//              show a stairwell's letter (stairsLetter). Plain stairs on one
+//              side and a stairwell's flight over the same floors on the other
+//              (each the only unpaired one over those floors) are one row,
+//              named as A has it, with nameAfter (B's name) and stairwell
+//              "now one stairwell" (or "no longer one stairwell").
 //              Every connection row carries floorsBefore, floorsAfter and
 //              floorsChanged. Rows: { key, kind, name, floorNames (as A
 //              writes them), before, after, difference } (+ the above),
@@ -105,7 +110,7 @@
 // for a missing project or result, or a result whose loads are of day types
 // the project does not have; everything else is a value.
 
-import { allRooms, floorOfRoom } from './schema.js';
+import { allRooms, floorOfRoom, stairsLetter } from './schema.js';
 import { countBySeverity, SEVERITIES } from './findings.js';
 import { trimResult, walkFigures, busiestOf, findingsOf, roomKeys, matchRooms } from './scenario.js';
 
@@ -215,8 +220,8 @@ function namedPlaces(project, view, dayTypeId, transition) {
           entries.push({ kind: 'elevator', name, floorNames, load: value, order });
           return;
         }
-      } else if (connection && !blank(connection.label)) {
-        entries.push({ kind: 'stairs', name: connection.label, floorNames: (place.floorIds || [place.floorId]).map(floorName), load: value, order });
+      } else if (connection && !blank(stairsLetter(connection))) {
+        entries.push({ kind: 'stairs', name: stairsLetter(connection), well: !blank(connection.well), floorNames: (place.floorIds || [place.floorId]).map(floorName), load: value, order });
         return;
       }
     }
@@ -224,6 +229,9 @@ function namedPlaces(project, view, dayTypeId, transition) {
   });
   return { entries, unnamed };
 }
+
+export const NOW_ONE_STAIRWELL = 'now one stairwell';
+export const NO_LONGER_ONE_STAIRWELL = 'no longer one stairwell';
 
 const floorsKey = (entry) => entry.floorNames.map(nameKey).sort();
 
@@ -291,6 +299,32 @@ function keyPlaces(entriesA, entriesB) {
   for (const [label, listA] of byLabel(entriesA)) {
     const listB = labelsB.get(label);
     if (listA.length === 1 && listB && listB.length === 1) listB[0].key = listA[0].key;
+  }
+  // flights that became one stairwell (or stopped being one): plain stairs A
+  // and B on one side and well A over the same floors on the other have
+  // different letters, so the letter cannot pair them; the floors do, when each
+  // side has exactly one still-unpaired flight over those floors, one a well's
+  // and the other not. The row keeps A's name and says what changed.
+  const unpaired = (entries, other) => {
+    const keys = new Set(other.map((entry) => entry.key));
+    const out = new Map();
+    for (const entry of entries) {
+      if (entry.kind !== 'stairs' || keys.has(entry.key)) continue;
+      const key = JSON.stringify(floorsKey(entry));
+      if (!out.has(key)) out.set(key, []);
+      out.get(key).push(entry);
+    }
+    return out;
+  };
+  const looseB = unpaired(entriesB, entriesA);
+  for (const [floorsOf, listA] of unpaired(entriesA, entriesB)) {
+    const listB = looseB.get(floorsOf);
+    if (listA.length !== 1 || !listB || listB.length !== 1 || Boolean(listA[0].well) === Boolean(listB[0].well)) continue;
+    listB[0].key = listA[0].key;
+    const note = listB[0].well ? NOW_ONE_STAIRWELL : NO_LONGER_ONE_STAIRWELL;
+    listA[0].wellNote = note;
+    listB[0].wellNote = note;
+    listA[0].nameAfter = listB[0].name;
   }
   const group = (entries) => {
     const found = new Map();
@@ -587,6 +621,10 @@ export function compareBuildings(projectA, resultA, projectB, resultB, options) 
       row.floorsChanged = JSON.stringify(floorsKey(a[0])) !== JSON.stringify(floorsKey(b[0]));
     }
     if (a[0].renamedFloor) row.renamedFloor = a[0].renamedFloor;
+    if (a[0].wellNote) {
+      row.stairwell = a[0].wellNote;
+      row.nameAfter = a[0].nameAfter;
+    }
     row.order = order;
     (unitsDiffer ? changed : row.difference > 0 ? busier : quieter).push(row);
   });

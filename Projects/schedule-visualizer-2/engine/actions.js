@@ -26,7 +26,7 @@ import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DA
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, marksOf, dutiesOf, newMark, newDuty } from './schema.js';
 import { RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS, releaseOf, newRelease } from './schema.js';
-import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND } from './schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND, stairsLetter } from './schema.js';
 import { releaseKind } from './release.js';
 import { formatDuration } from './findings.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
@@ -2398,14 +2398,14 @@ export const connectStairs = action(
 
 function connectionLabel(project, connectionId) {
   const connection = project.building.connections.find((candidate) => candidate.id === connectionId);
-  return connection ? connection.label : '';
+  return connection ? stairsLetter(connection) : '';
 }
 
 // 'stairs A' or 'elevator D' for a connection, for a label.
 function connectionWords(project, connectionId) {
   const connection = project.building.connections.find((candidate) => candidate.id === connectionId);
   if (!connection) return 'stairs';
-  return connection.kind === ELEVATOR_KIND ? 'elevator ' + (connection.car || connection.label) : 'stairs ' + connection.label;
+  return connection.kind === ELEVATOR_KIND ? 'elevator ' + (connection.car || connection.label) : 'stairs ' + stairsLetter(connection);
 }
 
 // payload: { connectionId }. An elevator's stops stay where they are, not connected.
@@ -2420,11 +2420,12 @@ export const disconnectStairs = action(
 export const setConnection = action(
   { label: (before, payload) => 'Change ' + (connectionWords(before, payload.connectionId).startsWith('elevator') ? 'an elevator connection' : 'stairs connection ' + connectionLabel(before, payload.connectionId)), bumps: [GEOMETRY], focus: buildingFocus },
   (project, payload) => {
-    const clash = typeof payload.label === 'string' ? project.building.connections.find((other) => other.id !== payload.connectionId && other.label === payload.label) : null;
+    const clash = typeof payload.label === 'string' ? project.building.connections.find((other) => other.id !== payload.connectionId && (other.label === payload.label || (typeof other.well === 'string' && nameKey(other.well) === nameKey(payload.label)))) : null;
     if (clash && clash.kind === ELEVATOR_KIND) {
       const car = clash.car || clash.label;
       refuse(car === clash.label ? 'Elevator ' + car + ' already uses that letter. Each has its own letter or name; type a different one.' : 'A connection of Elevator ' + car + ' is already called ' + clash.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     }
+    if (clash && typeof clash.well === 'string' && nameKey(clash.well) === nameKey(payload.label)) refuse('Stairwell ' + clash.well + ' already uses that letter. Each has its own letter or name; type a different one.', 'duplicate-label');
     if (clash) refuse('There is already a stairs connection ' + payload.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     return inBuilding(project, (building) => geometry.setConnection(building, payload));
   },
@@ -3520,7 +3521,7 @@ function scenarioLever(project, lever) {
       const floor = project.building.floors.find((each) => each.id === end.floorId);
       return Boolean(floor) && floor.cells[end.cell] === CELL_STAIRS;
     };
-    if (!stairsAt(connection.a) || !stairsAt(connection.b)) refuse('Stairs ' + connection.label + ' no longer has stairs at both ends, so it has no way to change.', 'missing');
+    if (!stairsAt(connection.a) || !stairsAt(connection.b)) refuse('Stairs ' + stairsLetter(connection) + ' no longer has stairs at both ends, so it has no way to change.', 'missing');
     if (!['both', 'ab', 'ba', 'closed'].includes(lever.way)) refuse('A stairs\' way is both ways, one way only from its A end or from its B end, or closed.', 'bad-value');
     return { kind: 'way', connectionId: connection.id, way: lever.way };
   }
