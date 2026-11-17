@@ -610,6 +610,13 @@ test('pinned game: the papers of each season of seed 7 (full) are pinned, and a 
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
 });
+test('season log: one { at, kind: season, change } entry for each closed season, change the net dinars of that season (MER-60, for the ledger)', () => {
+  const { s } = play(content, { seed: 7 });
+  const seasons = s.log.filter(e => e.kind === 'season');
+  eq(seasons.map(e => [e.at, e.change]), [[0, -40], [1, -30], [2, 59], [3, -10], [4, -25], [5, -12], [6, -40], [7, -30], [8, 84], [9, -35], [10, -25]]);
+  eq(seasons.map(e => Object.keys(e).sort().join()).every(k => k === 'at,change,kind,money'), true, 'the ledger reads at and change; money is where the next change starts');
+  eq(500 + seasons.reduce((n, e) => n + e.change, 0), s.money, 'the plain house starts with 500 and the changes add up to what it ends with');
+});
 test('pinned game: one extra state.rng step in openSeason changes the papers, so the pin above is a guard', () => {
   const saved = steps.news, pinned = JSON.stringify(play(content, { seed: 7 }).seq);
   steps.news = (s, ...a) => { rng.next(s); return saved(s, ...a); };      // one extra draw each time a season opens
