@@ -200,12 +200,18 @@ html.large-text .title-what { display: none; }
   .stack { left: max(var(--s2), env(safe-area-inset-left)); right: max(var(--s2), env(safe-area-inset-right)); width: auto; top: 48px; bottom: var(--s2); }
   .stack-papers { flex-direction: row; align-items: stretch; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
   .sheet-box { flex: 0 0 70%; max-height: 100%; }
-  .sheet { display: flex; flex-direction: column; max-height: 100%; padding: var(--s2) var(--s3); }
+  /* A paper whose head, line, title and three choices fill the frame (a report) leaves the body 3 lines at least
+     and the sheet scrolls; with fewer choices the body is the only part that scrolls, as DESIGN 5.2 says. */
+  .sheet { display: flex; flex-direction: column; max-height: 100%; padding: var(--s2) var(--s3); overflow-y: auto; }
   .sheet-title { font-size: var(--step-1); }
-  .sheet-body { overflow-y: auto; flex: 1 1 auto; min-height: 0; margin-bottom: var(--s2); }
+  .sheet-body { overflow-y: auto; flex: 1 1 auto; min-height: 4.6em; margin-bottom: var(--s2); }
+  .sheet-head { margin-bottom: var(--s1); }
+  .letter-line { margin-bottom: var(--s1); }
   .choices { flex: none; }
-  .edges { order: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; }
-  .end-row { position: static; }
+  .edges { order: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; padding-bottom: 5.5rem; }
+  /* End the season sits under the edges, at the right, so the raised paper keeps the full height */
+  .end-row { position: absolute; right: 0; bottom: 0; width: calc(30% - var(--s2)); margin: 0; flex-direction: column; align-items: stretch; }
+  .end-reason { text-align: center; }
 }
 
 /* ---- The map table (DESIGN 4.7, 5.1 to 5.3) ---- */
