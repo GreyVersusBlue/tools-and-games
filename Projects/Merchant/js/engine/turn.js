@@ -10,10 +10,10 @@
 import { playedSeasons, seasonIndex, seasonName, year, actOf, actPosition, isLastSeason } from './calendar.js';
 import { holds } from './conditions.js';
 import { apply, applyAll, check } from './effects.js';
-import { find } from './state.js';
+import { find, addPaper, deskFull, cityOf, MAX_PAPERS } from './state.js';
 import { weighted } from './rng.js';
 
-export const MAX_PAPERS = 5;
+export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
 
 const noop = () => {};
@@ -29,8 +29,9 @@ export const steps = {
       if (ev.at !== idx || s.seen[`event:${ev.id}`]) continue;
       s.seen[`event:${ev.id}`] = 1;
       applyAll(s, content, ev.do);
-      s.log.push({ at: idx, kind: 'event', ref: ev.id });
-      if (ev.notice) s.desk.push({ id: null, kind: 'notice', ref: ev.id, state: 'open' });
+      const shown = !ev.notice || addPaper(s, { kind: 'notice', ref: ev.id });
+      // A notice with no room on a full desk is not shown; the event's effects stand (MER-07).
+      s.log.push({ at: idx, kind: 'event', ref: ev.id, ...(shown ? {} : { dropped: 'notice' }) });
     }
   },
   drawCards(s, content) { drawCards(s, content); },
@@ -54,21 +55,27 @@ const clone = s => structuredClone(s);
 function cardsOnDesk(s) { return s.desk.filter(p => p.kind === 'card'); }
 
 function cardTarget(s, content) {
-  if (s.t === 1 && content.city.secondSeason?.cards !== undefined) return content.city.secondSeason.cards;
+  const city = cityOf(content, 'drawing cards');
+  if (s.t === 1 && city.secondSeason?.cards !== undefined) return city.secondSeason.cards;
   const { i, of } = actPosition(s, content);
   return s.expeditions.length >= 3 || i + 1 > of / 2 ? 3 : 2;
 }
 
 function drawCards(s, content) {
   const idx = seasonIndex(s, content);
-  const put = ref => { s.desk.push({ id: null, kind: 'card', ref, state: 'open' }); s.seen[ref] = (s.seen[ref] ?? 0) + 1; };
+  const city = cityOf(content, 'drawing cards');
+  const put = ref => {
+    if (!addPaper(s, { kind: 'card', ref })) return false;
+    s.seen[ref] = (s.seen[ref] ?? 0) + 1;
+    return true;
+  };
 
   if (s.t === 0) {
-    const opening = content.city.opening?.[s.house] ?? [];
-    if (s.desk.length + opening.length > MAX_PAPERS) throw new Error(`opening for "${s.house}" is more than ${MAX_PAPERS} papers`);
+    const opening = city.opening?.[s.house] ?? [];
+    if (deskFull(s, opening.length)) throw new Error(`opening for "${s.house}" is more than ${MAX_PAPERS} papers`);
     for (const id of opening) { find(content.cards, id, 'card'); put(id); }
   }
-  for (let want = cardTarget(s, content) - cardsOnDesk(s).length; want > 0 && s.desk.length < MAX_PAPERS; want--) {
+  for (let want = cardTarget(s, content) - cardsOnDesk(s).length; want > 0; want--) {
     const groups = new Set(cardsOnDesk(s).map(p => find(content.cards, p.ref, 'card').group));
     const recent = new Set(s.log.filter(e => e.kind === 'card' && idx - e.at < RECENT).map(e => e.ref));
     const onDesk = new Set(s.desk.map(p => p.ref));
@@ -77,7 +84,7 @@ function drawCards(s, content) {
       !onDesk.has(c.id) && !groups.has(c.group) && !recent.has(c.id) &&
       !(c.repeat === false && s.seen[c.id]) &&
       holds(c.when, s, content));
-    if (!pool.length) break;
+    if (!pool.length || deskFull(s)) break; // no draw is spent on a paper that has no room
     put(weighted(s, pool).id);
   }
 }
@@ -95,18 +102,36 @@ function open(s, content) {
   numberPapers(s);
 }
 
+/** Papers a queue item will put on the desk when it fires: its card and any {card} in its do. */
+const slotsOf = q => (q.card ? 1 : 0) + (q.do ?? []).filter(e => e && typeof e === 'object' && 'card' in e).length;
+
+/** Fires one queue item on `s`: every effect with "now" equal to the item's own season
+    (`at`) and the context of the paper that queued it. */
+function fireOne(s, content, q) {
+  const ctx = { later: true, at: q.at, from: q.from, ...(q.agent ? { agent: q.agent } : {}), ...(q.expedition ? { expedition: q.expedition } : {}) };
+  applyAll(s, content, q.do, ctx);
+  if (q.card) apply(s, content, { card: q.card }, ctx);
+}
+
+/** Queue items due by the next played season fire in order of `at`. An item due in a gap
+    between acts (ARCHITECTURE 4.7) fires with the first item of the next played season, at
+    the end of the last season before the gap, with its own `at`: the jump does not settle it.
+    A follow-up that would put a sixth paper on the desk waits a season, effects and all, and
+    keeps its `from`. An item that throws is logged as dropped and never fires again; its
+    effects up to the throw are undone. */
 function fireDue(s, content) {
   const played = playedSeasons(content.calendar, s.length);
   const upTo = played[Math.min(s.t + 1, played.length - 1)];
   const due = s.queue.filter(q => q.at <= upTo).sort((a, b) => a.at - b.at);
   const held = [];
   for (const q of due) {
-    // A follow-up that would put a sixth paper on the desk waits a season, effects and all.
-    if (q.card && s.desk.length >= MAX_PAPERS) { held.push(q); continue; }
-    applyAll(s, content, q.do, { later: true });
-    if (q.card) {
-      apply(s, content, { card: q.card }, { later: true });
-      s.flags[`from:${q.card}`] = q.from;
+    if (slotsOf(q) && deskFull(s, slotsOf(q))) { held.push(q); continue; }
+    const trial = structuredClone(s);
+    try {
+      fireOne(trial, content, q);
+      Object.assign(s, trial);
+    } catch (e) {
+      s.log.push({ at: seasonIndex(s, content), kind: 'dropped', ref: q.from ?? q.card ?? null, reason: e.message });
     }
   }
   s.queue = [...s.queue.filter(q => q.at > upTo), ...held];
@@ -131,7 +156,7 @@ export function paperChoices(state, content, paperId) {
   const p = state.desk.find(x => x.id === paperId);
   if (!p) throw new Error(`no paper "${paperId}" on the desk`);
   if (p.kind === 'notice') return [{ id: 'ok', label: 'Noted' }];
-  return find(content.cards, p.ref, 'card').choices;
+  return structuredClone(find(content.cards, p.ref, 'card').choices ?? []);
 }
 
 export function choose(state, content, paperId, choiceId) {
@@ -149,14 +174,30 @@ export function choose(state, content, paperId, choiceId) {
     const choice = (card.choices ?? []).find(c => c.id === choiceId);
     if (!choice) throw new Error(`choose: card "${card.id}" has no choice "${choiceId}"`);
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
-    for (const l of choice.later ?? []) {
-      if (!Number.isInteger(l.in) || l.in < 1) throw new Error(`choose: later.in must be a whole number above 0 (card "${card.id}")`);
-      for (const e of l.do ?? []) check(e);
-    }
     const ctx = { agent: paper.agent, expedition: paper.expedition };
+    const refuse = e => new Error(`choose: "${choice.label}" on card "${card.id}" is refused: ${e.message}`);
+    const later = choice.later ?? [];
+    // Every reference in `later` is checked now, on a scratch copy, so a bad card id, good,
+    // stop or agent refuses the choice here and never throws when the item fires.
+    const trial = clone(s);
+    try {
+      applyAll(trial, content, choice.now, ctx);
+      for (const l of later) {
+        if (!Number.isInteger(l.in) || l.in < 1) throw new Error(`later.in must be a whole number above 0`);
+        const item = { do: l.do ?? [], ...(l.card ? { card: l.card } : {}) };
+        if (l.card) find(content.cards, l.card, 'card');
+        if (slotsOf(item) > MAX_PAPERS) throw new Error(`a later effect that puts more than ${MAX_PAPERS} papers on the desk can never fire`);
+        for (const e of item.do) check(e);
+        applyAll(trial, content, item.do, { ...ctx, later: true, dry: true });
+      }
+    } catch (e) { throw refuse(e); }
     applyAll(s, content, choice.now, ctx);
-    for (const l of choice.later ?? []) {
-      s.queue.push({ at: idx + l.in, do: l.do ?? [], ...(l.card ? { card: l.card } : {}), from: `${card.id}/${choice.id}` });
+    for (const l of later) {
+      s.queue.push({
+        at: idx + l.in, do: structuredClone(l.do ?? []), ...(l.card ? { card: l.card } : {}),
+        from: `${card.id}/${choice.id}`,
+        ...(paper.agent ? { agent: paper.agent } : {}), ...(paper.expedition ? { expedition: paper.expedition } : {}),
+      });
     }
     for (const e of card.unlocks ?? []) if (!s.notebook.includes(e)) s.notebook.push(e);
   }

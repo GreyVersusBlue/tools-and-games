@@ -3,6 +3,34 @@ import { playedSeasons } from './calendar.js';
 
 export const REP_GROUPS = ['partners', 'agents', 'court', 'foreign'];
 export const SAVE_VERSION = 1;
+export const MAX_PAPERS = 5; // DESIGN 2, ARCHITECTURE 4.2
+
+/** True when no paper more fits on the desk. */
+export const deskFull = (state, extra = 1) => state.desk.length + extra > MAX_PAPERS;
+
+/** The one place a paper goes onto the desk (ARCHITECTURE 4.2), so the cap of MAX_PAPERS holds
+    on every path: notices, follow-ups, a {card} effect, drawn cards. Returns false and leaves
+    the desk alone when it is full. `first` puts a follow-up after the papers already
+    waiting to be numbered, which is firing order, and ahead of any paper numbered. */
+export function addPaper(state, paper, { first = false } = {}) {
+  if (deskFull(state)) return false;
+  const p = { id: null, state: 'open', ...paper };
+  if (first) {
+    let k = 0;
+    while (k < state.desk.length && state.desk[k].id === null) k++;
+    state.desk.splice(k, 0, p);
+  } else state.desk.push(p);
+  return true;
+}
+
+/** content.city, or a clear error when the content has none (a city.json that never loaded). */
+export function cityOf(content, who) {
+  const c = content?.city;
+  if (!c || typeof c !== 'object' || Array.isArray(c) || !c.id) {
+    throw new Error(`${who}: content.city is missing, so the city's id, home and opening papers are unknown`);
+  }
+  return c;
+}
 
 export function find(list, id, what) {
   const hit = (list ?? []).find(x => x.id === id);
@@ -12,6 +40,7 @@ export function find(list, id, what) {
 
 export function freshState(content, { seed, length, house }) {
   if (!Number.isInteger(seed)) throw new Error('freshState: seed must be an integer');
+  const city = cityOf(content, 'freshState');
   playedSeasons(content.calendar, length); // throws on a length the calendar lacks
   const h = find(content.houses, house, 'house');
 
@@ -22,14 +51,14 @@ export function freshState(content, { seed, length, house }) {
   }
   const agents = {};
   for (const a of content.agents ?? []) {
-    agents[a.id] = { hired: (h.agents ?? []).includes(a.id), where: a.home ?? content.city.home, trust: 0, memory: [] };
+    agents[a.id] = { hired: (h.agents ?? []).includes(a.id), where: a.home ?? city.home, trust: 0, memory: [] };
   }
   const rep = Object.fromEntries(REP_GROUPS.map(g => [g, 0]));
   Object.assign(rep, h.rep ?? {});
 
   return {
     v: SAVE_VERSION,
-    city: content.city.id,
+    city: city.id,
     length,
     house,
     seed,

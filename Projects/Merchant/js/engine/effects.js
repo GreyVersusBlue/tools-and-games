@@ -1,10 +1,13 @@
 // Effects (ARCHITECTURE 5.6): a closed list, each a one-key object plus its arguments.
 // apply(state, content, effect, ctx) changes `state` in place, so call it on a clone.
 // ctx: { agent } for "$agent", { expedition } for an order, { later: true } for a card.
+// A later effect also carries { at } (its own season, so "now" means the season it fires
+// for, MER-07) and { from } (the choice that queued it, kept as the flag "from:<card>");
+// { dry: true } is a trial run that checks references and puts no paper on the desk.
 // Anything not in the table throws, and so does a good, stop, agent or card that is not
 // in the content.
 import { seasonIndex } from './calendar.js';
-import { find, REP_GROUPS } from './state.js';
+import { find, addPaper, REP_GROUPS } from './state.js';
 
 const ARGS = {
   money: [], stock: ['by'], rep: ['by'], trust: ['by'], memory: ['kind'],
@@ -13,6 +16,8 @@ const ARGS = {
 };
 export const EFFECT_KEYS = Object.keys(ARGS);
 
+/** The season an effect means by "now": its own, when it is a later effect firing. */
+const nowOf = (state, content, ctx) => ctx.at ?? seasonIndex(state, content);
 const clamp3 = n => Math.max(-3, Math.min(3, n));
 const whole = (n, what) => { if (!Number.isInteger(n)) throw new Error(`effect ${what}: ${n} is not a whole number`); return n; };
 
@@ -60,13 +65,13 @@ export function apply(state, content, effect, ctx = {}) {
     }
     case 'memory':
       if (typeof effect.kind !== 'string') throw new Error('effect memory: needs a kind');
-      state.agents[agentId(state, v, ctx)].memory.push({ at: seasonIndex(state, content), kind: effect.kind });
+      state.agents[agentId(state, v, ctx)].memory.push({ at: nowOf(state, content, ctx), kind: effect.kind });
       return;
     case 'flag':
       if (typeof v !== 'string') throw new Error('effect flag: needs a name');
       if (effect.clear) { delete state.flags[v]; return; }
       if (!('set' in effect)) throw new Error(`effect flag "${v}": needs set or clear`);
-      state.flags[v] = effect.set === 'now' ? seasonIndex(state, content) : effect.set;
+      state.flags[v] = effect.set === 'now' ? nowOf(state, content, ctx) : effect.set;
       return;
     case 'price': {
       find(content.stops, v, 'stop');
@@ -80,7 +85,7 @@ export function apply(state, content, effect, ctx = {}) {
       const keys = Object.keys(v);
       for (const k of keys) if (!['from', 'principal', 'in', 'rate'].includes(k)) throw new Error(`effect loan: unknown key "${k}"`);
       for (const k of ['from', 'principal', 'in', 'rate']) if (!(k in v)) throw new Error(`effect loan: needs ${k}`);
-      const at = seasonIndex(state, content);
+      const at = nowOf(state, content, ctx);
       const n = state.loans.filter(l => l.from === v.from).length + 1;
       state.loans.push({ id: `${v.from}-${n}`, from: v.from, principal: whole(v.principal, 'loan'), due: at + whole(v.in, 'loan'), rate: v.rate });
       state.money += v.principal;
@@ -95,11 +100,12 @@ export function apply(state, content, effect, ctx = {}) {
     case 'card':
       if (!ctx.later) throw new Error('effect card: only inside a later effect');
       find(content.cards, v, 'card');
-      { // follow-ups go first, in firing order; the caller numbers them (id null until then)
-        let k = 0;
-        while (k < state.desk.length && state.desk[k].id === null) k++;
-        state.desk.splice(k, 0, { id: null, kind: 'card', ref: v, state: 'open' });
+      if (ctx.dry) return;
+      // follow-ups go first, in firing order; the caller numbers them (id null until then)
+      if (!addPaper(state, { kind: 'card', ref: v, ...(ctx.agent ? { agent: ctx.agent } : {}), ...(ctx.expedition ? { expedition: ctx.expedition } : {}) }, { first: true })) {
+        throw new Error(`effect card: the desk already holds the most papers it can ("${v}" has no room)`);
       }
+      if (ctx.from !== undefined) state.flags[`from:${v}`] = ctx.from;
       return;
     case 'unlock':
       if (typeof v !== 'string') throw new Error('effect unlock: needs an entry id');
@@ -108,7 +114,7 @@ export function apply(state, content, effect, ctx = {}) {
     case 'order': {
       const x = ctx.expedition && state.expeditions.find(e => e.id === ctx.expedition);
       if (!x) throw new Error('effect order: only on a letter from an expedition on the road');
-      x.orders.push({ ...v });
+      x.orders.push(structuredClone(v));
       return;
     }
   }
