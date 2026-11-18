@@ -69,6 +69,7 @@ function showStartScreen() {
         </div>
         ${hallNote()}
         <p class="hint">Already have a career in a file? Import it from the footer.</p>
+        <p class="hint"><a class="start-home" href="/">All games</a></p>
       </div>
     </div>`;
   root.querySelectorAll("[data-bk]").forEach(b => b.onclick = () => {

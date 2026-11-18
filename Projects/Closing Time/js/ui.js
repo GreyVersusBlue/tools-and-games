@@ -60,6 +60,7 @@ function renderTopbar() {
     <div class="letterhead">
       <span class="lh-name">CLOSING TIME</span>
       <span class="lh-sub">${esc(DB.brokerages[S.brokerageId].name)} · ${esc(lv.title)}</span>
+      <a class="lh-home" href="/">All games</a>
     </div>
     <div class="statgrid">
       <div class="stat-primary">

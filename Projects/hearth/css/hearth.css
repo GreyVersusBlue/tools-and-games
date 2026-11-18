@@ -85,6 +85,10 @@
   /* C5: the HUD link on index.html, and the record and the way back on live.html. */
   .live-link{font-size:12px;letter-spacing:.06em;color:var(--gold);text-decoration:underline dotted}.live-link[hidden]{display:none}
   body.live .live-link{display:none}
+  /* TG-97: the way back to the board. Gold on the HUD's dark fade, 24px tall, no new row on a phone (it joins the wrap). */
+  .home-link{display:inline-flex;align-items:center;min-height:24px;padding:2px 4px;font-size:12px;letter-spacing:.06em;color:var(--gold);text-decoration:underline dotted}
+  .home-link[hidden],body.live .home-link{display:none}
+  .home-link:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   #live-tools,#live-back,#live-away,#live-eras{display:none}
   body.live #live-tools{display:flex;position:fixed;left:14px;top:58px;gap:12px;align-items:center;font-size:12px;letter-spacing:.04em;color:var(--dim)}
   body.live #live-tools a{color:var(--gold)}

@@ -181,6 +181,10 @@ input.par{width:54px;height:26px;padding:0 4px;border-radius:4px;border:1px soli
 #boxOverlay .card{max-height:92vh;overflow-y:auto}
 
 /* start-screen notice: phones and tablets only (coarse primary pointer) */
+.card a.homeLink{display:inline-block;margin:8px 0 0 12px;padding:9px 6px;font-size:13px;letter-spacing:.06em;
+  color:var(--amber);text-decoration:underline;text-underline-offset:3px} /* TG-97: the way back to the board */
+.card a.homeLink:hover{color:#f7b954}
+.card a.homeLink:focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:3px}
 .card .touch-note{display:none;color:var(--amber)}
 @media (pointer:coarse){.card .touch-note{display:block}}
 

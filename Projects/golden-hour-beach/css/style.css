@@ -21,6 +21,17 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a0e14; }
 #overlay-card .sub { font-style: italic; opacity: 0.8; margin-top: 0.3rem; font-size: 1.1rem; }
 #overlay-card .hint { margin-top: 2.2rem; font-size: 0.95rem; opacity: 0.9; font-family: system-ui, sans-serif; }
 #overlay-card .tiny { margin-top: 0.8rem; font-size: 0.75rem; opacity: 0.55; font-family: system-ui, sans-serif; }
+/* TG-97: the way back to the board. Full-strength text on the dark overlay, 44px
+   tall tap target, and out of the tab order the moment the title screen hides. */
+#overlay-card .home { margin-top: 1.2rem; }
+#overlay-card .home-link {
+  display: inline-block; min-height: 44px; line-height: 44px; padding: 0 1.2rem;
+  color: #f5e3cf; font: 0.95rem system-ui, sans-serif; letter-spacing: 0.04em;
+  text-decoration: underline; text-underline-offset: 3px; text-shadow: inherit;
+}
+#overlay-card .home-link:hover { color: #fff; }
+#overlay-card .home-link:focus-visible { outline: 2px solid #f5e3cf; outline-offset: 2px; border-radius: 3px; }
+#overlay.hidden .home-link { visibility: hidden; }
 .mobile-hint { display: none; }
 @media (pointer: coarse) {
   .desktop-hint { display: none; }

@@ -235,10 +235,10 @@ async function play(page, p, how, { fromLoad = false, log = null } = {}) {
 
     if (how === "click") await page.click(choiceSel(k));
     else {
-      // Tab to the choice, counting. From a fresh load the save bar's two
-      // buttons come first; after any choice focus is on the title, so the
+      // Tab to the choice, counting. From a fresh load the header's "All games"
+      // link (TG-97) and the save bar's two buttons come first; after any choice focus is on the title, so the
       // first Tab is the first choice.
-      const lead = i === 0 && fromLoad ? 2 : 0;
+      const lead = i === 0 && fromLoad ? 3 : 0;
       let presses = 0, on = null;
       while (presses < 14) {
         await page.keyboard.press("Tab");
