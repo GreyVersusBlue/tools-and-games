@@ -29,10 +29,11 @@ const idSet = list => new Set((Array.isArray(list) ? list : []).filter(isObject)
 
 // ---- validate and migrate (ARCHITECTURE 8.2)
 
-/** A plain object with a numeric `t`, a string `city` and a `phase` in the closed list.
-    Anything else is refused and the player starts fresh. */
+/** A plain object with a numeric `t` and a string `city`. Anything else is refused and the
+    player starts fresh. `phase` is not checked here: a stray phase should not cost a player
+    the game, so `repair` turns an unknown one into "desk" (DECISIONS 2026-11-17 01:28). */
 export function validate(s) {
-  return isObject(s) && isNum(s.t) && typeof s.city === 'string' && PHASES.includes(s.phase);
+  return isObject(s) && isNum(s.t) && typeof s.city === 'string';
 }
 
 /** Version drift only (#37), one step per version. A version-0 blob is one written before the
@@ -55,12 +56,12 @@ function repairMarket(m, fresh, stops, goods) {
     const have = isObject(m?.[stop]) ? m[stop] : {};
     for (const g of Object.keys(fresh[stop] ?? {})) {
       const e = isObject(have[g]) ? have[g] : {};
-      out[stop][g] = { ...e, f: isNum(e.f) && e.f > 0 ? e.f : fresh[stop][g].f, glut: isNum(e.glut) && e.glut >= 0 ? e.glut : 0 };
+      out[stop][g] = { ...e, f: isNum(e.f) && e.f > 0 ? e.f : fresh[stop][g].f, glut: isNum(e.glut) ? Math.max(-0.3, e.glut) : 0 };
     }
     // goods a stop sells in the save but not in the fresh state stay only if the content has the good
     for (const g of Object.keys(have)) {
       if (!out[stop][g] && goods.has(g) && isObject(have[g])) {
-        out[stop][g] = { ...have[g], f: isNum(have[g].f) && have[g].f > 0 ? have[g].f : 1, glut: isNum(have[g].glut) && have[g].glut >= 0 ? have[g].glut : 0 };
+        out[stop][g] = { ...have[g], f: isNum(have[g].f) && have[g].f > 0 ? have[g].f : 1, glut: isNum(have[g].glut) ? Math.max(-0.3, have[g].glut) : 0 };
       }
     }
   }

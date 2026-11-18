@@ -1,1 +1,138 @@
-{}
+{
+  "interludes": [
+    {
+      "id": "gap-1-2",
+      "title": "Years pass",
+      "body": "Nine years go by. Agents come home or do not, loans fall due, and the world changes while the house goes on.",
+      "fact": false
+    },
+    {
+      "id": "gap-2-3",
+      "title": "Years pass",
+      "body": "Nine more years go by. Loans fall due again, and some of your agents grow old or retire.",
+      "fact": false
+    }
+  ],
+  "ending": [
+    {
+      "id": "ending-alexandria",
+      "title": "Alexandria, 1347",
+      "body": "In 1347 the plague reached Alexandria. Al-Maqrizi told of a ship that came into the harbour with most of its crew dead. He wrote seventy years or more afterward, and he gives no month. The game ends in the autumn of 1347 as a choice, not as a recorded date.",
+      "sources": [
+        {
+          "src": "borsch-2014",
+          "at": "p. 125, citing al-Maqrizi's Suluk 2: 772 to 773; the year only, no month"
+        },
+        {
+          "src": "tresso-2021",
+          "at": "p. 217 note 46, al-Maqrizi's dates"
+        }
+      ]
+    },
+    {
+      "id": "ending-cairo",
+      "title": "Cairo, 1348",
+      "body": "In Cairo the plague was worst in November and December 1348. By late September the sultan and his court had left the city for Siryaqus, a town outside it. They stayed there until the end of December.",
+      "sources": [
+        {
+          "src": "dols-1974b",
+          "at": "notes 31 and 32: the court at Siryaqus from 25 September 1348 to the end of Ramadan, 22 December"
+        },
+        {
+          "src": "tresso-2021",
+          "at": "p. 220, Cairo's height in Sha'ban and Ramadan, November and December 1348"
+        },
+        {
+          "src": "borsch-2014",
+          "at": "p. 125, the peak around December 1348"
+        }
+      ]
+    },
+    {
+      "id": "ending-counts",
+      "title": "Counting the dead",
+      "body": "Chroniclers gave very large counts of the dead in Cairo, and the counts do not agree. This page gives none.",
+      "sources": [
+        {
+          "src": "borsch-2014",
+          "at": "p. 125, a figure of something like 7,000 a day at the peak"
+        },
+        {
+          "src": "dols-1977",
+          "at": "death tolls are the chroniclers' own; page unchecked"
+        }
+      ]
+    }
+  ],
+  "about": [
+    {
+      "id": "about-game",
+      "title": "What this game is",
+      "fact": false,
+      "body": "You run a merchant house in Cairo from 1324 to 1347. You never travel: you hire agents, send them out with cargo, and wait for their letters, which always arrive late."
+    },
+    {
+      "id": "about-play",
+      "title": "How to play",
+      "fact": false,
+      "body": "Each turn is one season. Read what arrives: returning expeditions, letters from the road, price news and notices.\nAnswer the cards on your desk. Each card turns over to show what really happened.\nOpen the map to send an expedition: pick a stop, an agent, a cargo and a contract.\nPress End season. Expeditions move along their route, prices change and events happen.\nThe game ends when the plague reaches Egypt in 1347. Your score counts who came home as well as the money."
+    },
+    {
+      "id": "about-d5-frame",
+      "title": "A note before the next part",
+      "context": "d5",
+      "fact": false,
+      "body": "A person is not cargo, so nobody in this game can be bought, sold or chosen as a good. This page says plainly that the trade happened."
+    },
+    {
+      "id": "about-d5",
+      "title": "What this game leaves out",
+      "context": "d5",
+      "body": "Egypt's sultans built their army from mamluks. Mamluks were enslaved people, bought to serve as soldiers. The first mamluks came mostly from the steppe north of the Black Sea, and later ones came from the Caucasus mountains. Many were sold at Caffa, a colony of Genoa, and at Tana, a Mongol port where Venetian merchants worked. Thousands of people a year were shipped from the northern Black Sea to Egypt and Italy. Alexandria had special markets for selling them. Nubia, the land south of Egypt, was also a major source of enslaved people. They were moved north by river and over land. Writers in Christian lands called again and again for an end to this trade with Egypt.",
+      "sources": [
+        {
+          "src": "levanoni-2010",
+          "at": "pp. 237 to 284; sentences 1 and 2, in summary"
+        },
+        {
+          "src": "petry-2022",
+          "at": "pp. 53 to 79; sentences 1 and 2, in abstract"
+        },
+        {
+          "src": "fontaine-2020",
+          "at": "sentences 3 and 6; Caffa as a Genoese colony, the Mongol port of Tana, calls for an embargo"
+        },
+        {
+          "src": "pubblici-2017",
+          "at": "p. 566; sentences 3 and 4; Tana as a Venetian settlement"
+        },
+        {
+          "src": "miner-2021",
+          "at": "sentence 4; thousands exported each year, Alexandria's special markets"
+        },
+        {
+          "src": "perry-2017",
+          "at": "pp. 133 to 138; sentence 5; Nubia as a source, moved by river and overland"
+        }
+      ]
+    },
+    {
+      "id": "about-history",
+      "title": "Where the history comes from",
+      "fact": false,
+      "body": "Every card, letter and notice has a note that names its sources. The full list of books and articles is below."
+    },
+    {
+      "id": "about-made",
+      "title": "Who made it",
+      "fact": false,
+      "body": "Merchant was made by greyversusblue. The people in the cards are invented. Real people appear only as the sources record them."
+    },
+    {
+      "id": "about-privacy",
+      "title": "Your save and your privacy",
+      "fact": false,
+      "body": "The game saves only in this browser, on this device. It sends nothing anywhere."
+    }
+  ]
+}

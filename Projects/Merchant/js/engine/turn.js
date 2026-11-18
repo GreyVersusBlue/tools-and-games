@@ -5,13 +5,15 @@
 // can replace a stub:
 //   open:  returns, letters, news, events, drawCards
 //   close: move, risk, tolls, drift, fireDue, advance, (jump), end, then open
-// returns, letters, news, move, risk, tolls, drift and jump are stubs here. Expeditions
-// (routes.js), markets (market.js) and letters (agents.js) fill them in later units.
+// letters is a stub here; its unit fills it in. Expeditions and the jump are routes.js, markets
+// market.js.
 import { playedSeasons, seasonIndex, seasonName, year, actOf, actPosition, isLastSeason } from './calendar.js';
 import { holds } from './conditions.js';
 import { apply, applyAll, check } from './effects.js';
 import { find, addPaper, deskFull, cityOf, MAX_PAPERS } from './state.js';
 import { weighted } from './rng.js';
+import * as market from './market.js';
+import * as routes from './routes.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
@@ -20,13 +22,18 @@ const noop = () => {};
 
 export const steps = {
   // opening a season
-  returns: noop,
+  returns(s, content) { routes.returns(s, content); },
   letters: noop,
-  news: noop,
+  news(s, content) {
+    // city.json's priceNews (default true) turns price letters off for a city
+    if (content.city?.priceNews === false) return;
+    market.news(s, content);
+  },
   events(s, content) {
     const idx = seasonIndex(s, content);
     for (const ev of content.events ?? []) {
-      if (ev.at !== idx || s.seen[`event:${ev.id}`]) continue;
+      // an event with `between` belongs to the gap between acts: the jump fires it, never its season
+      if (ev.at !== idx || s.seen[`event:${ev.id}`] || (ev.between && s.length === 'acts')) continue;
       s.seen[`event:${ev.id}`] = 1;
       applyAll(s, content, ev.do);
       const shown = !ev.notice || addPaper(s, { kind: 'notice', ref: ev.id });
@@ -36,17 +43,17 @@ export const steps = {
   },
   drawCards(s, content) { drawCards(s, content); },
   // closing a season
-  move: noop,
-  risk: noop,
-  tolls: noop,
-  drift: noop,
+  move(s, content) { routes.move(s, content); },
+  risk(s, content) { routes.risk(s, content); },
+  tolls(s, content) { routes.tolls(s, content); },
+  drift(s, content) { market.drift(s, content); },
   fireDue(s, content) { fireDue(s, content); },
   advance(s, content) {
     const moved = s.t + 1 < playedSeasons(content.calendar, s.length).length;
     if (moved) s.t += 1;
     return moved;
   },
-  jump(s) { s.phase = 'interlude'; },
+  jump(s, content) { routes.jump(s, content); },
   end(s, content, moved) { if (!moved) s.phase = 'recall'; },
 };
 
@@ -123,18 +130,22 @@ function fireDue(s, content) {
   const played = playedSeasons(content.calendar, s.length);
   const upTo = played[Math.min(s.t + 1, played.length - 1)];
   const due = s.queue.filter(q => q.at <= upTo).sort((a, b) => a.at - b.at);
-  const held = [];
+  const held = [], accounts = [];
   for (const q of due) {
     if (slotsOf(q) && deskFull(s, slotsOf(q))) { held.push(q); continue; }
     const trial = structuredClone(s);
     try {
       fireOne(trial, content, q);
+      // a later effect with no follow-up card is recorded for the one folded Accounts paper
+      const item = slotsOf(q) ? null : routes.accountItem(trial, content, q);
       Object.assign(s, trial);
+      if (item) accounts.push(item);
     } catch (e) {
       s.log.push({ at: seasonIndex(s, content), kind: 'dropped', ref: q.from ?? q.card ?? null, reason: e.message });
     }
   }
   s.queue = [...s.queue.filter(q => q.at > upTo), ...held];
+  routes.foldAccounts(s, content, accounts);
 }
 
 export function newGameFrom(state, content) {
@@ -152,10 +163,13 @@ export function openSeason(state, content) {
   return s;
 }
 
+/** Papers that tell the player something and are answered with "ok": no card behind them. */
+const INFO = { notice: 'Noted', news: 'Noted', return: 'Into the ledger', lost: 'Noted', accounts: 'Noted' };
+
 export function paperChoices(state, content, paperId) {
   const p = state.desk.find(x => x.id === paperId);
   if (!p) throw new Error(`no paper "${paperId}" on the desk`);
-  if (p.kind === 'notice') return [{ id: 'ok', label: 'Noted' }];
+  if (p.kind in INFO) return [{ id: 'ok', label: INFO[p.kind] }];
   return structuredClone(find(content.cards, p.ref, 'card').choices ?? []);
 }
 
@@ -167,7 +181,7 @@ export function choose(state, content, paperId, choiceId) {
   if (paper.state !== 'open') throw new Error(`choose: paper "${paperId}" is already answered`);
   const idx = seasonIndex(s, content);
 
-  if (paper.kind === 'notice') {
+  if (paper.kind in INFO) {
     if (choiceId !== 'ok') throw new Error(`choose: a notice is answered with "ok"`);
   } else {
     const card = find(content.cards, paper.ref, 'card');
@@ -204,7 +218,7 @@ export function choose(state, content, paperId, choiceId) {
   paper.state = 'done';
   paper.choice = choiceId;
   s.done.push({ id: paper.id, ref: paper.ref, choice: choiceId });
-  s.log.push({ at: idx, kind: paper.kind === 'notice' ? 'event' : 'card', ref: paper.ref, choice: choiceId });
+  s.log.push({ at: idx, kind: paper.kind in INFO ? 'event' : 'card', ref: paper.ref, choice: choiceId });
   return s;
 }
 
@@ -234,11 +248,11 @@ export function endSeason(state, content) {
   return s;
 }
 
-/** The ending's last choice (ARCHITECTURE 4.9). Stub: later units settle the expeditions. */
+/** The ending's last choice (ARCHITECTURE 4.9): routes.js rolls each expedition and each agent at home. */
 export function recall(state, content, decisions = {}) {
   if (state.phase !== 'recall') throw new Error(`recall: the game is not at its end (phase ${state.phase})`);
   const s = clone(state);
-  s.phase = 'ended';
+  routes.recall(s, content, decisions);
   return s;
 }
 
@@ -254,5 +268,7 @@ export function view(state, content) {
     act: actOf(state, content),
     last: isLastSeason(state, content),
     phase: state.phase,
+    prices: market.knownPrices(state, content),
+    interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,
   };
 }
