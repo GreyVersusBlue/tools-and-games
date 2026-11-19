@@ -3,8 +3,8 @@
 // Plays N seeded three-act games per bot through the engine's public surface (index.js) and
 // prints a table. Exits 1 when a threshold below is breached. No browser, no clock, plain Node.
 //
-// The bots have no card policy yet (M3 adds one): at every card a bot takes the first choice
-// that holds, and `random` takes a random one. They differ in what they send out:
+// Papers (MER-68): a bot answers every card and letter by the policy below (CARD POLICY); `random` takes a random
+// choice that holds. They differ in what they send out:
 //   careful  open legs only (no waiting), small cargo, goods from the warehouse first, own money
 //   greedy   the biggest margin by last known price, a big cargo, buys goods back at the far end
 //   random   any destination, any good, any size
@@ -29,7 +29,7 @@ import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, rec
 import { holds } from '../js/engine/conditions.js';
 import { outEnd, jumpChances } from '../js/engine/routes.js';
 import { truePrice, baseOf } from '../js/engine/market.js';
-import { cityOf } from '../js/engine/state.js';
+import { cityOf, REP_GROUPS } from '../js/engine/state.js';
 import { next } from '../js/engine/rng.js';
 
 // ---- thresholds (the whole of the balance contract; change them here and nowhere else)
@@ -39,8 +39,8 @@ export const LIMITS = {
   brokeShare: 0.02,        // ...in more than this share of games
   carefulMedianAbove: 'p75', // careful's median score is above random's 75th percentile (the key names the percentile)
   cardDrawn: 0.01,         // every card of the content is drawn in at least this share of all games
-  choiceTaken: 0.90,       // greedy takes no one choice more than this share of the times its card is offered (card policy: M3)
-  choicePending: true,     // true until M3 gives a bot a card policy: with 'the first choice that holds' the number only measures list order, so it is printed and does not fail the run
+  choiceTaken: 0.90,       // greedy takes no one choice more than this share of the times its card is offered
+  agentsPinned: 0.50,      // careful ends the game with rep.agents at its ceiling (3) in fewer than this share of games (MER-61b, DECISIONS 2026-11-17 13:20)
   choiceMinOffers: 30,     // a card offered fewer times than this is not judged on its choices
   tripMedian: [0.10, 0.30],// careful's and greedy's median profit on a round trip after the wage, as a share of the house's stake. 10 to 30 percent is a design target (DECISIONS 2026-11-17 08:50), not a recorded figure; the one recorded anchor is Goitein, Letters of Medieval Jewish Traders, 1973, p. 35 note 27: profits were as a rule surprisingly low and a near doubling exceptional (so tripMedianMax)
   tripMedianMax: 1.0,      // no bot's median round trip reaches a doubling
@@ -190,14 +190,58 @@ function plan(bot, state, content, agent, roll) {
   return null;
 }
 
-// ---- cards: no policy yet
-function answerPapers(state, content, bot, roll, out) {
+// ---- CARD POLICY (MER-68). What a choice is worth is read off its own effects, in money:
+//   net      money now and later, plus stock at the home price (a later effect counts whole, no discounting)
+//   outlay   the money and stock value it pays out, now and later, counted from the negative effects only
+//   standing the reputation and trust it adds (a tie-break: money first, then who thinks well of the house)
+// careful and qirad take the choice with the least outlay (the least money at risk), then the most net, then standing.
+// greedy takes the most net (money now plus later) with each point of standing counted as a share of the house's
+// cash in money: standing pays back later, and a house with more to spare buys more of it. How much a greedy house
+// values standing is its temperament, drawn once per game between 0 and STANDING_MAX (its own dice), so no card
+// has one answer for every greedy game that merely differs in money. It also draws how much of a follow-up card's pay it counts on (0 to all of it). The draw is per group (partners, court, foreign,
+// agents, trust), so one greedy house cares for the court's good opinion and not its partners', and the next the reverse. List order breaks a full tie. random shuffles.
+export const STANDING_MAX = 0.15;
+export function worthOf(state, content, choice, follow = 1, depth = 0) {
+  const home = cityOf(content, 'bots').home;
+  let net = 0, outlay = 0, standing = 0;
+  const regard = {};   // standing by group: each rep group, and 'trust' for what an agent thinks
+  const add = v => { net += v; if (v < 0) outlay -= v; };
+  const walk = list => {
+    for (const e of list ?? []) {
+      if (e.do) walk(e.do);
+      if (e.card && depth < 2) {   // a follow-up card is worth what its best answer pays (the bot reads the money the card holds out)
+        const nextCard = content.cards.find(k => k.id === e.card);
+        const best = Math.max(...(nextCard?.choices ?? []).map(c => worthOf(state, content, c, follow, depth + 1).net), 0);
+        net += best * follow;
+        continue;
+      }
+      if (e.do) continue;
+      if (typeof e.money === 'number') add(e.money);
+      else if (e.stock && typeof e.by === 'number') add(e.by * (truePrice(state, content, home, e.stock) ?? 0));
+      else if ((e.rep || e.trust) && typeof e.by === 'number') { standing += e.by; regard[e.rep ?? 'trust'] = (regard[e.rep ?? 'trust'] ?? 0) + e.by; }
+    }
+  };
+  walk(choice.now); walk(choice.later);
+  return { net, outlay, standing, regard };
+}
+/** The choices a bot would take, best first. `open` are the ones whose requirements hold. */
+const standingOf = (w, state, temper) => Object.entries(w.regard).reduce((n, [g, by]) => n + by * state.money * (temper[g] ?? 0), 0);
+export function ranked(bot, state, content, open, roll, temper = {}) {
+  if (bot === 'random') return shuffle(open, roll);
+  const scored = open.map((c, i) => ({ c, i, w: worthOf(state, content, c, bot === 'greedy' ? (temper.follow ?? 1) : 1) }));
+  const by = bot === 'greedy'
+    ? (a, b) => (b.w.net + standingOf(b.w, state, temper)) - (a.w.net + standingOf(a.w, state, temper)) || a.i - b.i
+    : (a, b) => a.w.outlay - b.w.outlay || b.w.net - a.w.net || b.w.standing - a.w.standing || a.i - b.i;
+  return scored.sort(by).map(x => x.c);
+}
+
+function answerPapers(state, content, bot, roll, out, temper) {
   let s = state;
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
     const choices = paperChoices(s, content, p.id);
     const open = choices.filter(c => holds(c.requires, s, content));
-    const order = bot === 'random' ? shuffle(open, roll) : open;
+    const order = ranked(bot, s, content, open, roll, temper);
     if (p.kind === 'card') {
       out.offers[p.ref] = (out.offers[p.ref] ?? 0) + 1;
       if (open.length >= 2) out.multi[p.ref] = (out.multi[p.ref] ?? 0) + 1;   // a real choice: two or more can be taken
@@ -231,6 +275,8 @@ export function netWorth(state, content) {
 export function playGame(content, { bot, seed, house, length = DEFAULTS.length }) {
   if (!BOTS.includes(bot)) throw new Error(`bots: no bot called "${bot}"`);
   const roll = dice(seed);
+  const tdice = dice(seed + 77); tdice(); tdice();   // the first draws of a nearby seed are alike, so two are spent
+  const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, tdice() * STANDING_MAX]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
   let s = newGame(content, { seed, length, house });
   const out = { bot, seed, house, trips: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
   const routeOfX = {};   // expedition id to its route, so a return or a settlement can be told by where it went
@@ -259,7 +305,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
         }
       } else if (p.kind === 'lost' && p.state === 'open') out.lost++;
     }
-    s = answerPapers(s, content, bot, roll, out);
+    s = answerPapers(s, content, bot, roll, out, temper);
     for (const agent of freeAgents(s, content)) {
       const p = plan(bot, s, content, agent, roll);
       if (!p) continue;
@@ -288,6 +334,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   if (s.phase !== 'ended') throw new Error(`bots: game ${bot}/${seed} did not end (phase ${s.phase})`);
   out.worth = netWorth(s, content);
   out.cards = Object.keys(out.offers);   // a follow-up reaches the desk by an effect, so `seen` does not count it
+  out.repAgents = s.rep.agents;
   out.survivors = Object.values(s.agents).filter(a => a.hired && a.where !== 'dead').length;
   return out;
 }
@@ -411,6 +458,11 @@ export function check({ content, results, offered, taken, games }) {
     const r = med['redsea-india'], m = med.mediterranean;
     add('redsea-india: median round trip profit at least the mediterranean\'s', r.median, m.median, r.n > 0 && m.n > 0 && r.median >= m.median, `${r.n} and ${m.n} trips`);
   }
+  // rep.agents: careful must not sit at the ceiling (3) in most games (MER-61b)
+  if (results.careful) {
+    const pinned = results.careful.filter(g => g.repAgents === 3).length / results.careful.length;
+    add('careful: rep.agents ends at 3 in fewer than', pinned, LIMITS.agentsPinned, pinned < LIMITS.agentsPinned, 'share of games');
+  }
   // cards drawn: the union over every bot's games, per card
   const total = Object.values(results).reduce((n, l) => n + l.length, 0);
   const drawn = {};
@@ -428,7 +480,7 @@ export function check({ content, results, offered, taken, games }) {
         if (tb === 'greedy' && tref === ref && tn / n > LIMITS.choiceTaken) over.push(`${ref}/${choice} ${pct(tn / n, 0)}`);
       }
     }
-    add(`greedy: choices taken over ${pct(LIMITS.choiceTaken, 0)} of the offers with a real choice`, over.length, 0, over.length === 0, `${over.length ? over.join(', ') : 'none'}${LIMITS.choicePending ? '; pending the card policy (M3), not judged' : ''}`, LIMITS.choicePending, 'num');
+    add(`greedy: choices taken over ${pct(LIMITS.choiceTaken, 0)} of the offers with a real choice`, over.length, 0, over.length === 0, over.length ? over.join(', ') : 'none', false, 'num');
   }
   return { rows, ok: rows.every(r => r.ok) };
 }
@@ -467,6 +519,11 @@ export function table({ content, results, houses, games, startWorth }, checked) 
   {
     const med = directionMedians(content, results);
     lines.push(`  ${names.map(d => `${d} ${pct(med[d].median)} (${med[d].n})`).join('   ')}`);
+  }
+  lines.push('');
+  lines.push('rep.agents at game end (share of games at -3 .. 3):');
+  for (const [bot, list] of Object.entries(results)) {
+    lines.push(`  ${bot.padEnd(9)}${[-3, -2, -1, 0, 1, 2, 3].map(v => `${v >= 0 ? '+' : ''}${v}: ${pct(list.filter(g => g.repAgents === v).length / list.length, 0)}`).join('   ')}`);
   }
   lines.push('');
   lines.push('routes sent (share of all expeditions):');
