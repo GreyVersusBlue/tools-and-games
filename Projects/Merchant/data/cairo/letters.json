@@ -78,19 +78,39 @@
     "kind": "question",
     "from": {
       "name": "Your agent",
-      "role": "Aleppo"
+      "role": "Damascus"
     },
     "title": "Is the road east safe?",
-    "body": "I am at Aleppo. Abu Said, the Mongol ruler of Persia, is dead. Rivals have taken parts of his lands. Merchants say the road to Tabriz is not safe. It takes two seasons. I can go on, wait for news, or turn back toward home.",
+    "body": "I am at Damascus. Abu Said, the Mongol ruler of Persia, is dead. Rivals are reaching for his lands. Merchants say the road east to Tabriz is not safe. From Aleppo it takes two seasons. I can go on, wait for news, or turn back toward home.",
     "when": {
       "all": [
         {
-          "at": "aleppo"
+          "at": "damascus"
         },
         {
-          "year": [
-            1336,
-            1347
+          "any": [
+            {
+              "year": [
+                1336,
+                1347
+              ]
+            },
+            {
+              "all": [
+                {
+                  "year": [
+                    1335,
+                    1335
+                  ]
+                },
+                {
+                  "season": [
+                    "autumn",
+                    "winter"
+                  ]
+                }
+              ]
+            }
           ]
         }
       ]
@@ -158,7 +178,7 @@
         ]
       }
     ],
-    "note": "Abu Said died in late 1335, and rival rulers took parts of his lands. Ibn Battuta lists Tabriz among the cities that claimants took.",
+    "note": "Abu Said died in late 1335, and rival rulers took parts of his lands. Ibn Battuta lists Tabriz among the cities that claimants took. This letter is written only from the autumn of 1335 on.",
     "unlocks": [
       "place-tabriz"
     ],
@@ -429,12 +449,12 @@
     "kind": "question",
     "from": {
       "name": "Your agent",
-      "role": "Aydhab"
+      "role": "Qus"
     },
     "title": "The wind for India",
-    "body": "I am at Aydhab. Ahead is the long sea road south. At its far end the ships for India sail with the monsoon. That is a wind that blows one way for months and then turns. I can go on, wait at each port for the wind, or turn back toward home.",
+    "body": "I am at Qus. Ahead is the desert road to the Red Sea. Beyond it ships sail south for India with the monsoon. That is a wind that blows one way for months and then turns. I can go on, wait at each stop, or turn back toward home.",
     "when": {
-      "at": "aydhab"
+      "at": "qus"
     },
     "default": "india",
     "weight": 1,
@@ -443,7 +463,7 @@
       {
         "id": "india",
         "label": "Go on",
-        "hint": "A long way and a big prize.",
+        "hint": "Faster. The road is long.",
         "now": [
           {
             "order": {
@@ -465,7 +485,7 @@
       },
       {
         "id": "wait",
-        "label": "Wait for the wind",
+        "label": "Wait and see",
         "hint": "Slower. The agent holds a season at each stop, up to four seasons in all.",
         "now": [
           {
