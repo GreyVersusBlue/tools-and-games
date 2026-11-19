@@ -4,6 +4,7 @@
 // paper is raised, which back is being read, whether a flip is under way.
 import { h, qs } from '../dom.js';
 import * as engine from '../../engine/index.js';
+import { leftHow } from '../../engine/agents.js';
 import { front, back, record, edge, paperTitle, happened, num, dinars, RECORD_KINDS } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
@@ -179,6 +180,10 @@ export function createDesk(app) {
       return wrap('Years pass',
         gap ? h('p', { class: 'span', id: 'interlude-span' }, `${gap.from} to ${gap.to}`) : null,
         ...(gap?.paragraphs ?? []).map(p => h('p', { class: 'sheet-body' }, p.text)),
+        ...(gap?.agents ?? []).map(g => {
+          const name = content.agents.find(a => a.id === g.id)?.name ?? g.id;
+          return h('p', { class: 'sheet-body', dataset: { left: leftHow(app.state, g.id) ?? '' } }, `${name} ${leftHow(app.state, g.id) === 'retired' ? 'has retired' : 'has gone to work for another house'}.`);
+        }),
         h('p', { class: 'sheet-body' }, `The house carries ${dinars(app.state.money)} into the next years.`),
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
           `Open the house in ${cap(v.season)} ${v.year}`));
