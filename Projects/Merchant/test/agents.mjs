@@ -254,6 +254,60 @@ test('rule 4 suggestPlan tries the next free agent when the first refuses', () =
   eq(checkPlan(s, noQirad, plan).ok, true);
 });
 
+// ---- rule 4's way back: the wage paid up front (ARCH 4.11, MER-61d)
+
+const quietNoQirad = variant(noQirad, x => { for (const c of x.cards) c.weight = 0; x.city.opening = {}; });
+const unfairGame = (c = quietNoQirad, n = 2) => {
+  const s = newGame(c, { seed: 7, length: 'full', house: 'rich' });
+  for (let i = 0; i < n; i++) s.agents.mira.memory.push({ at: i, kind: UNFAIR });
+  return s;
+};
+const unfairs = s => s.agents.mira.memory.filter(m => m.kind === UNFAIR).length;
+const PREPAY = { ...WOOL, prepay: true };
+
+test('way back 1 prepay in a city with no qirad lets an agent with two unfair memories go: the trip\'s wage is charged at outfitting and the contract says so', () => {
+  const s = unfairGame();
+  eq(checkPlan(s, quietNoQirad, WOOL).ok, false, 'without it the refusal stands');
+  const wage = R.prepayCost(s, quietNoQirad, 'harbour-hilltown', 'mira');
+  ok(wage > 0, 'there is a wage to pay');
+  const sent = outfit(s, quietNoQirad, PREPAY);
+  eq(sent.expeditions[0].contract, { kind: 'own', prepaid: true });
+  const plain = outfit(newGame(quietNoQirad, { seed: 7, length: 'full', house: 'rich' }), quietNoQirad, WOOL);
+  eq(plain.money - sent.money, wage, 'the sheet charges exactly the wage, and nothing else, more than a plain wage trip');
+});
+
+test('way back 2 prepay is refused where a qirad can be offered, and for an agent who has no reason to ask', () => {
+  const withQirad = unfairGame(calm);
+  eq(checkPlan(withQirad, calm, PREPAY).ok, false, 'a qirad city asks for the share, as before');
+  const fair = unfairGame(quietNoQirad, 1);
+  eq(checkPlan(fair, quietNoQirad, PREPAY).reasons, ['Mira has no reason to ask for the wage first.']);
+});
+
+test('way back 3 prepay needs the money: a house that cannot pay the wage is told so', () => {
+  const s = unfairGame();
+  s.money = 10;
+  const c = checkPlan(s, quietNoQirad, PREPAY);
+  eq(c.ok, false);
+  ok(/wage paid first/.test(c.reasons.join(' ')), 'the reason names the wage');
+});
+
+test('way back 4 the return charges no wage again, and a full return clears one unfair memory (played through endSeason)', () => {
+  let s = outfit(unfairGame(), quietNoQirad, PREPAY);
+  const afterBuild = s.money;
+  for (let i = 0; i < 20 && s.expeditions.length; i++) s = step(s, quietNoQirad);
+  eq(s.expeditions.length, 0, 'the expedition came home');
+  eq(s.money, afterBuild, 'no wage was charged on the return');
+  eq(unfairs(s), 1, 'one unfair memory is cleared');
+  eq(s.agents.mira.where, 'harbour');
+});
+
+test('way back 5 a trip on a wage that was not prepaid clears nothing', () => {
+  let s = unfairGame(quietNoQirad, 1);
+  s = outfit(s, quietNoQirad, WOOL);
+  for (let i = 0; i < 20 && s.expeditions.length; i++) s = step(s, quietNoQirad);
+  eq(unfairs(s), 1, 'a wage paid on the return is not the way back');
+});
+
 // ---- the leave notice survives the played season, and gone agents stay gone
 
 test('hire of an agent who has gone is refused with a reason', () => {

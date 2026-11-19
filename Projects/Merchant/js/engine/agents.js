@@ -120,6 +120,11 @@ export function returnTrust(s, content, x, r, idx) {
   let by = 0;
   if (r.qirad && r.agentShare > 0 && r.agentShort === 0) by += 1;
   if (!r.qirad && r.wage > 0 && r.wageShort > 0) { by -= 1; rec.memory.push({ at: idx, kind: UNFAIR }); }
+  // the way back: a trip whose wage was paid up front and came home paid in full clears one `unfair` memory
+  if (r.prepaid && !r.qirad && r.wageShort === 0 && r.agentShort === 0) {
+    const i = rec.memory.findIndex(m => m.kind === UNFAIR);
+    if (i >= 0) rec.memory.splice(i, 1);
+  }
   if (r.lost && rec.memory.some(m => m.kind === BLAMED && m.at >= r.since && m.at <= idx)) by -= 1;
   rec.trust = clamp3(rec.trust + by);
   return by;
