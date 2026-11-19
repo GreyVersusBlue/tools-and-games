@@ -191,10 +191,10 @@
       {
         "id": "take",
         "label": "Take Tadros and keep the glass",
-        "hint": "It costs 20 dinars for his road. Ilyas will owe you.",
+        "hint": "It costs 30 dinars for his road. Ilyas will owe you.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 30
           }
         },
         "now": [
@@ -203,7 +203,7 @@
             "by": 2
           },
           {
-            "money": -20
+            "money": -30
           },
           {
             "hire": "tadros"
@@ -229,7 +229,7 @@
       {
         "id": "place",
         "label": "Keep the glass and find Tadros a place with a friend",
-        "hint": "It costs 10 dinars. Ilyas will notice.",
+        "hint": "It costs 10 dinars, and the friend pays you 50 in thanks. Ilyas will notice.",
         "requires": {
           "money": {
             "gte": 10
@@ -245,6 +245,14 @@
           }
         ],
         "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 50
+              }
+            ]
+          },
           {
             "in": 3,
             "do": [

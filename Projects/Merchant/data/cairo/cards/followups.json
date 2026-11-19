@@ -15,15 +15,15 @@
       {
         "id": "favour",
         "label": "Take the place and do the favour",
-        "hint": "It costs a little. Abu Bakr is pleased.",
+        "hint": "It costs 50 dinars. Abu Bakr is pleased.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 50
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -50
           },
           {
             "rep": "partners",
@@ -65,7 +65,8 @@
     ],
     "note": "Boats carried goods between Cairo, Alexandria and Qus on the Nile. In 1326 Ibn Battuta went down the river from Qus to Cairo in eight nights, in the flood.",
     "unlocks": [
-      "term-load"
+      "term-load",
+      "term-dinar"
     ],
     "sources": [
       {
@@ -105,7 +106,7 @@
             "in": 3,
             "do": [
               {
-                "money": 30
+                "money": 60
               }
             ]
           }
@@ -114,15 +115,11 @@
       {
         "id": "more",
         "label": "Offer him half the profit",
-        "hint": "He keeps more. He will be loyal.",
+        "hint": "He keeps more. He will be loyal. You keep 30 dinars less.",
         "now": [
           {
             "trust": "samir",
             "by": 2
-          },
-          {
-            "rep": "agents",
-            "by": 1
           }
         ],
         "later": [
@@ -130,7 +127,7 @@
             "in": 3,
             "do": [
               {
-                "money": 10
+                "money": 30
               }
             ]
           }
@@ -138,6 +135,9 @@
       }
     ],
     "note": "In the contracts Goitein read, the traveller's share was normally one third.",
+    "unlocks": [
+      "term-dinar"
+    ],
     "sources": [
       {
         "src": "goitein-1964",
@@ -738,7 +738,7 @@
       {
         "id": "ledger",
         "label": "Show him the ledger first",
-        "hint": "It may hurt his pride.",
+        "hint": "It may hurt his pride. The claim may shrink, and you keep 15 dinars.",
         "now": [
           {
             "rep": "partners",
@@ -752,6 +752,9 @@
               {
                 "rep": "partners",
                 "by": 1
+              },
+              {
+                "money": 15
               }
             ]
           }
@@ -759,6 +762,9 @@
       }
     ],
     "note": "Partnerships on paper were usually short. Friendships between merchants could last a lifetime.",
+    "unlocks": [
+      "term-dinar"
+    ],
     "sources": [
       {
         "src": "goitein-1967",
@@ -1160,7 +1166,7 @@
       {
         "id": "lesson",
         "label": "Call it a lesson",
-        "hint": "You gain nothing. Salih will be more careful.",
+        "hint": "You gain nothing now. Salih will buy better bales for you.",
         "now": [
           {
             "flag": "bales-lesson",
@@ -1174,6 +1180,9 @@
               {
                 "rep": "partners",
                 "by": 1
+              },
+              {
+                "money": 25
               }
             ]
           }
@@ -1371,7 +1380,7 @@
       {
         "id": "seal",
         "label": "Give him the house's seal",
-        "hint": "He carries your name. It costs you nothing.",
+        "hint": "He carries your name, and his debts may fall on you. It costs nothing now.",
         "now": [
           {
             "trust": "matteo",
@@ -1385,6 +1394,9 @@
               {
                 "rep": "foreign",
                 "by": 1
+              },
+              {
+                "money": -30
               }
             ]
           }

@@ -228,15 +228,15 @@
       {
         "id": "papers",
         "label": "Send two loads under his papers",
-        "hint": "It costs a little. Nabil will be glad to help.",
+        "hint": "It costs 40 dinars for the papers. Nabil will be glad to help.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 40
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -40
           }
         ],
         "later": [
@@ -275,6 +275,7 @@
     "note": "One modern writer says the Karimi office gave its members papers. He says it took 2.5 in every hundred of their goods. The Karimi were a loose group, and historians do not agree on how tightly they were organised.",
     "unlocks": [
       "person-karimi",
+      "term-dinar",
       "term-load"
     ],
     "sources": [

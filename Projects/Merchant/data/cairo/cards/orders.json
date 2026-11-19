@@ -117,15 +117,14 @@
       {
         "id": "keep",
         "label": "Keep them for the next trip",
-        "hint": "Nothing now. They may sell for more far away.",
+        "hint": "Nothing now. Far away they may sell for 20 dinars more.",
         "now": [],
         "later": [
           {
-            "in": 2,
+            "in": 3,
             "do": [
               {
-                "rep": "partners",
-                "by": -1
+                "money": 20
               }
             ]
           }
@@ -134,7 +133,8 @@
     ],
     "note": "A handbook of about 1340 says goods brought into Alexandria paid 20 in every hundred, and goods leaving paid nothing. A price far away had to cover costs like that.",
     "unlocks": [
-      "term-load"
+      "term-load",
+      "term-dinar"
     ],
     "sources": [
       {
@@ -247,7 +247,7 @@
       "seal": null
     },
     "title": "Amina needs money for fuel",
-    "body": "Amina runs a sugar refinery in Fustat. She needs money now for fuel and cane. She will sell you three loads of sugar cheaply if you pay today.",
+    "body": "Amina runs a sugar refinery in Fustat. She needs money now for fuel and cane. She will sell you three loads of sugar for 140 dinars if you pay today.",
     "when": {
       "all": [
         {
@@ -264,12 +264,12 @@
         "hint": "Sugar keeps well. The price may rise.",
         "requires": {
           "money": {
-            "gte": 120
+            "gte": 140
           }
         },
         "now": [
           {
-            "money": -120
+            "money": -140
           },
           {
             "stock": "sugar",
@@ -286,9 +286,17 @@
       {
         "id": "pass",
         "label": "Wish her luck and pass",
-        "hint": "Amina will find another buyer.",
+        "hint": "Your 140 dinars go into your own goods. Amina will find another buyer.",
         "now": [],
         "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 25
+              }
+            ]
+          },
           {
             "in": 3,
             "do": [
@@ -302,6 +310,9 @@
       }
     ],
     "note": "In about 1400 a writer in Cairo counted 65 places that refined sugar in Fustat. Thirteen belonged to merchants.",
+    "unlocks": [
+      "term-dinar"
+    ],
     "sources": [
       {
         "src": "sato-2006",
@@ -631,7 +642,7 @@
       {
         "id": "two",
         "label": "Sell him two loads",
-        "hint": "You keep half your linen, and half the money.",
+        "hint": "You keep half your linen. He comes back for the rest and pays 20 more.",
         "requires": {
           "stock": "linen",
           "gte": 2
@@ -643,6 +654,16 @@
           },
           {
             "money": 100
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
           }
         ]
       },

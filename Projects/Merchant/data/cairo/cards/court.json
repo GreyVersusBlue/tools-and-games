@@ -219,7 +219,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf and the road costs",
-    "body": "Yusuf is back from Damascus. He spent 25 dinars on food, boats and gate fees. He says the house should pay it back. You never wrote this down, and he says a judge would agree with him.",
+    "body": "Yusuf is back from Damascus. He spent 60 dinars on food, boats and gate fees. He says the house should pay it back. You never wrote this down, and he says a judge would agree with him.",
     "when": {
       "agent": "yusuf",
       "hired": true,
@@ -230,16 +230,16 @@
     "choices": [
       {
         "id": "pay",
-        "label": "Pay him back the 25 dinars",
+        "label": "Pay him back the 60 dinars",
         "hint": "It costs now. Yusuf will trust you.",
         "requires": {
           "money": {
-            "gte": 25
+            "gte": 60
           }
         },
         "now": [
           {
-            "money": -25
+            "money": -60
           },
           {
             "trust": "yusuf",
@@ -331,12 +331,12 @@
         "hint": "It costs now. Hamid will be your enemy.",
         "requires": {
           "money": {
-            "gte": 15
+            "gte": 25
           }
         },
         "now": [
           {
-            "money": -15
+            "money": -25
           }
         ],
         "later": [
@@ -344,7 +344,7 @@
             "in": 2,
             "do": [
               {
-                "money": 70
+                "money": 60
               },
               {
                 "rep": "partners",

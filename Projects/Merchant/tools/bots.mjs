@@ -41,14 +41,10 @@ export const LIMITS = {
   cardDrawn: 0.01,         // every card of the content is drawn in at least this share of all games
   choiceTaken: 0.90,       // greedy takes no one choice more than this share of the times its card is offered
   agentsPinned: 0.50,      // careful ends the game with rep.agents at its ceiling (3) in fewer than this share of games (MER-61b, DECISIONS 2026-11-17 13:20)
-  // Choices no policy can leave unsettled, because the card gives the other choice no reason to be taken by a house that
-  // reads money, standing and follow-ups (MER-68, measured at 2,000 games, 600 and 2,000 with the temperaments up to 0.6).
-  // Listed for the orchestrator to cut or rewrite; the check skips exactly these and nothing near them.
-  choiceExempt: [
-    'first-expedition/go', 'linen-neighbour/sell', 'abu-bakr-again/favour', 'hamid-accounts/judge', 'road-costs-court/pay',
-    'grain-from-syria/carts', 'sabbath-carrier/help', 'karimi-papers/papers', 'ilyas-sends-his-nephew/take', 'samir-comes-home/more',
-    'sugar-pots/buy', 'yusuf-asks-for-work/hire', 'matteo-comes-back/seal', 'cloth-for-the-east/four', 'bales-middling/fee', 'partners-ask-again/pay',
-  ],
+  // Choices no policy can leave unsettled (MER-68). MER-69 rewrote fifteen of the sixteen so the other choice has a reason.
+  // What is left is the scripted opening card, whose `go` is the one press that teaches sending an expedition (ui: outfit-first);
+  // the check skips exactly this key and nothing near it.
+  choiceExempt: ['first-expedition/go'],
   choiceMinOffers: 30,     // a card offered fewer times than this is not judged on its choices
   tripMedian: [0.10, 0.30],// careful's and greedy's median profit on a round trip after the wage, as a share of the house's stake. 10 to 30 percent is a design target (DECISIONS 2026-11-17 08:50), not a recorded figure; the one recorded anchor is Goitein, Letters of Medieval Jewish Traders, 1973, p. 35 note 27: profits were as a rule surprisingly low and a near doubling exceptional (so tripMedianMax)
   tripMedianMax: 1.0,      // no bot's median round trip reaches a doubling

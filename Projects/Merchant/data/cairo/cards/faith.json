@@ -15,15 +15,15 @@
       {
         "id": "help",
         "label": "Send your carter with the goods",
-        "hint": "It costs a day. Yehuda will owe you a favour.",
+        "hint": "It costs a day of your carter and 40 dinars. Yehuda will owe you a favour.",
         "requires": {
           "money": {
-            "gte": 15
+            "gte": 40
           }
         },
         "now": [
           {
-            "money": -15
+            "money": -40
           },
           {
             "rep": "partners",
@@ -40,9 +40,17 @@
       {
         "id": "decline",
         "label": "Say you are too busy",
-        "hint": "Yehuda will ask someone else.",
+        "hint": "Your carter earns 25 dinars on your own goods. Yehuda will ask someone else.",
         "now": [],
         "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 25
+              }
+            ]
+          },
           {
             "in": 3,
             "do": [
@@ -56,6 +64,9 @@
       }
     ],
     "note": "North African Jewish traders in the Geniza letters had long given goods for the road to Muslim business friends. That way no Jewish carrier had to travel on the Sabbath.",
+    "unlocks": [
+      "term-dinar"
+    ],
     "sources": [
       {
         "src": "goitein-1967",

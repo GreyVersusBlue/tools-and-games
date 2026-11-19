@@ -288,14 +288,14 @@
       {
         "id": "carts",
         "label": "Lend two carts for a fee",
-        "hint": "You earn 30 dinars. Some neighbours will talk, and the officers will remember.",
+        "hint": "You earn 20 dinars. The street will talk, and the officers will remember.",
         "now": [
           {
-            "money": 30
+            "money": 20
           },
           {
             "rep": "partners",
-            "by": -1
+            "by": -2
           }
         ],
         "later": [

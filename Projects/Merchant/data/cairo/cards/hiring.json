@@ -16,15 +16,15 @@
         "id": "hire",
         "ui": "outfit-first",
         "label": "Hire Yusuf and send him",
-        "hint": "He will carry your linen to Damascus.",
+        "hint": "It costs 60 dinars. He will carry your linen to Damascus.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 60
           }
         },
         "now": [
           {
-            "money": -30
+            "money": -60
           },
           {
             "hire": "yusuf"
@@ -66,7 +66,8 @@
     ],
     "note": "Merchants had long sent agents to buy and sell in other towns, and kept in touch with them by letter.",
     "unlocks": [
-      "term-load"
+      "term-load",
+      "term-dinar"
     ],
     "sources": [
       {
