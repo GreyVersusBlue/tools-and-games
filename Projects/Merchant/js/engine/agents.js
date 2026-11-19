@@ -90,12 +90,18 @@ export const stepOf = n => (n <= -3 ? 0 : n < 0 ? 1 : n === 0 ? 2 : n < 3 ? 3 : 
 /** The words for a number: who is "agent" (for an agent's trust) or "group" (for a reputation). */
 export const scaleWords = (n, who = 'group') => SCALE[who][stepOf(n)];
 
+/** An agent's step on the scale. Trust at LEAVES_AT or lower is the bottom step, so the words on the
+    page at -2 are the ones the refusal says ("has lost faith in the house"): one story, MER-61c. The
+    reputation table keeps `stepOf`. */
+export const agentStep = n => (n <= LEAVES_AT ? 0 : stepOf(n));
+
 /** For view(): trust in words for every agent and standing in words for every group, each with its number. */
 export function standing(s, content) {
   const trust = {}, rep = {};
   for (const a of content.agents ?? []) {
     const n = s.agents[a.id]?.trust ?? 0;
-    trust[a.id] = { n, step: stepOf(n), words: scaleWords(n, 'agent') };
+    const step = agentStep(n);
+    trust[a.id] = { n, step, words: SCALE.agent[step] };
   }
   for (const g of REP_GROUPS) rep[g] = { n: s.rep[g], step: stepOf(s.rep[g]), words: scaleWords(s.rep[g], 'group') };
   return { trust, rep };
@@ -136,6 +142,15 @@ export function refusesOwn(s, agent, qirad = true) {
 export function refusesAny(s, agent) {
   if ((s.agents[agent.id]?.trust ?? 0) > LEAVES_AT) return null;
   return `${agent.name} has lost faith in the house and will not go out again.`;
+}
+
+/** How an agent who is `gone` went: 'retired' (the jump's retirement) or 'house' (they left for another
+    house, at an opening or at a jump with trust -2 or lower, or an older record that says nothing). Read
+    from the jump entries in the log, which name each agent who left and why; null when the agent is here. */
+export function leftHow(s, agentId) {
+  if (s.agents[agentId]?.where !== 'gone') return null;
+  for (const e of s.log) if (e.kind === 'jump' && (e.agents ?? []).some(a => a.id === agentId && a.left === 'retired')) return 'retired';
+  return 'house';
 }
 
 // Invented houses an agent may go to work for; chosen from the agent's place in the book, not drawn,

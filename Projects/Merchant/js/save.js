@@ -231,7 +231,7 @@ export function repair(state, content) {
   // the log is a record; entries stay even when the thing they name is gone. choose logs a string.
   out.log = (Array.isArray(s.log) ? s.log : []).filter(e => isObject(e) && isNum(e.at) && typeof e.kind === 'string' && (e.kind !== 'trust' || trustNote(e)))
     .map(e => ({ ...e, at: count(e.at), ...(e.choice !== undefined ? { choice: String(e.choice) } : {}) }))
-    .map(e => { if (e.kind === 'trust' && 'rep' in e && !isNum(e.rep)) delete e.rep; return e; });
+    .map(e => (e.kind === 'trust' && !isNum(e.rep) ? { ...e, rep: out.rep.agents } : e));   // no number: the engine would read the rep it finds at the closing, so a direct move could count twice (MER-61c)
   out.score = isObject(s.score) ? s.score : null;
   return out;
 }

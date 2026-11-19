@@ -7,7 +7,7 @@ import { test, eq, ok, throws, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import * as R from '../js/engine/routes.js';
 import { decide, WAIT, ON } from '../js/engine/letters.js';
-import { SCALE, scaleWords, stepOf, UNFAIR, BLAMED } from '../js/engine/agents.js';
+import { SCALE, scaleWords, stepOf, leftHow, UNFAIR, BLAMED } from '../js/engine/agents.js';
 import { apply } from '../js/engine/effects.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, suggestPlan, checkPlan, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
@@ -277,6 +277,97 @@ test('a queued trust or memory effect naming an agent who has gone is dropped an
   const d = s.log.find(e => e.kind === 'dropped' && e.ref === 'test/later');
   ok(d && /Tobin has left the house/.test(d.reason), 'logged with the reason');
   eq(s.queue.some(q => q.from === 'test/later'), false, 'and it does not fire again');
+});
+
+// ---- MER-61c: gone agents and follow-up cards, played through endSeason
+
+// A game with every drawn card off, so only the cards a test puts in play appear. `extra` cards are added to the book.
+const only = extra => variant(calm, x => { for (const c of x.cards) c.weight = 0; x.city.opening = {}; x.cards.push(...extra); });
+const FOLLOW = { id: 'follow-mira', group: 'followups', title: 'Mira writes', text: 'A note.', choices: [{ id: 'more', label: 'More', now: [{ trust: 'mira', by: 1 }] }, { id: 'less', label: 'Less', now: [] }] };
+const FOLLOW_ME = { id: 'follow-me', group: 'followups', title: 'A note', text: 'A note.', choices: [{ id: 'more', label: 'More', now: [{ trust: '$agent', by: 1 }] }] };
+const FOLLOW_WHEN = { id: 'follow-when', group: 'followups', title: 'Ask', text: 'A note.', when: { agent: 'mira', hired: true }, choices: [{ id: 'ok', label: 'Fine', now: [] }] };
+const queued = (s, c, item) => { s.queue.push({ at: seasonIndex(s, c), from: 'test/queued', ...item }); return step(s, c); };
+const goneMira = s => { s.agents.mira.hired = false; s.agents.mira.where = 'gone'; return s; };
+
+test('gone 1a a queued follow-up whose choice names an agent who is gone is dropped and logged, not drawn', () => {
+  const c = only([FOLLOW]);
+  const s = queued(goneMira(newGame(c, { seed: 7, length: 'full', house: 'rich' })), c, { card: 'follow-mira' });
+  eq(s.desk.some(p => p.ref === 'follow-mira'), false, 'not on the desk');
+  const d = s.log.find(e => e.kind === 'dropped' && e.ref === 'test/queued');
+  ok(d && /Mira has left the house/.test(d.reason), 'logged, with the reason');
+  eq(s.queue.some(q => q.from === 'test/queued'), false, 'and gone from the queue');
+  eq(s.agents.mira.trust, 0, 'nothing moved');
+});
+
+test('gone 1b the same follow-up is drawn when the agent is here (the case above is not an empty one)', () => {
+  const c = only([FOLLOW]);
+  const s = queued(newGame(c, { seed: 7, length: 'full', house: 'rich' }), c, { card: 'follow-mira' });
+  ok(s.desk.some(p => p.ref === 'follow-mira'), 'on the desk');
+});
+
+test('gone 1c a follow-up that names "$agent" is dropped when the paper\'s agent has gone, and so is one whose `when` names a gone agent', () => {
+  const c = only([FOLLOW_ME, FOLLOW_WHEN]);
+  const base = () => goneMira(newGame(c, { seed: 7, length: 'full', house: 'rich' }));
+  eq(queued(base(), c, { card: 'follow-me', agent: 'mira' }).desk.some(p => p.ref === 'follow-me'), false, '$agent');
+  eq(queued(base(), c, { card: 'follow-when' }).desk.some(p => p.ref === 'follow-when'), false, 'when');
+  const here = newGame(c, { seed: 7, length: 'full', house: 'rich' });
+  ok(queued(here, c, { card: 'follow-me', agent: 'mira' }).desk.some(p => p.ref === 'follow-me'), '$agent with the agent here is drawn');
+});
+
+test('gone 2 no card that names an agent is drawn for one who has gone: an agent\'s where of gone fails every agent condition', () => {
+  const HIRE = { id: 'offer', group: 'hiring', weight: 1, title: 'An offer', text: 'x', when: { agent: 'mira', hired: false }, choices: [{ id: 'yes', label: 'Yes', now: [{ hire: 'mira' }] }] };
+  const c = only([HIRE]);
+  const run = edit => { let s = newGame(c, { seed: 7, length: 'full', house: 'rich' }); edit(s); for (let i = 0; i < 6; i++) { s = step(s, c); edit(s, true); } return s.seen.offer ?? 0; };
+  ok(run(s => { s.agents.mira.hired = false; }) > 0, 'drawn for an agent the house has not hired (not an empty case)');
+  eq(run(goneMira), 0, 'never for one who has gone');
+  const s = goneMira(game());
+  for (const cond of [{ agent: 'mira', hired: false }, { agent: 'mira', hired: true }, { agent: 'mira' }, { agent: 'mira', where: 'gone' }]) eq(holds(cond, s, calm), false, JSON.stringify(cond));
+});
+
+// An acts game that retires everyone at its first jump, or lets trust -2 leave at it.
+const jumpGame = (retires, edit) => {
+  const c = variant(only([]), x => { x.city.jump = { ...(x.city.jump ?? {}), retires }; });
+  let s = newGame(c, { seed: 7, length: 'acts', house: 'rich' });
+  for (let i = 0; i < 40; i++) {
+    const at = seasonIndex(s, c);
+    const next = step(structuredClone(s), c);
+    if (next.phase === 'interlude') { edit(s); return { c, s: step(s, c) }; }
+    s = next;
+    if (next.phase === 'recall' || seasonIndex(next, c) < at) break;
+  }
+  throw new Error('no jump reached');
+};
+
+test('gone 3a an agent retired at the jump is told apart from one who left for another house, and the words say which', () => {
+  const { c, s } = jumpGame(1, x => { x.agents.mira.trust = 0; x.agents.tobin.trust = 0; });
+  eq([s.agents.mira.where, s.agents.tobin.where], ['gone', 'gone']);
+  eq([leftHow(s, 'mira'), leftHow(s, 'tobin')], ['retired', 'retired']);
+  throws(() => apply(s, c, { hire: 'mira' }), /Mira has retired and cannot be hired again/);
+  const left = jumpGame(0, x => { x.agents.mira.trust = -2; }).s;
+  eq([left.agents.mira.where, leftHow(left, 'mira')], ['gone', 'house']);
+  throws(() => apply(left, calm, { hire: 'mira' }), /Mira has gone to work for another house/);
+  eq(leftHow(left, 'tobin'), null, 'someone still here has no way of leaving');
+});
+
+test('gone 3b a queued trust effect naming a retiree says they retired', () => {
+  const { s } = jumpGame(1, x => { x.agents.mira.trust = 0; });
+  const t = structuredClone(s);
+  t.queue.push({ at: seasonIndex(t, calm), from: 'test/later', do: [{ trust: 'mira', by: 1 }] });
+  const done_ = step(t.phase === 'interlude' ? openSeason(t, calm) : t, calm);
+  ok(done_.log.some(e => e.kind === 'dropped' && /Mira has retired, so their trust cannot change/.test(e.reason)), 'logged as retired');
+});
+
+test('gone 3c trust at -2 reads the same on the page and in the refusal: one story', () => {
+  let s = homeWith('own', { purse: 0, money: 0 });
+  s.agents.mira.trust = -1;
+  s = step(s, calm);                                              // home with -2, still hired (the rule 2 case)
+  eq(s.agents.mira.trust, -2);
+  s.money = 1000; s.stock = { wool: 20 };
+  const words = view(s, calm).trust.mira;
+  eq([words.step, words.words], [0, 'has lost faith in the house']);
+  ok(checkPlan(s, calm, WOOL).reasons[0].includes(words.words), 'the refusal says the same words');
+  s.agents.mira.trust = -1;
+  eq(view(s, calm).trust.mira.words, 'is uneasy with the house', 'and -1 is still uneasy');
 });
 
 await done();

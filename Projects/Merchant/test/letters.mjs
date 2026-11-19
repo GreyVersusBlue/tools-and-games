@@ -21,9 +21,10 @@ import { lagOf, writeSeason } from '../js/engine/market.js';
 import { LETTER_CHANCE, MAX_HOLD, letters } from '../js/engine/letters.js';
 import { MAX_PAPERS } from '../js/engine/state.js';
 import { MAX_WAIT } from '../js/engine/routes.js';
+import { next as dice } from '../js/engine/rng.js';
 import { steps } from '../js/engine/turn.js';
 import { repair } from '../js/save.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view } from '../js/engine/index.js';
 
 const T = await loadContent('testport', { fs });
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
@@ -278,6 +279,37 @@ test('(4) a question is written only if its answer reaches the agent before the 
   ok(seeds.filter(sd => everPosted(play(longer, sd, { n: 6 }), 'q3')).length > 10, 'drawn on a road with room for the answer (the same letter)');
 });
 
+test('(4b) a question is written only if its answer arrives before the act\'s last season: act 1 here ends in season 2, so the answer to a question written at s1 (season 1, lag 1) would come in season 3', () => {
+  const c = writing(trek(calm, { end: 10 }), question('q1', at('s1')));
+  const seeds = Array.from({ length: 60 }, (_, i) => i + 1);
+  const drawn = (length) => seeds.filter(sd => everPosted(play(c, sd, { plan: { length }, n: 3 }), 'q1'));
+  eq(drawn('acts'), [], 'never drawn where the jump would settle the trip first');
+  ok(drawn('full').length > 10, 'drawn in the full length, which has no jump (the same letter, the same seeds)');
+});
+// 4b and 4c guard one clause (the act's end is the game's end when the calendar has no gap), so removing it fails both; 4b alone fails when the clause reads the game's end only.
+test('(4c) a question is written only if its answer arrives before the game\'s last season', () => {
+  const ask = n => writing(trek(calm, { end: n }), question('q1', at('s1')));
+  const seeds = Array.from({ length: 60 }, (_, i) => i + 1);
+  const drawn = c => seeds.filter(sd => everPosted(play(c, sd, { n: 3 }), 'q1'));
+  eq(drawn(ask(4)), [], 'written in season 2 at s1 (lag 1) the answer would come in season 4, the last');
+  ok(drawn(ask(5)).length > 10, 'one season more and it is written');
+});
+test('(1b) a report is written only if it arrives before the game\'s last season', () => {
+  const ask = n => writing(trek(calm, { end: n }), report('r2', at('s2')));
+  const seeds = Array.from({ length: 60 }, (_, i) => i + 1);
+  const drawn = c => seeds.filter(sd => everPosted(play(c, sd, { n: 5 }), 'r2'));
+  eq(drawn(ask(5)), [], 'written in season 3 at s2 (lag 2) it would arrive in season 5, the last');
+  ok(drawn(ask(6)).length > 10, 'one season more and it is written');
+});
+test('(1c) a report that would arrive in the gap between acts is written, and delivered when the next act opens (the game\'s rule, not the act\'s)', () => {
+  const c = writing(trek(calm, { end: 10 }), report('r2', at('s1')));
+  const opts = { plan: { length: 'acts' }, n: 4 };
+  const seed = seedFor(c, st => everPosted(st, 'r2'), { ...opts, n: 3 });
+  const states = play(c, seed, opts), j = states.findIndex(s => s.phase === 'interlude');
+  ok(j > 0 && posted(states[j], 'r2')?.arrive > 2 && posted(states[j], 'r2').written === 2, 'in the post across the jump, due after the act\'s last season');
+  ok(states[j + 1].desk.some(p => p.ref === 'r2'), 'on the desk when act 2 opens');
+});
+
 // ---- (2) the agent acts by trait at once, then the answer is a standing order for the rest of the trip
 
 const one = writing(trek(calm), question('q1', at('s1')));
@@ -496,6 +528,71 @@ test('a whole-game measure: 100 seeded testport games on the trek draw questions
   eq(t.lost, 0, 'no report is lost');
   ok(t.delivered > 0, 'reports are delivered');
   ok(t.took * 2 >= t.answered, `answers that took effect: ${t.took} of ${t.answered}`);
+});
+
+// ---- the whole game on cairo
+
+const CAIRO = await loadContent('cairo', { fs });
+const GAMES = Number(process.env.LETTER_GAMES ?? 100);
+/** One cairo game of `length`: every free agent is sent each season to the next stop in a rotation that starts
+    at the seed, every paper is answered by a dice of the test's own, every expedition still out at the end is
+    recalled or left by the same dice. Returns the end state and what the post held, by letter. */
+function cairoGame(seed, length) {
+  const c = CAIRO, rng = { rng: seed * 7919 + 17 }, roll = n => Math.floor(dice(rng) * n);
+  const stops = c.stops.filter(st => st.id !== 'cairo').map(st => st.id);
+  let s = newGame(c, { seed, length, house: ['spice', 'cloth', 'newcomer'][seed % 3] });
+  const seen = new Set();
+  let turn = seed;
+  const watch = () => { for (const p of s.post) seen.add(`${p.expedition}:${p.id}:${p.written}`); };
+  while (['desk', 'interlude'].includes(s.phase)) {
+    if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
+    for (const p of s.desk) {
+      if (p.state !== 'open') continue;
+      const all = paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c));
+      if (all.length) s = choose(s, c, p.id, all[roll(all.length)].id);
+    }
+    for (const a of c.agents) {
+      if (!s.agents[a.id]?.hired || s.agents[a.id].where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+      const reach = destinations(s, c, a);
+      for (let k = 0; k < stops.length; k++) {
+        const stop = stops[(turn + k) % stops.length], hit = reach.find(d => d.stop === stop);
+        if (!hit) continue;
+        // money only, as the bots send to a road with nothing the house sells
+        const plan = { agent: a.id, route: hit.route, cargo: {}, purse: 40, contract: 'own', sell: [], buy: [] };
+        try { s = outfit(s, c, plan); turn += k + 1; } catch { continue; }
+        break;
+      }
+    }
+    s = endSeason(s, c);
+    watch();
+  }
+  if (s.phase === 'recall') s = recall(s, c, Object.fromEntries(s.expeditions.map(x => [x.id, roll(2) ? 'recall' : 'stay'])));
+  return { s, c, written: seen };
+}
+/** Per letter over `n` games: written, on the desk, orders used, orders dropped; and the reports left in the post at the end. */
+function cairoMeasure(n, length) {
+  const by = {}, row = id => (by[id] ??= { kind: CAIRO.letters.find(l => l.id === id).kind, written: 0, desk: 0, used: 0, dropped: 0 });
+  let answered = 0, took = 0, stranded = 0;
+  for (let seed = 1; seed <= n; seed++) {
+    const { s, written } = cairoGame(seed, length);
+    for (const k of written) row(k.split(':')[1]).written++;
+    for (const e of s.log) {
+      if (e.kind === 'letter') row(e.ref).desk++;
+      else if (e.kind === 'order') { row(e.ref).used++; took++; }
+      else if (e.kind === 'dropped' && /^order:/.test(e.ref)) row(e.ref.slice(6)).dropped++;
+      else if (e.kind === 'card' && by[e.ref]?.kind === 'question') answered++;
+    }
+    stranded += s.post.filter(p => p.kind === 'report').length;
+  }
+  return { by, answered, took, stranded };
+}
+test(`a cairo measure: ${GAMES} three-act games, at least 80 percent of answered questions take effect, no report written is left undelivered`, () => {
+  const m = cairoMeasure(GAMES, 'acts');
+  console.log(`  ${GAMES} cairo games: ${m.answered} questions answered, ${m.took} orders took effect, ${m.stranded} reports left in the post`);
+  for (const [id, r] of Object.entries(m.by)) console.log(`    ${id.padEnd(24)} ${r.kind[0]} written ${String(r.written).padStart(5)} desk ${String(r.desk).padStart(5)} used ${String(r.used).padStart(4)} dropped ${String(r.dropped).padStart(4)}`);
+  ok(m.answered >= GAMES / 4, `questions answered: ${m.answered}`);
+  ok(m.took >= 0.8 * m.answered, `answers that took effect: ${m.took} of ${m.answered}`);
+  eq(m.stranded, 0, 'no report left in the post at the game\'s end');
 });
 
 await done();
