@@ -223,7 +223,20 @@ test('repair: a trust log entry with a string or null value, or no table, is dro
   eq(logOf(entry(null)).map(e => e.kind), ['season'], 'no table');
   eq(logOf(entry('x')).map(e => e.kind), ['season'], 'a string for the table');
   eq(logOf(entry({ mira: 1, tobin: -1 }, { rep: 1 })).map(e => e.kind), ['trust', 'season'], 'a good one stays');
-  eq(logOf(entry({ mira: 1 }, { rep: 'two' }))[0].rep, undefined, 'a malformed rep is cut and the entry stays');
+  eq(logOf(entry({ mira: 1 }, { rep: 'two' }))[0].rep, 0, 'a malformed rep is replaced by the rep the save holds, and the entry stays');
+  eq(logOf(entry({ mira: 1 }))[0].rep, 0, 'so is a missing one (a save from before the note carried rep)');
+});
+test('repair: an old trust note with no rep does not let a card\'s direct rep.agents move count twice (MER-61c)', () => {
+  const direct = () => {
+    let s = game();
+    for (const e of s.log) if (e.kind === 'trust') delete e.rep;                // a note from before it carried rep
+    s = repair(JSON.parse(JSON.stringify(s)), content);
+    s.agents.mira.trust = 2;                                                     // up two over the season, and
+    s.rep.agents = 1;                                                            // the card that did it moved rep.agents by hand
+    for (const p of copy(s.desk)) s = choose(s, content, p.id, paperChoices(s, content, p.id)[0].id);
+    return endSeason(s, content).rep.agents;
+  };
+  eq(direct(), 1, 'one step, not two');
 });
 test('repair: a desk over five papers is cut to five', () => {
   const s = game();

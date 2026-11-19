@@ -8,6 +8,7 @@
 // in the content.
 import { seasonIndex } from './calendar.js';
 import { find, addPaper, REP_GROUPS } from './state.js';
+import { leftHow } from './agents.js';
 
 const ARGS = {
   money: [], stock: ['by'], rep: ['by'], trust: ['by'], memory: ['kind'],
@@ -35,8 +36,43 @@ const nameOf = (content, id) => (content.agents ?? []).find(a => a.id === id)?.n
     of the same effect at the choice does not, since the agent was there when it was chosen. */
 function stayedId(state, content, ref, ctx, what) {
   const id = agentId(state, ref, ctx);
-  if (ctx.later && !ctx.dry && state.agents[id].where === 'gone') throw new Error(`${nameOf(content, id)} has left the house, so their ${what} cannot change`);
+  if (ctx.later && !ctx.dry && state.agents[id].where === 'gone') {
+    const gone = leftHow(state, id) === 'retired' ? 'has retired' : 'has left the house';
+    throw new Error(`${nameOf(content, id)} ${gone}, so their ${what} cannot change`);
+  }
   return id;
+}
+
+// The keys of a card's `when`, a choice's `requires` and its effects that name an agent.
+const NAMES_AGENT = ['agent', 'trust', 'memory', 'hire', 'dismiss'];
+
+/** Every agent a card names, in its `when`, its choices' `requires`, and the effects of its choices
+    (now and later): an id, or "$agent" read as the paper's agent. A string that is not an agent of
+    the game is not a name. */
+function agentsNamed(state, node, ctx, out = new Set()) {
+  if (Array.isArray(node)) for (const n of node) agentsNamed(state, n, ctx, out);
+  else if (node && typeof node === 'object') {
+    for (const [k, v] of Object.entries(node)) {
+      if (NAMES_AGENT.includes(k) && typeof v === 'string') {
+        const id = v === '$agent' ? ctx.agent : v;
+        if (id && state.agents[id]) out.add(id);
+      } else agentsNamed(state, v, ctx, out);
+    }
+  }
+  return out;
+}
+
+/** A follow-up card is not drawn for an agent who has left: when its `when` or any choice names one
+    who is gone, the queue item throws here and `fireDue` drops it and logs why (MER-61c). A trial run
+    at the choice does not throw, since the agent was there when it was chosen. */
+function stayedCard(state, content, id, ctx) {
+  if (ctx.dry) return;
+  const card = find(content.cards, id, 'card');
+  for (const a of agentsNamed(state, { when: card.when, choices: card.choices }, ctx)) {
+    if (state.agents[a].where !== 'gone') continue;
+    const gone = leftHow(state, a) === 'retired' ? 'has retired' : 'has left the house';
+    throw new Error(`${nameOf(content, a)} ${gone}, so "${id}" is not drawn`);
+  }
 }
 
 /** Structure check only: returns the effect's head key or throws. */
@@ -104,7 +140,9 @@ export function apply(state, content, effect, ctx = {}) {
     }
     case 'hire': {
       const id = agentId(state, v, ctx);
-      if (state.agents[id].where === 'gone') throw new Error(`${nameOf(content, id)} has gone to work for another house and cannot be hired again`);
+      if (state.agents[id].where === 'gone') {
+        throw new Error(`${nameOf(content, id)} ${leftHow(state, id) === 'retired' ? 'has retired' : 'has gone to work for another house'} and cannot be hired again`);
+      }
       state.agents[id].hired = true;
       return;
     }
@@ -114,6 +152,7 @@ export function apply(state, content, effect, ctx = {}) {
     case 'card':
       if (!ctx.later) throw new Error('effect card: only inside a later effect');
       find(content.cards, v, 'card');
+      stayedCard(state, content, v, ctx);
       if (ctx.dry) return;
       // follow-ups go first, in firing order; the caller numbers them (id null until then)
       if (!addPaper(state, { kind: 'card', ref: v, ...(ctx.agent ? { agent: ctx.agent } : {}), ...(ctx.expedition ? { expedition: ctx.expedition } : {}) }, { first: true })) {

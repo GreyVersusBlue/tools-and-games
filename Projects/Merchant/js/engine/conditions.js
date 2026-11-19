@@ -110,6 +110,7 @@ export function holds(cond, state, content, x) {
     case 'agent': {
       const a = state.agents[v];
       if (!a) throw new Error(`condition agent: unknown agent "${v}"`);
+      if (a.where === 'gone') return false;   // a person who has left answers no card, whatever it asks of them (MER-61c)
       return (cond.hired === undefined || a.hired === cond.hired) && (cond.where === undefined || a.where === cond.where);
     }
   }
