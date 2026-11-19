@@ -6,7 +6,7 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
-import { BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table } from '../tools/bots.mjs';
+import { BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf } from '../tools/bots.mjs';
 
 const content = await loadContent('cairo', { fs });
 const PER_BOT = 50;
@@ -39,8 +39,10 @@ test('smoke: an expedition still on the road at an act jump counts as a trip (th
 });
 
 test('smoke: the bots differ (the careful bot sends smaller stakes than the greedy one)', () => {
-  const med = b => { const a = res.results[b].flatMap(g => g.capital).sort((x, y) => x - y); return a[a.length >> 1]; };
-  ok(med('careful') < med('greedy'), `careful ${med('careful')}, greedy ${med('greedy')}`);
+  // the mean, not the median: both bots' stakes sit on the same few depth-capped sizes (450 for both at 50 games), so
+  // a median over 50 games only measures which size the middle trip landed on
+  const mean = b => { const a = res.results[b].flatMap(g => g.capital); return a.reduce((n, x) => n + x, 0) / a.length; };
+  ok(mean('careful') < mean('greedy'), `careful ${mean('careful')}, greedy ${mean('greedy')}`);
 });
 
 test('smoke: the same seed plays the same game twice', () => {
@@ -67,7 +69,7 @@ test('smoke: an unknown bot and an unknown house are refused, not played as some
 test('smoke: the check returns one row per threshold and the table prints', () => {
   const checked = check(res);
   const names = checked.rows.map(r => r.name).join(' | ');
-  for (const part of ['most-used', 'broke by season', '75th percentile', 'after wage', 'under a doubling', 'every card drawn', 'choices taken', 'mediterranean: share', 'levant-persia: share', 'redsea-india: share', 'sahara: share', 'redsea-india: median round trip']) ok(names.includes(part), `no row for "${part}"`);
+  for (const part of ['most-used', 'broke by season', '75th percentile', 'after wage', 'under a doubling', 'every card drawn', 'choices taken', 'rep.agents', 'mediterranean: share', 'levant-persia: share', 'redsea-india: share', 'sahara: share', 'redsea-india: median round trip']) ok(names.includes(part), `no row for "${part}"`);
   ok(table(res, checked).includes('worth by house'));
 });
 
@@ -186,13 +188,79 @@ test('direction: a run without the careful, greedy and qirad bots has no directi
   eq(dirRows(c).length, 0);
 });
 
-test('check: the choice rule is pending until a card policy exists, and fails once it is switched on', () => {
+// ---- the card policy (MER-68)
+const choice = (id, now = [], later = []) => ({ id, now, later });
+const pick = (bot, list, state = { money: 1000, stock: {} }, temper = {}) => ranked(bot, state, content, list, () => 0.5, temper).map(c => c.id);
+
+test('policy: careful takes the choice with the least money at risk, greedy the most money now plus later', () => {
+  const list = [choice('spend', [{ money: -100 }], [{ in: 2, do: [{ money: 300 }] }]), choice('hold'), choice('earn', [{ money: 20 }])];
+  eq(pick('careful', list), ['earn', 'hold', 'spend'], 'no outlay first, then the more money');
+  eq(pick('qirad', list)[0], 'earn');
+  eq(pick('greedy', list)[0], 'spend');
+  eq(pick('greedy', list).length, 3, 'every open choice is ranked, so a refused one falls through to the next');
+});
+
+test('policy: a follow-up card counts at its best answer for greedy, scaled by how far greedy trusts it', () => {
+  const k = content.cards.find(c => c.id === 'silk-order'), agree = k.choices.find(c => c.id === 'agree');
+  const full = worthOf({ money: 1000, stock: {} }, content, agree, 1).net, none = worthOf({ money: 1000, stock: {} }, content, agree, 0).net;
+  ok(full > none + 400, `follow-up worth ${full} against ${none}`);
+});
+
+test('policy: standing breaks a money tie for careful and is bought with cash by greedy', () => {
+  const list = [choice('cold', [{ rep: 'partners', by: -1 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
+  eq(pick('careful', list)[0], 'warm');
+  eq(pick('greedy', list, { money: 1000, stock: {} }, { partners: 0.1 })[0], 'warm');
+  const paid = [choice('cash', [{ money: 50 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
+  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 0.01 })[0], 'cash');
+  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 0.1 })[0], 'warm', 'a house that values standing flips the same card');
+});
+
+test('policy: random shuffles the open choices and never reads their worth', () => {
+  const list = [choice('a'), choice('b', [{ money: 500 }]), choice('c')];
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) { let x = i * 0.37 + 0.11; seen.add(ranked('random', { money: 0, stock: {} }, content, list, () => (x = (x * 7.13) % 1))[0].id); }
+  ok(seen.size >= 2, [...seen].join());
+});
+
+test('policy: over the smoke games a bot with the policy and a bot without differ in what they take', () => {
+  const answered = b => Object.entries(res.results[b].reduce((m, g) => { for (const [k, n] of Object.entries(g.takes)) m[k] = (m[k] ?? 0) + n; return m; }, {})).sort().map(([k, n]) => `${k}:${n}`).join();
+  ok(answered('careful') !== answered('greedy'));
+});
+
+test('check: a choice greedy takes every time its card is offered is a breach, and the row names it', () => {
   const offered = { 'greedy|some-card': 100 }, taken = { 'greedy|some-card|yes': 95, 'greedy|some-card|no': 5 };
   const row = c => c.rows.find(x => x.name.includes('choices taken'));
-  const pending = check({ ...res, offered, taken });
-  ok(LIMITS.choicePending && row(pending).ok && row(pending).pending && row(pending).note.includes('some-card/yes'), JSON.stringify(row(pending)));
-  LIMITS.choicePending = false;
-  try { ok(!row(check({ ...res, offered, taken })).ok); } finally { LIMITS.choicePending = true; }
+  const c = check({ ...res, offered, taken });
+  ok(!row(c).ok && row(c).note.includes('some-card/yes'), JSON.stringify(row(c)));
+  ok(!check({ ...res, offered, taken: { 'greedy|some-card|yes': 90, 'greedy|some-card|no': 10 } }).rows.find(x => x.name.includes('choices taken')).note.includes('some-card'), '90 percent is not over 90');
+});
+
+test('check: a card with fewer than the minimum offers is not judged, and a listed choice is skipped, not forgiven by name alone', () => {
+  const row = c => c.rows.find(x => x.name.includes('choices taken'));
+  ok(row(check({ ...res, offered: { 'greedy|few': LIMITS.choiceMinOffers - 1 }, taken: { 'greedy|few|yes': LIMITS.choiceMinOffers - 1 } })).ok);
+  const listed = LIMITS.choiceExempt[0], [card, id] = listed.split('/');
+  ok(row(check({ ...res, offered: { [`greedy|${card}`]: 100 }, taken: { [`greedy|${card}|${id}`]: 100 } })).ok, 'a listed choice is skipped');
+  ok(!row(check({ ...res, offered: { [`greedy|${card}`]: 100 }, taken: { [`greedy|${card}|other`]: 100 } })).ok, 'the same card, another choice, is judged');
+});
+
+test('check: every exempt choice names a card and a choice that exist in the content', () => {
+  for (const key of LIMITS.choiceExempt) {
+    const [card, id] = key.split('/'), k = content.cards.find(c => c.id === card);
+    ok(k && k.choices.some(c => c.id === id), `${key} is not in the content`);
+  }
+});
+
+test('check: careful ending the game with rep.agents at 3 in half the games is a breach, and in a third is not', () => {
+  const row = c => c.rows.find(x => x.name.startsWith('careful: rep.agents'));
+  const half = doctored(r => r.results.careful.forEach((g, i) => { g.repAgents = i % 2 ? 3 : 0; }));
+  ok(!row(half).ok, JSON.stringify(row(half)));
+  const third = doctored(r => r.results.careful.forEach((g, i) => { g.repAgents = i % 3 ? 0 : 3; }));
+  ok(row(third).ok, JSON.stringify(row(third)));
+});
+
+test('smoke: every game reports rep.agents in range and the table prints its distribution', () => {
+  for (const g of all) ok(Number.isInteger(g.repAgents) && g.repAgents >= -3 && g.repAgents <= 3, `${g.bot}/${g.seed} ${g.repAgents}`);
+  ok(table(res, check(res)).includes('rep.agents at game end'));
 });
 
 test('check: a run with no greedy bot has no greedy rows and does not throw', () => {
