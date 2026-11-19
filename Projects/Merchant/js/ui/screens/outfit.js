@@ -4,6 +4,7 @@
 // here decides what is allowed. The draft lives in memory: closing the sheet or reloading drops it.
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
+import { refusesOwn } from '../../engine/agents.js';
 import { num, dinars, seal } from './paper.js';
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
@@ -126,11 +127,15 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   const outgoing = () => buyNow() + draft.purse;
   const agent = () => (content.agents ?? []).find(a => a.id === draft.agent);
   const qirad = content.city.contracts?.qirad;
+  // the way back (ARCH 4.11): an agent who will not go for a wage again, where no qirad can be offered, goes if the house pays the wage first
+  const prepayOffered = () => { const a = agent(); return !!a && !qirad?.agentShare && !!refusesOwn(app.state, a, false); };
+  const prepayWage = () => engine.prepayCost(app.state, content, engine.routeFor(app.state, content, stopId, agent())?.route.id, draft.agent);
   function plan() {
     const hit = engine.routeFor(app.state, content, stopId);
     const cargo = Object.fromEntries(Object.entries(draft.cargo).filter(([, n]) => n > 0));
-    const p = { agent: draft.agent ?? undefined, route: hit?.route.id, cargo, purse: draft.purse, contract: draft.contract };
+    const p = { agent: draft.agent ?? undefined, route: hit?.route.id, cargo, purse: draft.purse, contract: draft.contract === 'prepay' ? 'own' : draft.contract };
     if (draft.contract === 'qirad') p.partners = draft.partners;
+    if (draft.contract === 'prepay' && prepayOffered()) p.prepay = true;
     return p;
   }
   function sendState() {
@@ -231,16 +236,25 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const a = agent(), who = a?.name ?? 'The agent';
     const share = qirad?.agentShare;
     const out = outgoing();
+    const ids = ['own', ...(share ? ['qirad'] : []), ...(prepayOffered() ? ['prepay'] : [])];
     const choice = (id, label, text) => h('button', { class: 'contract', type: 'button', role: 'radio', id: `contract-${id}`, dataset: { key: `contract-${id}` },
       'aria-checked': draft.contract === id ? 'true' : 'false', tabindex: draft.contract === id ? '0' : '-1',
       onclick: () => { draft.contract = id; render(`contract-${id}`); },
-      onkeydown: e => { if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key) && share) { e.preventDefault(); const to = id === 'own' ? 'qirad' : 'own'; draft.contract = to; render(`contract-${to}`); } } },
+      onkeydown: e => {
+        const fwd = ['ArrowDown', 'ArrowRight'].includes(e.key), back = ['ArrowUp', 'ArrowLeft'].includes(e.key);
+        if ((fwd || back) && ids.length > 1) { e.preventDefault(); const to = ids[(ids.indexOf(id) + (fwd ? 1 : ids.length - 1)) % ids.length]; draft.contract = to; render(`contract-${to}`); }
+      } },
     h('strong', null, label), h('span', null, text));
     const own = choice('own', 'Your own money', 'The house keeps all the profit and carries all the loss.');
     const kids = [own];
     if (share) {
       kids.push(choice('qirad', 'A qirad with partners',
         `A qirad: partners share the cost, and ${who} keeps a share of the profit. ${who} keeps ${shareWords(share)} of the profit. If the cargo is lost, the partners lose their part.`));
+    }
+    if (ids.includes('prepay')) {
+      const wage = prepayWage();
+      kids.push(choice('prepay', 'Pay the wage first',
+        `${who} will not go for a wage again, because the house did not pay what it promised before. If the house pays the whole trip's wage now${wage ? `, ${dinars(wage)}` : ''}, ${who} will go. A full return, with nothing owed, wins back some of ${who}'s trust.`));
     }
     const body = [h('div', { class: 'contracts', role: 'radiogroup', 'aria-labelledby': 'outfit-contract-h' }, kids)];
     if (draft.contract === 'qirad') {
@@ -255,6 +269,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
 
   // ---- drawing
   function render(focusKey) {
+    if (draft.contract === 'prepay' && !prepayOffered()) draft.contract = 'own';
     if (draft.contract === 'qirad' && draft.partnersSet) draft.partners = Math.min(draft.partners, outgoing());
     const a = agent(), s = sendState();
     const label = a ? `Send ${a.name} to ${stop.name}` : `Send someone to ${stop.name}`;

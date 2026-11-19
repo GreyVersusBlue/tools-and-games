@@ -1745,6 +1745,59 @@ try {
       await test('outfit refusal: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
+    // the way back (MER-61d): in a city with no qirad, an agent who will not go for a wage again goes if the house pays first
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      // Cairo has a qirad, so this case serves the page and the engine the same Cairo with the qirad taken out
+      const noQ = structuredClone(nodeContent); noQ.city.contracts = {};
+      await page.evaluateOnNewDocument(() => {
+        const real = window.fetch.bind(window);
+        window.fetch = async (u, ...rest) => {
+          const res = await real(u, ...rest);
+          if (!String(u).endsWith('data/cairo/city.json')) return res;
+          const city = await res.json();
+          city.contracts = {};
+          return new Response(JSON.stringify(city), { status: 200, headers: { 'content-type': 'application/json' } });
+        };
+      });
+      let s = eng.newGame(noQ, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, noQ, p.id, FIRSTC[p.ref]);
+      s.log.push({ at: 0, kind: 'outfit', ref: 'x0', choice: 'cairo-damascus' });      // not the first expedition, so the contract is on the sheet
+      s.agents.yusuf.memory.push({ at: 0, kind: 'unfair' }, { at: 1, kind: 'unfair' });
+      s.money = 5000;
+      const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 10 }, purse: 0, contract: 'own' };
+      const wage = eng.prepayCost(s, noQ, 'cairo-damascus', 'yusuf');
+      await loadSave(page, s, '#map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await test('prepay: the sheet offers the wage first in words for an agent who refuses a wage, and sending it charges the engine\'s sum', async () => {
+        ok(wage > 0, 'the engine names a wage');
+        await page.click('#agent-yusuf');
+        await page.waitForFunction(() => document.getElementById('agent-yusuf')?.getAttribute('aria-checked') === 'true');
+        ok((await page.$$eval('#outfit-reasons p', ps => ps.map(p => p.textContent))).includes(eng.checkPlan(s, noQ, plan).reasons[0]), 'the engine\'s refusal is among the reasons while the own contract stands');
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+        await page.$eval('#contract-prepay', b => b.scrollIntoView({ block: 'center' }));
+        const words = await page.$eval('#contract-prepay', e => e.textContent);
+        ok(words.includes('Pay the wage first') && words.includes('did not pay what it promised before'), words);
+        ok(words.includes(String(wage)), `the words name the wage, ${wage}: ${words}`);
+        eq(await page.$$eval('#contract-qirad', e => e.length), 0, 'no qirad is offered');
+        await page.click('#contract-prepay');
+        await page.waitForFunction(() => document.getElementById('contract-prepay')?.getAttribute('aria-checked') === 'true');
+        await page.focus('#step-cargo-linen');
+        await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
+        const linen = Number(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')));
+        ok(linen > 0, 'some linen is carried');
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false', 'with the wage paid first, Send is open');
+        await page.click('#outfit-send');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+        const model = eng.outfit(s, noQ, { ...plan, cargo: { linen }, prepay: true });
+        const got = await engineState(page);
+        eq([got.money, got.expeditions[0].contract], [model.money, { kind: 'own', prepaid: true }]);
+      });
+      await test('prepay: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
     // a click on Next cannot land on a sheet that is edge-on: the back says `data-flip` until it lies flat
     {
       const { page } = await open(FRAMES[0]);

@@ -283,6 +283,20 @@ function put(s, paper) {
 
 const isCount = n => Number.isInteger(n) && n >= 0;
 
+/** The way back is open only where there is no qirad to offer instead. */
+const canPrepay = city => !city.contracts?.qirad?.agentShare;
+
+/** The wage for the whole trip, paid up front: the return opens `seasons` ahead, so the agent is
+    out `seasons - 1` of them, at the agent's wage. */
+const tripWage = (agent, proj) => Math.max(1, proj.seasons - 1) * (agent.wage ?? 0);
+
+/** What the house would pay up front for `agentId` on `routeId`, in coins, or 0 when the road does not project. */
+export function prepayCost(state, content, routeId, agentId) {
+  const route = routeOf(content, routeId), agent = agentOf(content, agentId);
+  const proj = route && agent ? project(state, content, route, agent) : null;
+  return proj?.ok ? tripWage(agent, proj) : 0;
+}
+
 /** Checks `plan` against `s` and, when it holds, applies it to `s` (a clone). Returns
     { problems, warnings }; `s` is changed only when there are no problems. */
 function build(s, content, plan) {
@@ -354,8 +368,12 @@ function build(s, content, plan) {
     else if (!isCount(partners) || partners < 1) no('A qirad needs partners who put in some money. Say how much.');
     else if (partners > purse + buyCost) no(`The partners cannot put in more than the ${coins(content, purse + buyCost)} that goes out in money and bought goods.`);
   } else partners = 0;
+  // the way back for an agent who will not go on a wage again, in a city with no qirad: the house pays the trip's wage now (ARCH 4.11)
+  const prepay = kind === 'own' && plan.prepay === true;
   const wants = agent && kind === 'own' ? refusesOwn(s, agent, !!city.contracts?.qirad?.agentShare) : null;
-  if (wants) no(wants);
+  if (wants && !(prepay && canPrepay(city))) no(wants);
+  else if (prepay && agent && !wants) no(`${agent.name} has no reason to ask for the wage first.`);
+  const wagePaid = prepay && proj?.ok ? tripWage(agent, proj) : 0;
 
   // selling and buying at the far end
   const carried = new Set(Object.keys(cargo));
@@ -374,8 +392,8 @@ function build(s, content, plan) {
   }
 
   // money
-  const houseMoney = buyCost + purse - partners;
-  if (!problems.length && s.money < houseMoney) no(`The house has ${coins(content, s.money)} and this costs ${coins(content, houseMoney)}.`);
+  const houseMoney = buyCost + purse - partners + wagePaid;
+  if (!problems.length && s.money < houseMoney) no(`The house has ${coins(content, s.money)} and this costs ${coins(content, houseMoney)}${wagePaid ? `, with ${coins(content, wagePaid)} of it ${agent.name}'s wage paid first` : ''}.`);
   if (problems.length) return { problems, warnings };
 
   // apply
@@ -388,12 +406,12 @@ function build(s, content, plan) {
   const x = {
     id: `x${n}`, agent: agent.id, route: route.id, leg: 0, left: legSeasons(agent, route.legs[0]), waiting: 0, status: first.waits ? 'waiting' : 'out',
     cargo, purse,
-    contract: kind === 'qirad' ? { kind, agentShare: share[0], of: share[1] } : { kind },
+    contract: kind === 'qirad' ? { kind, agentShare: share[0], of: share[1] } : prepay ? { kind, prepaid: true } : { kind },
     staked: { house: stockValue + buyCost + purse - partners, partners },
     orders: [], sent: idx, out: 0, start: first.startIdx,
     plan: { sell: [...sell], buy: [...buy] },
     quote: Object.fromEntries(Object.keys(dest.sells ?? {}).map(g => [g, M.truePrice(s, content, route.to, g)])),
-    book: { cargo: { ...cargo }, purse, capital: stockValue + buyCost + purse, sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] },
+    book: { cargo: { ...cargo }, purse, capital: stockValue + buyCost + purse, ...(wagePaid ? { wagePaid } : {}), sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] },
   };
   s.expeditions.push(x);
   rec.where = 'road';
@@ -548,7 +566,7 @@ export function risk(s, content) {
     // the vessel is gone: the agent is home or dead, the expedition is over
     const a = s.agents[x.agent];
     a.where = loss.survived ? homeOf(content) : 'dead';
-    if (loss.survived && x.contract.kind === 'own') pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
+    if (loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
     lost.push(x.id);
     close(s, content, x, seasonIndex(s, content));
     s.log.push({ at: seasonIndex(s, content), kind: 'lost', ref: x.id, choice: loss.survived ? 'survived' : 'died' });
@@ -652,10 +670,11 @@ function bringHome(s, content, x, { elapsed }) {
   s.money += x.purse;
   const partnersShort = pay(s, content, shares.partners), agentShort = pay(s, content, shares.agent);
   const short = partnersShort + agentShort;
-  const wage = x.contract.kind === 'own' ? x.out * (agent.wage ?? 0) : 0;
-  const wageShort = pay(s, content, wage);
+  // a prepaid wage was charged at outfitting: it is shown on the paper and counted against the house, and charged no more
+  const wage = x.contract.kind !== 'own' ? 0 : x.contract.prepaid ? (x.book.wagePaid ?? 0) : x.out * (agent.wage ?? 0);
+  const wageShort = x.contract.prepaid ? 0 : pay(s, content, wage);
   if (short || wageShort) s.rep.partners = clamp(s.rep.partners - 1, -3, 3);
-  returnTrust(s, content, x, { qirad: x.contract.kind === 'qirad', agentShare: shares.agent, agentShort, wage, wageShort, lost: Object.keys(x.book.lost ?? {}).length > 0, since: x.sent }, seasonIndex(s, content));
+  returnTrust(s, content, x, { qirad: x.contract.kind === 'qirad', prepaid: !!x.contract.prepaid, agentShare: shares.agent, agentShort, wage, wageShort, lost: Object.keys(x.book.lost ?? {}).length > 0, since: x.sent }, seasonIndex(s, content));
   agentRec.where = home;
   for (const k of x.book.seen) bumpKnown(s, k.stop, k.good, k.p, k.at);
   const houseNet = shares.house - x.staked.house - wage;
@@ -778,7 +797,7 @@ function settleAndClose(s, content, x, elapsed) {
   if (out.result === 'lost') {
     out.fate = out.loss.survived ? 'survived' : 'died';
     s.agents[x.agent].where = out.loss.survived ? homeOf(content) : 'dead';
-    if (out.loss.survived && x.contract.kind === 'own') pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
+    if (out.loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
     return settledLine(s, content, x, out);
   }
   const r = bringHome(s, content, x, { elapsed });

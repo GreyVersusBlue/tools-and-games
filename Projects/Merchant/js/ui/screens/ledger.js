@@ -3,6 +3,7 @@
 // finds in words; it computes no price and no outcome.
 import { h } from '../dom.js';
 import { writeSeason } from '../../engine/market.js';
+import { leftHow } from '../../engine/agents.js';
 import { num, dinars, seal } from './paper.js';
 import { stopName, traitWords, cap } from './outfit.js';
 
@@ -48,7 +49,7 @@ function whereIsAgent(app, a, r) {
   const { content, state } = app;
   const out = state.expeditions.find(x => x.agent === a.id);
   if (r.where === 'dead') return 'Did not come home.';
-  if (r.where === 'gone') return 'Has left the house.';
+  if (r.where === 'gone') return leftHow(app.state, a.id) === 'retired' ? 'Has retired.' : 'Has gone to work for another house.';
   if (out) return `On the road to ${stopName(content, content.routes.find(x => x.id === out.route)?.to ?? '')}.`;
   return `At home in ${stopName(content, content.city.home)}.`;
 }
