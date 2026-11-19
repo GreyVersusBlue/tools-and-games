@@ -18,9 +18,14 @@
 // dropped.
 //
 // A letter is written only if it can matter: a report must arrive no later than the season the
-// expedition's return is due, and a question only if its answer (written + 2 x lag) reaches the
-// agent by the trip's last decision point, so a question is never a lie.
-import { seasonIndex } from './calendar.js';
+// expedition's return is due and before the game's last season; a question only if its answer
+// (written + 2 x lag) reaches the agent by the trip's last decision point and before the last
+// season of the act it is written in, so a question is never a lie. Which rule a trip the jump
+// settles falls under: the jump settles the expedition at the act's end, so an answer that would
+// arrive after it reaches no one (a question needs the act's rule), while a report is in the
+// post and is delivered at the opening after the jump (4.7, `deliver`), so a report only needs
+// the game's rule.
+import { seasonIndex, playedSeasons } from './calendar.js';
 import { holds, placeOf } from './conditions.js';
 import { applyAll } from './effects.js';
 import { addPaper, deskFull } from './state.js';
@@ -69,6 +74,18 @@ function closeOf(content, x, idx, upTo) {
   return idx + n;
 }
 
+/** The last season of the stretch of played seasons that `idx` is in, up to the next gap (where the
+    act jump settles the road) or the end of the game. A calendar with no gap is one stretch. */
+function actEnd(s, content, idx) {
+  const played = playedSeasons(content.calendar, s.length);
+  let i = played.indexOf(idx);
+  while (i + 1 < played.length && played[i + 1] === played[i] + 1) i++;
+  return played[i];
+}
+
+/** The last season the game plays. */
+const gameEnd = (s, content) => playedSeasons(content.calendar, s.length).at(-1);
+
 /** The letters an expedition could write now: weight above 0, `when` holds, not a once-only letter
     written before, not one of its own already on the way, and one that can matter (see the head). */
 function pool(s, content, x, idx, lag) {
@@ -78,7 +95,9 @@ function pool(s, content, x, idx, lag) {
   return (content.letters ?? []).filter(l =>
     l.weight > 0 && !(l.repeat === false && s.seen[l.id]) && !s.post.some(p => p.id === l.id && p.expedition === x.id) &&
     holds(l.when, s, content, x) &&
-    (l.kind === 'question' ? idx + 2 * lag <= lastDecision : idx + lag <= home));
+    (l.kind === 'question'
+      ? idx + 2 * lag <= lastDecision && idx + 2 * lag < actEnd(s, content, idx)
+      : idx + lag <= home && idx + lag < gameEnd(s, content)));
 }
 
 /** Opening step "letters": put on the desk what has arrived, then let each expedition on the
