@@ -205,4 +205,6 @@ jobs:
 
       - name: longrun --days 800
         working-directory: Projects/hearth/test
-        run: node longrun.mjs --days 800
+        # The live container's heap flag (server/compose.example.yml, DESIGN-arc-three.md 995): without it V8 grows the heap as it
+        # likes and resident memory read anywhere from 305 to 417 MB on the same seed and save (2026-11-17 failed, 11-18 passed).
+        run: node --max-old-space-size=192 longrun.mjs --days 800
