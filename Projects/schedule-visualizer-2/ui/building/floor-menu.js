@@ -244,11 +244,12 @@ export function floorMenu(ed) {
   }
 
   // The menu's items for one floor.
-  function items(floorId) {
+  function items(floorId, given) {
     const floors = ed.project.building.floors;
     const at = floors.findIndex((floor) => floor.id === floorId);
     if (at === -1) return [];
-    const opener = () => document.getElementById('floor-tab-' + floorId) || ed.canvas;
+    // the focus goes back to what opened the menu (the ⋯ button, or the tab)
+    const opener = () => (given && given.isConnected ? given : document.getElementById('floor-tab-' + floorId) || ed.canvas);
     return [
       { label: 'Rename…', run: () => rename(floorId, opener()) },
       { label: 'Duplicate floor…', run: () => duplicate(floorId, opener()) },
@@ -262,7 +263,7 @@ export function floorMenu(ed) {
   function open(floorId, anchor, opener) {
     const floor = floorOf(floorId);
     if (!floor) return null;
-    return openMenu({ items: items(floorId), anchor, opener, label: floor.name + ' actions' });
+    return openMenu({ items: items(floorId, opener), anchor, opener, label: floor.name + ' actions' });
   }
 
   return { items, open, duplicate };
