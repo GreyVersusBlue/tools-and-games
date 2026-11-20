@@ -157,7 +157,7 @@ export function createDesk(app) {
       if (backOf) {
         node = back(app, paper, { now: backOf.now, fresh: backOf.fresh, onNext: next });
         node.dataset.face = 'back';
-      } else if (RECORD_KINDS.includes(paper.kind)) node = record(app, paper, { open: returnsSeen() > 1, onDone: () => answer(paper, { id: 'ok', now: [] }) });
+      } else if (RECORD_KINDS.includes(paper.kind)) node = record(app, paper, { open: returnsSeen() > 1, onDone: () => answer(paper, { id: 'ok', now: [] }), onChoose: c => answer(paper, c), locked: () => busy });
       else node = front(app, paper, { onChoose: (c) => answer(paper, c), locked: () => busy });
       const key = `${paper.id}:${backOf ? 'back' : 'front'}`;
       if (shown.has(key) && !opts.flipped) node.classList.add('still');
@@ -229,7 +229,7 @@ export function createDesk(app) {
     const before = new Set(app.state.notebook);
     const tripTo = app.view().cards?.[paper.id]?.trip?.to ?? null;   // where the card says the agent would go
     try { app.act(s => engine.choose(s, content, paper.id, choice.id)); } catch (e) { busy = false; node?.removeAttribute('inert'); app.say(e.message); return; }
-    if (RECORD_KINDS.includes(paper.kind)) { busy = false; raised = null; draw({ focus: 'next' }); return; }
+    if (RECORD_KINDS.includes(paper.kind) && choice.id === 'ok') { busy = false; raised = null; draw({ focus: 'next' }); return; }
     const fresh = app.state.notebook.filter(id => !before.has(id)).map(id => (content.notebook ?? []).find(n => n.id === id)?.title ?? id);
     const answered = app.state.desk.find(p => p.id === paper.id);
     const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app);
@@ -314,7 +314,12 @@ export function createDesk(app) {
       const title = qs('.sheet-title', sheetBox);
       const left = openPapers().length;
       if (f === 'next' && !left && !backOf && app.state.phase === 'desk') endBtn.focus();
-      else (title ?? endBtn).focus();
+      else {
+        (title ?? endBtn).focus();
+        // focus alone leaves a heading under the top bar when the page was scrolled to press an edge: bring it to the
+        // heading's scroll-margin (screens.css) when its top is within the bar
+        if (title && f === 'raise' && title.getBoundingClientRect().top < bar.getBoundingClientRect().bottom + 8) title.scrollIntoView({ block: 'start' });
+      }
     }
   }
 

@@ -65,7 +65,7 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
 ];
 const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
-const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'between-acts', 'ending-stub']);
+const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts', 'ending-stub']);
 
 // ---- the same game the engine plays in Node (the policy of journey.mjs: first open choice,
 // first expedition sent on the engine's plan, every other paper set aside)
@@ -119,6 +119,22 @@ const withLetter = (id, kind, stop, lag, standing) => {
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
 states.report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
 const plain = s => JSON.parse(JSON.stringify(s));
+// MER-80: a loss paper and an Accounts paper laid by hand on the return's season. The loss carries the
+// choices of the `loss-sea-gone` entry of returns.json as routes.js would fill them; the Accounts items are
+// shaped as `accountItem` writes them (a cause, a choice, the changes).
+{
+  const base = plain(states.ret), r = base.desk.find(p => p.kind === 'return' && p.state === 'open');
+  const entry = content.returns.find(e => e.id === 'loss-sea-gone'), fill = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Damascus');
+  states.loss = { ...base, desk: [{ id: 'p80-0', state: 'open', kind: 'lost', ref: 'lost', agent: 'ali', expedition: r.expedition, data: {
+    headline: 'Ali did not come back', route: 'cairo-damascus', whole: true, survived: false,
+    lines: [{ label: 'Lost', text: 'The ship and what it carried.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
+    ask: { title: fill(entry.title), body: fill(entry.body) },
+    choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
+  states.accounts = { ...base, desk: [{ id: 'p80-1', state: 'open', kind: 'accounts', ref: 'accounts', items: [
+    { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ['+60 dinars'], text: 'a' },
+    { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'b' },
+    { from: 'gift/yes', card: 'A gift for the court', choice: 'Send the gift', changes: ['good name with court +1'], text: 'c' }] }] };
+}
 
 const server = await serve(PORT);
 const browser = await launch();
@@ -176,6 +192,10 @@ const SCREENS = [
       if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
       await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
     } },
+  { name: 'desk-loss',
+    go: async (p, f) => { await load(p, '#desk', { state: states.loss, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
+  { name: 'desk-accounts',
+    go: async (p, f) => { await load(p, '#desk', { state: states.accounts, large: f.large }); await p.waitForSelector('#screen-desk .account-group'); } },
   { name: 'outfit', modal: 'dialog[open]',
     go: async (p, f) => {
       await load(p, '#map', { state: states.firstDone, large: f.large });

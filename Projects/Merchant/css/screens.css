@@ -151,6 +151,8 @@ html.large-text .title-what { display: none; }
 .costline { grid-column: 2; display: block; font-family: var(--font-chrome); font-size: var(--step-0); }
 .costline .gain { color: var(--nile); font-weight: 600; }
 .costline .loss { color: var(--madder); font-weight: 600; }
+/* a choice under the pointer is on --paper-shade, where --nile is 4.17:1: the same hue, darker (found by layout.mjs on a return, MER-80) */
+.choice:hover:not([aria-disabled="true"]) .costline .gain { color: #435c31; }
 .costline .hint { display: block; font-style: italic; color: var(--ink-soft); }
 .costline.why { color: var(--ink-soft); }
 .costline .prices { display: block; color: var(--ink-soft); }
@@ -165,6 +167,17 @@ html.large-text .title-what { display: none; }
 .account td { text-align: right; }
 .account th, .account td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); }
 @media (max-width: 480px) { .account tr { display: block; } .account th, .account td { display: block; text-align: left; border: 0; } }
+
+/* a return's question and a loss's picture slot (DESIGN 2.1 rules 3 and 4) */
+.ask { margin-top: var(--s3); }
+.ask-title { font-size: var(--step-1); margin: 0 0 var(--s1); }
+.ask-title:focus-visible { outline: 2px solid var(--brass-dark); }
+.picture-slot { margin: 0 0 var(--s3); aspect-ratio: 16 / 5; width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
+.picture-slot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* the Accounts paper: each line under the sentence of the choice that caused it (DESIGN 2.1 rule 6) */
+.account-group { margin-bottom: var(--s3); }
+.account-group .cause { font-size: var(--step-0); font-family: var(--font-chrome); margin: 0 0 var(--s1); }
+.account-group .account-item { margin: 0 0 var(--s1) var(--s3); }
 
 .edges { order: -1; display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; }
 .edges:empty { display: none; }
@@ -192,6 +205,8 @@ html.large-text .title-what { display: none; }
   .desk-stills, .desk-still { height: 30svh; bottom: auto; }
   .desk-screen { padding-top: 30svh; background: var(--night); }
   .topbar { flex-wrap: wrap; background: rgba(20, 17, 13, .78); }
+  /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
+  .sheet-title { scroll-margin-top: 9rem; }
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
   /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
