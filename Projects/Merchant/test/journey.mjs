@@ -1992,6 +1992,25 @@ try {
         await page.close();
       }
 
+      // the same bar over a keyboard's focus: Tab to the last answer scrolls it into view, and it has to land above the bar,
+      // not beneath it (the 9rem the bar used to leave was under the page's end; focus never went there)
+      for (const frame of [FRAMES[3], FRAMES[4]]) for (const large of [false, true]) {
+        const { page } = await open(frame);
+        for (const [name, st] of [['a report with three answers', report], ['a full desk', fullDesk]]) {
+          await loadSave(page, st);
+          await page.waitForSelector('#screen-desk .sheet-title');
+          await page.evaluate(l => document.documentElement.classList.toggle('large-text', l), large);
+          await test(`${frame.name}${large ? ' at Large text' : ''}: ${name}: focus on the last answer scrolls it clear of the End the season bar`, async () => {
+            await page.evaluate(() => scrollTo(0, 0));
+            await page.focus('.sheet .choices .choice:last-child');
+            await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+            const m = await page.evaluate(() => ({ bottom: document.activeElement.getBoundingClientRect().bottom, barTop: document.querySelector('.end-row').getBoundingClientRect().top }));
+            ok(m.bottom <= m.barTop, `the answer ends at ${m.bottom}, the bar starts at ${m.barTop}`);
+          });
+        }
+        await page.close();
+      }
+
       // finding 13: End the season looks disabled while a result shows; a closed choice says why in words
       {
         const { page } = await open(FRAMES[1]);
