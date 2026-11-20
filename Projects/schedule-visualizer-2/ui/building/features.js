@@ -338,7 +338,7 @@ export function openFeaturesDialog(env, opener) {
   const rows = h('ul', { class: 'features-dialog__rows', id: 'features-rows', 'aria-label': 'The school’s features' });
   const empty = h('div', { class: 'features-dialog__empty', id: 'features-empty' },
     h('p', null, 'The school has no features yet.'),
-    h('button', { type: 'button', class: 'btn', data: { key: 'common' }, on: { click: () => commit(addCommonFeatures, undefined, 'Added ' + COMMON_FEATURES.length + ' common features.') } }, 'Add common ones'),
+    h('button', { type: 'button', class: 'btn', data: { key: 'common' }, on: { click: addCommon } }, 'Add common ones'),
     h('p', { class: 'bld-inspector__small' }, 'Add ' + COMMON_FEATURES.length + ' common features; delete any you do not need.'));
   const addInput = h('input', { class: 'field__input', id: 'features-add', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'Type a feature, like Lab', 'aria-describedby': 'features-add-hint features-add-refusal', data: { key: 'add' } });
   const addRefusal = h('p', { class: 'field__refusal', id: 'features-add-refusal', hidden: true });
@@ -448,6 +448,13 @@ export function openFeaturesDialog(env, opener) {
       ),
       used && used.rooms > 0 ? h('p', { class: 'features-row__used' }, 'On ' + count(used.rooms, 'room') + '.') : null,
     );
+  }
+
+  // the button hides with the empty list, so the focus goes to the first new row's name
+  function addCommon() {
+    if (commit(addCommonFeatures, undefined, 'Added ' + COMMON_FEATURES.length + ' common features.') === null) return;
+    const first = rows.querySelector('[data-key^="name:"]');
+    (first || addInput).focus();
   }
 
   function move(feature, to, way) {

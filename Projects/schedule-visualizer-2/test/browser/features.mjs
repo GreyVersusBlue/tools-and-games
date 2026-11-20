@@ -271,6 +271,8 @@ test('6. an empty list offers the common ones; the count shows from 30; 40 is th
   await shows(() => (globalThis.sv2.store.project.building.features || []).length === 8);
   assert.deepEqual(await names(), ['Lab', 'Sink', 'Projector', 'Computers', 'Stage', 'Kiln', 'Ovens', 'Studio sound']);
   assert.equal(await page.$eval('#features-empty', (el) => el.hidden), true);
+  // the button hid with the empty list: the focus is on the first new name, not lost to the page
+  assert.equal(await activeKey(), 'name:' + await idOf('Lab'), 'after Add common ones the focus goes to the first name');
   for (let n = 9; n <= 29; n += 1) await apply('addFeature', { name: 'Extra ' + n });
   await shows(() => document.querySelectorAll('#features-rows .features-row').length === 29);
   assert.equal(await page.$eval('#features-count', (el) => el.hidden), true, 'no count below 30');
