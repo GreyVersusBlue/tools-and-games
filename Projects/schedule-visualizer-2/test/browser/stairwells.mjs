@@ -198,7 +198,8 @@ test('a chain of three floors offers Make one stairwell in the stair\'s properti
   assert.deepEqual(await wells(), [['A', 'North'], ['B', 'North']]);
   assert.equal(await entries(), before + 1, 'one undo step');
   assert.equal((await state(page)).label, 'Make one stairwell, Stairwell North');
-  assert.match(await toastText(), /^Stairs A and B are now Stairwell North, on Floors 1, 2 and 3\./);
+  // the toast's floors in the dialog's words, "Floors 1 to 3", as its sentence said them
+  assert.match(await toastText(), /^Stairs A and B are now Stairwell North, on Floors 1 to 3\./);
   // the stair's properties say Stairwell North
   await waitFor('#inspector-properties #inspector-title', 'Stairwell North');
   assert.equal(await text('#well-floors'), 'Floor 1 to Floor 3: stops on Floor 1, Floor 2 and Floor 3.');
@@ -415,7 +416,8 @@ test('Stairwell through floors…, by the pointer: a row a floor saying what is 
   assert.equal(now.floors[0].cells[CELL], 'S', 'Floor 1 had stairs drawn');
   assert.equal(now.floors[2].cells[CELL], 'S', 'Floor 3 had stairs drawn');
   assert.equal(now.floors[3].cells[CELL], '#', 'Floor 4 was left as it was');
-  assert.match(await toastText(), /^Stairwell A now runs through Floors 1, 2 and 3 at row 11, column 15 \(2 flights made\)\. Stairs were drawn on Floor 1 and Floor 3\.$/);
+  // the floors as the button named them, "Floors 1 to 3"
+  assert.match(await toastText(), /^Stairwell A now runs through Floors 1 to 3 at row 11, column 15 \(2 flights made\)\. Stairs were drawn on Floor 1 and Floor 3\.$/);
   await undo();
   assert.equal((await building()).connections.length, 0);
   assert.equal((await building()).floors[0].cells[CELL], '.', 'the stairs drawn are taken back with it');

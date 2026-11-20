@@ -49,6 +49,19 @@ export function floorsSentence(names) {
   return list(names);
 }
 
+// The engine's sentence after a join, with its floors in the dialog's words:
+// the engine lists them ("on Floors 1, 2 and 3"), the dialog's button and
+// sentence said "Floors 1 to 3", and the toast says what the dialog said.
+// `outcome.floors` is the names the engine listed, in its order.
+export function inDialogWords(outcome) {
+  const text = outcome && typeof outcome.text === 'string' ? outcome.text : '';
+  const names = outcome && Array.isArray(outcome.floors) ? outcome.floors : [];
+  if (names.length < 2) return text;
+  const numbered = names.map((name) => /^Floor (\S+)$/.exec(name));
+  const listed = numbered.every(Boolean) ? 'Floors ' + list(numbered.map((match) => match[1])) : list(names);
+  return text.includes(listed) ? text.replace(listed, floorsSentence(names)) : text;
+}
+
 function levelOf(building, floorId) {
   const found = building.floors.find((floor) => floor.id === floorId);
   return found ? found.level : 0;
@@ -239,7 +252,7 @@ export function openMakeStairwell(ed, connectionId, opener) {
       giveBack(ed, opener);
       return false;
     }
-    const done = ed.commit(makeStairwell, { connectionId, letter: input.value }, { done: (outcome) => outcome.text, toast: (outcome) => outcome.text });
+    const done = ed.commit(makeStairwell, { connectionId, letter: input.value }, { done: inDialogWords, toast: inDialogWords });
     giveBack(ed, opener);
     return done !== null;
   });
@@ -330,7 +343,7 @@ export function openStairwellThrough(ed, where, opener) {
       return false;
     }
     const floorIds = chosen().map((floor) => floor.id).filter((id) => id !== origin.id);
-    const done = ed.commit(stairwellThrough, { floorId: origin.id, cell, floorIds }, { done: (outcome) => outcome.text, toast: (outcome) => outcome.text });
+    const done = ed.commit(stairwellThrough, { floorId: origin.id, cell, floorIds }, { done: inDialogWords, toast: inDialogWords });
     giveBack(ed, opener);
     return done !== null;
   });
