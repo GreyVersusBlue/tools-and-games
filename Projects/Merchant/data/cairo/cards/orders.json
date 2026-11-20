@@ -124,14 +124,14 @@
           "stock": "linen",
           "gte": 10
         },
-        "hint": "Nothing now. In three seasons the linen is sold far away for 10 dinars more than Abu Bakr offers. It leaves your warehouse then.",
+        "hint": "Nothing now. In three seasons the linen is sold far away for 5 dinars more than Abu Bakr offers. It leaves your warehouse then.",
         "now": [],
         "later": [
           {
             "in": 3,
             "do": [
               {
-                "money": 460
+                "money": 455
               },
               {
                 "stock": "linen",
