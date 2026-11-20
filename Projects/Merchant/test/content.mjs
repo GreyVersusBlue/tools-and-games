@@ -337,6 +337,19 @@ test('rule 5: a banned stem anywhere but a d5 entry fails, including a good name
   ok(lintContent(variant(c => { c.text = { about: [{ id: 'a', body: 'About slaves.', sources: [{ src: 'testport-fiction' }] }] }; }), { banned }).some(f => f.rule === 5));
   eq(lintContent(variant(c => { c.text = { about: [{ id: 'a', body: 'About slaves.', context: 'd5', sources: [{ src: 'testport-fiction' }] }] }; }), { banned }), []);
 });
+test('rules 5 and 7 reach returns.json (MER-82): a banned stem, a dash or a web address in an entry fails', () => {
+  const withRet = edit => variant(c => { c.returns = structuredClone(content.returns?.length ? content.returns : [{ id: 'x', paper: 'loss', title: 'T', body: 'B', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], note: 'n', sources: [{ src: 'testport-fiction' }] }]); edit(c.returns[0]); });
+  const rules = edit => lintContent(withRet(edit), { banned }).map(f => f.rule);
+  ok(rules(e => { e.body = 'The slaver came.'; }).includes(5), 'banned stem in a body');
+  ok(rules(e => { e.choices[0].label = 'Pay \u2014 now'; }).includes(7), 'a dash in a label');
+  ok(rules(e => { e.note = 'See example.com for more.'; }).includes(7), 'a web address in a note');
+  ok(!rules(e => { e.body = 'The cart was empty.'; }).includes(5) && !rules(e => { e.body = 'The cart was empty.'; }).includes(7), 'plain text passes');
+});
+test('the cause fact (MER-82): a loss entry may name sea, river, desert or robbers, and nothing else', () => {
+  const bad = cause => { try { validateContent(variant(c => { c.returns = [{ id: 'x', paper: 'loss', facts: { cause }, title: 'T', body: 'B', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], note: 'n', sources: [{ src: 'testport-fiction' }] }]; }), {}); } catch (e) { return e.problems.map(p => p.message).join(' | '); } return null; };
+  eq(bad(['sea', 'river', 'desert', 'robbers']), null);
+  ok(/needs one of sea, river, desert, robbers/.test(bad(['storm']) ?? ''), String(bad(['storm'])));
+});
 test('rule 2: a fact in text.json needs a source unless it says fact false', () => {
   const t = piece => lintContent(variant(c => { c.text = { about: [piece] }; }), { banned });
   ok(t({ id: 'a', body: 'Cairo was large.' }).some(f => f.rule === 2));
