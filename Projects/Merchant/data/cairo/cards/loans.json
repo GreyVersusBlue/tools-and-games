@@ -2,6 +2,7 @@
   {
     "id": "partner-loan",
     "group": "loans",
+    "kind": "favour",
     "from": {
       "name": "Farid, a partner",
       "role": "Cairo",
@@ -80,6 +81,7 @@
   {
     "id": "friend-needs-loan",
     "group": "loans",
+    "kind": "favour",
     "from": {
       "name": "Murad, a friend",
       "role": "Cairo",
@@ -155,6 +157,7 @@
   {
     "id": "road-money",
     "group": "loans",
+    "kind": "people",
     "from": {
       "name": "Samir, your agent",
       "role": "Cairo",
@@ -218,6 +221,28 @@
             ]
           }
         ]
+      },
+      {
+        "id": "wait",
+        "label": "Ask Samir to wait a season",
+        "hint": "Samir stays home and is not pleased. Partners like a house that thinks first.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 2
+              }
+            ]
+          }
+        ]
       }
     ],
     "note": "In the Geniza papers, a traveller's living costs, transport and customs were commonly paid out of the shared money. Some contracts made the traveller pay them himself.",
@@ -235,6 +260,7 @@
   {
     "id": "dalal-grows",
     "group": "loans",
+    "kind": "trade",
     "from": {
       "name": "Dalal, a cloth seller",
       "role": "Cairo",

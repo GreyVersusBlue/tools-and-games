@@ -7,11 +7,11 @@
 // exists; the exception is city.json, which a city cannot do without, so it throws. Over
 // fetch only a 404 is "missing"; any other status that is not ok throws. A file that exists
 // but does not parse, or holds null or the wrong top-level type, throws and names the file.
-// The result is one plain object: the files by name, `cards` and `letters` as flat lists,
+// The result is one plain object: the files by name, `cards` and `letters` as flat lists, `returns` as the entries of returns.json,
 // and `sources` from data/sources.json plus the city's own sources.json when it has one.
 
 export const CARD_GROUPS = ['orders', 'disputes', 'loans', 'tolls', 'gifts', 'hiring', 'followups', 'court', 'faith', 'news'];
-const LISTS = ['houses', 'goods', 'stops', 'routes', 'agents', 'events', 'notebook', 'terms', 'letters'];
+const LISTS = ['houses', 'goods', 'stops', 'routes', 'agents', 'events', 'notebook', 'terms', 'letters', 'returns'];
 const OBJECTS = ['city', 'calendar', 'text'];
 
 const isObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);

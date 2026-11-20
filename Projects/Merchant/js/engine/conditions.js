@@ -53,6 +53,7 @@ const mainGood = cargo => Object.entries(cargo ?? {}).filter(([, n]) => n > 0).s
 const trip = (content, agent, route, to, good, seasons, x) => ({
   agent, expedition: x ?? null, route: route.id, to, good, seasons,
   from: stopName(content, route.legs?.[0]?.from ?? content.city?.home), });
+export { trip as tripFacts, mainGood as mainGoodOf };   // routes.js builds a return's facts with these
 
 /** The trip `agent` has in state `is`, or null. `home`: a return paper for the agent is on the desk
     (the opening brought them home this season). `out`: an expedition of theirs is on the road.
@@ -62,15 +63,11 @@ export function tripOf(state, content, agent, is) {
   const a = agentOf(content, agent), idx = seasonIndex(state, content);
   if (!a || !state.agents[agent]) return null;
   if (is === 'home') {
+    // the return paper carries the trip's facts (routes.js `tripData`); nothing is read back out of its words
     const p = state.desk.find(q => q.kind === 'return' && q.agent === agent && q.expedition);
-    const sent = p && state.log.find(e => e.kind === 'outfit' && e.ref === p.expedition);
-    const route = sent && routeOf(content, sent.choice);
+    const t = p?.data?.trip, route = t && routeOf(content, t.route);
     if (!route) return null;
-    // the return paper writes where the agent turned back and what was sent, in words; read them back by name
-    const head = p.data?.headline ?? '', sentOut = (p.data?.account ?? []).find(r => r.label === 'Sent out')?.text ?? '';
-    const turned = (content.stops ?? []).find(s => head.startsWith(`${a.name} came home from ${s.name}.`))?.id ?? route.to;
-    const good = (content.goods ?? []).map(g => ({ id: g.id, at: sentOut.indexOf(` of ${g.name.toLowerCase()}`) })).filter(g => g.at >= 0).sort((u, v) => u.at - v.at)[0]?.id ?? null;
-    return trip(content, agent, route, turned, good, idx - sent.at, p.expedition);
+    return trip(content, agent, route, t.to, t.good, t.seasons, p.expedition);
   }
   if (is === 'out') {
     const x = state.expeditions.find(e => e.agent === agent && e.status !== 'home');

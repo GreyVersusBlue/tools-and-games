@@ -87,6 +87,9 @@ html.large-text .title-what { display: none; }
 .desk-still, .map-img, .map-fill { color: transparent; font-size: 0; }
 /* The polite live region sits at the end of <body>, where its 1 px made every page 1 px taller than the frame. */
 #live { position: fixed; top: 0; left: 0; }
+/* A placeholder still (manifest `final: false`) carries its file name in its top-left corner, where the season line sits.
+   The top 8% is cut off, so the label never lies behind text; a final picture is never cropped (MER-87, finding 15). */
+.desk-still.placeholder { clip-path: inset(8% 0 0 0); }
 .desk-still.fading { animation: still-in var(--season-fade-time) ease-in-out both; }
 @keyframes still-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -128,7 +131,7 @@ html.large-text .title-what { display: none; }
 .stack-count { margin: 0; align-self: flex-start; padding: 0 var(--s2); background: rgba(20, 17, 13, .72); color: var(--paper);
   font-family: var(--font-chrome); font-size: var(--step--1); border-radius: var(--radius); }
 .stack-count:empty { display: none; }
-.stack-papers { display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .2rem .3rem .5rem; }
+.stack-papers { position: relative; display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .2rem .3rem .5rem; }
 .sheet-box { display: flex; justify-content: center; }
 .sheet { width: 100%; max-width: var(--measure); padding: var(--s3) var(--s4); background-image: none; backface-visibility: hidden; }
 .sheet.still { animation: none; }
@@ -151,6 +154,8 @@ html.large-text .title-what { display: none; }
 .costline { grid-column: 2; display: block; font-family: var(--font-chrome); font-size: var(--step-0); }
 .costline .gain { color: var(--nile); font-weight: 600; }
 .costline .loss { color: var(--madder); font-weight: 600; }
+/* a choice under the pointer is on --paper-shade, where --nile is 4.17:1: the same hue, darker (found by layout.mjs on a return, MER-80) */
+.choice:hover:not([aria-disabled="true"]) .costline .gain { color: #435c31; }
 .costline .hint { display: block; font-style: italic; color: var(--ink-soft); }
 .costline.why { color: var(--ink-soft); }
 .costline .prices { display: block; color: var(--ink-soft); }
@@ -164,7 +169,23 @@ html.large-text .title-what { display: none; }
 .account th { text-align: left; font-weight: 400; }
 .account td { text-align: right; }
 .account th, .account td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); }
-@media (max-width: 480px) { .account tr { display: block; } .account th, .account td { display: block; text-align: left; border: 0; } }
+/* a phone keeps each account row's label and its value on one line, the value at the right and wrapping under the label only when it must (MER-87, finding 12) */
+@media (max-width: 480px) { .accounts-table tr { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); border-bottom: 1px solid var(--paper-shade); }
+  .accounts-table th, .accounts-table td { border: 0; } .accounts-table td { flex: 0 1 auto; min-width: 0; } }
+
+/* a return's question and a loss's picture slot (DESIGN 2.1 rules 3 and 4) */
+.ask { margin-top: var(--s3); }
+.ask-title { font-size: var(--step-1); margin: 0 0 var(--s1); }
+.ask-title:focus-visible { outline: 2px solid var(--brass-dark); }
+.picture-slot { margin: 0 0 var(--s3); aspect-ratio: 16 / 5; max-height: clamp(4rem, 13vh, 11rem); width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
+.picture-slot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The page between the acts is long and its one button is last: the button stays at the foot of the visible
+   paper while the page scrolls under it (MER-87, finding 7), on a paper-coloured bar so no line shows through. */
+.kind-phase #btn-open-house { position: sticky; bottom: 0; box-shadow: 0 0 0 var(--s2) var(--paper); }
+/* the Accounts paper: each line under the sentence of the choice that caused it (DESIGN 2.1 rule 6) */
+.account-group { margin-bottom: var(--s3); }
+.account-group .cause { font-size: var(--step-0); font-family: var(--font-chrome); margin: 0 0 var(--s1); }
+.account-group .account-item { margin: 0 0 var(--s1) var(--s3); }
 
 .edges { order: -1; display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; }
 .edges:empty { display: none; }
@@ -192,12 +213,19 @@ html.large-text .title-what { display: none; }
   .desk-stills, .desk-still { height: 30svh; bottom: auto; }
   .desk-screen { padding-top: 30svh; background: var(--night); }
   .topbar { flex-wrap: wrap; background: rgba(20, 17, 13, .78); }
+  /* a placeholder still is a flat colour with a file name in it: 143 px of nothing between the bar and the first paper
+     (MER-87, finding 15). Without it the papers start under the bar; a final picture keeps its band. */
+  .desk-screen:has(.desk-still.placeholder) { padding-top: 7.4rem; }
+  .desk-screen:has(.desk-still.placeholder) .desk-stills { display: none; }
+  /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
+  .sheet-title { scroll-margin-top: 9rem; }
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
   /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
      page always ends below the last answer and the stack never runs under the "papers still need an
      answer" line (MER-71, finding 10; it was fixed over the page with 9rem guessed under the sheet). */
   .stack { position: static; width: auto; padding: var(--s2) .5rem 0; overflow: visible; min-height: calc(100dvh - 30svh); }
+  .desk-screen:has(.desk-still.placeholder) .stack { min-height: calc(100dvh - 7.4rem); }
   html { scroll-padding-bottom: 8rem; }
   .stack-papers { overflow: visible; flex: none; padding: 0 0 var(--s3); }
   .edges { order: 0; }
@@ -276,12 +304,14 @@ html.large-text .title-what { display: none; }
 .token-seal { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
 .map-unzoom { position: absolute; left: var(--s3); top: var(--s3); z-index: 2; }
 .map-unzoom[hidden] { display: none; }
-.map-toast { pointer-events: none; position: fixed; left: 50%; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3); max-width: 92%;
+.map-toast { pointer-events: none; position: fixed; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3);
+  /* centred on the map's own column, never over the board's buttons (Back to the desk, MER-87, finding 14) */
+  left: calc((100% - max(20rem, 33%)) / 2); max-width: calc(100% - max(20rem, 33%) - var(--s4));
   background: var(--paper); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); font-family: var(--font-chrome); }
 .map-toast[hidden] { display: none; }
 /* A phone's controls are at the foot (upright) or the right (on its side): the toast goes under the bar instead */
 @media (max-width: 700px), (max-height: 500px) {
-  .map-toast { top: calc(3.4rem + env(safe-area-inset-top)); bottom: auto; max-width: 70%; }
+  .map-toast { top: calc(3.4rem + env(safe-area-inset-top)); bottom: auto; left: 50%; max-width: 70%; }
 }
 @media (max-height: 500px) { .map-toast { top: 50px; left: 35%; } }
 
@@ -437,3 +467,50 @@ dialog.book .panel-actions { flex: none; }
   dialog.book { width: 100%; height: 100dvh; max-height: none; border-radius: 0; padding: var(--s3); }
 }
 @media (max-height: 500px) { dialog.book { padding: var(--s2) max(var(--s3), env(safe-area-inset-right)) var(--s2) max(var(--s3), env(safe-area-inset-left)); } }
+
+/* ---- The ending (DESIGN 4.12): one paper over the empty harbour, the page scrolls ---- */
+.ending-screen { position: relative; min-height: 100svh; min-height: 100dvh; color: var(--ink); }
+.ending-holder {
+  position: relative; z-index: 2; display: flex; justify-content: center; align-items: flex-start; min-height: 100svh; min-height: 100dvh; box-sizing: border-box;
+  padding: max(var(--s4), env(safe-area-inset-top)) max(var(--s3), env(safe-area-inset-right)) max(var(--s4), env(safe-area-inset-bottom)) max(var(--s3), env(safe-area-inset-left));
+}
+.ending-sheet { width: 100%; max-width: 40em; padding: var(--s3) var(--s4); background-image: none; }
+.ending-title { font-size: var(--step-2); margin-bottom: var(--s2); }
+.ending-title:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
+.ending-sheet h3 { font-size: var(--step-1); margin: var(--s3) 0 var(--s1); }
+.ending-body { margin: 0 0 var(--s2); }
+.ending-line { margin: 0; font-size: var(--step-0); }
+.ending-sheet ul { list-style: none; margin: var(--s2) 0; padding: 0; display: grid; gap: var(--s2); }
+.ending-row, .ending-home-row { padding: var(--s2) 0; border-top: 1px solid var(--paper-shade); display: grid; gap: var(--s2); }
+.ending-who { display: flex; align-items: center; gap: var(--s3); }
+.ending-who .seal { flex: none; width: 2.4rem; height: 2.4rem; }
+.recall-choice { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.recall-choice .choice { min-height: var(--hit); text-align: center; margin: 0; }
+.recall-choice .choice[aria-pressed="true"] { background: var(--brass-dark); color: var(--paper); border-color: var(--brass-dark); }
+.person[data-fate="dead"] strong::after { content: ' (died)'; font-weight: 400; color: var(--madder); }
+.ending-part { padding: var(--s2) 0; border-top: 1px solid var(--paper-shade); }
+.part-head { display: flex; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; font-family: var(--font-chrome); }
+.part-head .points { font-variant-numeric: tabular-nums; }
+.wealth-sums { margin: var(--s2) 0 0; display: grid; gap: .15rem; font-family: var(--font-chrome); }
+.wealth-row { display: grid; grid-template-columns: 8rem 1fr; gap: var(--s2); }
+.wealth-row dt { color: var(--ink-soft); }
+.wealth-row dd { margin: 0; display: grid; }
+.wealth-row .amount { font-variant-numeric: tabular-nums; }
+.wealth-row small { font-size: var(--step--1); color: var(--ink-soft); }
+.wealth-row[data-row="net"] { border-top: 1px solid var(--ink-soft); padding-top: .15rem; font-weight: 700; }
+.wealth-row[data-row="net"] dt { color: var(--ink); }
+.ending-athome { margin-top: 0; }
+.title-last { margin: 0; padding: var(--s1) var(--s2); font-style: italic; color: var(--ink-soft); border-bottom: 1px solid var(--paper-shade); }
+.ending-sum { margin: 0; font-family: var(--font-chrome); }
+.ending-total { margin: var(--s3) 0 0; font-size: var(--step-2); font-weight: 700; }
+.ending-rank { margin: 0 0 var(--s2); font-size: var(--step-1); font-style: italic; color: var(--brass-dark); }
+.ending-entry { border-top: 1px solid var(--paper-shade); margin-top: var(--s2); }
+.ending-sheet .source { font-size: var(--step--1); color: var(--ink-soft); margin-top: var(--s2); }
+.ending-actions { display: flex; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s3); }
+@media (max-width: 700px) {
+  .ending-holder { padding: var(--s2); }
+  .ending-sheet { padding: var(--s3); }
+  .recall-choice { grid-template-columns: 1fr; }
+  .ending-actions .button { width: 100%; }
+}
+@media (max-height: 500px) { .ending-holder { padding-top: var(--s2); padding-bottom: var(--s2); } }

@@ -2,6 +2,7 @@
   {
     "id": "gold-comes-to-cairo",
     "group": "news",
+    "kind": "world",
     "from": {
       "name": "Jamil, a cloth seller",
       "role": "Cairo",
@@ -115,6 +116,7 @@
   {
     "id": "flood-boats",
     "group": "news",
+    "kind": "trade",
     "from": {
       "name": "Kamil, a boat owner",
       "role": "Cairo",
@@ -196,6 +198,7 @@
   {
     "id": "better-market",
     "group": "news",
+    "kind": "trade",
     "from": {
       "name": "Zubayda, a linen seller",
       "role": "Cairo",
@@ -281,6 +284,7 @@
   {
     "id": "grain-from-syria",
     "group": "news",
+    "kind": "world",
     "from": {
       "name": "Bilal, a grain buyer",
       "role": "Cairo",
@@ -374,6 +378,7 @@
   {
     "id": "rival-asks-about-yusuf",
     "group": "news",
+    "kind": "people",
     "from": {
       "name": "A friend in the market",
       "role": "Cairo",

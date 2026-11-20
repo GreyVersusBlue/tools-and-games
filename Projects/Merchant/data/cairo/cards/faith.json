@@ -2,6 +2,7 @@
   {
     "id": "sabbath-carrier",
     "group": "faith",
+    "kind": "world",
     "from": {
       "name": "Yehuda, a merchant",
       "role": "Cairo",
@@ -77,6 +78,7 @@
   {
     "id": "nicola-alexandria",
     "group": "faith",
+    "kind": "trade",
     "from": {
       "name": "Nicola, a merchant",
       "role": "Alexandria",
@@ -85,8 +87,16 @@
     "title": "A Christian merchant writes",
     "body": "Nicola is a Christian merchant in Alexandria. He has heard good things of your house and wants to trade with you. He asks you to send him a few bolts of linen to start.",
     "when": {
-      "rep": "foreign",
-      "gte": 0
+      "all": [
+        {
+          "rep": "foreign",
+          "gte": 0
+        },
+        {
+          "stock": "linen",
+          "gte": 1
+        }
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -151,6 +161,7 @@
   {
     "id": "hajar-pilgrim",
     "group": "faith",
+    "kind": "favour",
     "from": {
       "name": "Hajar, a neighbour",
       "role": "Cairo",

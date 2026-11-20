@@ -98,6 +98,8 @@ const sendFromMap = async page => {
   await page.waitForSelector('#screen-desk');
   return true;
 };
+/** What the Node model may answer a paper with: the engine's own list, as the page draws it (MER-80). */
+const nodeChoices = (s, c, id) => eng.paperChoices(s, c, id);
 const panelOpen = (page, name) => page.evaluate(n => !!document.getElementById(`panel-${n}`)?.open, name);
 const gone = (page, name) => page.waitForFunction(n => !document.getElementById(`panel-${n}`), {}, name);
 // Reduced motion on a page, for Playwright or Puppeteer alike.
@@ -422,6 +424,7 @@ try {
     if (p.kind === 'accounts') return 'Accounts';
     if (p.kind === 'news') return p.letters.length === 1 ? `News from ${nodeContent.stops.find(x => x.id === p.letters[0].stop).name}` : `News from ${p.letters.length} cities`;
     if (p.kind === 'notice') return nodeContent.events.find(e => e.id === p.ref).notice.title;
+    if (p.kind === 'letter') return nodeContent.letters.find(l => l.id === p.ref).title;
     return nodeContent.cards.find(c => c.id === p.ref).title;
   };
   // what the page shows now: date, money, count line, the papers still open, the counter
@@ -570,7 +573,7 @@ try {
           source: sheet.querySelector('.source')?.textContent, next: !!document.getElementById('btn-next'),
           order: [...sheet.children].map(c => c.className || c.tagName) };
       });
-      eq(b.tag, 'H2'); eq(b.heading, 'Nothing changed at once.');
+      eq(b.tag, 'H2'); eq(b.heading, 'Sabir opens the ledger. The first letters are already on the desk.'); // the choice's own result text (MER-88), not the stock line
       ok(b.note.startsWith('Ibn Battuta wrote that Cairo surged'), b.note);
       ok(b.fresh.startsWith('New in your notebook: '), b.fresh);
       ok(b.source.startsWith('Source: Ibn Battuta, The Travels of Ibn Battuta') && !/https?:|www\./.test(b.source), b.source);
@@ -832,7 +835,7 @@ try {
     const nodeSeason = s => {
       for (const p of s.desk) {
         if (p.state !== 'open') continue;
-        const cs = eng.paperChoices(s, nodeContent, p.id);
+        const cs = nodeChoices(s, nodeContent, p.id);
         const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
@@ -844,7 +847,7 @@ try {
         if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
         const k = await page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
         if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
-        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
+        if ((['news', 'accounts'].includes(k.kind) || (['return', 'lost'].includes(k.kind) && !(await page.$('.sheet .choice'))))) { await page.click('#btn-next'); continue; }
         await page.click('.sheet .choice:not([aria-disabled="true"])');
         await page.waitForSelector(BACK);
       }
@@ -871,12 +874,16 @@ try {
           await page.click('.account summary');
           const rows = await page.$$eval('.account tr', trs => trs.map(t => t.textContent));
           ok(rows.length >= 3 && rows.some(r => r.includes('Profit') || r.includes('Back home')), rows.join(' | '));
-          eq(await page.$eval('#btn-next', b => b.textContent), 'Into the ledger');
+          // MER-80: a return that asks shows the engine's choices in place of Next; one that does not keeps Into the ledger
+          const asks = eng.paperChoices(model, nodeContent, rid).some(c => c.id !== 'ok');
+          const lastButton = asks ? '.sheet .choice:last-child' : '#btn-next';
+          if (asks) eq(await page.$$eval('.sheet .choice .label', es => es.length), eng.paperChoices(model, nodeContent, rid).length);
+          else eq(await page.$eval('#btn-next', b => b.textContent), 'Into the ledger');
           // the End bar never sits over a button of the paper: after scrolling it into view, the
           // button is what a press at its middle would hit
-          const hit = await page.$eval('#btn-next', b => { b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect();
+          const hit = await page.$eval(lastButton, b => { b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect();
             const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return top === b || b.contains(top); });
-          eq(hit, true, 'Into the ledger is covered by something else');
+          eq(hit, true, 'the last button of the return is covered by something else');
         }
         await sameScreen(page, model, `season ${season}`, { raisedFirst: false });
         // both sides answer in the desk's own order: put the first paper back on top if we read another
@@ -949,7 +956,7 @@ try {
   const modelSeason = s => {
     for (const p of s.desk) {
       if (p.state !== 'open') continue;
-      const cs = eng.paperChoices(s, nodeContent, p.id);
+      const cs = nodeChoices(s, nodeContent, p.id);
       const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
       s = eng.choose(s, nodeContent, p.id, c.id);
       if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
@@ -961,7 +968,7 @@ try {
       if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
       const k = await page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
       if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
-      if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
+      if ((['news', 'accounts'].includes(k.kind) || (['return', 'lost'].includes(k.kind) && !(await page.$('.sheet .choice'))))) { await page.click('#btn-next'); continue; }
       await page.click('.sheet .choice:not([aria-disabled="true"])');
       await page.waitForSelector(BACK);
     }
@@ -1422,7 +1429,7 @@ try {
     const nodeSeason = s => {
       for (const p of s.desk) {
         if (p.state !== 'open') continue;
-        const cs = eng.paperChoices(s, nodeContent, p.id);
+        const cs = nodeChoices(s, nodeContent, p.id);
         const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
@@ -1430,13 +1437,16 @@ try {
       return eng.endSeason(s, nodeContent);
     };
     const faceOf = () => page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
+    const backToDesk = async () => { await page.waitForSelector('#map-desk-top'); await page.focus('#map-desk-top'); await page.keyboard.press('Enter'); };
     const sendByKeys = async () => {
       await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
       if (await page.$('#outfit-send')) {
-        if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) { await page.focus('#outfit-cancel'); await page.keyboard.press('Enter'); }
-        else { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
-      }
-      await page.keyboard.press('Escape');
+        if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) {
+          // a card's outfit effect (MER-77) opens a sheet nothing can send: Back to the map, then the desk by its own button, as the pointer walker does
+          await page.focus('#outfit-cancel'); await page.keyboard.press('Enter');
+          await backToDesk();
+        } else { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); await page.keyboard.press('Escape'); }
+      } else await backToDesk(); // the map had nothing to send: a toast only, and Escape does nothing on the bare map
       await page.waitForSelector('#screen-desk');
     };
     const pointerSeason = async () => {
@@ -1444,7 +1454,7 @@ try {
         if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
         const k = await faceOf();
         if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
-        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
+        if ((['news', 'accounts'].includes(k.kind) || (['return', 'lost'].includes(k.kind) && !(await page.$('.sheet .choice'))))) { await page.click('#btn-next'); continue; }
         await page.click('.sheet .choice:not([aria-disabled="true"])');
         await page.waitForSelector(BACK);
       }
@@ -1459,7 +1469,7 @@ try {
           if (['#map', '#outfit'].includes(await hashOf(page))) await sendByKeys();
           continue;
         }
-        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) {
+        if ((['news', 'accounts'].includes(k.kind) || (['return', 'lost'].includes(k.kind) && !(await page.$('.sheet .choice'))))) {
           // a record paper has no digit and Enter on its heading does nothing: Tab from the heading reaches Next
           if (await page.evaluate(() => document.activeElement.id) !== 'btn-next') {
             for (let i = 0; i < 6 && await page.evaluate(() => document.activeElement.id) !== 'btn-next'; i++) await page.keyboard.press('Tab');
@@ -1505,10 +1515,9 @@ try {
         await reduceMotion(page);
       }
     }
-    // the end: phase recall, the stub page, and the same saved game as the engine's
-    await page.waitForSelector('#btn-to-title');
-    eq(await page.$eval('#phase-title', e => e.textContent), 'The last season is over');
-    eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: the ended game`);
+    // the end: phase recall hands over to the ending's first page (MER-84), and the saved game is the engine's
+    await page.waitForSelector('#ending-next');
+    eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: the game at the plague notice`);
     return { seasonsSeen, interludes, reloaded, model };
   };
 
@@ -1526,8 +1535,106 @@ try {
       eq(out.interludes.length, 2, 'two interludes, between acts one and two and acts two and three');
       eq(out.model.phase, 'recall');
     });
+    // ---- MER-84: the ending, page by page, against the engine run on the same game. The seeded game reaches the
+    // plague with nobody on the road, so the recall page is the empty one here; the road is the block below.
+    {
+      let model = out.model;
+      const clone = x => JSON.parse(JSON.stringify(x));
+      const text = sel => page.$eval(sel, e => e.textContent.trim());
+      const here = () => page.evaluate(() => ({ hash: location.hash, focus: document.activeElement.id, page: document.querySelector('[data-page]')?.dataset.page }));
+      const press = async id => {
+        if (how === 'pointer') await page.click(`#${id}`);
+        else { await page.focus(`#${id}`); await page.keyboard.press('Enter'); }
+      };
+      const pts = n => (Number.isInteger(n) ? withCommas(n) : n.toFixed(1));
+      await test(`ending by ${how}: the notice is the plague event's own words over the empty harbour, and Go on is the next Tab stop`, async () => {
+        const ev = nodeContent.events.find(e => e.id === 'plague-reaches-egypt');
+        eq(await here(), { hash: '#ending/notice', focus: 'ending-title', page: 'notice' });
+        eq(await text('#ending-title'), ev.notice.title);
+        eq(await text('[data-page="notice"] .ending-body'), ev.notice.body);
+        eq(await page.$eval('.desk-still', i => i.getAttribute('src')), 'assets/art/harbour-empty.webp');
+        ok((await text('[data-page="notice"] .source')).startsWith('Source: '), 'the notice names its source');
+        if (how === 'keyboard') { await page.keyboard.press('Tab'); eq((await here()).focus, 'ending-next'); await page.keyboard.press('Enter'); }
+        else await page.click('#ending-next');
+        await page.waitForSelector('#ending-send');
+        eq((await here()).hash, '#ending/recall');
+      });
+      await test(`ending by ${how}: with nobody on the road the recall page says so, and sending changes only what the engine's recall changes`, async () => {
+        eq(model.expeditions, [], 'the seeded game has nobody out at its end');
+        eq(await page.$$('.ending-row'), [], 'no rows');
+        eq(await text('#ending-send'), 'Wait for the plague');
+        ok((await text('[data-page="recall"] .ending-body')).startsWith('Nobody from the house is on the road'));
+        await press('ending-send');
+        await page.waitForSelector('#home-count');
+        model = eng.recall(model, nodeContent, {});
+        eq(await engineState(page), clone(model));
+        eq((await here()).hash, '#ending/home');
+      });
+      await test(`ending by ${how}: who came home lists every agent the house employed, and says plainly who died`, async () => {
+        const employed = nodeContent.agents.filter(a => model.agents[a.id].hired || model.agents[a.id].where === 'gone');
+        const rows = await page.$$eval('.person', rs => rs.map(r => ({ id: r.dataset.agent, fate: r.dataset.fate, name: r.querySelector('strong').textContent, line: r.querySelector('.ending-line').textContent, seal: r.querySelector('.seal')?.tagName })));
+        eq(rows.map(r => r.id), employed.map(a => a.id));
+        const fateOf = a => ({ dead: 'dead', gone: 'gone' })[model.agents[a.id].where] ?? 'home';
+        eq(rows.map(r => r.fate), employed.map(fateOf));
+        const said = new Map(model.log.filter(e => e.kind === 'recall').flatMap(e => e.results).map(r => [r.agent, r.text]));
+        for (const r of rows) {
+          ok(r.line.includes(r.name), `${r.id}'s line names them`);
+          if (said.has(r.id)) eq(r.line, said.get(r.id), `${r.id}: the recall's own line`);
+          if (r.fate === 'dead') ok(/died/.test(r.line), `${r.id} died and the line says so: ${r.line}`);
+          ok(r.seal, `${r.id} has a seal`);
+        }
+        ok(rows.some(r => r.fate === 'dead'), 'this seed has a death on the page, so the plain line is tested');
+        eq(await text('#home-count'), `${rows.filter(r => r.fate === 'home').length} of the ${rows.length} people who worked for the house came home.`);
+      });
+      await test(`ending by ${how}: the score shows the engine's four parts, reasons, multiplier, total and rank, and a reload resumes the page`, async () => {
+        await press('ending-next');
+        await page.waitForSelector('#score-total');
+        const sc = eng.score(model, nodeContent);
+        eq(clone(model.score), clone(sc), 'the saved score is the engine\'s');
+        const read = () => page.evaluate(() => ({
+          parts: [...document.querySelectorAll('.ending-part')].map(p => [p.dataset.part, p.querySelector('strong').textContent, p.querySelector('.points').textContent, p.querySelector('.ending-line').textContent]),
+          sum: document.getElementById('score-sum').textContent, mult: document.getElementById('score-multiplier').textContent,
+          total: document.getElementById('score-total').textContent, rank: document.getElementById('score-rank').textContent }));
+        const names = { wealth: 'Wealth', reputation: 'Reputation', people: 'People who came home', notebook: 'Notebook pages' };
+        const want = { parts: sc.parts.map(p => [p.id, names[p.id], `${pts(p.points)} points`, p.reason]), sum: `Together: ${pts(sc.sum)} points.`,
+          mult: `The spice house, multiplied by ${sc.multiplier}.`, total: `Total: ${withCommas(sc.total)} points`, rank: sc.rank };
+        eq(await read(), want);
+        eq(sc.parts.map(p => p.id), ['wealth', 'reputation', 'people', 'notebook']);
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('#score-total');
+        eq((await here()).hash, '#ending/score');
+        eq(await read(), want, 'the page after a reload');
+        eq(await engineState(page), clone(model));
+      });
+      await test(`ending by ${how}: after 1347 is text.json's pages with their sources, and its two buttons`, async () => {
+        await press('ending-next');
+        await page.waitForSelector('#ending-again');
+        eq(await page.$$eval('.ending-entry h3', hs => hs.map(x => x.textContent)), nodeContent.text.ending.map(e => e.title));
+        eq(await page.$$eval('.ending-entry .ending-body', hs => hs.map(x => x.textContent)), nodeContent.text.ending.map(e => e.body));
+        eq((await page.$$('.ending-entry .source')).length, nodeContent.text.ending.length, 'a source under every page');
+        eq(await page.$$eval('.ending-actions button', bs => bs.map(b => b.textContent)), ['Play again', 'Back to the title']);
+        ok((await text('#after-house')).includes(model.score.rank.toLowerCase()), 'the house line names its rank');
+        await page.screenshot({ path: path.join(SHOTS, `ending-after-${how}.png`) });
+      });
+      if (how === 'pointer') {
+        await test('ending by pointer: Play again clears the finished game and opens New game over the title', async () => {
+          await page.click('#ending-again');
+          await page.waitForSelector('#panel-newgame');
+          eq(await page.evaluate(() => [location.hash, localStorage.getItem('merchant-save'), !!document.getElementById('screen-title')]), ['#newgame', null, true]);
+        });
+      } else {
+        await test('ending by keyboard: Back to the title keeps the game, and Continue returns to the ending', async () => {
+          await page.focus('#ending-title-btn'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#btn-continue');
+          eq((await here()).hash, '#title');
+          await page.focus('#btn-continue'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#home-count');
+          eq((await here()).hash, '#ending/home');
+          eq(await engineState(page), clone(model));
+        });
+      }
+    }
     await test(`whole game by ${how}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
-    await page.screenshot({ path: path.join(SHOTS, `ending-stub-${how}.png`) });
     await page.close();
   }
 
@@ -1538,7 +1645,7 @@ try {
     const policy = s => {
       for (const p of s.desk) {
         if (p.state !== 'open') continue;
-        const c = eng.paperChoices(s, nodeContent, p.id).find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        const c = nodeChoices(s, nodeContent, p.id).find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
       }
@@ -1976,7 +2083,7 @@ try {
       const playSeason = st => {
         for (const p of st.desk) {
           if (p.state !== 'open') continue;
-          const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
+          const c = nodeChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
           st = eng.choose(st, nodeContent, p.id, c.id);
           if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
         }
@@ -2007,6 +2114,8 @@ try {
         const { page, consoleErrors } = await open(FRAMES[0]);
         for (const kind of ['news', 'accounts', 'return']) {
           const st = only(kind), id = st.desk[0].id;
+          // a return with no entry behind it is answered by Into the ledger (MER-80: one that asks has no such button)
+          if (kind === 'return') st.desk[0].data = { ...st.desk[0].data, choices: [], ask: null, entry: null };
           await loadSave(page, st);
           await page.waitForSelector(`.sheet[data-kind="${kind}"] .sheet-title`);
           await test(`Enter on a ${kind} paper's heading sets it aside once, as on every other paper`, async () => {
@@ -2217,7 +2326,7 @@ try {
     for (let guard = 0; guard < 20 && g.phase !== 'interlude'; guard++) {
       for (const p of g.desk) {
         if (p.state !== 'open') continue;
-        const c = eng.paperChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        const c = nodeChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
         g = eng.choose(g, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
       }
@@ -2252,11 +2361,11 @@ try {
   // cards of the test's own go into the page's `followups.json` request and into the Node content, and
   // the paper is put on a seeded desk by hand. Everything else is the engine's.
   {
-    const mk = (id, contract) => ({ id, group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null },
+    const mk = (id, contract) => ({ id, group: 'followups', kind: 'people', from: { name: 'A clerk', role: 'Cairo', seal: null },
       title: 'Send {agent} to {to}', body: '{agent} could take {good} to {to}, {seasons} out.',
       when: { trip: { agent: 'ali', is: 'ready' } }, weight: 0, repeat: false,
       choices: [{ id: 'go', label: 'Send {agent} to {to}', hint: 'About {seasons} on the road.', now: [{ outfit: 'ali', contract }], later: [] }], note: 'A test card.' });
-    const moved = { id: 'mer77-trust', group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null }, title: 'A word with Ali', body: 'Ali waits for an answer.',
+    const moved = { id: 'mer77-trust', group: 'followups', kind: 'people', from: { name: 'A clerk', role: 'Cairo', seal: null }, title: 'A word with Ali', body: 'Ali waits for an answer.',
       when: { agent: 'ali', hired: true }, weight: 0, repeat: false,
       choices: [{ id: 'thank', label: 'Thank him', hint: 'He will remember it.', now: [{ trust: 'ali', by: 1 }, { rep: 'agents', by: 1 }], later: [] }], note: 'A test card.' };
     const extra = [mk('mer77-own', 'own'), mk('mer77-qirad', 'qirad'), moved];
@@ -2357,6 +2466,377 @@ try {
     });
     await test('the MER-77 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.close();
+  }
+
+  // ---- MER-80: a return and a loss ask their question; the engine's leave is drawn; the Accounts paper names its causes.
+  // The paper, `paperChoices`, `choose` and the save are the engine's. One card of the test's own (every choice
+  // closed to this house) goes into the page's `followups.json` and into the Node content so `leave` is offered.
+  {
+    const closed = { id: 'mer80-closed', group: 'followups', kind: 'people', from: { name: 'A clerk', role: 'Cairo', seal: null },
+      title: 'A debt you cannot meet', body: 'A creditor asks for more than the house has.', when: { agent: 'ali', hired: true }, weight: 0, repeat: false,
+      choices: [{ id: 'pay', label: 'Pay it', requires: { money: { gte: 1000000 } }, now: [{ money: -1000000 }], later: [] }], note: 'A test card.' };
+    const raw = JSON.parse(await fs.promises.readFile(path.join(MER, '..', 'data', 'cairo', 'cards', 'followups.json'), 'utf8'));
+    const swapped = JSON.stringify([...raw, closed]);
+    const c80 = structuredClone(await loadContent('cairo', { fs: await import('node:fs/promises') }));
+    c80.cards.push(closed);
+    const content80 = eng.validateContent(c80);
+    const serve = page => {
+      const src = `(() => { const real = window.fetch.bind(window); window.fetch = (u, ...a) => String(u?.url ?? u).endsWith('/data/cairo/cards/followups.json')
+        ? Promise.resolve(new Response(${JSON.stringify(swapped)}, { status: 200, headers: { 'content-type': 'application/json' } })) : real(u, ...a); })();`;
+      return page.addInitScript ? page.addInitScript(src) : page.evaluateOnNewDocument(src);
+    };
+    const engineState = page => page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+    const focusId = page => page.evaluate(() => document.activeElement?.id ?? '');
+    const play = st => {
+      for (const p of st.desk) {
+        if (p.state !== 'open') continue;
+        const c = eng.paperChoices(st, content80, p.id).find(x => { try { eng.choose(st, content80, p.id, x.id); return true; } catch { return false; } });
+        st = eng.choose(st, content80, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, content80, 'damascus'); if (plan) st = eng.outfit(st, content80, plan); }
+      }
+      return eng.endSeason(st, content80);
+    };
+    // the first season whose return paper asks something, alone on the desk
+    const askingReturn = () => {
+      let st = eng.newGame(content80, { seed: SEED, length: 'acts', house: 'spice' });
+      for (let i = 0; i < 40; i++) {
+        st = st.phase === 'interlude' ? eng.openSeason(st, content80) : play(st);
+        const p = st.desk?.find(x => x.kind === 'return' && x.state === 'open' && x.data?.choices?.length);
+        if (p) { st.desk = [p]; return st; }
+      }
+      throw new Error('MER-80: no season in the first forty had a return that asks');
+    };
+    const entry = content80.returns.find(e => e.id === 'loss-sea-gone');
+    const lossSave = () => {
+      const st = askingReturn(), r = st.desk[0], fill = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Damascus');
+      st.desk = [{ id: 'p80-0', state: 'open', kind: 'lost', ref: 'lost', agent: 'ali', expedition: r.expedition, data: {
+        headline: 'Ali did not come back', route: 'cairo-damascus', whole: true, survived: false,
+        lines: [{ label: 'Lost', text: 'The ship and what it carried.' }], costs: [], trip: {}, entry: entry.id,
+        ask: { title: fill(entry.title), body: fill(entry.body) },
+        choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }];
+      return st;
+    };
+    const accountsSave = () => {
+      const st = askingReturn();
+      st.desk = [{ id: 'p80-1', state: 'open', kind: 'accounts', ref: 'accounts', items: [
+        { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ['+60 dinars'], text: 'x' },
+        { from: 'gift/yes', card: 'A gift for the court', choice: 'Send the gift', changes: ["good name with court +1"], text: 'y' },
+        { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'z' },
+        { from: null, card: null, choice: null, changes: ['+5 dinars'], text: 'w' }] }];
+      return st;
+    };
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    await serve(page);
+    const load = async st => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + '#desk', { waitUntil: 'load' });
+      await page.waitForSelector('#screen-desk .sheet-title');
+    };
+    const labelsOf = () => page.$$eval('.sheet .choice .label', es => es.map(e => e.textContent));
+    const firstOpen = (st, id) => eng.paperChoices(st, content80, id).find(x => { try { eng.choose(st, content80, id, x.id); return true; } catch { return false; } });
+
+    const ret = askingReturn(), rid = ret.desk[0].id;
+    await test('a return that asks shows its question and the engine\'s choices under the account, and no Into the ledger', async () => {
+      await load(ret);
+      eq(await labelsOf(), eng.paperChoices(ret, content80, rid).map(c => c.label));
+      eq(await page.$eval('.sheet .ask-title', e => e.textContent), ret.desk[0].data.ask.title);
+      eq(await page.$('#btn-next'), null, 'the paper does not offer Next while it asks');
+      const after = await page.$eval('.sheet', e => [...e.children].map(c => c.className).join(' '));
+      ok(after.indexOf('account') < after.indexOf('ask'), after);
+    });
+    await test('Enter on a return\'s heading does not answer it while it asks', async () => {
+      await load(ret);
+      eq(await focusId(page), `paper-${rid}-title`);
+      await page.keyboard.press('Enter');
+      eq((await engineState(page)).desk[0].state, 'open');
+    });
+    await test('pointer: pressing a return\'s choice answers it as the engine does, and its back has Next', async () => {
+      await load(ret);
+      const c = firstOpen(ret, rid);
+      await page.click(`#choice-${rid}-${c.id}`);
+      await page.waitForSelector(BACK);
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(ret, content80, rid, c.id))));
+      ok(await page.$('#btn-next'), 'Next on the back');
+    });
+    await test('keyboard: a digit answers a return, and the choices are in the Tab order', async () => {
+      await load(ret);
+      const c = firstOpen(ret, rid), n = eng.paperChoices(ret, content80, rid).findIndex(x => x.id === c.id);
+      for (let i = 0; i < 12 && !(await page.evaluate(() => document.activeElement?.classList.contains('choice'))); i++) await page.keyboard.press('Tab');
+      ok(await page.evaluate(() => document.activeElement?.classList.contains('choice')), 'Tab reaches a choice');
+      await page.evaluate(() => document.activeElement.blur());
+      await page.keyboard.press(String(n + 1));
+      await page.waitForSelector(BACK);
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(ret, content80, rid, c.id))));
+    });
+
+    const lost = lossSave();
+    await test('a loss is a full sheet: its picture slot before the title, the account, and the choice', async () => {
+      await load(lost);
+      eq(await page.$eval('.sheet', e => e.dataset.kind), 'lost');
+      const order = await page.$eval('.sheet', e => [...e.children].map(c => c.className.split(' ')[0]));
+      ok(order.indexOf('picture-slot') > order.indexOf('sheet-head') && order.indexOf('picture-slot') < order.indexOf('sheet-title'), order.join(' '));
+      eq(await page.$eval('.picture-slot', e => e.getAttribute('aria-hidden')), 'true');
+      eq(await labelsOf(), eng.paperChoices(lost, content80, 'p80-0').map(c => c.label));
+      eq(await page.$('#btn-next'), null);
+    });
+    await test('a loss is answered by pointer and by keyboard, as the engine answers it', async () => {
+      const c = firstOpen(lost, 'p80-0'), n = eng.paperChoices(lost, content80, 'p80-0').findIndex(x => x.id === c.id);
+      await load(lost);
+      await page.click(`#choice-p80-0-${c.id}`);
+      await page.waitForSelector(BACK);
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(lost, content80, 'p80-0', c.id))));
+      await load(lost);
+      await page.keyboard.press(String(n + 1));
+      await page.waitForSelector(BACK);
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(lost, content80, 'p80-0', c.id))));
+    });
+
+    await test('the Accounts paper groups each line under the card and the choice that caused it', async () => {
+      await load(accountsSave());
+      const groups = await page.$$eval('.account-group', gs => gs.map(g => [g.querySelector('.cause').textContent, [...g.querySelectorAll('.account-item')].map(i => i.textContent)]));
+      eq(groups, [
+        ['After "Hasan asks for a loan", you chose "Lend him 50 dinars":', ['+60 dinars', "Hasan's trust +1"]],
+        ['After "A gift for the court", you chose "Send the gift":', ['Good name with court +1']],
+        ['After an earlier choice:', ['+5 dinars']]]);
+      await page.click('#btn-next');
+      await page.waitForFunction(() => window.__merchant.state.desk[0].state === 'done');
+    });
+
+    await test('a card with every choice closed shows the engine\'s Leave it, and pressing it answers the card', async () => {
+      const st = askingReturn();
+      st.agents.ali.hired = true;
+      st.desk = [{ id: 'p80-2', state: 'open', kind: 'card', ref: 'mer80-closed' }];
+      eq(eng.paperChoices(st, content80, 'p80-2').map(c => c.id), ['pay', 'leave']);
+      await load(st);
+      eq(await labelsOf(), ['Pay it', 'Leave it']);
+      eq(await page.$eval('#choice-p80-2-pay', e => e.getAttribute('aria-disabled')), 'true');
+      await page.click('#choice-p80-2-leave');
+      await page.waitForSelector(BACK);
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(st, content80, 'p80-2', 'leave'))));
+    });
+    // ---- MER-87: what a result says. A loss return's docked pay says the agent's name, never the token the card is written with.
+    await test('MER-87: "Take 20 dinars from Ali\'s next pay" on a loss return says "Ali trusts the house less", never a raw $agent', async () => {
+      // the entry that holds the dock choice is `return-loss-forgive`; its choices on a loss paper of Ali's, as routes.js fills them
+      const st = lossSave(), forgive = content80.returns.find(e => e.id === 'return-loss-forgive');
+      st.desk[0].data.choices = forgive.choices.map(c => ({ ...structuredClone(c), label: c.label.replaceAll('{agent}', 'Ali'), ...(c.hint !== undefined ? { hint: c.hint.replaceAll('{agent}', 'Ali') } : {}) }));
+      st.desk[0].data.entry = forgive.id;
+      await load(st);
+      await page.click('#choice-p80-0-dock');
+      await page.waitForSelector(BACK);
+      const said = await page.$eval('.sheet-title', e => e.textContent);
+      ok(!said.includes('$'), said);
+      eq(said, 'You received 20 dinars. Ali trusts the house less.');
+    });
+    await test('MER-87: two lines about one group in one result are one net line; two groups stay two; an own result text ends "Nothing changed at once"', async () => {
+      const got = await page.evaluate(async () => {
+        const { happened } = await import('./js/ui/screens/paper.js');
+        const c = { agents: [{ id: 'ali', name: 'Ali' }] };
+        return {
+          twice: happened(c, [{ rep: 'partners', by: -1 }, { rep: 'agents', by: 1 }, { rep: 'partners', by: -1 }]),
+          cancel: happened(c, [{ rep: 'partners', by: -1 }, { rep: 'partners', by: 1 }]),
+          trust: happened(c, [{ trust: '$agent', by: -1 }, { trust: 'ali', by: -1 }], null, { agent: 'ali' }),
+          said: happened(c, [], null, { result: 'The house is open.' }),
+          plain: happened(c, []),
+        };
+      });
+      eq(got.twice, 'Your partners think less of the house. Your agents think better of the house.');
+      eq(got.cancel, 'Nothing changed at once.');
+      eq(got.trust, 'Ali trusts the house less.');
+      eq(got.said, 'The house is open.');
+      eq(got.plain, 'Nothing changed at once.');
+    });
+    await test('the MER-80 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.close();
+  }
+
+  // ---- MER-84: the recall with people on the road. The last season of seed 1324 is played in Node with four
+  // expeditions sent on the engine's own plans, so four people are out when the plague comes; the page's rows,
+  // its two buttons per row, the engine's recall and every later page are checked against the engine.
+  {
+    const { recallChances } = await import(pathToFileURL(path.join(MER, 'engine', 'routes.js')).href);
+    const { seasonsLeft } = await import(pathToFileURL(path.join(MER, 'engine', 'letters.js')).href);
+    const answerAll = st => {
+      for (const p of st.desk) {
+        if (p.state !== 'open') continue;
+        const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        st = eng.choose(st, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
+      }
+      return st;
+    };
+    let st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    for (let i = 0; i < 60 && !(st.phase === 'desk' && st.t === 23); i++) st = st.phase === 'interlude' ? eng.openSeason(st, nodeContent) : eng.endSeason(answerAll(st), nodeContent);
+    st = answerAll(st);
+    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = eng.suggestPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
+    const road = eng.endSeason(st, nodeContent);
+    const clone = x => JSON.parse(JSON.stringify(x));
+    const DECIDED = Object.fromEntries(road.expeditions.map((x, i) => [x.id, i % 2 === 0 ? 'recall' : 'stay']));
+    await test('MER-84 setup: four people are out at the plague, and the engine settles them by the decisions', () => {
+      eq(road.phase, 'recall');
+      ok(road.expeditions.length >= 3, `expeditions out: ${road.expeditions.length}`);
+      const after = eng.recall(road, nodeContent, DECIDED);
+      eq(after.phase, 'ended');
+      eq(after.expeditions, []);
+      ok(after.score && after.score.parts.length === 4, 'recall fills the score');
+    });
+    await test('MER-87: the ending says "1 person", not "1 of its person", and the recall page claims no safety at home', async () => {
+      const after = clone(eng.recall(road, nodeContent, DECIDED));
+      const keep = nodeContent.agents.find(a => after.agents[a.id].hired || after.agents[a.id].where === 'gone').id;
+      for (const a of nodeContent.agents) if (a.id !== keep) { after.agents[a.id].hired = false; if (after.agents[a.id].where === 'gone') after.agents[a.id].where = 'home'; }
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const go = async (st, hash, ready) => {
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, st, SAVE_VERSION);
+        await page.goto(GAME + hash, { waitUntil: 'load' });
+        await page.waitForSelector(ready);
+      };
+      await go(after, '#ending/after', '#after-house');
+      ok(/ of its 1 person came home\.$/.test(await page.$eval('#after-house', e => e.textContent)), await page.$eval('#after-house', e => e.textContent));
+      await go(clone(road), '#ending/recall', '#ending-send');
+      const text = await page.$eval('[data-page="recall"] .ending-body', e => e.textContent);
+      ok(text.includes('the plague killed many in Cairo too'), text);
+      ok(!/most likely live/.test(text), text);
+      await page.close();
+    });
+    // ---- MER-90: the score page shows its sums, the recall page says each person's risk, the title remembers
+    {
+      const { recallRisk } = await import(pathToFileURL(path.join(MER, 'engine', 'routes.js')).href);
+      const DEATH = { sure: 'is very likely to die of the plague', likely: 'may well die of the plague', maybe: 'could die of the plague', unlikely: 'is unlikely to die of the plague' };
+      const nameOf = id => nodeContent.agents.find(a => a.id === id).name;
+      const ended = clone(eng.recall(road, nodeContent, DECIDED));
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const go = async (st, hash, ready) => {
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, st, SAVE_VERSION);
+        await page.goto(GAME + hash, { waitUntil: 'load' });
+        await page.waitForSelector(ready);
+      };
+      await test('MER-90: the recall page gives every person still alive a risk in words from recallRisk, those at home in Cairo too', async () => {
+        // seed 1324 keeps everyone hired on the road, so one more hire waits in Cairo
+        const withHome = clone(road), idle = nodeContent.agents.find(a => !withHome.agents[a.id].hired && !withHome.expeditions.some(x => x.agent === a.id)).id;
+        Object.assign(withHome.agents[idle], { hired: true, where: nodeContent.city.home });
+        const want = recallRisk(withHome, nodeContent);
+        ok(want.some(r => r.where === 'home'), 'this state has someone at home in Cairo');
+        ok(want.some(r => r.where === 'road'), 'and someone on the road');
+        await go(withHome, '#ending/recall', '#ending-send');
+        const got = await page.$$eval('[id^="recall-"][id$="-risk"]', es => es.map(e => ({ id: e.id, text: e.textContent, stay: e.dataset.stay, called: e.dataset.called ?? null, home: !!e.closest('[data-where="home"]') })));
+        eq(got.length, want.length, 'one risk line per person');
+        for (const r of want) {
+          const g = got.find(x => x.id === (r.where === 'road' ? `recall-${r.expedition}-risk` : `recall-${r.agent}-risk`));
+          ok(g, `${r.agent}: a risk line`);
+          eq(g.stay, r.risk, `${r.agent}: stay word`);
+          eq(g.home, r.where === 'home');
+          if (r.where === 'road') { eq(g.called, r.riskIfCalled); eq(g.text, `If ${nameOf(r.agent)} stays, ${nameOf(r.agent)} ${DEATH[r.risk]}. If called home, ${nameOf(r.agent)} ${DEATH[r.riskIfCalled]}.`); }
+          else eq(g.text, `${nameOf(r.agent)} ${DEATH[r.risk]}.`);
+        }
+        eq(await page.$$eval('[data-where="home"] button', bs => bs.length), 0, 'nothing to press for a person at home');
+        ok(!/\d%|percent/.test(await page.$eval('[data-page="recall"]', e => e.textContent)), 'no number shown');
+      });
+      await test('MER-90: the score page\'s wealth line shows cash, stock and loans, and they add up on screen to the wealth figure', async () => {
+        await go(ended, '#ending/score', '#wealth-sums');
+        const d = ended.score.parts.find(p => p.id === 'wealth').data;
+        const rows = await page.$$eval('#wealth-sums .wealth-row', rs => rs.map(r => ({ id: r.dataset.row, value: r.querySelector('.amount').textContent, note: r.querySelector('small')?.textContent ?? '' })));
+        eq(rows.map(r => r.id), ['cash', 'stock', 'loans', 'net']);
+        const n = t => Number(t.replace(/,/g, '').replace('−', '-').replace(/ dinars?$/, ''));
+        const [cash, stock, loans, net] = rows.map(r => n(r.value));
+        eq([cash, stock, -loans, net], [d.cash, d.stock.value, -d.loans, d.net], 'the engine\'s figures');
+        eq(cash + stock - loans, net, 'cash plus stock less loans is the wealth shown');
+        eq(Math.round(d.cash) + Math.round(d.stock.value) - Math.round(d.loans), Math.round(d.net), 'whole dinars add up too');
+        if (d.stock.loads) ok(rows[1].note.startsWith(`${d.stock.loads} load`), rows[1].note);
+      });
+      await test('MER-90: the ending\'s placeholder still is cropped like the desk\'s, so its file name never shows', async () => {
+        await go(ended, '#ending/score', '#score-total');
+        const r = await page.$eval('.ending-stills .desk-still', e => ({ cls: e.className, clip: getComputedStyle(e).clipPath }));
+        ok(r.cls.split(' ').includes('placeholder'), r.cls);
+        ok(/inset\(8%/.test(r.clip), r.clip);
+      });
+      await test('MER-90: Play again says what it replaces, and the title after a finished game shows the last score and rank', async () => {
+        await go(ended, '#ending/after', '#again-note');
+        const note = await page.$eval('#again-note', e => e.textContent);
+        ok(note.startsWith(`Play again replaces this finished game: ${withCommas(ended.score.total)} points, `), note);
+        ok(note.includes(ended.score.rank.toLowerCase()), note);
+        await go(ended, '#title', '#screen-title');
+        const t = await page.$eval('#title-last', e => e.textContent);
+        eq(t, `Last game: ${withCommas(ended.score.total)} points, ${ended.score.rank.charAt(0).toLowerCase()}${ended.score.rank.slice(1)}. A new game replaces it.`);
+        eq(await page.evaluate(() => Object.keys(localStorage)), ['merchant-save'], 'no new storage key');
+        await go(clone(road), '#title', '#screen-title');
+        eq(await page.$('#title-last'), null, 'a game not yet over shows no last score');
+      });
+      await test('MER-90: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    for (const how of ['pointer', 'keyboard']) {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const here = () => page.evaluate(() => ({ hash: location.hash, focus: document.activeElement.id, page: document.querySelector('[data-page]')?.dataset.page }));
+      const load = async hash => {
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, clone(road), SAVE_VERSION);
+        await page.goto(GAME + hash, { waitUntil: 'load' });
+      };
+      const pressChoice = async (id) => {
+        if (how === 'pointer') await page.click(`#${id}`);
+        else { await page.focus(`#${id}`); await page.keyboard.press('Space'); }
+      };
+      const pressedOf = () => page.$$eval('.recall-choice', gs => Object.fromEntries(gs.map(g => [g.dataset.expedition, [...g.querySelectorAll('button')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.choice)])));
+      await test(`recall by ${how}: a row for every expedition out, with where, cargo and the word the engine's chance gives, all on stay`, async () => {
+        await load('#ending/recall');
+        await page.waitForSelector('#ending-send');
+        eq((await here()).page, 'recall');
+        const cfg = recallChances(nodeContent);
+        const rows = await page.$$eval('.ending-row', rs => rs.map(r => ({ agent: r.dataset.agent, word: r.querySelector('[data-word]').dataset.word, said: r.querySelector('[data-word]').textContent, where: r.querySelector('[id$="-where"]').textContent })));
+        eq(rows.map(r => r.agent), road.expeditions.map(x => x.agent));
+        road.expeditions.forEach((x, i) => {
+          const name = nodeContent.agents.find(a => a.id === x.agent).name;
+          const chance = Math.max(cfg.reach.floor, Math.min(1, cfg.reach.start - cfg.reach.perSeason * seasonsLeft(nodeContent, x)));
+          const bucket = chance >= 0.8 ? 'sure' : chance >= 0.5 ? 'likely' : chance >= 0.25 ? 'maybe' : 'unlikely';
+          eq(rows[i].word, bucket, `${name}: the word`);
+          ok(rows[i].said.includes(name) && /in time\.$/.test(rows[i].said), rows[i].said);
+          ok(/^On the road to \w+\./.test(rows[i].where), rows[i].where);
+        });
+        eq(await pressedOf(), Object.fromEntries(road.expeditions.map(x => [x.id, ['stay']])));
+        eq(await page.$$eval('.ending-row button', bs => bs.map(b => b.textContent)), road.expeditions.flatMap(() => ['Call them home', 'Let them finish']));
+      });
+      await test(`recall by ${how}: a choice is a press of its button, and a reload forgets what was not sent`, async () => {
+        for (const [id, which] of Object.entries(DECIDED)) await pressChoice(`recall-${id}-${which}`);
+        eq(await pressedOf(), Object.fromEntries(Object.entries(DECIDED).map(([id, w]) => [id, [w]])));
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('#ending-send');
+        eq((await here()).hash, '#ending/recall');
+        eq(await pressedOf(), Object.fromEntries(road.expeditions.map(x => [x.id, ['stay']])), 'unsent choices are not saved');
+        eq(await engineState(page), clone(road), 'nothing was sent');
+      });
+      await test(`recall by ${how}: sending runs the engine's recall on those decisions, and Back never returns to the recall page`, async () => {
+        for (const [id, which] of Object.entries(DECIDED)) await pressChoice(`recall-${id}-${which}`);
+        if (how === 'pointer') await page.click('#ending-send');
+        else { await page.focus('#ending-send'); await page.keyboard.press('Enter'); }
+        await page.waitForSelector('#home-count');
+        const after = eng.recall(road, nodeContent, DECIDED);
+        eq(await engineState(page), clone(after));
+        eq((await here()).hash, '#ending/home');
+        await page.goBack(); // the browser's Back reaches the recall page's entry, which the ended game replaces
+        await page.waitForSelector('#home-count');
+        eq((await here()).hash, '#ending/home');
+        eq(await engineState(page), clone(after));
+        // each expedition's person is on the page with the line the recall wrote for them
+        const said = new Map(after.log.filter(e => e.kind === 'recall').flatMap(e => e.results).map(r => [r.agent, r.text]));
+        const lines = await page.$$eval('.person', rs => Object.fromEntries(rs.map(r => [r.dataset.agent, r.querySelector('.ending-line').textContent])));
+        for (const x of road.expeditions) eq(lines[x.agent], said.get(x.agent), `${x.agent}'s line`);
+      });
+      await test(`recall by ${how}: a page the phase does not open is replaced, and the desk hash leads to the ending`, async () => {
+        await load('#ending/after');                       // phase recall: after 1347 is not open yet
+        await page.waitForSelector('#ending-next');
+        eq((await here()).hash, '#ending/notice');
+        await load('#desk');
+        await page.waitForSelector('#ending-next');
+        eq((await here()).hash, '#ending/notice');
+        await load('#map');
+        await page.waitForSelector('#ending-next');
+        eq((await here()).hash, '#ending/notice');
+      });
+      await test(`recall by ${how}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
   }
 
 } finally {

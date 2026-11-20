@@ -23,7 +23,7 @@ const leaf = is => ({ trip: { agent: 'mira', is } });
 const BODY = '{agent} took {good} to {to} by way of {route}. {seasons}.';
 /** A card that tells of Mira's trip in state `is`, so heavy a draw always picks it when it holds. */
 const tripCard = (id, is, over = {}) => ({
-  id, group: 'orders', from: { name: 'Nell the broker', role: 'Testport', seal: null },
+  id, group: 'orders', kind: 'trade', from: { name: 'Nell the broker', role: 'Testport', seal: null },
   title: 'News of {agent}', body: BODY, when: leaf(is), weight: 1000, repeat: true,
   choices: [
     { id: 'ok', label: 'Hear it, {agent}', hint: 'About {good}.', now: [{ rep: 'partners', by: 1 }], later: [{ in: 1, do: [{ rep: 'partners', by: 0 }] }] },
@@ -119,7 +119,8 @@ test('a trip that turned back is told as the place it turned at, not the place i
   const s = homeState();
   const back = variant(s, x => {
     const p = x.desk.find(q => q.kind === 'return');
-    p.data.headline = p.data.headline.replace('Hilltown', 'Saltmarsh');
+    p.data.trip.to = 'saltmarsh';
+    p.data.headline = 'Words that name no stop at all.';   // the facts are read, never the sentence
   });
   eq(tripOf(back, calm, 'mira', 'home').to, 'saltmarsh');
   ok(c);

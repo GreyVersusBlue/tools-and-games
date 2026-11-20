@@ -1,0 +1,170 @@
+[
+  {
+    "id": "return-bonus",
+    "paper": "return",
+    "facts": {
+      "outcome": [
+        "profit"
+      ]
+    },
+    "title": "A bonus for {agent}?",
+    "body": "{agent} is home from {to} after {seasons}, and the house made money.",
+    "choices": [
+      {
+        "id": "bonus",
+        "label": "Pay {agent} a bonus of 30 coins",
+        "hint": "It costs now. {agent} will remember it.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          },
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "none",
+        "label": "Pay nothing more",
+        "hint": "The house keeps all of it.",
+        "now": []
+      }
+    ],
+    "note": "An invented entry for testing.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  },
+  {
+    "id": "return-out-again",
+    "paper": "return",
+    "title": "Out again, or rest?",
+    "body": "{agent} is home from {to} after {seasons}.",
+    "choices": [
+      {
+        "id": "again",
+        "ui": "outfit-first",
+        "label": "Send {agent} out again",
+        "hint": "The next sheet shows what sending {agent} costs.",
+        "now": [
+          {
+            "outfit": "$agent",
+            "contract": "own"
+          }
+        ]
+      },
+      {
+        "id": "rest",
+        "label": "Let {agent} rest a season",
+        "hint": "A rested agent is glad of it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      }
+    ],
+    "note": "An invented entry for testing.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  },
+  {
+    "id": "loss-lost-agent",
+    "paper": "loss",
+    "facts": {
+      "whole": true,
+      "survived": false
+    },
+    "title": "{agent} did not come back",
+    "body": "{agent} was lost on the road to {to}.",
+    "choices": [
+      {
+        "id": "family",
+        "label": "Help {agent}'s family",
+        "hint": "It costs now. The other agents hear of it.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          },
+          {
+            "rep": "agents",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Do nothing more",
+        "hint": "The agents hear of that too.",
+        "now": [
+          {
+            "rep": "agents",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "An invented entry for testing.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  },
+  {
+    "id": "loss-survivor",
+    "paper": "loss",
+    "facts": {
+      "survived": true
+    },
+    "title": "{agent} is safe",
+    "body": "Part of the trip to {to} was lost, but {agent} is safe.",
+    "choices": [
+      {
+        "id": "forgive",
+        "label": "Say it was no one's fault",
+        "hint": "{agent} is grateful.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "blame",
+        "label": "Blame {agent} for the loss",
+        "hint": "{agent} will not forget it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "An invented entry for testing.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  }
+]

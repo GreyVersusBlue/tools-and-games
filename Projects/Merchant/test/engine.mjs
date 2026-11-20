@@ -170,6 +170,21 @@ test('effect hire and dismiss: switch an agent', () => {
   eq(fx({ dismiss: 'mira' }).agents.mira.hired, false);
   throws(() => fx({ hire: 'ghost' }), /agent/);
 });
+test('effect hire (MER-82, Matteo): an agent whose own home is elsewhere, hired, is at the house\'s home and can be sent from there', () => {
+  const far = structuredClone(game());
+  far.agents.tobin = { ...far.agents.tobin, hired: false, where: 'saltmarsh' };   // Matteo's case: a home that is not the house's
+  const t = structuredClone(far); apply(t, content, { hire: 'tobin' });
+  eq([t.agents.tobin.hired, t.agents.tobin.where], [true, content.city.home]);
+  apply(t, content, { outfit: 'tobin', contract: 'own' });                       // would throw "is not free to be sent out"
+  const road = structuredClone(far); road.agents.tobin.where = 'road'; road.expeditions.push({ id: 'x1', agent: 'tobin' });
+  apply(road, content, { hire: 'tobin' });
+  eq(road.agents.tobin.where, 'road', 'an agent on the road is not moved');
+  const dead = structuredClone(far); dead.agents.tobin.where = 'dead';
+  apply(dead, content, { hire: 'tobin' });
+  eq(dead.agents.tobin.where, 'dead', 'the dead stay where they are');
+  const gone = structuredClone(far); gone.agents.tobin.where = 'gone';
+  throws(() => apply(gone, content, { hire: 'tobin' }), /cannot be hired again/);
+});
 test('effect card: only inside a later effect, and only a card that exists', () => {
   throws(() => fx({ card: 'wool-due' }), /later/);
   throws(() => fx({ card: 'nope' }, { later: true }), /card/);
@@ -282,7 +297,7 @@ test('turn: newGame changes neither the content nor a second game made from it',
 test('turn: choose applies now-effects, queues later-effects with at, unlocks and logs', () => {
   const s = choose(game(), content, 'p0-1', 'buy');
   eq([s.money, s.stock.wool], [460, 14]);
-  eq(s.queue, [{ at: 2, do: [], card: 'wool-due', from: 'wool-offer/buy' }]);
+  eq(s.queue, [{ at: 2, do: [], card: 'wool-due', from: 'wool-offer/buy', viaCard: 'Four loads of wool', viaChoice: 'Buy the wool' }], 'the item names the card and the choice that set it, in the words the player saw (MER-88)');
   // MER-61: the opening writes one `trust` entry (the agents' trust, for the season's change to reputation).
   eq(s.log.filter(e => e.kind !== 'trust'), [{ at: 0, kind: 'card', ref: 'wool-offer', choice: 'buy' }]);
   eq(s.desk[1].state, 'done');
@@ -414,7 +429,8 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
   eq(s.phase, 'ended');
   // MER-41: 406 and 16 became 416 and 24. The jump rolls each hired agent's retirement from state.rng, which moves the
   // second act's draws, and the log gains one entry for the jump and one for each Accounts paper.
-  eq(s.money, 416, 'final money');
+  // MER-78: 416 became 403. The draw takes at most one favour a season and no two cards of one kind, which deals other cards from season 3 on.
+  eq(s.money, 403, 'final money');
   // MER-60: 24 became 30. The closing step writes one `season` entry for each of the six seasons played.
   // MER-61: 30 became 31. The opening keeps one `trust` entry, replaced each season, not one a season.
   eq(s.log.length, 31, 'log length');
@@ -604,18 +620,18 @@ test('pinned game: the papers of each season of seed 7 (full) are pinned, and a 
   // MER-41: the papers other than the Accounts paper are exactly what they were; the money is too. The log grew by the
   // accounts entries (23 to 39). MER-60: 39 became 50, one `season` entry for each of the eleven seasons closed.
   eq(seq.map(x => x.filter(r => r !== 'accounts').join('+')), [
-    'welcome-note+wool-offer', 'lamp-order', 'wool-due+salt-order+court-summons', 'quay-toll+lamp-quarrel', 'salt-dispute+bridge-toll',
-    'rope-dispute+harvest-gift', 'wool-offer', 'lamp-order', 'wool-due+salt-order', 'quay-toll+lamp-quarrel+court-summons', 'fair-closes+salt-dispute+bridge-toll',
-  ]);
-  eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, false, true, true], 'the seasons that open with an Accounts paper');
-  eq([s.money, s.log.length], [396, 51]);   // MER-61: 50 became 51, the one `trust` entry
+    'welcome-note+wool-offer', 'lamp-order', 'wool-due+salt-order+court-summons', 'quay-toll+salt-dispute', 'rope-dispute',
+    'lamp-quarrel+bridge-toll', 'wool-offer+harvest-gift', 'lamp-order', 'wool-due+salt-order', 'quay-toll+salt-dispute+court-summons', 'fair-closes+rope-dispute',
+  ]);   // MER-78: seasons 4 to 7, 10 and 11 changed (one favour a season, no two of one kind; testport has few cards, so season 5 is one card); seasons 1 to 3, 8 and 9 deal what they dealt
+  eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, true, true, true], 'the seasons that open with an Accounts paper');
+  eq([s.money, s.log.length], [404, 52]);   // MER-78: 396 and 51 became 404 and 52 (other cards, so another delayed line and one more Accounts paper)   // MER-61: 50 became 51, the one `trust` entry
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
 });
 test('season log: one { at, kind: season, change } entry for each closed season, change the net dinars of that season (MER-60, for the ledger)', () => {
   const { s } = play(content, { seed: 7 });
   const seasons = s.log.filter(e => e.kind === 'season');
-  eq(seasons.map(e => [e.at, e.change]), [[0, -40], [1, -30], [2, 59], [3, -10], [4, -25], [5, -12], [6, -40], [7, -30], [8, 84], [9, -35], [10, -25]]);
+  eq(seasons.map(e => [e.at, e.change]), [[0, -40], [1, -30], [2, 59], [3, -15], [4, -12], [5, -20], [6, -40], [7, -30], [8, 84], [9, -40], [10, -12]]);
   eq(seasons.map(e => Object.keys(e).sort().join()).every(k => k === 'at,change,kind,money'), true, 'the ledger reads at and change; money is where the next change starts');
   eq(500 + seasons.reduce((n, e) => n + e.change, 0), s.money, 'the plain house starts with 500 and the changes add up to what it ends with');
 });
@@ -727,6 +743,138 @@ test('engine files name no city, no page, no Math.random and no Date', async () 
     const text = await fs.readFile(new URL(f, dir), 'utf8');
     for (const re of [/cairo/i, /document/, /window/, /Math\.random/, /Date/]) ok(!re.test(text), `${f} matches ${re}`);
   }
+});
+
+// ---- MER-78: the draw (DESIGN 2.1 rules 1 and 2). Each case builds the pool from cards of its own, at the opening of season 2 of a
+// full game (the third of its act, so the season wants three cards), and calls the draw step alone.
+const pooled = (id, group, kind, over = {}) => ({ id, group, kind, from: { name: 'A', role: 'B', seal: null }, title: 't', body: 'b', weight: 100, repeat: true, choices: [choice([{ money: 1 }])], note: 'n', sources: [], ...over });
+const NOTICE = { id: null, state: 'open', kind: 'notice', ref: 'welcome' };
+const MIRA_OUT = { id: 'x1', agent: 'mira', route: 'harbour-hilltown', leg: 0, left: 1, status: 'out', cargo: { wool: 2 }, purse: 0, sent: 0, contract: { kind: 'own' }, staked: { house: 0, partners: 0 }, orders: [] };
+/** The cards the draw adds: from `cards` only, with `desk` already on the desk, an expedition out or not. */
+function dealt(cards, { out = false, desk = [], seed = 3 } = {}) {
+  const c = variant(x => { x.cards = cards; });
+  const s = fresh({ seed, length: 'full' });
+  s.t = 2; s.desk = structuredClone(desk);
+  if (out) s.expeditions.push(structuredClone(MIRA_OUT));
+  steps.drawCards(s, c);
+  return s.desk.slice(desk.length).map(p => p.ref);
+}
+const FOUR = [pooled('fav', 'gifts', 'favour'), pooled('tra', 'orders', 'trade'), pooled('peo', 'hiring', 'people'), pooled('wor', 'court', 'world')];
+test('draw: a card that tells of a trip is dealt before any other pool card, whatever the weights', () => {
+  const trip = pooled('trip', 'orders', 'trade', { weight: 1, when: { trip: { agent: 'mira', is: 'out' } } });
+  const heavy = pooled('heavy', 'disputes', 'world', { weight: 1000 });
+  eq(dealt([trip, heavy], { out: true, desk: [NOTICE, NOTICE, NOTICE, NOTICE] }), ['trip'], 'one slot left, and the trip card takes it');
+  eq(dealt([trip, heavy], { desk: [NOTICE, NOTICE, NOTICE, NOTICE] }), ['heavy'], 'with no trip out there is no trip card to deal');
+});
+test('draw: at most two pool cards while a trip is out, three otherwise', () => {
+  eq(dealt(FOUR, { out: true }).length, 2, 'a trip is out');
+  eq(dealt(FOUR).length, 3, 'none is');
+  const home = [{ id: null, state: 'open', kind: 'return', ref: 'return', agent: 'mira', expedition: 'x1', data: {} }];
+  eq(dealt(FOUR, { desk: home }).length, 2, 'a trip came home this season: its return paper is on the desk');
+});
+test('draw: a favour already on the desk, a follow-up\'s too, keeps a pool favour off it', () => {
+  const follow = pooled('follow', 'followups', 'favour', { weight: 0 });
+  const cards = [follow, pooled('fav', 'gifts', 'favour', { weight: 1000 }), pooled('tra', 'orders', 'trade', { weight: 1 })];
+  eq(dealt(cards, { desk: [{ id: null, state: 'open', kind: 'card', ref: 'follow' }] }), ['tra'], 'only the trade card is drawn');
+  eq(dealt(cards), ['fav', 'tra'], 'with no favour on the desk the favour is a card like another');
+});
+test('draw: no two pool cards of one kind in a season', () => {
+  const cards = [pooled('peo1', 'hiring', 'people', { weight: 1000 }), pooled('peo2', 'disputes', 'people', { weight: 1000 }), pooled('wor', 'court', 'world', { weight: 1 })];
+  const drawn = dealt(cards);
+  eq(drawn.length, 2, 'one people card and the world card');
+  eq(new Set(drawn.map(r => cards.find(c => c.id === r).kind)).size, 2, `${drawn}`);
+});
+test('draw: a card that tells of an agent\'s trip is not dealt beside a card that can dismiss that agent, nor the other way round', () => {
+  // bots seed 1061 (random, cloth): "Let him go" on a follow-up dismissed Samir, and the trip card dealt beside it refused both its choices
+  const follow = pooled('follow', 'followups', 'people', { weight: 0, choices: [choice([{ dismiss: 'mira' }])] });
+  const trip = pooled('trip', 'loans', 'people', { weight: 1000, when: { trip: { agent: 'mira', is: 'out' } } });
+  const plain = pooled('plain', 'orders', 'trade', { weight: 1 });
+  const onDesk = [{ id: null, state: 'open', kind: 'card', ref: 'follow' }];
+  eq(dealt([follow, trip, plain], { out: true, desk: onDesk }), ['plain'], 'the trip card waits');
+  const sacks = pooled('sacks', 'gifts', 'world', { weight: 1000, choices: [choice([{ dismiss: 'mira' }])] });
+  eq(dealt([trip, sacks, plain], { out: true }), ['trip', 'plain'], 'the card that dismisses Mira is not dealt after the trip card either');
+  eq(dealt([trip, plain], { out: true }), ['trip', 'plain'], 'with no dismissing card the trip card is dealt');
+});
+test('draw: every card of both cities has a kind, and the kinds are the four of DESIGN 2.1', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  for (const c of [...content.cards, ...cairo.cards]) ok(['favour', 'trade', 'people', 'world'].includes(c.kind), `${c.id}: ${c.kind}`);
+});
+
+// ---- MER-81: a return or loss paper's choices, and a card that can always be left
+/** A state at the desk with exactly `papers` on it (each gets the next id), over `c`. */
+function deskOf(c, papers, over = {}) {
+  const s = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  s.desk = papers.map((p, i) => ({ id: `p0-${i}`, state: 'open', ...p }));
+  Object.assign(s, over);
+  return s;
+}
+const TRAP = pooled('trap', 'orders', 'trade', { choices: [choice([{ outfit: 'mira', contract: 'own' }])] });
+const RETURN = (choices, data = {}) => ({ kind: 'return', ref: 'return', agent: 'mira', expedition: 'x1', data: { entry: 'e', choices, ...data } });
+const BONUS = { id: 'bonus', label: 'Pay a bonus', requires: { money: { gte: 30 } }, now: [{ money: -30 }, { trust: '$agent', by: 1 }] };
+const NONE = { id: 'none', label: 'Pay nothing more', now: [] };
+test('data.js loads returns.json of a real game, and kind is required of a card', async () => {
+  ok(content.returns.length >= 2 && content.returns.every(e => e.paper === 'return' || e.paper === 'loss'), 'the entries of testport/returns.json');
+  const { validateContent } = await import('../js/engine/content.js');
+  const noKind = variant(c => { delete c.cards[0].kind; });
+  throws(() => validateContent(noKind, {}), /cards\[0\] \(wool-offer\): missing "kind"/);
+});
+test('return choices: paperChoices offers the entry\'s choices and choose applies the one picked, its effects as a card\'s are', () => {
+  const s = deskOf(content, [RETURN([BONUS, NONE])], { money: 100 });
+  eq(paperChoices(s, content, 'p0-0').map(c => c.id), ['bonus', 'none']);
+  const t = choose(s, content, 'p0-0', 'bonus');
+  eq([t.money, t.agents.mira.trust], [70, 1], 'the cost and the trust rise are applied, $agent is the paper\'s agent');
+  eq(t.log.at(-1), { at: 0, kind: 'event', ref: 'return', choice: 'bonus' });
+  eq(choose(s, content, 'p0-0', 'none').money, 100);
+  throws(() => choose(deskOf(content, [RETURN([BONUS, NONE])], { money: 10 }), content, 'p0-0', 'bonus'), /not available/);
+  throws(() => choose(s, content, 'p0-0', 'nope'), /no choice "nope"/);
+});
+test('return choices: a return paper still answers "ok" (a screen that does not show the choices yet), and one with no choices offers only that', () => {
+  const s = deskOf(content, [RETURN([BONUS, NONE])], { money: 100 });
+  eq(choose(s, content, 'p0-0', 'ok').money, 100, '"ok" applies nothing');
+  const bare = deskOf(content, [RETURN([])]);
+  eq(paperChoices(bare, content, 'p0-0'), [{ id: 'ok', label: 'Into the ledger' }]);
+  eq(paperChoices(deskOf(content, [RETURN([BONUS], {})], { money: 5 }), content, 'p0-0').map(c => c.id), ['bonus', 'ok'], 'every choice closed: "ok" is offered beside them');
+});
+test('loss choices: a loss paper offers its entry\'s choices and applies the one picked', () => {
+  const rest = { id: 'rest', label: 'Say a word for the family', now: [{ money: -10 }, { rep: 'partners', by: 1 }] };
+  const s = deskOf(content, [{ kind: 'lost', ref: 'lost', agent: 'mira', expedition: 'x1', data: { entry: 'l', choices: [rest, NONE] } }], { money: 50 });
+  eq(paperChoices(s, content, 'p0-0').map(c => c.id), ['rest', 'none']);
+  const t = choose(s, content, 'p0-0', 'rest');
+  eq([t.money, t.rep.partners], [40, s.rep.partners + 1]);
+  eq(choose(s, content, 'p0-0', 'ok').money, 50);
+});
+test('a paper\'s choices are read from a copy: paperChoices of a return paper hands out nothing the state owns', () => {
+  const s = deskOf(content, [RETURN([BONUS, NONE])], { money: 100 });
+  paperChoices(s, content, 'p0-0')[0].label = 'changed';
+  eq(s.desk[0].data.choices[0].label, 'Pay a bonus');
+});
+test('deal: a card is never dealt when none of its choices is open at deal time (an outfit for an agent who is out)', () => {
+  const plain = pooled('plain', 'gifts', 'world', { weight: 1 });
+  eq(dealt([TRAP, plain], { out: true }), ['plain'], 'Mira is on the road, so "send her out" is shut and the heavy card is passed over');
+  eq(dealt([TRAP], { out: true }), [], 'a pool of only such cards leaves the desk short instead of dealing it');
+  eq(dealt([TRAP, plain]).includes('trap'), true, 'with Mira home the same card is dealt');
+  const money = pooled('rich-only', 'gifts', 'world', { choices: [{ ...choice([{ money: -9999 }]), requires: { money: { gte: 9999 } } }] });
+  eq(dealt([money]), [], 'a choice whose requires fails is closed too');
+});
+test('deal: a card with one open choice among closed ones is dealt, and the draw keeps its stream when nothing is closed', () => {
+  const mixed = pooled('mixed', 'gifts', 'world', { choices: [choice([{ outfit: 'mira', contract: 'own' }], null, 'send'), choice([{ money: 1 }], null, 'keep')] });
+  eq(dealt([mixed], { out: true }), ['mixed']);
+  eq(dealt(FOUR, { seed: 5 }), dealt(FOUR.map(c => ({ ...c })), { seed: 5 }), 'same cards, same seed, same deal');
+});
+test('leave it: bots seed 1061 (random, cloth): a dealt card whose choices all close in the season gets "Leave it" with no effect, and the season ends', () => {
+  // the card was open when dealt; Mira was sent out by another paper in the season, so "send her out" closed
+  const s = deskOf(variant(x => { x.cards.push(TRAP); }), [{ kind: 'card', ref: 'trap' }], { money: 77 });
+  const c = variant(x => { x.cards.push(TRAP); });
+  eq(paperChoices(s, c, 'p0-0').map(x => x.id), ['go'], 'open while Mira is home');
+  throws(() => choose(s, c, 'p0-0', 'leave'), /still has a choice that is open/);
+  s.expeditions.push(structuredClone(MIRA_OUT));
+  eq(paperChoices(s, c, 'p0-0'), [{ ...choice([{ outfit: 'mira', contract: 'own' }]) }, { id: 'leave', label: 'Leave it' }], 'every choice shut: the engine adds its own');
+  eq(canEndSeason(s).ok, false);
+  const t = choose(s, c, 'p0-0', 'leave');
+  eq([t.money, t.queue, t.desk[0].choice], [77, s.queue, 'leave'], 'nothing applied, nothing queued');
+  eq(canEndSeason(t).ok, true, 'the season can end');
+  eq(t.log.at(-1), { at: 0, kind: 'card', ref: 'trap', choice: 'leave' });
+  throws(() => choose(s, c, 'p0-0', 'go'), /is refused/);
 });
 
 await done();

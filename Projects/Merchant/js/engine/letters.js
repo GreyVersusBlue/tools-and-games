@@ -35,6 +35,9 @@ import { wary, legSeasons } from './agents.js';
 
 /** The chance a letter is written, for an expedition with a letter to write, in a season. */
 export const LETTER_CHANCE = 0.5;
+/** A trip that has written nothing yet gains this much chance for each opening it could have written at and did not (`x.quiet`),
+    up to a sure thing (DESIGN 2.1 rule 5: a long trip brings a letter). Once it has written, the plain chance holds. */
+export const SILENT_RAMP = 0.25;
 /** The three orders: hold a season at a decision point, go on, turn back toward home. */
 export const WAIT = 'wait', ON = 'on', HOME = 'home';
 export const GOES = [WAIT, ON, HOME];
@@ -128,15 +131,36 @@ function deliver(s, content, idx) {
   s.post = waiting;
 }
 
-/** One draw at most for an expedition that is on the road and not at home. */
+/** The chance an expedition writes now: the plain chance, a rising one while it has written nothing on this trip, and a
+    sure thing at the last opening a trip that has written nothing has (DESIGN 2.1 rule 5): a road of one stop and
+    one writing opening has no ramp to climb, so without this they cap near the plain chance. */
+export const chanceFor = (x, content) => {
+  if (x.wrote) return LETTER_CHANCE;
+  if (content && seasonsLeft(content, x) <= 1) return 1;
+  return Math.min(1, LETTER_CHANCE + SILENT_RAMP * (x.quiet ?? 0));
+};
+
+/** One draw at most for an expedition that is on the road and not at home. The first question a house can be asked
+    is sure (DESIGN 2.1 rule 5, "the second season's question letter"): while no question has been written in this game, an
+    expedition with one that can be written now writes it, with no chance draw and whatever the weights; city.json's
+    `secondSeason.letter` if that is one of them, else one by weight. DESIGN says season two, but an expedition sent in
+    season one is still at home at season two's opening (it does not move in the season it is sent, and nobody writes from
+    home), so the first opening a letter can be written at is season three; the sure question is that one. A question that
+    could not matter (see the head) is never written, so a trip with no decision point left brings none, and the
+    guarantee waits for the next trip that can. */
 function write(s, content, x, idx) {
   const place = placeOf(content, x);
   if (!place || x.sent === idx || s.post.some(p => p.expedition === x.id && p.written === idx)) return; // one a season
   const lag = lagOf(content, place.stop);
   if (!lag) return; // at home (0) or at a stop no route reaches (null): nobody writes
   const choices = pool(s, content, x, idx, lag);
-  if (!choices.length || !chance(s, LETTER_CHANCE)) return;
-  const letter = weighted(s, choices);
+  const first = !(content.letters ?? []).some(l => l.kind === 'question' && s.seen[l.id]);
+  const sure = first ? choices.filter(l => l.kind === 'question') : [];
+  let letter = null;
+  if (sure.length) letter = sure.find(l => l.id === content.city?.secondSeason?.letter) ?? weighted(s, sure);
+  else if (choices.length && chance(s, chanceFor(x, content))) letter = weighted(s, choices);
+  if (!letter) { x.quiet = (x.quiet ?? 0) + 1; return; }   // an opening it could have written at and did not
+  x.wrote = (x.wrote ?? 0) + 1;
   s.seen[letter.id] = (s.seen[letter.id] ?? 0) + 1;
   s.post.push({ id: letter.id, kind: letter.kind, expedition: x.id, agent: x.agent, stop: place.stop, standing: place.standing, written: idx, lag, arrive: idx + lag });
 }
@@ -186,10 +210,18 @@ export function decide(s, content, x, idx, { again = false } = {}) {
   const held = () => (x.held ?? 0) < MAX_HOLD && (x.held = (x.held ?? 0) + 1);
   const due = (x.orders ?? []).filter(o => o.at !== undefined && o.at <= idx).sort((a, b) => a.at - b.at);
   if (due.length) {
-    for (const o of due) if (!o.used) { o.used = true; s.log.push({ at: idx, kind: 'order', ref: o.letter, choice: o.go }); }
+    const fresh = due.filter(o => !o.used);
+    const alone = fresh.length ? byTrait(s, content, x, idx, again) : null;   // what the agent would have done unasked, read before the order moves `held`
+    for (const o of fresh) { o.used = true; s.log.push({ at: idx, kind: 'order', ref: o.letter, choice: o.go }); }
     const go = due[due.length - 1].go;
     // an agent woken after a hold has already waited here, so a wait order has been kept
-    return go === WAIT && !again && held() ? WAIT : go === HOME ? HOME : ON;
+    const did = go === WAIT && !again && held() ? WAIT : go === HOME ? HOME : ON;
+    // the return paper tells the player what an order changed (routes.js `orderLine`): the last order is the one that acted
+    if (fresh.length && x.book) {
+      const stop = routeOf(content, x.route)?.legs?.[x.leg]?.from;
+      for (const o of fresh) (x.book.orders ??= []).push({ letter: o.letter, go: o.go, stop, did: o === due[due.length - 1] ? did : null, changed: o === due[due.length - 1] && did !== alone });
+    }
+    return did;
   }
   const asked = pending(s, x, idx);
   if (!asked.length) return ON;
@@ -203,6 +235,18 @@ export function decide(s, content, x, idx, { again = false } = {}) {
   if (traits.includes('bold')) return ON;
   const go = defaultOf(content, asked[asked.length - 1]);
   return go === WAIT ? (held() ? WAIT : ON) : go === HOME ? HOME : ON;
+}
+
+/** What `decide` would answer with no order due, changing nothing: used to tell whether an order changed what the agent did. */
+function byTrait(s, content, x, idx, again) {
+  const asked = pending(s, x, idx);
+  if (!asked.length) return ON;
+  const room = (x.held ?? 0) < MAX_HOLD;
+  const traits = agentOf(content, x.agent)?.traits ?? [];
+  if (traits.includes('careful') || wary(s, x.agent)) return room ? WAIT : ON;
+  if (again || traits.includes('bold')) return ON;
+  const go = defaultOf(content, asked[asked.length - 1]);
+  return go === WAIT ? (room ? WAIT : ON) : go === HOME ? HOME : ON;
 }
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];

@@ -6,7 +6,7 @@
 // Screens: the title (with and without a save), New game, the desk with a letter raised, a question and a report from the road, the desk
 // with a full stack, a return paper, the outfitting sheet, the price board on the map table, the ledger,
 // the notebook (MER-62), the page
-// between acts and the ending stub. The labels on the map table are MER-44b's check in
+// between acts and the five pages of the ending (MER-84: notice, recall, who came home, score, after 1347). The labels on the map table are MER-44b's check in
 // journey.mjs and are not measured here.
 //
 // Each screen at each frame fails on:
@@ -65,7 +65,15 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
 ];
 const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
-const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'between-acts', 'ending-stub']);
+// MER-87 (finding 7): what a paper asks is in view the moment it opens, with no scrolling by the player, at the two
+// frames the milestone play found it cut off at (the board and a small laptop) and the 1366 laptop between them.
+// The target is the paper's first choice, or Open the house on the page between the acts.
+const OPENS_WITH = { 'desk-letter': '.sheet .choice', 'desk-question': '.sheet .choice', 'desk-report': '.sheet .choice', 'desk-papers': '.sheet .choice',
+  'desk-return': '.sheet .choice', 'desk-loss': '.sheet .choice', 'between-acts': '#btn-open-house', 'between-acts-long': '#btn-open-house' };
+const OPEN_FRAMES = new Set(['board', 'laptop', 'laptop-small']);
+// MERCHANT_LAYOUT_ONLY=desk-loss,desk-return runs just those screens (a development shortcut; the suite must run whole to count)
+const ONLY = (process.env.MERCHANT_LAYOUT_ONLY || '').split(',').filter(Boolean);
+const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts']);
 
 // ---- the same game the engine plays in Node (the policy of journey.mjs: first open choice,
 // first expedition sent on the engine's plan, every other paper set aside)
@@ -116,9 +124,52 @@ const withLetter = (id, kind, stop, lag, standing) => {
   sent.post.push({ id, kind, expedition: x.id, agent: x.agent, stop, standing, written: sent.t, lag, arrive: sent.t + 1 });
   return eng.endSeason(sent, content);
 };
+// MER-87 (finding 7): the page between acts as the milestone play found it, two settled trips and three paragraphs of the
+// years, long enough that its one button is below any frame's fold. The jump entry is the engine's; the lines are added to it.
+states.interludeLong = (() => {
+  const s = structuredClone(states.interlude), jump = [...s.log].reverse().find(e => e.kind === 'jump');
+  const line = (id, text) => ({ expedition: id, result: 'return', text, cargo: { linen: 3 }, houseNet: -13 });
+  jump.settled = [line('x91', 'Yusuf came home from Damascus. The house lost 13 dinars.'), line('x92', 'Samir came home from Damascus. The house lost 8 dinars.')];
+  const para = t => ({ id: 'p' + t.length, interlude: t });
+  jump.events = ['In April 1326 a young scholar from Tangier landed at Alexandria and went on to Cairo. His name was Ibn Battuta. He would travel for about thirty years, and long afterward he told the story of what he saw.',
+    'In the summer of 1326 Ibn Battuta crossed the desert toward Aydhab on the Red Sea. He found the crossing shut. The king of the Beja was at war with the sultan\'s soldiers and had sunk the ships. Ibn Battuta turned back to the Nile.',
+    'In the summer of 1332 the sultan, al-Nasir Muhammad, set out for Mecca on the pilgrimage. He took his wife and his son Anuk with him. Every Muslim who can make the journey is asked to go once.'].map(para);
+  return s;
+})();
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
 states.report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
 const plain = s => JSON.parse(JSON.stringify(s));
+// MER-80: a loss paper and an Accounts paper laid by hand on the return's season. The loss carries the
+// choices of the `loss-sea-gone` entry of returns.json as routes.js would fill them; the Accounts items are
+// shaped as `accountItem` writes them (a cause, a choice, the changes).
+{
+  const base = plain(states.ret), r = base.desk.find(p => p.kind === 'return' && p.state === 'open');
+  const entry = content.returns.find(e => e.id === 'loss-sea-gone'), fill = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Damascus');
+  states.loss = { ...base, desk: [{ id: 'p80-0', state: 'open', kind: 'lost', ref: 'lost', agent: 'ali', expedition: r.expedition, data: {
+    headline: 'Ali did not come back', route: 'cairo-damascus', whole: true, survived: false,
+    lines: [{ label: 'Lost', text: 'The ship and what it carried.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
+    ask: { title: fill(entry.title), body: fill(entry.body) },
+    choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
+  states.accounts = { ...base, desk: [{ id: 'p80-1', state: 'open', kind: 'accounts', ref: 'accounts', items: [
+    { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ['+60 dinars'], text: 'a' },
+    { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'b' },
+    { from: 'gift/yes', card: 'A gift for the court', choice: 'Send the gift', changes: ['good name with court +1'], text: 'c' }] }] };
+}
+
+// MER-84: the ending's pages after the recall was sent. Every expedition still out is called home, so the
+// engine's own rolls decide who lives; the pages read the state this leaves.
+// The seeded game reaches the plague with nobody out, so the recall page is also drawn from the last season
+// replayed with four expeditions sent on the engine's plans: four rows with their two buttons each.
+states.road = (() => {
+  let s = fresh();
+  for (let i = 0; i < 80 && !(s.phase === 'desk' && s.t === 23); i++) s = s.phase === 'interlude' ? eng.openSeason(s, content) : playSeason(s);
+  s = playPapers(s);
+  for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = eng.suggestPlan(s, content, stop); if (plan) s = eng.outfit(s, content, plan); }
+  s = eng.endSeason(s, content);
+  if (s.phase !== 'recall' || s.expeditions.length < 3) throw new Error('layout.mjs: the last season did not end with people on the road');
+  return s;
+})();
+states.ended = eng.recall(states.road, content, Object.fromEntries(states.road.expeditions.map((x, i) => [x.id, i % 2 ? 'stay' : 'recall'])));
 
 const server = await serve(PORT);
 const browser = await launch();
@@ -158,6 +209,8 @@ const SCREENS = [
     go: async (p, f) => { await load(p, '#title', { large: f.large }); await p.waitForSelector('#screen-title'); } },
   { name: 'title-continue', ready: '#btn-continue',
     go: async (p, f) => { await load(p, '#title', { state: states.start, large: f.large }); await p.waitForSelector('#btn-continue'); } },
+  { name: 'title-ended', ready: '#title-last',
+    go: async (p, f) => { await load(p, '#title', { state: states.ended, large: f.large }); await p.waitForSelector('#title-last'); } },
   { name: 'new-game', modal: 'dialog[open]',
     go: async (p, f) => { await load(p, '#title', { large: f.large }); await p.waitForSelector('#btn-new'); await p.click('#btn-new'); await p.waitForFunction(() => document.getElementById('panel-newgame')?.open); } },
   { name: 'desk-letter',
@@ -176,6 +229,10 @@ const SCREENS = [
       if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
       await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
     } },
+  { name: 'desk-loss',
+    go: async (p, f) => { await load(p, '#desk', { state: states.loss, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
+  { name: 'desk-accounts',
+    go: async (p, f) => { await load(p, '#desk', { state: states.accounts, large: f.large }); await p.waitForSelector('#screen-desk .account-group'); } },
   { name: 'outfit', modal: 'dialog[open]',
     go: async (p, f) => {
       await load(p, '#map', { state: states.firstDone, large: f.large });
@@ -205,9 +262,31 @@ const SCREENS = [
     } },
   { name: 'between-acts',
     go: async (p, f) => { await load(p, '#desk', { state: states.interlude, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
-  { name: 'ending-stub',
-    go: async (p, f) => { await load(p, '#desk', { state: states.recall, large: f.large }); await p.waitForSelector('#btn-to-title'); } },
+  { name: 'between-acts-long',
+    go: async (p, f) => { await load(p, '#desk', { state: states.interludeLong, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
+  ...[['notice', 'road', 'ending-next'], ['recall', 'road', 'ending-send'], ['recall-empty', 'recall', 'ending-send'], ['home', 'ended', 'ending-next'], ['score', 'ended', 'ending-next'], ['after', 'ended', 'ending-again']].map(([page, st, ready]) => ({
+    name: `ending-${page}`,
+    go: async (p, f) => { const at = page.replace('-empty', ''); await load(p, `#ending/${at}`, { state: states[st], large: f.large }); await p.waitForSelector(`#${ready}`); await p.waitForSelector(`[data-page="${at}"]`); } })),
 ];
+
+/** Is the element wholly on screen, inside every box that clips it, and not under anything (the top bar, End the season)? */
+const wholeInView = sel => {
+  const el = document.querySelector(sel);
+  if (!el) return `${sel} is not on the page`;
+  const r = el.getBoundingClientRect();
+  let top = Math.max(0, r.top), bottom = Math.min(innerHeight, r.bottom);
+  for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+    if (getComputedStyle(a).overflowY !== 'visible') { const b = a.getBoundingClientRect(); top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); }
+  }
+  if (r.top < top - 0.5 || r.bottom > bottom + 0.5) return `${sel} spans ${Math.round(r.top)} to ${Math.round(r.bottom)} and only ${Math.round(top)} to ${Math.round(bottom)} is on screen`;
+  const bar = document.querySelector('.topbar')?.getBoundingClientRect();
+  if (bar && r.top < bar.bottom - 0.5) return `${sel} is under the top bar`;
+  for (const [x, y] of [[r.left + 4, r.top + 2], [r.left + 4, r.bottom - 2], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]) {
+    const on = document.elementFromPoint(x, y);
+    if (on && !(el.contains(on) || on.contains(el))) return `${sel} is covered by ${on.id ? '#' + on.id : on.className || on.tagName}`;
+  }
+  return null;
+};
 
 // ---- the measuring, in the page. `scopeSel` is what is measured (a dialog when one is open).
 const measureGeometry = (scopeSel, minTarget) => {
@@ -302,8 +381,9 @@ const collectText = scopeSel => {
       const ih = (y1 - y0) * 0.2; x0 += 1; x1 -= 1; y0 += ih; y1 -= ih;
       if (x1 - x0 < 2 || y1 - y0 < 2) continue;
       // text under something else (a fixed bar, another paper) is not on screen: ask what is on top
-      // at the middle, each end, top and bottom of the line; a line partly covered waits until it scrolls clear
-      const covered = [[(x0 + x1) / 2, (y0 + y1) / 2], [x0 + 1, (y0 + y1) / 2], [x1 - 1, (y0 + y1) / 2], [(x0 + x1) / 2, y0 + 1], [(x0 + x1) / 2, y1 - 1]].some(([x, y]) => {
+      // at the middle, each end, and half a pixel outside the sampled box above and below (a bar whose layout edge is 0.15 px short of the pixel row it paints
+      // tinted one sampled row and read as a 1.5:1 label, MER-84); a line partly covered waits until it scrolls clear
+      const covered = [[(x0 + x1) / 2, (y0 + y1) / 2], [x0 + 1, (y0 + y1) / 2], [x1 - 1, (y0 + y1) / 2], [(x0 + x1) / 2, y0 - 0.5], [(x0 + x1) / 2, y1 + 0.5]].some(([x, y]) => {
         const top = document.elementFromPoint(x, y);
         return top && !(el.contains(top) || top.contains(el));
       });
@@ -407,6 +487,7 @@ const brief = list => list.length ? `${list.length}: ${list.slice(0, 6).join('; 
 
 try {
   for (const screen of SCREENS) {
+    if (ONLY.length && !ONLY.includes(screen.name)) continue;
     for (const frame of FRAMES) {
       const tag = `${screen.name} at ${frame.name} ${frame.width}x${frame.height}`;
       const { page, errors } = await open(frame);
@@ -419,6 +500,13 @@ try {
       });
       if (ready) {
         await page.screenshot({ path: path.join(SHOTS, `${screen.name}-${frame.name}.png`) });
+        // measured first: the contrast pass below scrolls every scroller and puts it back at the top
+        if (OPENS_WITH[screen.name] && OPEN_FRAMES.has(frame.name) && !frame.large) {
+          await test(`${tag}: what the paper asks is in view when it opens, no scrolling`, async () => {
+            const bad = await page.evaluate(wholeInView, OPENS_WITH[screen.name]);
+            ok(!bad, bad ?? '');
+          });
+        }
         const geo = await page.evaluate(measureGeometry, scopeSel, MIN_TARGET);
         await test(`${tag}: no overflow, nothing outside the viewport without a way to scroll to it`, async () => { ok(!geo.overflow.length, brief(geo.overflow)); });
         await test(`${tag}: every hit target is ${MIN_TARGET} px`, async () => { { const t = unknown(screen.name, 'target', geo.target); ok(!t.length, brief(t)); }; });
@@ -438,7 +526,7 @@ try {
           });
         }
         // MER-71 (finding 14): between the acts and at the end there is no End the season, and no empty bar where it was
-        if (screen.name === 'between-acts' || screen.name === 'ending-stub') {
+        if (screen.name === 'between-acts') {
           await test(`${tag}: no stray bar where End the season was`, async () => {
             const m = await page.evaluate(() => ({ row: document.querySelector('.end-row')?.checkVisibility() ?? false, reason: document.querySelector('.end-reason')?.checkVisibility() ?? false }));
             eq(m, { row: false, reason: false });
@@ -453,7 +541,7 @@ try {
   await browser.close();
   server.close();
 }
-if (!BREAK) await test('every known finding still reproduces (a fixed screen has its entry deleted)', async () => {
+if (!BREAK && !ONLY.length) await test('every known finding still reproduces (a fixed screen has its entry deleted)', async () => {
   const stale = KNOWN.filter((k, i) => !knownHits[i]).map(k => `${k.screen} ${k.check} ${k.match}`);
   ok(!stale.length, stale.join('; '));
 });

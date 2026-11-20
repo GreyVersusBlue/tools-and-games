@@ -65,7 +65,7 @@ export function createDesk(app) {
     if (!asset || id === stillId) return;
     const first = stillId === null;
     stillId = id;
-    const img = h('img', { class: 'desk-still', src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' });
+    const img = h('img', { class: `desk-still${asset.final === false ? ' placeholder' : ''}`, src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' });
     const old = [...still.children];
     still.append(img);
     const drop = () => old.forEach(o => o.remove());
@@ -157,7 +157,7 @@ export function createDesk(app) {
       if (backOf) {
         node = back(app, paper, { now: backOf.now, fresh: backOf.fresh, onNext: next });
         node.dataset.face = 'back';
-      } else if (RECORD_KINDS.includes(paper.kind)) node = record(app, paper, { open: returnsSeen() > 1, onDone: () => answer(paper, { id: 'ok', now: [] }) });
+      } else if (RECORD_KINDS.includes(paper.kind)) node = record(app, paper, { open: returnsSeen() > 1, onDone: () => answer(paper, { id: 'ok', now: [] }), onChoose: c => answer(paper, c), locked: () => busy });
       else node = front(app, paper, { onChoose: (c) => answer(paper, c), locked: () => busy });
       const key = `${paper.id}:${backOf ? 'back' : 'front'}`;
       if (shown.has(key) && !opts.flipped) node.classList.add('still');
@@ -170,6 +170,27 @@ export function createDesk(app) {
         tilt: tiltOf(app.state.seed, p.id), onRaise: () => { if (busy || backOf) return; raised = p.id; draw({ focus: 'raise' }); },
       }));
     }
+  }
+
+  /** DESIGN 5: a raised paper's first choice is in view when it opens. The stack scrolls (screens.css), and edges and
+      a long body can push the choices below its foot; the stack is then scrolled until the choice shows (the paper's
+      head and its edges scroll up out of sight, and scrolling back brings them). */
+  function revealChoice(late = null) {
+    const box = qs('.stack-papers', el);
+    // a late measure (the arrival animation ended, a font came) only finishes the first one: if the stack has been
+    // scrolled since, by a hand or a script, it is left where it is
+    if (late !== null && box.scrollTop !== late) return;
+    if (late === null) box.scrollTop = 0;
+    const sheet = qs('.sheet', sheetBox);
+    if (!sheet || getComputedStyle(box).overflowY !== 'auto') return;
+    const target = qs('.choice, #btn-next', sheet);
+    if (!target) return;
+    const need = target.getBoundingClientRect().bottom + 6 - box.getBoundingClientRect().bottom;
+    if (need > 0) box.scrollTop += need;   // the head may scroll off: the choice is the part a player cannot do without
+    const at = box.scrollTop;
+    // the sheet rises into place for 220 ms, and a font may arrive: measure once more when it lies still
+    sheet.addEventListener('animationend', () => revealChoice(at), { once: true });
+    if (late === null && document.fonts?.status === 'loading') document.fonts.ready.then(() => { if (sheet.isConnected) revealChoice(at); });
   }
 
   // what the settled trips came to for the house, from the jump's own lines (`houseNet` of each)
@@ -209,8 +230,9 @@ export function createDesk(app) {
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
           `Open the house in ${cap(v.season)} ${v.year}`));
     }
-    return wrap('The last season is over', h('p', { class: 'sheet-body' }, 'The ending of the game is still being built. Your house is saved as it stands.'),
-      h('button', { class: 'button next', type: 'button', id: 'btn-to-title', onclick: () => app.toTitle() }, 'Back to the title'));
+    // phase recall or ended: the router sends the player to the ending, so this page shows only for a moment
+    return wrap('The last season is over',
+      h('button', { class: 'button next', type: 'button', id: 'btn-to-ending', onclick: () => app.toEnding() }, 'Go to the ending'));
   }
 
   // ---- answering
@@ -229,10 +251,10 @@ export function createDesk(app) {
     const before = new Set(app.state.notebook);
     const tripTo = app.view().cards?.[paper.id]?.trip?.to ?? null;   // where the card says the agent would go
     try { app.act(s => engine.choose(s, content, paper.id, choice.id)); } catch (e) { busy = false; node?.removeAttribute('inert'); app.say(e.message); return; }
-    if (RECORD_KINDS.includes(paper.kind)) { busy = false; raised = null; draw({ focus: 'next' }); return; }
+    if (RECORD_KINDS.includes(paper.kind) && choice.id === 'ok') { busy = false; raised = null; draw({ focus: 'next' }); return; }
     const fresh = app.state.notebook.filter(id => !before.has(id)).map(id => (content.notebook ?? []).find(n => n.id === id)?.title ?? id);
     const answered = app.state.desk.find(p => p.id === paper.id);
-    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app);
+    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app, { agent: paper.agent, result: choice.result });
     const done = () => {
       backOf = { paper: answered, now, fresh, outfit: outfitOf(choice, tripTo) };
       busy = false;
@@ -279,6 +301,8 @@ export function createDesk(app) {
     if (!can.ok) { app.say(can.reason); return; }
     app.act(s => engine.endSeason(s, content));
     raised = null; backOf = null;
+    // the last season was played: the game is the ending now (DESIGN 4.12), and its first page takes the screen
+    if (app.state.phase === 'recall') { app.toEnding(); return; }
     draw({ focus: 'season' });
   }
 
@@ -314,8 +338,14 @@ export function createDesk(app) {
       const title = qs('.sheet-title', sheetBox);
       const left = openPapers().length;
       if (f === 'next' && !left && !backOf && app.state.phase === 'desk') endBtn.focus();
-      else (title ?? endBtn).focus();
+      else {
+        (title ?? endBtn).focus();
+        // focus alone leaves a heading under the top bar when the page was scrolled to press an edge: bring it to the
+        // heading's scroll-margin (screens.css) when its top is within the bar
+        if (title && f === 'raise' && title.getBoundingClientRect().top < bar.getBoundingClientRect().bottom + 8) title.scrollIntoView({ block: 'start' });
+      }
     }
+    revealChoice();   // after focus, which scrolls the heading into view and would undo it
   }
 
   // ---- the keyboard (DESIGN 6)

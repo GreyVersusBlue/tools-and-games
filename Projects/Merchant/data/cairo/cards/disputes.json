@@ -2,6 +2,7 @@
   {
     "id": "weigher-dispute",
     "group": "disputes",
+    "kind": "trade",
     "from": {
       "name": "Rahel, a dealer in dyes",
       "role": "Fustat",
@@ -85,6 +86,7 @@
   {
     "id": "partners-quarrel",
     "group": "disputes",
+    "kind": "people",
     "from": {
       "name": "Idris and Binyamin",
       "role": "Cairo",
@@ -98,7 +100,7 @@
       {
         "id": "even",
         "label": "Split it evenly, as the ledger says",
-        "hint": "Both will be a little unhappy.",
+        "hint": "Both are a little unhappy now. A fair count earns respect later.",
         "now": [
           {
             "rep": "partners",
@@ -186,6 +188,7 @@
   {
     "id": "samir-share-count",
     "group": "disputes",
+    "kind": "people",
     "from": {
       "name": "Samir, your agent",
       "role": "Cairo",
@@ -283,6 +286,7 @@
   {
     "id": "ali-beyond-the-paper",
     "group": "disputes",
+    "kind": "people",
     "from": {
       "name": "Ali, your agent",
       "role": "Cairo",
@@ -376,6 +380,7 @@
   {
     "id": "two-judges",
     "group": "disputes",
+    "kind": "world",
     "from": {
       "name": "Jabir and Ezra",
       "role": "Cairo",
