@@ -4,11 +4,16 @@
 // as the last option, what Enter takes, the live region, where the focus goes
 // after an add and a removal, "Removed Lab" with its Undo); the Edit the
 // features list… dialog (rows, moves, rename, delete with its confirm and
-// toast, Add common ones on an empty list, the count from 30, the most of 40,
-// the footer pinned at 844 by 390, the rows wrapped at 390); the Rooms tab's
-// Features column sorted by count and its popover; the room list print and
-// the batch pages listing features, and the batch headers reading a custom
-// period word; axe on the dialog in both themes. Driven by pointer and by
+// toast heard once, Add common ones on an empty list with the focus on the
+// first new name, a rename keeping the focus and the next click, the count
+// from 30, the most of 40, the footer pinned at 844 by 390, the rows wrapped
+// at 390); the Rooms tab's Features column sorted by count and its popover
+// named for its room, the dialog from it returning the focus to the cell; the
+// room list print and the batch pages listing features after Shared space,
+// the batch headers reading a custom period word, a part-time teacher's days
+// out on the batch sheet; axe on the dialog, the open combobox and the
+// popover in both themes; the phone's add and remove by tap and by keyboard
+// with 44 px chips, and its popover. Driven by pointer and by
 // keyboard at 1280 by 900 and at 390 by 844 with touch. Every wait is on a
 // state the page sets (the store's features, an announcement, a toast's words,
 // the dialog's rows, the plan at rest with `still`), never on a first paint or
