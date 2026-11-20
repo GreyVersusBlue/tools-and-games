@@ -84,7 +84,7 @@ const tripLive = s => s.expeditions.length > 0 || s.desk.some(p => p.kind === 'r
 /** Draws the season's cards (DESIGN 2.1). The papers of the house's own trips are already on the desk (returns, losses,
     letters). From the pool: a card that tells of a trip (a `trip` leaf) is drawn before any other; at most POOL_WITH_TRIP pool
     cards while a trip is live; at most one `favour` card on the desk, a follow-up's included; no two pool cards of one
-    kind; and no card beside one that it clashes with (above). A draw that no card fits is not spent: the desk holds fewer cards. */
+    kind; no card beside one that it clashes with (above); and no card with no choice open now (`anyOpen`). A draw that no card fits is not spent: the desk holds fewer cards. */
 function drawCards(s, content) {
   const idx = seasonIndex(s, content);
   const city = cityOf(content, 'drawing cards');
@@ -115,9 +115,16 @@ function drawCards(s, content) {
       !(c.kind === 'favour' && favours >= 1) && !(c.kind && kindsDrawn.has(c.kind)) && !beside.some(d => clash(c, d)) &&
       holds(c.when, s, content));
     if (!pool.length || deskFull(s)) break; // no draw is spent on a paper that has no room
-    const trips = pool.filter(c => tripLeaf(c.when));
-    const card = weighted(s, trips.length ? trips : pool);
-    if (!put(card.id)) break;
+    // A card with no choice open now is never dealt. The check runs on the card the draw lands on (it clones the state),
+    // and a closed one leaves the pool and the draw goes again, so a pool with none closed draws exactly as it did.
+    let card = null;
+    while (pool.length && !card) {
+      const trips = pool.filter(c => tripLeaf(c.when));
+      const pick = weighted(s, trips.length ? trips : pool);
+      if (anyOpen(s, content, { kind: 'card' }, pick.choices ?? [])) card = pick;
+      else pool.splice(pool.indexOf(pick), 1);
+    }
+    if (!card || !put(card.id)) break;
     drawn++;
     if (card.kind) kindsDrawn.add(card.kind);
   }
@@ -197,11 +204,36 @@ const INFO = { notice: 'Noted', news: 'Noted', return: 'Into the ledger', lost: 
 /** The card or letter a paper was drawn from. */
 const definition = (content, p) => find(p.kind === 'letter' ? content.letters : content.cards, p.ref, p.kind === 'letter' ? 'letter' : 'card');
 
+/** The engine's own way out of a card that has no choice left to make (a choice is closed by what it asks, see `isOpen`). */
+export const LEAVE = { id: 'leave', label: 'Leave it' };
+
+/** The choices a paper offers from its own data: a return or a loss paper carries them in `data.choices` (routes.js,
+    drawn from returns.json), a card or a letter's are in its definition. */
+const listOf = (content, p) => (p.kind === 'return' || p.kind === 'lost' ? p.data?.choices : p.kind in INFO ? [] : definition(content, p).choices) ?? [];
+
+/** The effects of a choice as `choose` applies them. A letter's go through the road it was written on. */
+const nowOf = (s, p, choice) => (p.kind === 'letter' ? letters.reachable(s, p, choice.now) : choice.now);
+
+/** A choice is open when its `requires` holds and its `now` applies on a copy of the state without being refused
+    (an outfit for an agent who cannot be sent, a card or good that does not exist). `choose` refuses exactly what this
+    reports closed, so a screen can offer what is open and the season cannot be left with nothing to answer. */
+function isOpen(s, content, p, choice) {
+  if (!holds(choice.requires, s, content)) return false;
+  // on the copy throughout: letters.reachable logs a dropped order on the state it is given
+  const trial = clone(s);
+  try { applyAll(trial, content, nowOf(trial, p, choice), { agent: p.agent, expedition: p.expedition }); return true; }
+  catch { return false; }
+}
+const anyOpen = (s, content, p, list) => list.some(c => isOpen(s, content, p, c));
+
 export function paperChoices(state, content, paperId) {
   const p = state.desk.find(x => x.id === paperId);
   if (!p) throw new Error(`no paper "${paperId}" on the desk`);
-  if (p.kind in INFO) return [{ id: 'ok', label: INFO[p.kind] }];
-  return structuredClone(definition(content, p).choices ?? []);
+  const note = p.kind in INFO ? { id: 'ok', label: INFO[p.kind] } : null;
+  const list = structuredClone(listOf(content, p));
+  // a return or loss paper with no entry behind it is answered "ok", and so is one whose every choice has closed
+  if (note) return list.length && anyOpen(state, content, p, list) ? list : [...list, note];
+  return list.length && anyOpen(state, content, p, list) ? list : [...list, { ...LEAVE }];
 }
 
 export function choose(state, content, paperId, choiceId) {
@@ -212,17 +244,21 @@ export function choose(state, content, paperId, choiceId) {
   if (paper.state !== 'open') throw new Error(`choose: paper "${paperId}" is already answered`);
   const idx = seasonIndex(s, content);
 
-  if (paper.kind in INFO) {
-    if (choiceId !== 'ok') throw new Error(`choose: a notice is answered with "ok"`);
-  } else {
-    const card = definition(content, paper);
-    const choice = (card.choices ?? []).find(c => c.id === choiceId);
+  const info = paper.kind in INFO, list = listOf(content, paper);
+  // "ok" answers any notice, and a return or loss paper whether or not it offers choices (a screen that does not show them yet)
+  if (info && choiceId === 'ok') { /* nothing to apply */ }
+  else if (!info && choiceId === LEAVE.id) {
+    if (anyOpen(s, content, paper, list)) throw new Error(`choose: card "${paper.ref}" still has a choice that is open`);
+  } else if (info && !list.length) throw new Error(`choose: a notice is answered with "ok"`);
+  else {
+    const card = info ? { id: paper.ref } : definition(content, paper);
+    const choice = list.find(c => c.id === choiceId);
     if (!choice) throw new Error(`choose: card "${card.id}" has no choice "${choiceId}"`);
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
     const ctx = { agent: paper.agent, expedition: paper.expedition };
     const refuse = e => new Error(`choose: "${choice.label}" on card "${card.id}" is refused: ${e.message}`);
     const later = choice.later ?? [];
-    const now = paper.kind === 'letter' ? letters.reachable(s, paper, choice.now) : choice.now;
+    const now = nowOf(s, paper, choice);
     // Every reference in `later` is checked now, on a scratch copy, so a bad card id, good,
     // stop or agent refuses the choice here and never throws when the item fires.
     const trial = clone(s);
@@ -251,7 +287,7 @@ export function choose(state, content, paperId, choiceId) {
   paper.state = 'done';
   paper.choice = choiceId;
   s.done.push({ id: paper.id, ref: paper.ref, choice: choiceId });
-  s.log.push({ at: idx, kind: paper.kind in INFO ? 'event' : 'card', ref: paper.ref, choice: choiceId });
+  s.log.push({ at: idx, kind: info ? 'event' : 'card', ref: paper.ref, choice: choiceId });
   return s;
 }
 

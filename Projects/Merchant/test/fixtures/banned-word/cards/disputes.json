@@ -2,6 +2,7 @@
   {
     "id": "salt-dispute",
     "group": "disputes",
+    "kind": "people",
     "from": {
       "name": "Odo the carter",
       "role": "Testport",

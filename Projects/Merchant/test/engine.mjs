@@ -785,4 +785,81 @@ test('draw: every card of both cities has a kind, and the kinds are the four of 
   for (const c of [...content.cards, ...cairo.cards]) ok(['favour', 'trade', 'people', 'world'].includes(c.kind), `${c.id}: ${c.kind}`);
 });
 
+// ---- MER-81: a return or loss paper's choices, and a card that can always be left
+/** A state at the desk with exactly `papers` on it (each gets the next id), over `c`. */
+function deskOf(c, papers, over = {}) {
+  const s = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  s.desk = papers.map((p, i) => ({ id: `p0-${i}`, state: 'open', ...p }));
+  Object.assign(s, over);
+  return s;
+}
+const TRAP = pooled('trap', 'orders', 'trade', { choices: [choice([{ outfit: 'mira', contract: 'own' }])] });
+const RETURN = (choices, data = {}) => ({ kind: 'return', ref: 'return', agent: 'mira', expedition: 'x1', data: { entry: 'e', choices, ...data } });
+const BONUS = { id: 'bonus', label: 'Pay a bonus', requires: { money: { gte: 30 } }, now: [{ money: -30 }, { trust: '$agent', by: 1 }] };
+const NONE = { id: 'none', label: 'Pay nothing more', now: [] };
+test('data.js loads returns.json of a real game, and kind is required of a card', async () => {
+  ok(content.returns.length >= 2 && content.returns.every(e => e.paper === 'return' || e.paper === 'loss'), 'the entries of testport/returns.json');
+  const { validateContent } = await import('../js/engine/content.js');
+  const noKind = variant(c => { delete c.cards[0].kind; });
+  throws(() => validateContent(noKind, {}), /cards\[0\] \(wool-offer\): missing "kind"/);
+});
+test('return choices: paperChoices offers the entry\'s choices and choose applies the one picked, its effects as a card\'s are', () => {
+  const s = deskOf(content, [RETURN([BONUS, NONE])], { money: 100 });
+  eq(paperChoices(s, content, 'p0-0').map(c => c.id), ['bonus', 'none']);
+  const t = choose(s, content, 'p0-0', 'bonus');
+  eq([t.money, t.agents.mira.trust], [70, 1], 'the cost and the trust rise are applied, $agent is the paper\'s agent');
+  eq(t.log.at(-1), { at: 0, kind: 'event', ref: 'return', choice: 'bonus' });
+  eq(choose(s, content, 'p0-0', 'none').money, 100);
+  throws(() => choose(deskOf(content, [RETURN([BONUS, NONE])], { money: 10 }), content, 'p0-0', 'bonus'), /not available/);
+  throws(() => choose(s, content, 'p0-0', 'nope'), /no choice "nope"/);
+});
+test('return choices: a return paper still answers "ok" (a screen that does not show the choices yet), and one with no choices offers only that', () => {
+  const s = deskOf(content, [RETURN([BONUS, NONE])], { money: 100 });
+  eq(choose(s, content, 'p0-0', 'ok').money, 100, '"ok" applies nothing');
+  const bare = deskOf(content, [RETURN([])]);
+  eq(paperChoices(bare, content, 'p0-0'), [{ id: 'ok', label: 'Into the ledger' }]);
+  eq(paperChoices(deskOf(content, [RETURN([BONUS], {})], { money: 5 }), content, 'p0-0').map(c => c.id), ['bonus', 'ok'], 'every choice closed: "ok" is offered beside them');
+});
+test('loss choices: a loss paper offers its entry\'s choices and applies the one picked', () => {
+  const rest = { id: 'rest', label: 'Say a word for the family', now: [{ money: -10 }, { rep: 'partners', by: 1 }] };
+  const s = deskOf(content, [{ kind: 'lost', ref: 'lost', agent: 'mira', expedition: 'x1', data: { entry: 'l', choices: [rest, NONE] } }], { money: 50 });
+  eq(paperChoices(s, content, 'p0-0').map(c => c.id), ['rest', 'none']);
+  const t = choose(s, content, 'p0-0', 'rest');
+  eq([t.money, t.rep.partners], [40, s.rep.partners + 1]);
+  eq(choose(s, content, 'p0-0', 'ok').money, 50);
+});
+test('a paper\'s choices are read from a copy: paperChoices of a return paper hands out nothing the state owns', () => {
+  const s = deskOf(content, [RETURN([BONUS, NONE])], { money: 100 });
+  paperChoices(s, content, 'p0-0')[0].label = 'changed';
+  eq(s.desk[0].data.choices[0].label, 'Pay a bonus');
+});
+test('deal: a card is never dealt when none of its choices is open at deal time (an outfit for an agent who is out)', () => {
+  const plain = pooled('plain', 'gifts', 'world', { weight: 1 });
+  eq(dealt([TRAP, plain], { out: true }), ['plain'], 'Mira is on the road, so "send her out" is shut and the heavy card is passed over');
+  eq(dealt([TRAP], { out: true }), [], 'a pool of only such cards leaves the desk short instead of dealing it');
+  eq(dealt([TRAP, plain]).includes('trap'), true, 'with Mira home the same card is dealt');
+  const money = pooled('rich-only', 'gifts', 'world', { choices: [{ ...choice([{ money: -9999 }]), requires: { money: { gte: 9999 } } }] });
+  eq(dealt([money]), [], 'a choice whose requires fails is closed too');
+});
+test('deal: a card with one open choice among closed ones is dealt, and the draw keeps its stream when nothing is closed', () => {
+  const mixed = pooled('mixed', 'gifts', 'world', { choices: [choice([{ outfit: 'mira', contract: 'own' }], null, 'send'), choice([{ money: 1 }], null, 'keep')] });
+  eq(dealt([mixed], { out: true }), ['mixed']);
+  eq(dealt(FOUR, { seed: 5 }), dealt(FOUR.map(c => ({ ...c })), { seed: 5 }), 'same cards, same seed, same deal');
+});
+test('leave it: bots seed 1061 (random, cloth): a dealt card whose choices all close in the season gets "Leave it" with no effect, and the season ends', () => {
+  // the card was open when dealt; Mira was sent out by another paper in the season, so "send her out" closed
+  const s = deskOf(variant(x => { x.cards.push(TRAP); }), [{ kind: 'card', ref: 'trap' }], { money: 77 });
+  const c = variant(x => { x.cards.push(TRAP); });
+  eq(paperChoices(s, c, 'p0-0').map(x => x.id), ['go'], 'open while Mira is home');
+  throws(() => choose(s, c, 'p0-0', 'leave'), /still has a choice that is open/);
+  s.expeditions.push(structuredClone(MIRA_OUT));
+  eq(paperChoices(s, c, 'p0-0'), [{ ...choice([{ outfit: 'mira', contract: 'own' }]) }, { id: 'leave', label: 'Leave it' }], 'every choice shut: the engine adds its own');
+  eq(canEndSeason(s).ok, false);
+  const t = choose(s, c, 'p0-0', 'leave');
+  eq([t.money, t.queue, t.desk[0].choice], [77, s.queue, 'leave'], 'nothing applied, nothing queued');
+  eq(canEndSeason(t).ok, true, 'the season can end');
+  eq(t.log.at(-1), { at: 0, kind: 'card', ref: 'trap', choice: 'leave' });
+  throws(() => choose(s, c, 'p0-0', 'go'), /is refused/);
+});
+
 await done();

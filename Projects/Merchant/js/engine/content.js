@@ -226,9 +226,8 @@ export function validateContent(raw, { art } = {}) {
   function cards(items) {
     items.forEach((c, i) => {
       const p = `cards[${i}]${isObj(c) && typeof c.id === 'string' ? ` (${c.id})` : ''}`;
-      obj(c, p, { ...common(false), group: (x, q) => oneOf(CARD_GROUPS, x, q), kind: (x, q) => oneOf(CARD_KINDS, x, q) }, ['id', 'group', 'from', 'title', 'body', 'choices', 'note']);
-      // `kind` is required of every card (DESIGN 2.1 rule 2) and test/mix.mjs fails a card of either city without one. It is not in the
-      // list above yet only because test/fixtures/*/cards (a file set no MER-78 owner may edit) have none; add it there when they do.
+      obj(c, p, { ...common(false), group: (x, q) => oneOf(CARD_GROUPS, x, q), kind: (x, q) => oneOf(CARD_KINDS, x, q) }, ['id', 'group', 'kind', 'from', 'title', 'body', 'choices', 'note']);
+      // `kind` is required of every card (DESIGN 2.1 rule 2); test/mix.mjs also fails a card of either city without one.
       if (isObj(c)) tripRules(c, p);
     });
   }

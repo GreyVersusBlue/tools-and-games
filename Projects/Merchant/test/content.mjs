@@ -455,4 +455,23 @@ test('sentences: split on . ! ? and a bare fragment is one sentence', () => {
 });
 test('the ceilings are the ones ARCH 6.3 names', () => eq(CEILINGS, { body: 7.0, note: 8.0, fileMean: 6.5, sentence: 22 }));
 
+test('validate: kind is required of every card (MER-81), and a kind outside the four is refused', () => {
+  const p = problemsOf(variant(c => { delete c.cards[0].kind; }));
+  eq(p.map(x => [x.path.split(' ')[0], x.message]), [['cards[0]', 'missing "kind"']]);
+  ok(problemsOf(variant(c => { c.cards[0].kind = 'gossip'; })).length === 1, 'an unknown kind is refused');
+  eq(problemsOf(variant(c => {})), [], 'the untouched city is clean');
+});
+test('data.js: returns.json is loaded by the page\'s loader (fetch as well as fs), and a file a city lacks reads empty (MER-81)', async () => {
+  const root = new URL('../data/', import.meta.url);
+  const serve = skip => async href => {
+    if (skip && skip.test(href)) return { ok: false, status: 404 };
+    try { const text = fsSync.readFileSync(new URL(href), 'utf8'); return { ok: true, status: 200, text: async () => text }; }
+    catch { return { ok: false, status: 404 }; }
+  };
+  const viaFetch = await loadContent('testport', { fetch: serve(null), base: root });
+  eq(viaFetch.returns, JSON.parse(fsSync.readFileSync(new URL('testport/returns.json', root), 'utf8')));
+  ok(viaFetch.returns.length > 0, 'testport has entries');
+  eq((await loadContent('testport', { fetch: serve(/returns\.json$/), base: root })).returns, [], 'a city with no returns.json reads an empty list');
+});
+
 await done();
