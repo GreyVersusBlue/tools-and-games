@@ -175,7 +175,7 @@
       "seal": null
     },
     "title": "One load of silk by spring",
-    "body": "Nabil is a broker, a go-between who finds buyers. He knows a rich family that wants one load of silk before spring. They will pay well, but you have no silk.",
+    "body": "Nabil is a broker, a go-between who finds buyers. He knows a rich family that wants one load of silk before spring. They will pay well, but silk is hard to find.",
     "when": {
       "all": [
         {
@@ -749,7 +749,7 @@
       "seal": "seal-3"
     },
     "title": "Samir is home from {to}",
-    "body": "Samir carried {good} for you and kept his share, as agreed. Now he asks to go again.",
+    "body": "Samir is home from {to} after {seasons}. He asks to go out again, and he asks for a qirad.",
     "when": {
       "all": [
         {
@@ -768,7 +768,7 @@
     "choices": [
       {
         "id": "same",
-        "label": "Send him again on the same terms",
+        "label": "Send him again under a qirad",
         "hint": "He keeps a third. The next sheet shows the cost.",
         "now": [
           {

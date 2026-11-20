@@ -9,7 +9,7 @@
       "seal": null
     },
     "title": "Farid's ship is late",
-    "body": "Farid was a partner in your last venture. His ship is late, and he cannot pay his debts this season. He asks you for 6 until it comes in.",
+    "body": "Farid is a merchant your house knows. His ship is late, and he cannot pay his debts this season. He asks you for 5 until it comes in.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -168,7 +168,7 @@
       "seal": "seal-3"
     },
     "title": "Samir asks who pays the road",
-    "body": "Samir is about to leave for {to} with {good}. He asks that the house pay for his food, boats and gate fees on the way. He says the house should carry those costs.",
+    "body": "Samir could go to {to} with {good}. If you send him, he asks the house to pay his food, boats and gate fees on the way. He says the house should carry those costs.",
     "when": {
       "trip": {
         "agent": "samir",

@@ -196,7 +196,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf asks to go further",
-    "body": "Before he leaves for {to}, Yusuf asks to go on if the price is better beyond it. Your orders say {to} and no further. He says he may do better, but he will keep to your orders if you say so.",
+    "body": "Yusuf is ready for the road. The nearest stop that buys what you hold is {to}. He asks to go on past {to} if the price is better there. He says he may do better, and he will keep to your plan if you say so.",
     "when": {
       "trip": {
         "agent": "yusuf",
@@ -233,7 +233,7 @@
       },
       {
         "id": "keep",
-        "label": "Keep to your orders",
+        "label": "Keep him to {to}",
         "hint": "Yusuf will keep his word, and partners like a house that holds its orders.",
         "now": [],
         "later": [
