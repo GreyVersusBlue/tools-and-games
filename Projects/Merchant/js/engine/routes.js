@@ -26,7 +26,7 @@ export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started i
 export const QIRAD_STAKE = 60;      // coins the partners put in for a suggested qirad, at most (a fifth of the house's money when that is less)
 export const RULES = {
   // DESIGN 2.2 rule 1: money sent to buy with, and no good named to bring back, is refused in words. OFF for now: test/letters.mjs
-  // (`cairoGame`, MER-94's file) sends `purse: 40, buy: []` to every road and so is refused every time ("0 questions answered").
+  // (its whole-city game function, MER-94's file) sends `purse: 40, buy: []` to every road and so is refused every time ("0 questions answered").
   // Turn this on in the same commit that gives that plan a `buy` (any good the stop sells and the house sells at home).
   // test/venture.mjs runs the rule with the switch on.
   refuseUnspentMoney: false,
