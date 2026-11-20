@@ -119,23 +119,42 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   const homeStop = stopOf(content, home);
   const first = !app.state.log.some(e => e.kind === 'outfit');
   const open = new Set();          // sections the player has pressed Change on, in the one-press sheet
-  const draft = { agent: null, cargo: {}, purse: 0, contract: 'own', partners: 0, partnersSet: false };
+  const draft = { agent: null, cargo: {}, purse: 0, buy: [], contract: 'own', partners: 0, partnersSet: false };
   let sending = false;
 
-  // the one-press first expedition starts filled in from the engine's own suggestion
-  const hit0 = engine.routeFor(app.state, content, stopId);
-  const suggestion = first ? engine.suggestPlan(app.state, content, stopId) : null;
-  if (suggestion) { draft.agent = suggestion.agent; draft.cargo = { ...suggestion.cargo }; draft.purse = suggestion.purse ?? 0; }
-  else { draft.agent = freeAgents(app)[0]?.id ?? null; }
+  // The sheet opens on the engine's own proposal for the road picked (DESIGN 2.2 rule 1). `proposePlan` and `estimate` run here,
+  // when the sheet opens and when the player picks another agent, never once per render: a checked plan clones the whole state.
+  let proposed = null;   // { plan, estimate } for the agent and road now picked, or null when the engine has none
+  const roadNow = () => engine.routeFor(app.state, content, stopId)?.route.id;
+  function propose(agentId) {
+    const route = roadNow();
+    const plan = agentId && route ? engine.proposePlan(app.state, content, agentId, route) : null;
+    proposed = plan ? { plan, estimate: engine.estimate(app.state, content, plan) } : null;
+    return proposed;
+  }
+  /** Puts a plan the engine wrote into the draft. */
+  function take(p) {
+    draft.cargo = { ...p.cargo }; draft.purse = p.purse ?? 0; draft.buy = [...(p.buy ?? [])];
+    draft.contract = p.contract === 'qirad' ? 'qirad' : 'own';
+    draft.partners = p.partners ?? 0; draft.partnersSet = draft.contract === 'qirad';
+  }
+  // the free agent who knows the stop first, then the rest, until the engine has a proposal for one
+  const knows = a => a.traits?.includes(`knows-${stopId}`);
+  const order = [...freeAgents(app).filter(knows), ...freeAgents(app).filter(a => !knows(a))];
+  for (const a of order) { if (propose(a.id)) { draft.agent = a.id; take(proposed.plan); break; } }
+  // no proposal for anyone (a stop whose goods the house cannot carry or bring back): the first expedition falls back to the plain suggestion
+  const suggestion = !proposed && first ? engine.suggestPlan(app.state, content, stopId) : null;
+  if (suggestion) { draft.agent = suggestion.agent; take(suggestion); propose(suggestion.agent); }
+  else if (!draft.agent) draft.agent = order[0]?.id ?? null;
   // a card's `outfit` effect names the agent and the contract (the desk leaves them on app.outfitWith, once, for this stop)
   const asked = app.outfitWith?.stop === stopId ? app.outfitWith : null;
   app.outfitWith = null;
   if (asked) {
-    if (freeAgents(app).some(a => a.id === asked.agent)) draft.agent = asked.agent;
+    if (freeAgents(app).some(a => a.id === asked.agent) && asked.agent !== draft.agent) { draft.agent = asked.agent; if (propose(asked.agent)) take(proposed.plan); }
     // the one-press sheet offers no contract choice; it is always the house's own
     if (!first && ['own', 'qirad'].includes(asked.contract)) draft.contract = asked.contract;
   }
-  const onePress = !!suggestion;
+  const onePress = first && (!!proposed || !!suggestion);
   const expanded = k => !onePress || open.has(k);
 
   const titleId = 'panel-outfit-title';
@@ -156,8 +175,11 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   const homePrice = g => prices()[home]?.[g]?.p ?? null;
   const carriable = () => Object.keys(stop.sells ?? {}).filter(g => stock(g) > 0 || homeStop?.sells?.[g]);
   const cargoTotal = () => Object.values(draft.cargo).reduce((n, x) => n + x, 0);
-  // the sheet never prices a trip itself: checkPlan's cost is the one function `outfit` charges by (MER-72)
-  const quote = () => engine.checkPlan(app.state, content, plan()).cost;
+  // the sheet never prices a trip itself: checkPlan's cost is the one function `outfit` charges by (MER-72). One check a render:
+  // it clones the state, and the cost, the reasons and the estimate line all come from the same answer.
+  let memo = null;
+  const checked = () => (memo ??= engine.checkPlan(app.state, content, plan()));
+  const quote = () => checked().cost;
   const buyNow = () => quote()?.bought ?? 0;
   const outgoing = () => buyNow() + draft.purse;
   const agent = () => (content.agents ?? []).find(a => a.id === draft.agent);
@@ -168,7 +190,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   function plan() {
     const hit = engine.routeFor(app.state, content, stopId);
     const cargo = Object.fromEntries(Object.entries(draft.cargo).filter(([, n]) => n > 0));
-    const p = { agent: draft.agent ?? undefined, route: hit?.route.id, cargo, purse: draft.purse, contract: draft.contract === 'prepay' ? 'own' : draft.contract };
+    const p = { agent: draft.agent ?? undefined, route: hit?.route.id, cargo, purse: draft.purse, buy: [...draft.buy], contract: draft.contract === 'prepay' ? 'own' : draft.contract };
     if (draft.contract === 'qirad') p.partners = draft.partners;
     if (draft.contract === 'prepay' && prepayOffered()) p.prepay = true;
     return p;
@@ -178,7 +200,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     if (!freeAgents(app).length) return { ok: false, reasons: ['Nobody is free to go.'] };
     if (!leg) return { ok: false, reasons: [`No road leads to ${stop.name} yet.`] };
     if (!leg.open) return { ok: false, reasons: [`The road to ${stop.name} is closed until ${leg.next ?? 'later'}.`] };
-    const c = engine.checkPlan(app.state, content, plan());
+    const c = checked();
     return { ok: c.ok, reasons: c.reasons };
   }
 
@@ -203,13 +225,13 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
         const on = ag.id === draft.agent, trust = app.view().trust[ag.id];
         return h('button', { class: 'agent', type: 'button', role: 'radio', id: `agent-${ag.id}`, dataset: { key: `agent-${ag.id}` }, 'aria-checked': on ? 'true' : 'false',
           tabindex: on || (!draft.agent && ag === free[0]) ? '0' : '-1',
-          onclick: () => { draft.agent = ag.id; render(`agent-${ag.id}`); },
+          onclick: () => { draft.agent = ag.id; if (propose(ag.id)) take(proposed.plan); render(`agent-${ag.id}`); },
           onkeydown: e => {
             const i = free.indexOf(ag), d = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
             if (d === undefined) return;
             e.preventDefault();
             const to = free[(i + d + free.length) % free.length];
-            draft.agent = to.id; render(`agent-${to.id}`);
+            draft.agent = to.id; if (propose(to.id)) take(proposed.plan); render(`agent-${to.id}`);
           } },
         seal(app, ag.seal),
         h('span', { class: 'agent-text' }, h('strong', null, ag.name), h('span', { class: 'traits' }, traitWords(app, ag)),
@@ -243,7 +265,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const parts = Object.entries(draft.cargo).filter(([, n]) => n > 0).map(([g, n]) => `${n} ${unitOf(content, g, n)} of ${goodName(content, g)}`);
     const line = parts.length ? parts.join(' and ') : 'no goods';
     if (!expanded('carry')) {
-      return section('carry', '3. What they carry', summary('carry', `${cap(line)}${draft.purse ? `, and ${dinars(draft.purse)} to buy with` : ''}.`, () => { open.add('carry'); render('outfit-carry-h'); }, 'what they carry'), costSheet(quote()));
+      return section('carry', '3. What they carry out', summary('carry', `${cap(line)}${draft.purse ? `, and ${dinars(draft.purse)} to buy with` : ''}.`, () => { open.add('carry'); render('outfit-carry-h'); }, 'what they carry out'));
     }
     const rows = goods.map(g => {
       const have = stock(g), p = homePrice(g), n = draft.cargo[g] ?? 0;
@@ -261,15 +283,50 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
           text: `${n} ${unitOf(content, g, n)}`, onChange: v2 => { draft.cargo[g] = v2; render(`step-cargo-${g}`); } }));
     });
     const cost = quote();
-    return section('carry', '3. What they carry',
+    return section('carry', '3. What they carry out',
       goods.length ? h('ul', { class: 'goods' }, rows) : h('p', { class: 'none' }, `${stop.name} trades in nothing the house holds or ${homeStop.name} sells.`),
       h('div', { class: 'good purse' },
         h('div', { class: 'good-text' }, h('strong', null, 'Money to buy with on the way'), h('span', null, `The house has ${dinars(app.state.money)}.`)),
         stepper({ key: 'purse', label: 'Money to buy with on the way', value: draft.purse, min: 0, max: Math.max(app.state.money, draft.purse), step: 50, fine: 10, big: 250,
           text: dinars(draft.purse), onChange: v2 => { draft.purse = v2; render('step-purse'); } }),
         typedBox({ key: 'purse', label: 'Money to buy with on the way, typed in dinars', value: draft.purse, say: app.say, onChange: v2 => { draft.purse = v2; render('typed-purse'); } })),
-      h('p', { class: 'total', id: 'outfit-total' }, `In all: ${line}${draft.purse ? ` and ${dinars(draft.purse)}` : ''}.`),
-      costSheet(cost));
+      h('p', { class: 'total', id: 'outfit-total' }, `In all: ${line}${draft.purse ? ` and ${dinars(draft.purse)}` : ''}.`));
+  }
+
+  /** The far end's goods the house sells at home too: what could come back. */
+  const backGoods = () => Object.keys(stop.sells ?? {}).filter(g => homeStop?.sells?.[g]);
+  /** The good the engine's own proposal brings back, else the first the stop offers: what the refusal's "name it" offers as a press. */
+  const defaultBack = () => proposed?.plan.buy?.[0] ?? backGoods()[0] ?? null;
+
+  /** "What they bring back": the goods the stop sells that the house sells at home, each one a press. All the money left after
+      selling there buys what is chosen; a plan with money and nothing chosen is refused by the engine, and this part offers the default. */
+  function backSection() {
+    const there = prices()[stopId] ?? {};
+    const goods = backGoods();
+    const chosen = draft.buy.filter(g => goods.includes(g));
+    const names = chosen.map(g => goodName(content, g));
+    const line = names.length ? `${cap(names.join(' and '))}, bought with the money left after selling in ${stop.name}.` : `Nothing: whatever the goods sell for comes home as money.`;
+    if (!expanded('back')) {
+      return section('back', 'What they bring back', summary('back', line, () => { open.add('back'); render('outfit-back-h'); }, 'what they bring back'));
+    }
+    const refused = draft.purse > 0 && !chosen.length && checked().reasons.some(r => /needs a good to bring back/.test(r));
+    const def = defaultBack();
+    const rows = goods.map(g => {
+      const on = draft.buy.includes(g), far = there[g], homeP = homePrice(g);
+      const farText = far?.p == null ? `No news of what ${goodName(content, g)} costs in ${stop.name}.` : `${stop.name} sold it for ${num(far.p)} (${far.written}, ${far.ageWords}).`;
+      return h('li', { class: 'good back-good' },
+        h('button', { class: 'back-pick', type: 'button', role: 'checkbox', id: `back-${g}`, dataset: { key: `back-${g}`, good: g }, 'aria-checked': on ? 'true' : 'false',
+          onclick: () => { draft.buy = on ? draft.buy.filter(x => x !== g) : [...draft.buy, g]; render(`back-${g}`); } },
+        h('strong', null, cap(goodName(content, g))),
+        h('span', { class: 'far' }, farText),
+        homeP ? h('span', { class: 'might' }, `${homeStop.name} pays about ${num(homeP)} for it now.`) : null,
+        g === proposed?.plan.buy?.[0] ? h('span', { class: 'suggested' }, 'The house suggests this one.') : null));
+    });
+    return section('back', 'What they bring back',
+      goods.length ? h('ul', { class: 'goods', id: 'outfit-back-goods' }, rows) : h('p', { class: 'none', id: 'outfit-back-none' }, `${stop.name} sells nothing ${homeStop.name} trades in, so what the goods fetch comes home as money.`),
+      h('p', { class: 'total', id: 'outfit-back-total' }, line),
+      refused && def ? h('p', { class: 'total', id: 'outfit-back-offer' }, `Money to buy with needs a good to bring back. `,
+        h('button', { class: 'button', type: 'button', id: 'outfit-back-default', onclick: () => { draft.buy = [def]; render('outfit-back-default'); } }, `Bring back ${goodName(content, def)}`)) : null);
   }
 
   /** What the trip takes, line by line, from the engine's own pricing: the sum at the foot is what Send takes. */
@@ -333,19 +390,23 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
 
   // ---- drawing
   function render(focusKey) {
+    memo = null;
     if (draft.contract === 'prepay' && !prepayOffered()) draft.contract = 'own';
     if (draft.contract === 'qirad' && draft.partnersSet) draft.partners = Math.min(draft.partners, outgoing());
     const a = agent(), s = sendState();
     const label = a ? `Send ${a.name} to ${stop.name}` : `Send someone to ${stop.name}`;
     const send = h('button', { class: 'button primary send', type: 'button', id: 'outfit-send', dataset: { key: 'outfit-send' }, 'aria-disabled': s.ok ? 'false' : 'true',
-      'aria-describedby': 'outfit-reasons', onclick: () => doSend() }, label);
+      'aria-describedby': 'outfit-estimate outfit-reasons', onclick: () => doSend() }, label);
+    // the line under Send is the engine's (estimate().line) for the plan as it stands; a plan the engine refuses has no estimate
+    const est = checked().estimate;
+    const estimate = h('p', { class: 'estimate', id: 'outfit-estimate' }, est ? est.line : 'The estimate comes when the plan can be sent.');
     const reasons = h('div', { class: 'reasons', id: 'outfit-reasons' }, s.ok ? null : s.reasons.map(r => h('p', null, r)));
     // the sheet tells the one-press player what is on it, once
     const lead = onePress ? h('p', { class: 'lead', id: 'outfit-lead' }, `Everything is filled in. Press Send, or change a line.`) : null;
     dialog.replaceChildren(
       h('h2', { id: titleId, tabindex: '-1' }, `Outfit an expedition to ${stop.name}`),
-      ...[lead, whoSection(), whereSection(), carrySection(), first ? null : contractSection()].filter(Boolean),
-      h('div', { class: 'send-row' }, reasons, h('div', { class: 'panel-actions' },
+      ...[lead, whoSection(), whereSection(), carrySection(), backSection(), costSheet(quote()), first ? null : contractSection()].filter(Boolean),
+      h('div', { class: 'send-row' }, estimate, reasons, h('div', { class: 'panel-actions' },
         h('button', { class: 'button', type: 'button', id: 'outfit-cancel', onclick: () => onCancel() }, 'Back to the map'), send)));
     if (focusKey) {
       const el = document.getElementById(focusKey) ?? qs(`[data-key="${focusKey}"]`, dialog);
