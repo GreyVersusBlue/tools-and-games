@@ -170,6 +170,21 @@ test('effect hire and dismiss: switch an agent', () => {
   eq(fx({ dismiss: 'mira' }).agents.mira.hired, false);
   throws(() => fx({ hire: 'ghost' }), /agent/);
 });
+test('effect hire (MER-82, Matteo): an agent whose own home is elsewhere, hired, is at the house\'s home and can be sent from there', () => {
+  const far = structuredClone(game());
+  far.agents.tobin = { ...far.agents.tobin, hired: false, where: 'saltmarsh' };   // Matteo's case: a home that is not the house's
+  const t = structuredClone(far); apply(t, content, { hire: 'tobin' });
+  eq([t.agents.tobin.hired, t.agents.tobin.where], [true, content.city.home]);
+  apply(t, content, { outfit: 'tobin', contract: 'own' });                       // would throw "is not free to be sent out"
+  const road = structuredClone(far); road.agents.tobin.where = 'road'; road.expeditions.push({ id: 'x1', agent: 'tobin' });
+  apply(road, content, { hire: 'tobin' });
+  eq(road.agents.tobin.where, 'road', 'an agent on the road is not moved');
+  const dead = structuredClone(far); dead.agents.tobin.where = 'dead';
+  apply(dead, content, { hire: 'tobin' });
+  eq(dead.agents.tobin.where, 'dead', 'the dead stay where they are');
+  const gone = structuredClone(far); gone.agents.tobin.where = 'gone';
+  throws(() => apply(gone, content, { hire: 'tobin' }), /cannot be hired again/);
+});
 test('effect card: only inside a later effect, and only a card that exists', () => {
   throws(() => fx({ card: 'wool-due' }), /later/);
   throws(() => fx({ card: 'nope' }, { later: true }), /card/);

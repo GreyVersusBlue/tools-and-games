@@ -1177,6 +1177,9 @@
     "id": "loss-robbers",
     "paper": "loss",
     "facts": {
+      "cause": [
+        "robbers"
+      ],
       "whole": false
     },
     "title": "Robbers took some of the goods",

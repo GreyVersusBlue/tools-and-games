@@ -28,9 +28,10 @@ export const CARD_KINDS = ['favour', 'trade', 'people', 'world'];
 // true-or-false keys. routes.js `pickEntry` takes the entry that names the most facts.
 export const RETURN_FACTS = {
   return: ['outcome', 'agent', 'to', 'good', 'seasons', 'orders', 'contract', 'lost'],
-  loss: ['by', 'whole', 'survived', 'agent', 'to', 'good', 'seasons', 'contract'],
+  loss: ['by', 'cause', 'whole', 'survived', 'agent', 'to', 'good', 'seasons', 'contract'],
 };
 export const OUTCOMES = ['profit', 'loss', 'even'];
+export const CAUSES = ['sea', 'river', 'desert', 'robbers'];
 
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -262,7 +263,7 @@ export function validateContent(raw, { art } = {}) {
       const spec = {
         outcome: (x, q) => arr(x, q, (o, r) => oneOf(OUTCOMES, o, r), 1),
         agent: (x, q) => arr(x, q, refOf('agents'), 1), to: (x, q) => arr(x, q, refOf('stops'), 1), good: (x, q) => arr(x, q, refOf('goods'), 1),
-        by: (x, q) => arr(x, q, (o, r) => oneOf(BY, o, r), 1), contract: (x, q) => arr(x, q, (o, r) => oneOf(['own', 'qirad'], o, r), 1),
+        by: (x, q) => arr(x, q, (o, r) => oneOf(BY, o, r), 1), cause: (x, q) => arr(x, q, (o, r) => oneOf(CAUSES, o, r), 1), contract: (x, q) => arr(x, q, (o, r) => oneOf(['own', 'qirad'], o, r), 1),
         seasons: numbers, orders: bool, lost: bool, whole: bool, survived: bool,
       };
       if (!isObj(v)) { schema(p, 'needs an object'); return; }
