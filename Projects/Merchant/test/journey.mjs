@@ -2799,14 +2799,17 @@ try {
     });
 
     // ---- MER-97: the loss paper's words and rows, and the card's price line
-    await test('MER-97: a loss paper\'s title and its first heading are not the same sentence, and its kicker is not "Word from the road"', async () => {
+    await test('MER-97: a loss paper\'s title and its first heading are not the same sentence', async () => {
       await load(lost);
-      const t = await page.evaluate(() => ({ title: document.querySelector('.sheet-title').textContent, ask: document.querySelector('.ask-title').textContent,
-        kicker: document.querySelector('.sheet-head .sender span').textContent.trim() }));
+      const t = await page.evaluate(() => ({ title: document.querySelector('.sheet-title').textContent, ask: document.querySelector('.ask-title').textContent }));
       eq(t.ask, 'Ali did not come back', 'the question keeps the entry\'s title');
       ok(t.title !== t.ask && !t.title.includes(t.ask), `title "${t.title}" says what the heading "${t.ask}" says`);
       ok(/lost on the way from Cairo to Damascus\.$/.test(t.title), t.title);
-      ok(t.kicker.length > 0 && t.kicker !== 'Word from the road', t.kicker);
+    });
+    await test('MER-97: a loss paper\'s kicker is not "Word from the road", which is a letter\'s', async () => {
+      await load(lost);
+      const kicker = await page.$eval('.sheet-head .sender span', e => e.textContent.trim());
+      ok(kicker.length > 0 && kicker !== 'Word from the road', kicker);
     });
     await test('MER-97: a loss whose whole headline is the question\'s title keeps the title and gives the question no second heading', async () => {
       const same = structuredClone(lost);
