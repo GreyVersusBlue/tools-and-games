@@ -8,7 +8,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf asks for work",
-    "body": "Yusuf is a careful young trader who knows the road to Damascus. He has no house of his own. He asks you to hire him and send him out with ten loads of your linen.",
+    "body": "Yusuf is a careful young trader. He has no house of his own. He asks you to hire him and send him out with ten loads of your linen.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -16,15 +16,15 @@
         "id": "hire",
         "ui": "outfit-first",
         "label": "Hire Yusuf and send him",
-        "hint": "It costs 60 dinars. He will carry your linen to Damascus.",
+        "hint": "The clerk's fee is 10 dinars. The next sheet shows what sending him costs.",
         "requires": {
           "money": {
-            "gte": 60
+            "gte": 10
           }
         },
         "now": [
           {
-            "money": -60
+            "money": -10
           },
           {
             "hire": "yusuf"
@@ -85,7 +85,7 @@
       "seal": "seal-3"
     },
     "title": "Samir wants a qirad",
-    "body": "Samir has no money, but he wants to carry three loads of pepper to Alexandria for you. He offers a qirad, a deal where you pay for the goods and he keeps a share of the profit. Or you can pay him a plain wage.",
+    "body": "Samir has no money, but he wants to carry goods for you. He offers a qirad, a deal where you pay for the goods and he keeps a share of the profit. Or you can pay him a plain wage.",
     "when": {
       "all": [
         {
@@ -103,59 +103,22 @@
       {
         "id": "qirad",
         "label": "Agree to a qirad",
-        "hint": "He keeps a third of the profit. You carry any loss.",
-        "requires": {
-          "money": {
-            "gte": 360
-          }
-        },
+        "hint": "He keeps a third of the profit. You carry any loss. The next sheet shows the cost.",
         "now": [
-          {
-            "money": -360
-          },
-          {
-            "rep": "partners",
-            "by": -1
-          },
           {
             "hire": "samir"
           },
           {
             "trust": "samir",
             "by": 1
-          }
-        ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "money": 400
-              }
-            ],
-            "card": "samir-comes-home"
-          }
-        ]
-      },
-      {
-        "id": "wage",
-        "label": "Pay him a wage",
-        "hint": "You keep all the profit. He is paid even if the trip fails.",
-        "requires": {
-          "money": {
-            "gte": 375
-          }
-        },
-        "now": [
-          {
-            "money": -375
           },
           {
             "rep": "partners",
             "by": -1
           },
           {
-            "hire": "samir"
+            "outfit": "samir",
+            "contract": "qirad"
           }
         ],
         "later": [
@@ -163,7 +126,37 @@
             "in": 2,
             "do": [
               {
-                "money": 420
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Pay him a wage",
+        "hint": "You keep all the profit. He is paid even if the goods are lost. The next sheet shows the cost.",
+        "now": [
+          {
+            "hire": "samir"
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          },
+          {
+            "outfit": "samir",
+            "contract": "own"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
               }
             ]
           }
@@ -210,44 +203,45 @@
       "role": "Cairo",
       "seal": "seal-1"
     },
-    "title": "Yusuf asks to widen the paper",
-    "body": "Before he leaves, Yusuf asks to trade at Aleppo as well as Damascus. The paper you wrote says Damascus only. He says Aleppo may pay better, but he will keep to the paper if you say so.",
+    "title": "Yusuf asks to go further",
+    "body": "Before he leaves for {to}, Yusuf asks to go on if the price is better beyond it. Your orders say {to} and no further. He says he may do better, but he will keep to your orders if you say so.",
     "when": {
-      "agent": "yusuf",
-      "hired": true,
-      "where": "cairo"
+      "trip": {
+        "agent": "yusuf",
+        "is": "ready"
+      }
     },
     "weight": 3,
     "repeat": false,
     "choices": [
       {
         "id": "widen",
-        "label": "Let him trade at Aleppo too",
-        "hint": "He may do better, and you carry the risk.",
-        "requires": {
-          "money": {
-            "gte": 25
-          }
-        },
+        "label": "Let him go further if the price is better",
+        "hint": "He may do better. A longer road costs 25 dinars more, later, and you carry the risk.",
         "now": [
-          {
-            "money": -25
-          },
           {
             "trust": "yusuf",
             "by": 1
+          },
+          {
+            "flag": "yusuf-widened",
+            "set": "now"
           }
         ],
         "later": [
           {
             "in": 3,
-            "card": "yusuf-aleppo"
+            "do": [
+              {
+                "money": -25
+              }
+            ]
           }
         ]
       },
       {
         "id": "keep",
-        "label": "Keep to the paper",
+        "label": "Keep to your orders",
         "hint": "Yusuf will keep his word.",
         "now": [],
         "later": [
@@ -269,6 +263,10 @@
         "src": "goitein-1964",
         "at": "p. 327; a manager who broke the contract's terms paid the whole loss"
       }
+    ],
+    "unlocks": [
+      "term-dinar",
+      "term-orders"
     ]
   },
   {
@@ -330,7 +328,7 @@
       {
         "id": "wage",
         "label": "Pay her a plain wage",
-        "hint": "It costs 20 dinars now. She is paid even if the trip fails.",
+        "hint": "It costs 20 dinars now. She is paid even if the goods are lost.",
         "requires": {
           "money": {
             "gte": 20
@@ -351,7 +349,7 @@
       },
       {
         "id": "wait",
-        "label": "Ask her to come back after the next trip",
+        "label": "Ask her to come back later",
         "hint": "She will wait a little.",
         "now": [
           {
@@ -393,7 +391,7 @@
       "seal": null
     },
     "title": "Matteo wants one job",
-    "body": "Matteo is a trader from Genoa who is in Cairo for the season. He drives a hard bargain. He asks to carry two loads of your linen to Alexandria for a fee of his own. After that he may take more work from you.",
+    "body": "Matteo is a trader from Genoa who is in Cairo for the season. He drives a hard bargain. He asks to work for your house for a fee of his own. After that he may take more work from you.",
     "when": {
       "all": [
         {
@@ -415,19 +413,11 @@
       {
         "id": "fee",
         "label": "Pay him a fee for the one job",
-        "hint": "He is hired for this trip. You pay 20 dinars now.",
+        "hint": "It costs 20 dinars. He stays free to go.",
         "requires": {
-          "all": [
-            {
-              "money": {
-                "gte": 20
-              }
-            },
-            {
-              "stock": "linen",
-              "gte": 2
-            }
-          ]
+          "money": {
+            "gte": 20
+          }
         },
         "now": [
           {
@@ -437,10 +427,6 @@
             "hire": "matteo"
           },
           {
-            "stock": "linen",
-            "by": -2
-          },
-          {
             "trust": "matteo",
             "by": 1
           }
@@ -448,11 +434,6 @@
         "later": [
           {
             "in": 2,
-            "do": [
-              {
-                "money": 105
-              }
-            ],
             "card": "matteo-comes-back"
           }
         ]
@@ -460,19 +441,11 @@
       {
         "id": "wage",
         "label": "Hire him on a plain wage",
-        "hint": "It costs 40 dinars. You keep what the linen earns.",
+        "hint": "It costs 40 dinars. He is paid whatever happens.",
         "requires": {
-          "all": [
-            {
-              "money": {
-                "gte": 40
-              }
-            },
-            {
-              "stock": "linen",
-              "gte": 2
-            }
-          ]
+          "money": {
+            "gte": 40
+          }
         },
         "now": [
           {
@@ -480,10 +453,6 @@
           },
           {
             "hire": "matteo"
-          },
-          {
-            "stock": "linen",
-            "by": -2
           }
         ],
         "later": [
@@ -491,7 +460,8 @@
             "in": 2,
             "do": [
               {
-                "money": 130
+                "rep": "agents",
+                "by": 1
               }
             ]
           }

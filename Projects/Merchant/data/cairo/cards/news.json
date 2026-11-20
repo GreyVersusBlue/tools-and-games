@@ -211,9 +211,17 @@
         "label": "Sell in her market",
         "hint": "Her fee is high. Your neighbours will see you go.",
         "requires": {
-          "money": {
-            "gte": 30
-          }
+          "all": [
+            {
+              "money": {
+                "gte": 30
+              }
+            },
+            {
+              "stock": "linen",
+              "gte": 1
+            }
+          ]
         },
         "now": [
           {
@@ -264,7 +272,11 @@
         "src": "agir-2017",
         "at": "Introduction n. 11, and Background n. 24; the count of markets, and shops of one trade standing together"
       }
-    ]
+    ],
+    "when": {
+      "stock": "linen",
+      "gte": 1
+    }
   },
   {
     "id": "grain-from-syria",

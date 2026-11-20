@@ -192,12 +192,14 @@
       "seal": null
     },
     "title": "Samir counts his share again",
-    "body": "Samir is home from Alexandria. He says his third of the profit was 40 dinars. Your clerk counted 30, after the cost of the boat. Samir kept no book, but he remembers every sale.",
+    "body": "Samir is home from {to}. He says your clerk counted his share 10 dinars too low. Your clerk says the cost of the trip comes out of the profit first. Samir kept no book, but he remembers every sale.",
     "when": {
       "all": [
         {
-          "agent": "samir",
-          "hired": true
+          "trip": {
+            "agent": "samir",
+            "is": "home"
+          }
         },
         {
           "notebook": "term-qirad"
@@ -239,7 +241,7 @@
       },
       {
         "id": "hold",
-        "label": "Keep your clerk's count and take back 15 for the boat",
+        "label": "Keep your clerk's count and take back 15 for the trip's costs",
         "hint": "You gain 15 dinars. Samir will not forget it.",
         "now": [
           {
@@ -286,11 +288,13 @@
       "role": "Cairo",
       "seal": null
     },
-    "title": "Ali went past his paper",
-    "body": "Your paper told Ali to sell at Alexandria. He went on to Tunis, where the price looked better, and lost 60 dinars of your money. He says he did it for the house. The paper says he should not have.",
+    "title": "Ali broke his orders",
+    "body": "Ali is home from {to}. Your orders said to sell at {to}. Ali sold part of the load on the way instead, to a buyer whose price looked better. Your clerk says that sale came to 60 dinars less than {to} would have paid. Ali says he did it for the house.",
     "when": {
-      "agent": "ali",
-      "hired": true
+      "trip": {
+        "agent": "ali",
+        "is": "home"
+      }
     },
     "weight": 3,
     "repeat": false,
@@ -323,7 +327,7 @@
       {
         "id": "share",
         "label": "Share the loss with him",
-        "hint": "You win back 20 dinars. He promises to keep to the paper.",
+        "hint": "You win back 20 dinars. He promises to keep to his orders.",
         "now": [
           {
             "money": 20
@@ -336,7 +340,7 @@
       },
       {
         "id": "forgive",
-        "label": "Forgive him and keep the paper stricter",
+        "label": "Forgive him and write stricter orders",
         "hint": "You win nothing back. Ali is grateful.",
         "now": [
           {
@@ -358,7 +362,9 @@
     ],
     "note": "In the Geniza papers contracts said where an agent could trade. An agent who went beyond them and lost money paid the whole loss himself.",
     "unlocks": [
-      "term-dinar"
+      "term-dinar",
+      "term-load",
+      "term-orders"
     ],
     "sources": [
       {

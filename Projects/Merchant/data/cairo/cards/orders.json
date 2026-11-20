@@ -114,8 +114,16 @@
       {
         "id": "keep",
         "label": "Keep them for the next trip",
-        "hint": "Nothing now. Far away they may sell for 20 dinars more.",
-        "now": [],
+        "requires": {
+          "stock": "linen",
+          "gte": 10
+        },
+        "hint": "It costs 5 dinars to keep them safe. Far away they may sell for 20 dinars more.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
         "later": [
           {
             "in": 3,
@@ -124,6 +132,17 @@
                 "money": 20
               }
             ]
+          }
+        ]
+      },
+      {
+        "id": "gone",
+        "label": "Tell him the linen is spoken for",
+        "hint": "He will think well of an honest answer.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
           }
         ]
       }
@@ -489,13 +508,14 @@
       "seal": null
     },
     "title": "Rizq has a job for Yusuf",
-    "body": "Rizq is a draper, a cloth seller. He asks Yusuf to take a bundle of fine cloth to Damascus and sell it. For this special job he will pay a fee of 30 dinars. He pays it to the house, but the job is Yusuf's.",
+    "body": "Rizq is a draper, a cloth seller. He asks Yusuf to take a bundle of fine cloth to {to} and sell it. For this special job he will pay a fee of 30 dinars. He pays it to the house, but the job is Yusuf's.",
     "when": {
       "all": [
         {
-          "agent": "yusuf",
-          "hired": true,
-          "where": "cairo"
+          "trip": {
+            "agent": "yusuf",
+            "is": "ready"
+          }
         },
         {
           "notebook": "term-load"
@@ -530,14 +550,19 @@
       {
         "id": "split",
         "label": "Split the fee with Yusuf",
-        "hint": "You gain a little. Yusuf is content.",
-        "now": [],
+        "hint": "You gain 15 dinars now. Yusuf is content.",
+        "now": [
+          {
+            "money": 15
+          }
+        ],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": 15
+                "rep": "agents",
+                "by": 1
               }
             ]
           }
@@ -687,5 +712,185 @@
         "at": "p. 168, citing Mackie 1984 and Bloom 1999; Mamluk fabrics and metalwork among the largest exports to the Far East"
       }
     ]
+  },
+  {
+    "id": "samir-comes-home",
+    "group": "orders",
+    "from": {
+      "name": "Samir, your agent",
+      "role": "Cairo",
+      "seal": "seal-3"
+    },
+    "title": "Samir is home from {to}",
+    "body": "Samir carried {good} for you and kept his share, as agreed. Now he asks to go again.",
+    "when": {
+      "all": [
+        {
+          "trip": {
+            "agent": "samir",
+            "is": "home"
+          }
+        },
+        {
+          "notebook": "term-qirad"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "same",
+        "label": "Send him again on the same terms",
+        "hint": "He keeps a third. The next sheet shows the cost.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": 1
+          },
+          {
+            "outfit": "samir",
+            "contract": "qirad"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "more",
+        "label": "Give him a bonus of 30 dinars first",
+        "hint": "It costs 30 dinars. He will be loyal.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          },
+          {
+            "trust": "samir",
+            "by": 2
+          },
+          {
+            "outfit": "samir",
+            "contract": "qirad"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the contracts Goitein read, the traveller's share was normally one third.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's smaller share, normally one third"
+      }
+    ]
+  },
+  {
+    "id": "yusuf-aleppo",
+    "group": "orders",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf is home with news",
+    "body": "Yusuf is home from {to}. You let him go further if the price was better. He says a merchant from Persia heard of your house on the road and wants to deal with it.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "meet",
+        "label": "Meet the Persian merchant",
+        "hint": "It costs a gift. It may pay.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 80
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Turn him down",
+        "hint": "Yusuf will be glad of a safe road.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 71 n. 1, pp. 71 to 72, and p. 118 n. 182; the stations in the sands of Sinai, and the days counted by Gibb from the dates"
+      }
+    ],
+    "when": {
+      "all": [
+        {
+          "trip": {
+            "agent": "yusuf",
+            "is": "home"
+          }
+        },
+        {
+          "flag": "yusuf-widened"
+        }
+      ]
+    }
   }
 ]
