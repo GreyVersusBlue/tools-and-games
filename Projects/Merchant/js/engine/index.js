@@ -1,5 +1,4 @@
 // The engine's public surface (ARCHITECTURE 2.1). The UI calls nothing else.
-// Not here yet, by a later unit: score.
 import { freshState } from './state.js';
 import { newGameFrom, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices } from './turn.js';
 
@@ -8,6 +7,7 @@ export function newGame(content, { seed, length, house }) {
   return newGameFrom(freshState(content, { seed, length, house }), content);
 }
 
+export { score } from './score.js';
 export { validateContent } from './content.js';
 export { outfit, suggestPlan, checkPlan, routeFor, destinations, prepayCost } from './routes.js';
 export { openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices };

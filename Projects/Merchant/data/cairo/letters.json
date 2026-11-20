@@ -718,7 +718,7 @@
       "role": "Alexandria"
     },
     "title": "No ships from Venice",
-    "body": "I am at Alexandria. No galleys from Venice have come. Venice has forbidden trade with Egypt, because the pope asked it to. The Italians now meet our goods at Cyprus instead. I can go on by sea as planned, wait here for news, or turn back toward home.",
+    "body": "I am at Alexandria. No galleys from Venice have come. Venice has forbidden trade with Egypt, because the pope asked it to. Some Italians meet our goods at Cyprus. I can go on by sea as planned, wait here for news, or turn back toward home.",
     "when": {
       "all": [
         {
@@ -784,7 +784,7 @@
         ]
       }
     ],
-    "note": "In 1323 Venice banned trade with Egypt, under pressure from the pope. Its state galleys sailed to Alexandria again in 1345. Meanwhile Venetian trade went through Famagusta in Cyprus, and other Italians, such as the Genoese, kept trading with Alexandria.",
+    "note": "In 1323 Venice banned trade with Egypt, under pressure from the pope. Its state galleys sailed to Alexandria again in 1345. Famagusta in Cyprus was already a go-between for Venice and Egypt. Other Italians, such as the Genoese, kept trading with Alexandria. Venetian trade went on, though it was probably hampered.",
     "unlocks": [
       "term-ships",
       "person-venetians"
@@ -878,7 +878,7 @@
         ]
       }
     ],
-    "note": "Venice kept its ships out of Egypt, but the Genoese did not stop. A historian of the popes finds no sign that Genoa or Catalonia stopped trading with Alexandria. Genoese clerks had written contracts in Cyprus and Cilicia for trade to Egypt since at least 1274.",
+    "note": "Venice forbade its merchants to trade in Egypt, but the Genoese did not stop. A historian of the popes finds no sign that Genoa or Catalonia stopped trading with Alexandria. Genoese clerks had written contracts in Cyprus and Cilicia for trade to Egypt since at least 1274.",
     "unlocks": [
       "term-ships",
       "person-genoese",
@@ -1259,7 +1259,7 @@
       },
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 71; eight nights from Qus in the flood of July 1326"
+        "at": "vol. 1, p. 69; eight nights from Qus in the flood of July 1326"
       }
     ]
   },
@@ -1338,7 +1338,7 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 59 n. 185; Gibb's note, citing Ibn Jubayr, gives 18 days by boat from Cairo to Qus"
+        "at": "vol. 1, p. 59 n. 185, continued on p. 60; Gibb's note, citing Ibn Jubayr, gives 18 days by boat from Cairo to Qus"
       }
     ]
   },
@@ -1492,7 +1492,7 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 2, p. 413 n. 3, Quseir five days from Qus; vol. 1, p. 59 n. 185, 19 days from Qus to Aydhab"
+        "at": "vol. 2, p. 413 n. 3, Quseir five days from Qus; vol. 1, p. 59 n. 185, continued on p. 60, 19 days from Qus to Aydhab"
       }
     ]
   },
@@ -1564,7 +1564,7 @@
         ]
       }
     ],
-    "note": "The sea voyage to Quseir was long and hard, because ships had to fight the strong north winds. In 1330 Ibn Battuta wrote of a ship that was loaded at Jeddah for Quseir.",
+    "note": "The sea voyage to Quseir was long and hard, because ships had to fight the strong north winds. In 1332 Ibn Battuta did not board a ship at Jeddah that was bound for Quseir. It sank at sea, and about seventy pilgrims drowned.",
     "unlocks": [],
     "sources": [
       {
@@ -1573,7 +1573,7 @@
       },
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 2, pp. 412 to 413; the ship loaded at Jeddah for Quseir in 1330"
+        "at": "vol. 2, pp. 412 to 413; the ship at Jeddah bound for Quseir, which he did not board, and its loss; 1332 from Gibb's note 150"
       }
     ]
   },
@@ -1665,8 +1665,8 @@
       "name": "Your agent",
       "role": "On the road"
     },
-    "title": "Flax sold by the sack",
-    "body": "I am at Constantinople. The buyers here weigh flax by the sack. Flax is the plant that linen is made from. One buyer took 4 in every hundred off the weight for the sack itself. I agreed, and he paid at once.",
+    "title": "Flax weighed with its sack",
+    "body": "I am at Constantinople. The buyers here weigh flax with its sack. Flax is the plant that linen is made from. One buyer took 4 in every hundred off the weight for the sack itself. I agreed, and he paid at once.",
     "when": {
       "at": "constantinople"
     },
@@ -1726,12 +1726,12 @@
         ]
       }
     ],
-    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by the sack. The buyer took 4 in every hundred off the weight for the sack.",
+    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by weight, with 4 in every hundred taken off for the sack.",
     "unlocks": [],
     "sources": [
       {
         "src": "pegolotti-1936",
-        "at": "the section on flax of Alexandria sold at Constantinople and Pera, 4 percent off for the sack; the page was not confirmed"
+        "at": "the section on flax of Alexandria sold at Constantinople and Pera by weight, 4 percent off for the sack; 1766 printing pp. 16 to 17; the 1936 Evans page not confirmed"
       }
     ]
   },
@@ -1829,7 +1829,7 @@
       "role": "On the road"
     },
     "title": "The canal is filling",
-    "body": "I am at Alexandria. The canal from the Nile is filling with the flood, and loaded boats are leaving for the river. I booked a place on the first one before the price went up.",
+    "body": "I am at Alexandria. The canal from the Nile is filling with the flood, and loaded boats are setting sail. I booked a place on the first one before the price went up.",
     "when": {
       "all": [
         {
@@ -1982,7 +1982,7 @@
     "sources": [
       {
         "src": "pegolotti-1936",
-        "at": "print p. 72; the duty at Alexandria, 20 percent on entry and nothing on leaving; the number rests on a modern reading of the handbook"
+        "at": "1766 printing p. 58, the duty at Alexandria, 20 percent on entry and nothing on leaving; the figure is small type in the print and a modern reading agrees on 20; the 1936 Evans page (p. 72) not seen"
       }
     ]
   },
@@ -1994,7 +1994,7 @@
       "role": "On the road"
     },
     "title": "A Genoese buyer",
-    "body": "I am at Alexandria. No Venetian ships have come, but a Genoese buyer did. He wanted my goods and paid a fair price at once. I sold more than I planned, so the house has cash in hand.",
+    "body": "I am at Alexandria. Few Venetian ships have come, but a Genoese buyer did. He wanted my goods and paid a fair price at once. I sold more than I planned, so the house has cash in hand.",
     "when": {
       "all": [
         {
@@ -2064,16 +2064,16 @@
         ]
       }
     ],
-    "note": "Venice kept its ships out of Egypt from 1323 to 1344. One historian finds no sign that the Genoese or the Catalans stopped trading with Alexandria.",
+    "note": "Venice forbade its merchants to trade in Egypt from 1323, and its ships came back in 1345. Even so, trade went on in some ways. One historian finds no sign that the Genoese or the Catalans stopped trading with Alexandria.",
     "unlocks": [],
     "sources": [
       {
         "src": "hill-2017",
-        "at": "p. 49; no evidence that Catalans or Genoese suspended trade with Alexandria"
+        "at": "p. 49; Venice claimed to have withdrawn from 1323 until 1345, and no evidence that Catalans or Genoese suspended trade with Alexandria"
       },
       {
         "src": "jacoby-2018",
-        "at": "pp. 135 to 137; Venice's halt in direct trade, 1323 to 1344"
+        "at": "pp. 135 to 137; Venice's ban of 1323, trade that went on though probably hampered, and the galleys of 1345"
       }
     ]
   },
@@ -2085,7 +2085,7 @@
       "role": "On the road"
     },
     "title": "Freight on the galley",
-    "body": "We are on a galley, a long ship with oars. The captain charges freight by the sack, and it must be paid before we land. I paid for all our goods, so none was put off at the next port.",
+    "body": "We are on a galley, a long ship with oars. The captain charges freight by the load, and it must be paid before we land. I paid for all our goods, so none was put off at the next port.",
     "when": {
       "leg": {
         "by": "galley"
@@ -2147,14 +2147,15 @@
         ]
       }
     ],
-    "note": "Pegolotti's handbook lists what freight cost. It gives 7 gold bezants a sack to carry pepper from Alexandria to Venice on an armed galley.",
+    "note": "Pegolotti's handbook lists what freight cost. It gives 7 gold bezants to carry a sporta of pepper from Alexandria to Venice on an armed galley. A sporta was a packed basket of 5 cantars, a cantar being a heavy weight.",
     "unlocks": [
-      "term-ships"
+      "term-ships",
+      "term-load"
     ],
     "sources": [
       {
         "src": "pegolotti-1936",
-        "at": "print p. 75; freight from Alexandria to Venice by armed galley, 7 gold bezants a sack"
+        "at": "1766 printing p. 61, freight of a sporta of pepper from Alexandria to Venice by armed galley, 7 gold bezants; p. 58, a sporta of pepper packed at 5 cantars; the 1936 Evans page (p. 75) not seen"
       }
     ]
   },
@@ -2226,14 +2227,14 @@
         ]
       }
     ],
-    "note": "By the 1300s most of Egypt's sugar was made in Upper Egypt, in towns such as Assiut, Qus and Fayyum. The sultan's own estates and presses were part of it.",
+    "note": "By the 1200s and 1300s sugar cane was grown on a large scale in Upper Egypt. It grew in towns such as Assiut, Qus and Qift, and in the Fayyum. The government controlled much of it, and the sultan had his own farms.",
     "unlocks": [
       "good-sugar"
     ],
     "sources": [
       {
         "src": "sato-2004",
-        "at": "pp. 91 to 99; sugar made mainly in Upper Egypt by the 13th and 14th centuries, and the sultan's estates and presses"
+        "at": "p. 88, cane at Assiut and Qus; p. 91, grown on a large scale in Upper Egypt by about the 13th or 14th century, Qift a major centre, mostly under government control; p. 93, the sultan's own farms in the Fayyum"
       }
     ]
   },
