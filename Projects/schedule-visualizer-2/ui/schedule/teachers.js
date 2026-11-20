@@ -428,13 +428,15 @@ export function mount(env) {
       h('div', { class: 'sch-part__actions' }, button('Close', () => closePart(teacher), { small: true, key: partKey(teacher, 'close'), action: 'part-close' })));
   }
 
-  // Notes that name weekdays are offered once as part-time days (16.12 item 4).
+  // Notes that name weekdays are offered once as part-time days (16.12 item
+  // 4): once for each teacher, whatever the words, taken or not. The offer is
+  // remembered in the section's view, so for as long as the page is open; it
+  // is not stored with the project or on the device.
   function offerFromNotes(teacher, text) {
     const days = noteDays(text);
     const fresh = ctx.store.project.teachers.find((each) => each.id === teacher.id);
-    const once = teacher.id + '\n' + text;
-    if (!days || !fresh || awayList(fresh).length > 0 || view.noteOffers.has(once)) return;
-    view.noteOffers.add(once);
+    if (!days || !fresh || awayList(fresh).length > 0 || view.noteOffers.has(teacher.id)) return;
+    view.noteOffers.add(teacher.id);
     const said = text.trim().length > 40 ? text.trim().slice(0, 40) + '…' : text.trim();
     ctx.toast({ text: 'Notes say ‘' + said + '’. Set it as part-time?', action: { label: 'Set as part-time', run: () => {
       const away = SCHOOL_DAYS.filter((day) => !days.includes(day));

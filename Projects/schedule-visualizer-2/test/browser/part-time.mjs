@@ -266,32 +266,38 @@ test('5. a class put in an away period is a finding in Checks', async () => {
   await go('#schedule/teachers');
 });
 
-test('6. Notes that name weekdays are offered once as part-time days', async () => {
+test('6. Notes that name weekdays are offered once for each teacher, whatever the words', async () => {
   await fresh();
   const notes = 'input[aria-label^="Notes on"]';
   const field = '[data-teacher="' + T + '"] ' + notes;
-  await page.click(field, { clickCount: 3 });
-  await page.keyboard.type('Mon/Wed only');
-  await page.keyboard.press('Enter');
+  const typeNotes = async (words) => {
+    await page.click(field, { clickCount: 3 });
+    await page.keyboard.type(words);
+    await page.keyboard.press('Enter');
+  };
+  // words that only look like days are no offer, and do not use it up
+  await typeNotes('Monitors the lunch line');
+  await settled();
+  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent || null), null, 'no offer for "Monitors"');
+  await typeNotes('Mon/Wed only');
   await shows(() => /Notes say ‘Mon\/Wed only’\. Set it as part-time\?/.test(document.querySelector('.toast .toast__text')?.textContent || ''));
   assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent), 'Set as part-time');
-  // the same words again do not offer again
-  await closeToast();
+  await page.click('.toast .toast__action');
+  await awayIs([{ dayTypeIds: [], weekdays: [1, 3, 4], periods: [] }]);
+  await page.waitForSelector(editor);
+  assert.equal(await expanded(), 'true', 'the editor is open on what was set');
+  assert.equal(await page.$eval(key('day:0'), (el) => el.getAttribute('aria-pressed')), 'true');
+  // the offer was this teacher's one: other words, with the times cleared again, are no offer
+  await fresh();
+  await typeNotes('Tues and Thurs');
   await settled();
-  await page.click(field, { clickCount: 3 });
-  await page.keyboard.type('Mon/Wed only');
-  await page.keyboard.press('Enter');
-  await settled();
-  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent || null), null, 'offered once');
-  // other words are another offer; take it
-  await page.click(field, { clickCount: 3 });
+  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent || null), null, 'offered once for the teacher');
+  // another teacher still has theirs
+  const other = await page.evaluate((id) => globalThis.sv2.store.project.teachers.find((teacher) => teacher.id !== id).id, T);
+  await page.click('[data-teacher="' + other + '"] ' + notes, { clickCount: 3 });
   await page.keyboard.type('Tues and Thurs');
   await page.keyboard.press('Enter');
   await shows(() => /Notes say ‘Tues and Thurs’/.test(document.querySelector('.toast .toast__text')?.textContent || ''));
-  await page.click('.toast .toast__action');
-  await awayIs([{ dayTypeIds: [], weekdays: [0, 2, 4], periods: [] }]);
-  await page.waitForSelector(editor);
-  assert.equal(await expanded(), 'true', 'the editor is open on what was set');
   await fresh();
 });
 
