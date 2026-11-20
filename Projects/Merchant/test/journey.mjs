@@ -1180,6 +1180,44 @@ try {
     await test(`${how}: map table, no console error, nothing offsite`, async () => { eq(consoleErrors, []); eq(page.__blocked, []); });
     if (how === 'pointer') {
       // the second expedition: four sections, steppers as buttons with role spinbutton, refusals in words, a qirad in words
+      // the sheet opens on the engine's proposal and the line under Send is the engine's estimate (DESIGN 2.2 rules 1 and 2, MER-93)
+      await test('MER-93: the second sheet opens on proposePlan with the estimate line under Send; another agent asks the engine again', async () => {
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        const st = await engineState(page), route = eng.routeFor(st, nodeContent, 'damascus').route.id;
+        const shown = async () => ({
+          cargo: Object.fromEntries((await page.$$eval('[id^="step-cargo-"][role="spinbutton"]', es => es.map(e => [e.id.replace('step-cargo-', ''), Number(e.getAttribute('aria-valuenow'))]))).filter(([, n]) => n > 0)),
+          purse: Number(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow'))),
+          back: (await page.$$eval('.back-pick[aria-checked="true"]', bs => bs.map(b => b.dataset.good))).sort(),
+          agent: await page.$eval('.agent[aria-checked="true"]', e => e.id.replace('agent-', '')),
+        });
+        const first = await shown();
+        const plan = eng.proposePlan(st, nodeContent, first.agent, route);
+        ok(plan, 'the engine proposes for the agent the sheet opened on');
+        eq([first.cargo, first.purse, first.back], [plan.cargo, plan.purse, [...plan.buy].sort()], 'the draft is the proposal');
+        const line = await page.$eval('#outfit-estimate', e => e.textContent);
+        eq(line, eng.estimate(st, nodeContent, plan).line, 'the line under Send is the engine\'s own');
+        ok(/^If prices hold: about [+-][\d,]+ dinars?\. .+; the road is (safe|uncertain|risky|dangerous)\.$/.test(line), line);
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('describedby') ?? b.getAttribute('aria-describedby')), 'outfit-estimate outfit-reasons');
+        // an edit moves the line with the plan: one more load of the first good changes what the engine expects
+        const [good] = Object.keys(plan.cargo);
+        await page.focus(`#step-cargo-${good}`); await page.keyboard.press('ArrowDown');
+        const less = Object.fromEntries(Object.entries({ ...plan.cargo, [good]: plan.cargo[good] - 1 }).filter(([, n]) => n > 0));
+        const edited = eng.checkPlan(st, nodeContent, { ...plan, sell: undefined, cargo: less }).estimate.line;
+        await page.waitForFunction(l => document.getElementById('outfit-estimate').textContent === l, {}, edited);
+        // another agent: the sheet asks the engine for that agent's proposal and takes it whole
+        const others = (await page.$$eval('.agent', es => es.map(e => e.id.replace('agent-', '')))).filter(a => a !== first.agent);
+        ok(others.length >= 1, 'a second agent is free');
+        const other = eng.proposePlan(st, nodeContent, others[0], route);
+        ok(other, 'the engine proposes for them too');
+        await page.click(`#agent-${others[0]}`);
+        await page.waitForFunction(a => document.getElementById(`agent-${a}`)?.getAttribute('aria-checked') === 'true', {}, others[0]);
+        const second = await shown();
+        eq([second.cargo, second.purse, second.back], [other.cargo, other.purse, [...other.buy].sort()], 'the other agent\'s proposal, not the first one edited');
+        eq(await page.$eval('#outfit-estimate', e => e.textContent), eng.estimate(st, nodeContent, other).line);
+        await page.click('#outfit-cancel');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      });
       await test('second expedition: four sections, steppers, refusals in words and the qirad written out', async () => {
         await page.click('#btn-outfit');
         await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
