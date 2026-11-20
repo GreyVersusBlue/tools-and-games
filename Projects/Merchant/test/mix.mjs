@@ -7,13 +7,14 @@
 // It also fails if any season broke a rule of the draw: more than two pool cards while a trip was live, a pool
 // favour beside another favour, two pool cards of one kind, a card with no `kind`. The rules themselves are
 // pinned one by one, each seen to fail without it, in test/engine.mjs (the draw) and test/letters.mjs (the letter).
-// THE LETTER SHARE IS BELOW THE DESIGN'S FLOOR AND THE ENGINE CANNOT RAISE IT. Measured on 2026-11-19 over 1,000 games: 19.9 percent
-// (16.6 before MER-78's rate change). The cap is content: data/cairo/letters.json has no letter for the routes the bots send
-// most (Constantinople, Qus, Alexandria, Quseir carry 0 of 111 trips in the first 60 games), a question cannot be written on a road
-// with no decision point left, and every letter is once a game. With a chance of 1 and the once-a-game rule off the share was
-// 36 percent. So the check that fails is HOLD, the share the content gives today less a margin, which catches the engine losing
-// letters; FLOOR and TARGET are the DESIGN's numbers, printed each run with the gap. When letters.json gains reports for those
-// roads, set HOLD to FLOOR here.
+// THE LETTER SHARE IS BELOW THE DESIGN'S FLOOR AND THE ENGINE CANNOT RAISE IT. Measured on 2026-11-19 over 1,000 games: 19.5 percent
+// (16.6 over 100 games before MER-78's rate change). The cap is content: data/cairo/letters.json has no letter for four of the
+// roads the bots send most, and those four carry 1,733 of the 2,934 trips of three seasons or more with 0 letters between them
+// (Constantinople 570, Qus 545, Quseir 318, Alexandria 300). A question also cannot be written on a road with no decision
+// point left, and every letter is once a game. With a chance of 1 and the once-a-game rule off the share was 36 percent in
+// 100 games. So the check that fails is HOLD, the share the content gives today less a margin, which catches the engine losing
+// letters; FLOOR and TARGET are the DESIGN's numbers, printed each run with the gap and the table by route. When letters.json
+// gains letters for those four roads, set HOLD to FLOOR here.
 // Plain Node, no browser, no clock. bots.mjs reads process.argv when it is imported, so the one argument is `--games N`.
 import fs from 'node:fs/promises';
 import { loadContent } from '../js/data.js';
