@@ -60,7 +60,10 @@ export function happened(content, effects, app = null, { agent = null, result = 
       const name = m.id === '$agent' ? 'The agent' : (content.agents ?? []).find(a => a.id === m.id)?.name ?? m.id;
       parts.push(`${name} trusts the house ${up ? 'more' : 'less'}.`);
     } else {
-      const who = cap(REP_WORDS[m.rep] ?? m.rep), now = view?.rep?.[m.rep]?.words;
+      const who = cap(REP_WORDS[m.rep] ?? m.rep);
+      let now = view?.rep?.[m.rep]?.words;
+      // a drop that still leaves a good standing says "Still,": a bare "They speak well of you." after "think less" reads as a contradiction (MER-99)
+      if (now && !up && /^They (speak well of you|come to you first)$/.test(now)) now = `Still, they${now.slice(4)}`;
       parts.push(`${who} think ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
     }
   }
@@ -105,7 +108,7 @@ function cardPlan(state, content, stopId) {
     const knows = a => a.traits?.includes(`knows-${stopId}`);
     for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
       const p = roadId ? engine.proposePlan(state, content, a.id, roadId) : null;
-      if (p && engine.estimate(state, content, p)) { plan = p; break; }
+      if (p && !p.why && engine.estimate(state, content, p)) { plan = p; break; }
     }
   }
   seen.set(stopId, plan);
@@ -228,9 +231,24 @@ export function paperTitle(content, paper, cards) {
     the one reason for the gap. A save from before `hoped` was kept (both null) reads as it always did. */
 export function returnHeadline(content, paper) {
   const d = paper.data ?? {}, head = paperTitle(content, paper);
-  if (paper.kind !== 'return' || !Number.isFinite(d.hoped) || !d.why) return head;
+  if (paper.kind !== 'return') return head;
+  const held = unsoldLine(d);
+  if (!Number.isFinite(d.hoped) || !d.why) return held ? `${head} ${held}` : head;
   const hoped = d.hoped >= 0 ? `We hoped for about ${dinars(d.hoped)}.` : `We expected to lose about ${dinars(-d.hoped)}.`;
-  return `${head} ${hoped} ${d.why}`;
+  return `${head} ${held ? `${held} ` : ''}${hoped} ${d.why}`;
+}
+
+/** One sentence for goods that came home unsold, from the account's "Back home" row (the engine writes it
+    "14 loads of wool cloth (worth 880 dinars in Cairo now), 880 dinars in all"): "14 loads of wool cloth are in the
+    warehouse, worth about 880 at Cairo's price." Null when nothing came home but money. The row is the only place
+    the paper carries the goods, so this reads its words; if the engine changes them the sentence goes (journey pins it). */
+export function unsoldLine(d) {
+  const row = (d?.account ?? []).find(r => r.label === 'Back home');
+  const m = /^(.+?) \(worth ([\d,]+)(?: [^)]*?)? in ([^)]+?) now\)/.exec(row?.text ?? '');
+  if (!m) return null;
+  const [, what, worth, place] = m;
+  const one = /^1 [^ ]+ of /.test(what) && !/, | and /.test(what);
+  return `${cap(what)} ${one ? 'is' : 'are'} in the warehouse, worth about ${worth} at ${place}'s price.`;
 }
 
 /** Who a paper is from: the agent's seal on a return or a loss, a plain mark on the rest. */
