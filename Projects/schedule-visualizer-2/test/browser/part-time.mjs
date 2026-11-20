@@ -110,6 +110,31 @@ async function open() {
   await settled();
 }
 
+// The Teachers table's Subject select and Notes field, measured: the select
+// at least as wide as its own longest option (a copy of it at max-content),
+// the Notes field at least 7 rem.
+const columnWidths = () => page.evaluate(() => {
+  const select = document.querySelector('.sch-teachers tbody .sch-teachers__subject select');
+  const copy = select.cloneNode(true);
+  copy.style.width = 'max-content';
+  copy.style.minWidth = '0';
+  copy.style.position = 'absolute';
+  select.parentElement.append(copy);
+  const wanted = copy.getBoundingClientRect().width;
+  copy.remove();
+  const box = document.querySelector('.sch-teachers .sch-scroll');
+  return {
+    select: select.getBoundingClientRect().width,
+    wanted,
+    notes: Math.min(...[...document.querySelectorAll('.sch-teachers tbody input[aria-label^="Notes on"]')].map((el) => el.getBoundingClientRect().width)),
+    rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+    box: box.clientWidth,
+    table: box.scrollWidth,
+    page: document.documentElement.scrollWidth,
+    window: document.documentElement.clientWidth,
+  };
+});
+
 before(async () => {
   session = await openPlanner({ hash: '#schedule/teachers', theme: 'light' });
   page = session.page;
@@ -579,6 +604,14 @@ test('18. Edit then Cancel keeps the entry as it was, and the hint says Only in 
   await fresh();
 });
 
+test('19. at 1280 px the Subject select shows its longest subject, Notes is a readable width, and the whole row fits beside the inspector', async () => {
+  await fresh();
+  const got = await columnWidths();
+  assert.ok(got.select >= got.wanted - 0.5, 'the select is not cut short: ' + JSON.stringify(got));
+  assert.ok(got.notes >= 7 * got.rem - 0.5, 'Notes is at least 7 rem: ' + JSON.stringify(got));
+  assert.ok(got.table <= got.box, 'no sideways scroll in the table at 1280 px: ' + JSON.stringify(got));
+});
+
 test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, and every control is 44 px', async () => {
   await fresh();
   await page.evaluate(() => globalThis.sv2.storage.flush());
@@ -614,6 +647,44 @@ test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, a
   } finally {
     touching = false;
   }
+  await fresh();
+});
+
+test('20. at 390 px by keyboard: the columns keep their widths in the table\'s own scroll, and the editor works with keys alone', async () => {
+  // the page is still the phone of case 9
+  await fresh();
+  const got = await columnWidths();
+  assert.ok(got.select >= got.wanted - 0.5 && got.notes >= 7 * got.rem - 0.5, 'nothing cut short at 390: ' + JSON.stringify(got));
+  assert.ok(got.page <= got.window, 'the page itself does not scroll sideways: ' + JSON.stringify(got));
+  await page.$eval(key('button'), (el) => el.scrollIntoView({ block: 'center' }));
+  await page.focus(key('button'));
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(editor);
+  await shows(() => document.activeElement?.dataset.key?.endsWith(':part:radio:only'));
+  // Only in school on…: Tab to the first chip, Space unticks Friday
+  await keyOn(key('day:4'), 'Space');
+  await awayIs([{ dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await settled();
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:day:4');
+  await page.focus(key('radio:only'));
+  await page.keyboard.press('ArrowDown');
+  await page.waitForSelector(key('add'));
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:radio:not');
+  await keyOn(key('add'), 'Enter');
+  await page.waitForSelector('[data-entry="1"] fieldset');
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:e1:types:all');
+  await keyOn(key('e1:period:0'), 'Enter');
+  await keyOn(key('e1:done'), 'Enter');
+  await awayIs([{ dayTypeIds: [], weekdays: [4], periods: [] }, P(0)]);
+  await settled();
+  const fits = await page.evaluate((selector) => {
+    const box = document.querySelector(selector).getBoundingClientRect();
+    return { left: box.left, right: box.right, width: document.documentElement.clientWidth };
+  }, editor + ' .sch-part');
+  assert.ok(fits.left >= 0 && fits.right <= fits.width, 'the editor is inside the window: ' + JSON.stringify(fits));
+  await page.keyboard.press('Escape');
+  await shows((selector) => document.querySelector(selector)?.getAttribute('aria-expanded') === 'false', key('button'));
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:button');
   await fresh();
 });
 

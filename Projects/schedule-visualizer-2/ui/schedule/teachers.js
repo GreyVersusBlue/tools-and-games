@@ -496,7 +496,7 @@ export function mount(env) {
       h('td', { class: 'sch-teachers__name' }, name.element,
         alike ? h('p', { class: 'sch-finding-line sch-finding-line--warning' }, 'Looks like another name in the list.') : null,
         found.length > 0 ? h('p', { class: 'sch-teachers__marks' }, marksFor(found)) : null),
-      h('td', null, subject),
+      h('td', { class: 'sch-teachers__subject' }, subject),
       h('td', null,
         rooms.length > 0 ? h('div', { class: 'chips' }, rooms.map((room) => h('span', { class: 'chip' }, h('span', null, room.number.trim() === '' ? roomName(room) : room.number), keyed(h('button', {
           type: 'button',
@@ -508,7 +508,7 @@ export function mount(env) {
           } },
         }, icon('close', 14)), key + 'chip:' + room.id)))) : null,
         addRoom.element),
-      h('td', null, notes.element),
+      h('td', { class: 'sch-teachers__notes' }, notes.element),
       h('td', { class: 'sch-teachers__part', data: { label: 'Part-time' } }, partButton(project, teacher)),
       h('td', { class: 'sch-teachers__duties' }, duties(teacher, dutyCounts.get(teacher.id) || 0)),
       h('td', null, button('Route sheet', (opener) => openPrintPreview(ctx, 'route-sheet', { teacherId: teacher.id, opener }), { small: true, key: key + 'route-sheet', action: 'route-sheet', more: ' for ' + teacher.name }), button('Delete', () => {
