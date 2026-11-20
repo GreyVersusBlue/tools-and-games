@@ -85,7 +85,7 @@
       "seal": null
     },
     "title": "A neighbour wants your linen",
-    "body": "Abu Bakr makes sails and needs cloth today. He offers Cairo's price for ten loads of your linen. He will pay in coin at once.",
+    "body": "Abu Bakr makes sails and needs cloth today. He offers a little over Cairo's price for ten loads of your linen, 455 dinars in coin at once.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -96,18 +96,14 @@
           "stock": "linen",
           "gte": 10
         },
-        "hint": "You get the coin today, and Abu Bakr will remember a good neighbour.",
+        "hint": "You get 455 dinars today, 5 more than Cairo pays. The linen leaves your warehouse.",
         "now": [
           {
-            "money": 450
+            "money": 455
           },
           {
             "stock": "linen",
             "by": -10
-          },
-          {
-            "rep": "partners",
-            "by": 1
           }
         ],
         "later": [
@@ -124,18 +120,15 @@
           "stock": "linen",
           "gte": 10
         },
-        "hint": "Nothing now. In three seasons the linen is sold far away for 5 dinars more than Abu Bakr offers. It leaves your warehouse then.",
+        "hint": "Nothing now. The linen stays in your warehouse for your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
         "now": [],
         "later": [
           {
             "in": 3,
             "do": [
               {
-                "money": 455
-              },
-              {
-                "stock": "linen",
-                "by": -10
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
