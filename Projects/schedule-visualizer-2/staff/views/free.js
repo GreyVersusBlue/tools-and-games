@@ -55,7 +55,7 @@ function namesOf(names) {
   return out;
 }
 
-/// The empty rooms a reader's choices leave: seats, subject, wing, and the
+// The empty rooms a reader's choices leave: seats, subject, wing, and the
 // feature ids chosen (a room has every one); `withFeature` adds one more
 // to the choice, for a chip's count with the others chosen.
 export function roomsMatching(school, empty, filters, withFeature) {
@@ -140,8 +140,25 @@ export const freeView = {
     };
 
     const chipsOut = h('div', { class: 'chips-row', role: 'group', 'aria-label': 'Features', dataset: { out: 'features' } });
+    // The count line is made once and only its words change, so a screen
+    // reader hears it each time a chip is turned on or off. With no chip
+    // chosen it is empty.
+    const featureLine = h('p', { class: 'muted', role: 'status', dataset: { out: 'features-count' } });
     const featureList = school.features();
-    const drawChips = (empty) => {
+    // When the chips are made again (a chip pressed, the bell, a filter) the
+    // one that had the focus gets it back: the same feature's chip, or where
+    // that is disabled now, the nearest one that is not, else the seats field.
+    const chipFocused = () => (chipsOut.contains(document.activeElement) ? document.activeElement.dataset.feature : null);
+    const focusChip = (id) => {
+      const chips = Array.from(chipsOut.querySelectorAll('button'));
+      const at = chips.findIndex((chip) => chip.dataset.feature === id);
+      const order = at < 0 ? [] : [chips[at]];
+      for (let step = 1; at >= 0 && step < chips.length; step += 1) order.push(chips[at + step], chips[at - step]);
+      const target = order.find((chip) => chip && !chip.disabled);
+      (target || seats).focus();
+    };
+    const drawChips = (empty, keep) => {
+      const had = keep || chipFocused();
       if (featureList.length === 0) {
         chipsOut.replaceChildren();
         chipsOut.hidden = true;
@@ -151,11 +168,15 @@ export const freeView = {
       const others = { seats: state.seats, subject: state.subject, wing: state.wing, features: state.features };
       chipsOut.replaceChildren(...featureList.map((feature) => {
         const on = state.features.includes(feature.id);
-        // what choosing it gives with the others chosen; a chosen chip's own count is what is shown now
+        // what choosing it gives with the others chosen; a chosen chip's own
+        // count is what is shown now, the same for every chosen chip, and its
+        // name says so
         const n = roomsMatching(school, empty, others, on ? null : feature.id).length;
         const off = n === 0 && !on;
+        const rooms = countOf(n, 'empty room', 'empty rooms');
+        const name = feature.name + ' (' + n + '), ' + (on ? 'chosen: ' + rooms + ' shown' : off ? 'no empty room has it' : 'would show ' + rooms);
         return h('button', {
-          class: 'toggle', type: 'button', 'aria-pressed': on ? 'true' : 'false', disabled: off, dataset: { feature: feature.id, count: String(n) },
+          class: 'toggle', type: 'button', 'aria-pressed': on ? 'true' : 'false', 'aria-label': name, disabled: off, dataset: { feature: feature.id, count: String(n) },
           onclick: () => {
             state.features = featureList.map((each) => each.id).filter((id) => (id === feature.id ? !on : state.features.includes(id)));
             address();
@@ -163,6 +184,7 @@ export const freeView = {
           },
         }, typed(feature.name), ' (', String(n), ')');
       }));
+      if (had) focusChip(had);
     };
 
     // `keep` is the id of the chip just pressed, which gets its focus back
@@ -176,17 +198,12 @@ export const freeView = {
       const byOthers = roomsMatching(school, empty, { ...state, features: [] }, null);
       const chosen = featureList.filter((feature) => state.features.includes(feature.id));
       const lack = byOthers.length - shown.length;
-      const featureLine = chosen.length === 0 ? null : h('p', { class: 'muted', role: 'status', dataset: { out: 'features-count' } },
-        shown.length + (shown.length === 1 ? ' empty room has ' : ' empty rooms have '), namesOf(chosen.map((feature) => feature.name)),
-        ' · ', lack + (lack === 1 ? ' other empty room lacks ' : ' other empty rooms lack '), chosen.length === 1 ? 'it' : 'one of them', '.');
-      drawChips(empty);
-      if (keep) {
-        const again = chipsOut.querySelector('[data-feature="' + keep + '"]');
-        if (again) again.focus();
-      }
+      featureLine.replaceChildren(...(chosen.length === 0 ? [] : [
+        shown.length + (shown.length === 1 ? ' empty room has ' : ' empty rooms have '), ...namesOf(chosen.map((feature) => feature.name)),
+        ' · ', lack + (lack === 1 ? ' other empty room lacks ' : ' other empty rooms lack '), chosen.length === 1 ? 'it' : 'one of them', '.']));
+      drawChips(empty, keep);
       roomList.replaceChildren(...[
         sectionHeading(narrowed ? 'Rooms empty that match' : 'Rooms empty', shown.length),
-        featureLine,
         shown.length === 0
           ? h('p', { class: 'muted' }, narrowed ? 'No empty room matches. Ask for less above.' : 'Every room has a group in it.')
           : h('ul', { class: 'list', dataset: { list: 'rooms' } }, shown.map((room) => h('li', null,
@@ -209,9 +226,12 @@ export const freeView = {
       const bell = school.bells(state.dayType.id, state.bellsId)[period];
       if (bell && bell.off === true) {
         // a period the day's bells leave out: nobody has a class in it
+        const had = chipFocused();
         teachersOut.replaceChildren();
         roomList.replaceChildren();
         chipsOut.replaceChildren();
+        featureLine.replaceChildren();
+        if (had) seats.focus();
         says.replaceChildren(h('span', null, school.periodName(period), ' does not meet on ', dayWords(school, state.dayType, state.bellsId), '.'));
         says.dataset.period = String(period);
         says.dataset.moment = 'off';
@@ -316,6 +336,7 @@ export const freeView = {
         subjects.length > 0 ? h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'free-subject' }, 'Subject'), subject) : null,
         wings.length > 0 ? h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'free-wing' }, 'Wing'), wing) : null),
       chipsOut,
+      featureLine,
       roomList);
 
     drawPickers(null);

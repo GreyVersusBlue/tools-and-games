@@ -129,7 +129,8 @@ async function openPage(options) {
   await page.emulateTimezone(ZONE);
   if (opts.theme) await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: opts.theme }]);
   await page.evaluateOnNewDocument((at) => {
-    globalThis.sv2StaffClock = { now: () => at, every: 3600000 };
+    // a test moves the clock with sv2At and a visibilitychange (staff/clock.js looks again then)
+    globalThis.sv2StaffClock = { now: () => globalThis.sv2At || at, every: 3600000 };
     globalThis.print = () => {};
     globalThis.sv2Drawn = [];
     const was = CanvasRenderingContext2D.prototype.fillText;
@@ -233,7 +234,10 @@ for (const size of SIZES) {
       assert.deepEqual(start.map((chip) => chip.text), ['Lab (4)', 'Sink (2)', 'Projector (3)', 'Kiln (0)', HOSTILE + ' (1)']);
       assert.deepEqual(start.map((chip) => chip.disabled), [false, false, false, true, false], 'Kiln gives no room and is disabled');
       assert.ok(start.every((chip) => chip.pressed === 'false'));
-      assert.equal(await count(page, '[data-out="features-count"]'), 0, 'no count line while no chip is pressed');
+      assert.equal(await one(page, '[data-out="features-count"]'), '', 'the count line is empty while no chip is pressed');
+      // the one count line, kept, so its words are what a screen reader hears
+      await page.evaluate(() => { globalThis.sv2Line = document.querySelector('[data-out="features-count"]'); });
+      const sameLine = () => page.evaluate(() => document.querySelectorAll('[data-out="features-count"]').length === 1 && document.querySelector('[data-out="features-count"]') === globalThis.sv2Line && globalThis.sv2Line.getAttribute('role') === 'status');
       assert.deepEqual(await roomsOf(page), ['Room 101', 'Room 102', 'Room 103', 'Room 201', 'Room 202', 'Room 203', 'Library', 'Room 303', 'Room 301']);
       assert.equal(await count(page, 'img'), 0, 'a feature named as markup is text');
       assert.equal(await page.evaluate(() => globalThis.__pwned), undefined);
@@ -241,7 +245,11 @@ for (const size of SIZES) {
       await press(page, FEATURE.lab, true);
       assert.deepEqual(await roomsOf(page), ['Room 103', 'Room 201', 'Room 203', 'Room 301']);
       assert.equal(await one(page, '[data-out="features-count"]'), '4 empty rooms have Lab · 5 other empty rooms lack it.');
+      assert.equal(await sameLine(), true, 'turning Lab on changes the words of the same status line');
       assert.equal(await hashOf(page), '#/free?features=' + FEATURE.lab);
+      // each chip's name starts with its words and says what its count is
+      assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('[data-out="features"] button'), (el) => el.getAttribute('aria-label'))), [
+        'Lab (4), chosen: 4 empty rooms shown', 'Sink (2), would show 2 empty rooms', 'Projector (0), no empty room has it', 'Kiln (0), no empty room has it', HOSTILE + ' (1), would show 1 empty room']);
       // with Lab chosen each chip says what it would give with Lab
       assert.deepEqual((await chipsOf(page)).map((chip) => chip.text), ['Lab (4)', 'Sink (2)', 'Projector (0)', 'Kiln (0)', HOSTILE + ' (1)']);
       assert.deepEqual((await chipsOf(page)).map((chip) => chip.disabled), [false, false, true, true, false], 'Projector gives none with Lab');
@@ -257,7 +265,8 @@ for (const size of SIZES) {
       assert.equal(await one(page, '[data-out="features-count"]'), '2 empty rooms have Sink · 7 other empty rooms lack it.');
       await press(page, FEATURE.sink, false);
       assert.equal(await hashOf(page), '#/free');
-      assert.equal(await count(page, '[data-out="features-count"]'), 0);
+      assert.equal(await one(page, '[data-out="features-count"]'), '', 'turning the last chip off empties the line');
+      assert.equal(await sameLine(), true, 'the same status line, never made again');
       await noOverflow(page, 'Free at ' + size.width);
       assert.deepEqual(session.errors, []);
     } finally {
@@ -301,6 +310,42 @@ test('Free right now keeps the chips through a reload and Back, and a seat count
   }
 });
 
+// Move the pinned clock and let the page look again, as it does when it is shown.
+async function clockTo(page, at, period) {
+  await page.evaluate((when) => {
+    globalThis.sv2At = when;
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, at);
+  await page.waitForFunction((want) => document.querySelector('.lede[role="status"]')?.dataset.period === want, { timeout: 5000 }, period);
+}
+const focusedChip = (page) => page.evaluate(() => (document.activeElement && document.activeElement.closest('[data-out="features"]') ? { id: document.activeElement.dataset.feature, disabled: document.activeElement.disabled } : document.activeElement.tagName.toLowerCase() + '#' + document.activeElement.id));
+
+test('Free right now keeps the focus on a chip when the bell changes the period, and moves it to the nearest one when that chip is disabled', async () => {
+  const session = await openPage();
+  try {
+    const { page } = session;
+    // Lab pressed and focused; at 12:30 the sixth period (index 5) has 2 rooms with Lab
+    await goto(page, files.w7, '#/free');
+    await freeReady(page);
+    await press(page, FEATURE.lab, true);
+    assert.deepEqual(await focusedChip(page), { id: FEATURE.lab, disabled: false });
+    await clockTo(page, '2026-09-02T16:30:00Z', '5');
+    assert.deepEqual((await chipsOf(page)).map((chip) => chip.text), ['Lab (2)', 'Sink (0)', 'Projector (0)', 'Kiln (0)', HOSTILE + ' (1)'], 'the chips are made again for the new period');
+    assert.deepEqual(await focusedChip(page), { id: FEATURE.lab, disabled: false }, 'the same chip keeps the focus');
+    // Sink focused, nothing chosen; at 12:30 no empty room has a sink, so its chip is disabled
+    await page.evaluate(() => { globalThis.sv2At = null; });
+    await goto(page, files.w7, '#/free');
+    await freeReady(page);
+    await page.focus('[data-out="features"] [data-feature="' + FEATURE.sink + '"]');
+    await clockTo(page, '2026-09-02T16:30:00Z', '5');
+    assert.equal((await chipsOf(page))[1].disabled, true, 'Sink gives none now');
+    assert.deepEqual(await focusedChip(page), { id: FEATURE.projector, disabled: false }, 'the focus goes to the next chip that is not disabled, not to the page');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
 test('a school with no features has no chips and no empty heading on Free right now', async () => {
   const session = await openPage();
   try {
@@ -309,7 +354,8 @@ test('a school with no features has no chips and no empty heading on Free right 
     await freeReady(page);
     assert.equal(await count(page, '[data-out="features"] button'), 0);
     assert.equal(await page.evaluate(() => document.querySelector('[data-out="features"]').hidden), true);
-    assert.equal(await count(page, '[data-out="features-count"]'), 0);
+    assert.equal(await one(page, '[data-out="features-count"]'), '', 'no count line words');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-out="features-count"]').getBoundingClientRect().height), 0);
     // an address that asks for a feature asks for nothing
     await goto(page, files.plain, '#/free?features=' + FEATURE.lab);
     await freeReady(page);
