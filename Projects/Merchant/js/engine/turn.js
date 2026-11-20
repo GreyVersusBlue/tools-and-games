@@ -349,6 +349,7 @@ export function recall(state, content, decisions = {}) {
 /** Values the screens need so they never compute a rule (ARCHITECTURE 2.1). */
 export function view(state, content) {
   const idx = seasonIndex(state, content);
+  const bestTrades = routes.bestTrades(state, content);
   return {
     money: state.money,
     papersLeft: state.desk.filter(p => p.state === 'open').length,
@@ -361,6 +362,8 @@ export function view(state, content) {
     prices: market.knownPrices(state, content),
     letters: letters.describe(state, content),
     homeBy: routes.homeBy(state, content),   // by expedition id: { in, season }, the one answer the map, the ledger and the outfit give (MER-88)
+    bestTrades,   // the three widest margins the house has news of: road, news age and risk, in words (DESIGN 2.2 rule 3)
+    venture: routes.draftVenture(state, content),   // the outfit sheet's default draft and its estimate (DESIGN 2.2 rules 1 and 2), or null
     cards: describeTrips(state, content),   // filled words of the cards that tell of a trip, by paper id
     ...agents.standing(state, content),
     interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,
