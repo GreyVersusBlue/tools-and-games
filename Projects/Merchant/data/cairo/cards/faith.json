@@ -104,15 +104,15 @@
       {
         "id": "trade",
         "label": "Send him the linen",
-        "hint": "It costs now. He may become a steady friend.",
+        "hint": "It costs 6 dinars now and pays back 5 in three seasons. He may become a steady friend.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 6
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -6
           },
           {
             "rep": "foreign",
@@ -124,7 +124,7 @@
             "in": 3,
             "do": [
               {
-                "money": 7
+                "money": 5
               }
             ]
           }
@@ -149,7 +149,8 @@
     ],
     "note": "Traders of different faiths had long done business together. Around 1030 one Jewish firm dealt with Christians in Alexandria, as two historians report it from Moshe Gil.",
     "unlocks": [
-      "term-load"
+      "term-load",
+      "term-dinar"
     ],
     "sources": [
       {

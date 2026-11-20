@@ -223,7 +223,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf and the road costs",
-    "body": "Yusuf is home from {to}. He spent 5 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
+    "body": "Yusuf is home from {to}. He spent 7 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
     "when": {
       "trip": {
         "agent": "yusuf",
@@ -235,16 +235,16 @@
     "choices": [
       {
         "id": "pay",
-        "label": "Pay him back the 5 dinars",
-        "hint": "It costs now. Yusuf will trust you.",
+        "label": "Pay him back the 7 dinars",
+        "hint": "It costs 7 dinars now. Yusuf will trust you.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 7
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -7
           },
           {
             "trust": "yusuf",
@@ -266,7 +266,7 @@
       {
         "id": "judge",
         "label": "Let a judge decide",
-        "hint": "It costs less. Yusuf will not like it.",
+        "hint": "It costs 2 dinars later. Yusuf will not like it.",
         "now": [
           {
             "trust": "yusuf",

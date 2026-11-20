@@ -534,9 +534,12 @@
       },
       {
         "id": "thanks",
-        "label": "Thank her and keep your money",
-        "hint": "She will not mind.",
+        "label": "Thank her with a gift",
+        "hint": "It costs 3 dinars now. She will remember it.",
         "now": [
+          {
+            "money": -3
+          },
           {
             "rep": "partners",
             "by": 1
@@ -547,11 +550,16 @@
             "in": 2,
             "do": [
               {
-                "money": 3
+                "money": 1
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        }
       }
     ],
     "note": "Four of the 13 refineries owned by merchants were managed by Karimi.",
@@ -560,6 +568,9 @@
         "src": "sato-2006",
         "at": "p. 149; the managers of the merchants' refineries"
       }
+    ],
+    "unlocks": [
+      "term-dinar"
     ]
   },
   {
@@ -785,26 +796,36 @@
       {
         "id": "warn",
         "label": "Send a rider to warn your agents",
-        "hint": "It costs money. Your agents will be glad.",
+        "hint": "It costs 8 dinars now and 2 more later. Your agents will be glad.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 8
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -8
           },
           {
             "rep": "agents",
             "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              }
+            ]
           }
         ]
       },
       {
         "id": "quiet",
         "label": "Keep the news to yourself",
-        "hint": "It costs nothing, but it is not kind.",
+        "hint": "It brings 3 dinars later, but it is not kind.",
         "now": [
           {
             "rep": "foreign",
@@ -825,7 +846,8 @@
     ],
     "note": "The Karimi brought spices from Aden to Cairo, Alexandria and Damascus.",
     "unlocks": [
-      "term-caravanserai"
+      "term-caravanserai",
+      "term-dinar"
     ],
     "sources": [
       {
