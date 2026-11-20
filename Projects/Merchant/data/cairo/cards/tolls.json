@@ -19,12 +19,12 @@
         "hint": "It costs now. Hamza will speak well of you.",
         "requires": {
           "money": {
-            "gte": 25
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -25
+            "money": -5
           }
         ],
         "later": [
@@ -42,14 +42,18 @@
       {
         "id": "quseir",
         "label": "Send the goods by Quseir",
-        "hint": "It costs less, later. Quseir is nearer to Qus.",
+        "hint": "It costs less, later. Quseir is nearer to Qus, and partners like a house that counts its costs.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": -20
+                "money": -4
+              },
+              {
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -83,7 +87,7 @@
       "seal": null
     },
     "title": "The officer counts twice",
-    "body": "Your carters bring goods up from a ship at Alexandria. A customs officer there has not met your house, so he counts every bundle twice. Customs are taxes on goods that enter a port. He asks for 40 dinars.",
+    "body": "Your carters bring goods up from a ship at Alexandria. A customs officer there has not met your house, so he counts every bundle twice. Customs are taxes on goods that enter a port. He asks for 5 dinars.",
     "when": {
       "rep": "court",
       "lte": 0
@@ -97,12 +101,12 @@
         "hint": "It costs now. Your name goes in his book.",
         "requires": {
           "money": {
-            "gte": 40
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -40
+            "money": -5
           }
         ],
         "later": [
@@ -120,18 +124,18 @@
       {
         "id": "store",
         "label": "Leave the goods in the harbour store",
-        "hint": "It costs less. Your goods wait, and he notices.",
+        "hint": "It costs less. Your goods wait and the officer notices, but partners like a patient house.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": -20
+                "money": -3
               },
               {
-                "rep": "court",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -183,7 +187,7 @@
             "in": 2,
             "do": [
               {
-                "money": -30
+                "money": -5
               }
             ]
           }
@@ -192,15 +196,15 @@
       {
         "id": "refuse",
         "label": "Say you do not know him",
-        "hint": "You keep your money. Giorgio will tell others.",
+        "hint": "You keep your money. The port officers like a house that knows whom it vouches for.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "rep": "foreign",
-                "by": -1
+                "rep": "court",
+                "by": 1
               }
             ]
           }
@@ -236,15 +240,15 @@
       {
         "id": "papers",
         "label": "Send two loads under his papers",
-        "hint": "It costs 40 dinars for the papers. Nabil will be glad to help.",
+        "hint": "It costs 5 dinars for the papers. Nabil will be glad to help.",
         "requires": {
           "money": {
-            "gte": 40
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -40
+            "money": -5
           }
         ],
         "later": [
@@ -262,18 +266,18 @@
       {
         "id": "alone",
         "label": "Send them alone",
-        "hint": "It costs less. Nabil may feel left out.",
+        "hint": "It costs less. Nabil may feel left out, but the officers see your own count.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": -5
+                "money": -2
               },
               {
-                "rep": "partners",
-                "by": -1
+                "rep": "court",
+                "by": 1
               }
             ]
           }

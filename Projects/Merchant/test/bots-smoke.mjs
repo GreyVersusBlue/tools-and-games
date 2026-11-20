@@ -60,6 +60,17 @@ test('smoke: a game on a worker thread equals the same game in this thread', asy
   eq(b.results, a.results);
 });
 
+test('smoke: the bots read the notebook as their players would (DECISIONS 2026-11-20 13:3x): careful, greedy and qirad every page found, random about half, first none', () => {
+  const sum = (b, k) => res.results[b].reduce((n, g) => n + g.raw[k], 0);
+  for (const b of ['careful', 'greedy', 'qirad']) ok(sum(b, 'pages') > 0 && sum(b, 'read') === sum(b, 'pages'), `${b} read ${sum(b, 'read')} of ${sum(b, 'pages')}`);
+  const firsts = [1, 2, 3, 4, 5, 6].map(seed => playGame(content, { bot: 'first', seed, house: content.houses[seed % content.houses.length].id }));   // first is not in BOTS, so it is played here
+  ok(firsts.reduce((n, g) => n + g.raw.pages, 0) > 0, 'first found no page, so the case proves nothing');
+  eq(firsts.reduce((n, g) => n + g.raw.read, 0), 0);
+  const share = sum('random', 'read') / sum('random', 'pages');
+  ok(share > 0.3 && share < 0.7, `random read ${(share * 100).toFixed(0)} percent of its pages`);
+  for (const g of res.results.random) ok(g.raw.read <= g.raw.pages, `${g.seed}`);
+});
+
 test('smoke: an unknown bot and an unknown house are refused, not played as something else', () => {
   for (const args of [{ bot: 'sneaky', seed: 1, house: 'cloth' }, { bot: 'careful', seed: 1, house: 'nobody' }]) {
     let threw = false;
@@ -306,9 +317,10 @@ test('score check: no game in the top rank is a breach, and so is more than one 
   const top = content.city.score.ranks.at(-1).from;
   const none = doctored(r => { for (const l of Object.values(r.results)) for (const g of l) g.score = Math.min(g.score, top - 1); });
   ok(!rowOf(none, 'the top rank is reached by the best game').ok);
-  const one = doctored(r => { r.results.greedy[0].score = top; });
+  const below = r => { for (const l of Object.values(r.results)) for (const g of l) g.score = Math.min(g.score, top - 1); };   // no natural top game in the sample, however many it has
+  const one = doctored(r => { below(r); r.results.greedy[0].score = top; });
   ok(rowOf(one, 'the top rank is reached by the best game').ok && rowOf(one, 'the top rank is reached by at most').ok);
-  const many = doctored(r => { for (const g of r.results.greedy.slice(0, 10)) g.score = top; });
+  const many = doctored(r => { below(r); for (const g of r.results.greedy.slice(0, Math.ceil(0.02 * Object.values(r.results).flat().length))) g.score = top; });
   ok(!rowOf(many, 'the top rank is reached by at most').ok, JSON.stringify(rowOf(many, 'the top rank is reached by at most')));
 });
 

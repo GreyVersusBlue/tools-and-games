@@ -120,14 +120,14 @@
           "stock": "linen",
           "gte": 10
         },
-        "hint": "Nothing now. Far away they may sell for 20 dinars more.",
+        "hint": "Nothing now. Far away they may sell for 90 dinars more.",
         "now": [],
         "later": [
           {
             "in": 3,
             "do": [
               {
-                "money": 20
+                "money": 90
               }
             ]
           }
@@ -199,7 +199,7 @@
       {
         "id": "agree",
         "label": "Send to Damascus for the silk",
-        "hint": "The family may come back.",
+        "hint": "The silk is a venture, so it costs a lot. The family may come back.",
         "requires": {
           "money": {
             "gte": 410
@@ -285,7 +285,7 @@
       {
         "id": "buy",
         "label": "Buy three loads of her sugar",
-        "hint": "Sugar keeps well. The price may rise.",
+        "hint": "Sugar keeps well, and three loads is a venture, so the sum is large.",
         "requires": {
           "money": {
             "gte": 140
@@ -310,14 +310,14 @@
       {
         "id": "pass",
         "label": "Wish her luck and pass",
-        "hint": "Your 140 dinars go into your own goods. Amina will find another buyer.",
+        "hint": "Your 140 dinars go into your own goods and earn 40 dinars. Amina will find another buyer.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": 25
+                "money": 40
               }
             ]
           },
@@ -364,12 +364,12 @@
         "hint": "You share the costs, and the news.",
         "requires": {
           "money": {
-            "gte": 80
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -80
+            "money": -5
           },
           {
             "rep": "foreign",
@@ -386,15 +386,15 @@
       {
         "id": "decline",
         "label": "Keep your own lodging",
-        "hint": "You pay no share, and you hear less.",
+        "hint": "You pay no share, and you hear less. Partners like a steady house.",
         "now": [],
         "later": [
           {
             "in": 3,
             "do": [
               {
-                "rep": "foreign",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -433,7 +433,7 @@
       {
         "id": "alone",
         "label": "Let Salih buy it alone",
-        "hint": "It is quick, but some bales may be poor.",
+        "hint": "It is quick, but some bales may be poor. Six loads is a venture, so the sum is large.",
         "requires": {
           "money": {
             "gte": 180
@@ -519,7 +519,7 @@
       "seal": null
     },
     "title": "Rizq has a job for Yusuf",
-    "body": "Rizq is a draper, a cloth seller. He asks Yusuf to take a bundle of fine cloth to {to} and sell it. For this special job he will pay a fee of 30 dinars. He pays it to the house, but the job is Yusuf's.",
+    "body": "Rizq is a draper, a cloth seller. He asks Yusuf to take a bundle of fine cloth to {to} and sell it. For this special job he will pay a fee of 7 dinars. He pays it to the house, but the job is Yusuf's.",
     "when": {
       "all": [
         {
@@ -561,10 +561,10 @@
       {
         "id": "split",
         "label": "Split the fee with Yusuf",
-        "hint": "You gain 15 dinars now. Yusuf is content.",
+        "hint": "You gain 4 dinars now. Yusuf is content.",
         "now": [
           {
-            "money": 15
+            "money": 4
           }
         ],
         "later": [
@@ -582,7 +582,7 @@
       {
         "id": "keep",
         "label": "Keep the whole fee for the house",
-        "hint": "You gain 30 dinars. Yusuf will know.",
+        "hint": "You gain 7 dinars. Yusuf will know.",
         "now": [
           {
             "trust": "yusuf",
@@ -598,7 +598,7 @@
             "in": 2,
             "do": [
               {
-                "money": 30
+                "money": 7
               }
             ],
             "card": "yusuf-asks-in-writing"
@@ -708,11 +708,21 @@
       {
         "id": "keep",
         "label": "Keep the linen for your own trips",
-        "hint": "Wadud will buy from someone else.",
+        "hint": "Wadud will buy from someone else. Far away the linen may sell for 40 dinars more.",
         "now": [
           {
             "flag": "wadud-passed",
             "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 40
+              }
+            ]
           }
         ]
       }
@@ -784,16 +794,16 @@
       },
       {
         "id": "more",
-        "label": "Give him a bonus of 30 dinars first",
-        "hint": "It costs 30 dinars. He will be loyal.",
+        "label": "Give him a bonus of 5 dinars first",
+        "hint": "It costs 5 dinars. He will be loyal.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -30
+            "money": -5
           },
           {
             "trust": "samir",
@@ -859,12 +869,12 @@
         "hint": "It costs a gift. It may pay.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 7
           }
         },
         "now": [
           {
-            "money": -30
+            "money": -7
           }
         ],
         "later": [
@@ -872,7 +882,7 @@
             "in": 3,
             "do": [
               {
-                "money": 80
+                "money": 14
               }
             ]
           }
@@ -942,7 +952,7 @@
       {
         "id": "buy",
         "label": "Buy two loads of pepper",
-        "hint": "It costs 250 dinars. Sending it to Damascus is up to you.",
+        "hint": "It costs 250 dinars, a big sum, because pepper for Damascus is a venture. Sending it to Damascus is up to you.",
         "requires": {
           "money": {
             "gte": 250
@@ -972,15 +982,15 @@
       {
         "id": "watch",
         "label": "Pay Zayd to watch Damascus",
-        "hint": "It costs 10 dinars. He writes to you when the price moves.",
+        "hint": "It costs 9 dinars. He writes to you when the price moves.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 9
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -9
           }
         ],
         "later": [
@@ -1071,7 +1081,7 @@
       {
         "id": "keep",
         "label": "Keep the linen for a trip",
-        "hint": "Constantinople pays more, but it is a long way off.",
+        "hint": "Constantinople pays about 25 dinars more for three loads, but it is a long way off and damp can spoil a load.",
         "now": [
           {
             "flag": "bishara-linen-kept",
@@ -1080,11 +1090,28 @@
         ],
         "later": [
           {
+            "in": 1,
+            "do": [
+              {
+                "stock": "linen",
+                "by": -1
+              }
+            ]
+          },
+          {
             "in": 3,
             "do": [
               {
                 "rep": "partners",
                 "by": 1
+              }
+            ]
+          },
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 25
               }
             ]
           }
@@ -1093,15 +1120,15 @@
       {
         "id": "watch",
         "label": "Ask him to write to Constantinople",
-        "hint": "It costs 10 dinars. You learn who is buying.",
+        "hint": "It costs 9 dinars. You learn who is buying.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 9
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -9
           }
         ],
         "later": [
@@ -1161,7 +1188,7 @@
       {
         "id": "buy",
         "label": "Buy two loads of pepper",
-        "hint": "It costs 260 dinars. The galley buyers are at Alexandria.",
+        "hint": "It costs 260 dinars, a big sum, because pepper for the galleys is a venture. The galley buyers are at Alexandria.",
         "requires": {
           "money": {
             "gte": 260
@@ -1191,15 +1218,15 @@
       {
         "id": "watch",
         "label": "Pay Fakhr to watch the harbour",
-        "hint": "It costs 10 dinars. He writes when the galleys sail.",
+        "hint": "It costs 9 dinars. He writes when the galleys sail.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 9
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -9
           }
         ],
         "later": [
@@ -1271,7 +1298,7 @@
       {
         "id": "buy",
         "label": "Buy three loads of sugar",
-        "hint": "It costs 140 dinars. Famagusta pays more, but sending it is up to you.",
+        "hint": "It costs 140 dinars, a big sum, because sugar for Cyprus is a venture. Famagusta pays more, but sending it is up to you.",
         "requires": {
           "money": {
             "gte": 140
@@ -1301,15 +1328,15 @@
       {
         "id": "watch",
         "label": "Ask him to name the buyers",
-        "hint": "It costs 10 dinars. You learn who is buying.",
+        "hint": "It costs 9 dinars. You learn who is buying.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 9
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -9
           }
         ],
         "later": [
