@@ -35,21 +35,36 @@ const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'th
 
 /** Sentences for "what happened now": money and goods first, then whose trust or standing moved
     (`app` is optional; with it a reputation also says where it stands now, in the engine's words from
-    view()), else the plain line when nothing a player can see changed. */
-export function happened(content, effects, app = null) {
+    view()), else the plain line when nothing a player can see changed. `agent` is the paper's own agent:
+    an effect written for `$agent` is said with that agent's name, never the raw token. Moves of one group
+    in one result are added into one net line, so a result never says "think less" and "speak well" of the
+    same group back to back. `result` is the choice's own sentence, when its card wrote one: it is said
+    after the numbers, and then "Nothing changed at once." is never printed. */
+export function happened(content, effects, app = null, { agent = null, result = null } = {}) {
   const parts = seenEffects(content, effects).map(s => s.said);
   const view = app?.view?.();
+  const net = new Map();   // "trust:ali" or "rep:partners" -> { kind, id, by }, in the order first seen
   for (const e of effects ?? []) {
     if (typeof e.by !== 'number' || e.by === 0) continue;
-    const up = e.by > 0;
-    if (typeof e.trust === 'string') {
-      const name = (content.agents ?? []).find(a => a.id === e.trust)?.name ?? e.trust;
+    const id = typeof e.trust === 'string' ? (e.trust === '$agent' ? agent : e.trust) : null;
+    const key = typeof e.trust === 'string' ? `trust:${id ?? e.trust}` : typeof e.rep === 'string' ? `rep:${e.rep}` : null;
+    if (!key) continue;
+    const m = net.get(key) ?? { trust: typeof e.trust === 'string', id: id ?? e.trust ?? e.rep, rep: e.rep, by: 0 };
+    m.by += e.by;
+    net.set(key, m);
+  }
+  for (const m of net.values()) {
+    if (m.by === 0) continue;
+    const up = m.by > 0;
+    if (m.trust) {
+      const name = m.id === '$agent' ? 'The agent' : (content.agents ?? []).find(a => a.id === m.id)?.name ?? m.id;
       parts.push(`${name} trusts the house ${up ? 'more' : 'less'}.`);
-    } else if (typeof e.rep === 'string') {
-      const who = cap(REP_WORDS[e.rep] ?? e.rep), now = view?.rep?.[e.rep]?.words;
+    } else {
+      const who = cap(REP_WORDS[m.rep] ?? m.rep), now = view?.rep?.[m.rep]?.words;
       parts.push(`${who} think ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
     }
   }
+  if (result) parts.push(result);
   return parts.length ? parts.join(' ') : 'Nothing changed at once.';
 }
 

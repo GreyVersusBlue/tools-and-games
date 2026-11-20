@@ -39,6 +39,7 @@ export function createDesk(app) {
   let seasonKey = null;
   let wasLive = false;
   let stillId = null;
+  let drawn = 0;           // counts draws, so a late font measure belongs to the latest one
   const shown = new Set(); // "id:face" already on screen, so an arrival does not replay
 
   const still = h('div', { class: 'desk-stills' });
@@ -65,7 +66,7 @@ export function createDesk(app) {
     if (!asset || id === stillId) return;
     const first = stillId === null;
     stillId = id;
-    const img = h('img', { class: 'desk-still', src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' });
+    const img = h('img', { class: `desk-still${asset.final === false ? ' placeholder' : ''}`, src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' });
     const old = [...still.children];
     still.append(img);
     const drop = () => old.forEach(o => o.remove());
@@ -172,6 +173,22 @@ export function createDesk(app) {
     }
   }
 
+  /** DESIGN 5: a raised paper's first choice is in view when it opens. The stack scrolls (screens.css), and edges and
+      a long body can push the choices below its foot; the stack is then scrolled until the choice shows (the paper's
+      head and its edges scroll up out of sight, and scrolling back brings them). */
+  function revealChoice() {
+    const box = qs('.stack-papers', el);
+    box.scrollTop = 0;
+    const sheet = qs('.sheet', sheetBox);
+    if (!sheet || getComputedStyle(box).overflowY !== 'auto') return;
+    const target = qs('.choice, #btn-next', sheet);
+    if (!target) return;
+    const need = target.getBoundingClientRect().bottom + 6 - box.getBoundingClientRect().bottom;
+    if (need > 0) box.scrollTop += need;   // the head may scroll off: the choice is the part a player cannot do without
+    // the sheet rises into place for 220 ms: measure once more when it lies still
+    sheet.addEventListener('animationend', () => { const n2 = target.getBoundingClientRect().bottom + 6 - box.getBoundingClientRect().bottom; if (n2 > 0) box.scrollTop += n2; }, { once: true });
+  }
+
   // what the settled trips came to for the house, from the jump's own lines (`houseNet` of each)
   function tripsLine(settled) {
     const net = settled.reduce((n, x) => n + (x.houseNet ?? 0), 0);
@@ -233,7 +250,7 @@ export function createDesk(app) {
     if (RECORD_KINDS.includes(paper.kind) && choice.id === 'ok') { busy = false; raised = null; draw({ focus: 'next' }); return; }
     const fresh = app.state.notebook.filter(id => !before.has(id)).map(id => (content.notebook ?? []).find(n => n.id === id)?.title ?? id);
     const answered = app.state.desk.find(p => p.id === paper.id);
-    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app);
+    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app, { agent: paper.agent, result: choice.result });
     const done = () => {
       backOf = { paper: answered, now, fresh, outfit: outfitOf(choice, tripTo) };
       busy = false;
@@ -324,6 +341,10 @@ export function createDesk(app) {
         if (title && f === 'raise' && title.getBoundingClientRect().top < bar.getBoundingClientRect().bottom + 8) title.scrollIntoView({ block: 'start' });
       }
     }
+    revealChoice();   // after focus, which scrolls the heading into view and would undo it
+    // a font that arrives after the first draw changes every line's height: measure again once, for this draw only
+    const mine = ++drawn;
+    if (document.fonts?.status === 'loading') document.fonts.ready.then(() => { if (mine === drawn) revealChoice(); });
   }
 
   // ---- the keyboard (DESIGN 6)

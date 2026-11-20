@@ -2615,6 +2615,34 @@ try {
       await page.waitForSelector(BACK);
       eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(st, content80, 'p80-2', 'leave'))));
     });
+    // ---- MER-87: what a result says. A loss return's docked pay says the agent's name, never the token the card is written with.
+    await test('MER-87: "Take 20 dinars from Ali\'s next pay" on a loss return says "Ali trusts the house less", never a raw $agent', async () => {
+      const st = lossSave();
+      await load(st);
+      await page.click('#choice-p80-0-dock');
+      await page.waitForSelector(BACK);
+      const said = await page.$eval('.sheet-title', e => e.textContent);
+      ok(!said.includes('$'), said);
+      eq(said, 'You received 20 dinars. Ali trusts the house less.');
+    });
+    await test('MER-87: two lines about one group in one result are one net line; two groups stay two; an own result text ends "Nothing changed at once"', async () => {
+      const got = await page.evaluate(async () => {
+        const { happened } = await import('./js/ui/screens/paper.js');
+        const c = { agents: [{ id: 'ali', name: 'Ali' }] };
+        return {
+          twice: happened(c, [{ rep: 'partners', by: -1 }, { rep: 'agents', by: 1 }, { rep: 'partners', by: -1 }]),
+          cancel: happened(c, [{ rep: 'partners', by: -1 }, { rep: 'partners', by: 1 }]),
+          trust: happened(c, [{ trust: '$agent', by: -1 }, { trust: 'ali', by: -1 }], null, { agent: 'ali' }),
+          said: happened(c, [], null, { result: 'The house is open.' }),
+          plain: happened(c, []),
+        };
+      });
+      eq(got.twice, 'Your partners think less of the house. Your agents think better of the house.');
+      eq(got.cancel, 'Nothing changed at once.');
+      eq(got.trust, 'Ali trusts the house less.');
+      eq(got.said, 'The house is open.');
+      eq(got.plain, 'Nothing changed at once.');
+    });
     await test('the MER-80 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.close();
   }
@@ -2648,6 +2676,25 @@ try {
       eq(after.phase, 'ended');
       eq(after.expeditions, []);
       ok(after.score && after.score.parts.length === 4, 'recall fills the score');
+    });
+    await test('MER-87: the ending says "1 person", not "1 of its person", and the recall page claims no safety at home', async () => {
+      const after = clone(eng.recall(road, nodeContent, DECIDED));
+      const keep = nodeContent.agents.find(a => after.agents[a.id].hired || after.agents[a.id].where === 'gone').id;
+      for (const a of nodeContent.agents) if (a.id !== keep) { after.agents[a.id].hired = false; if (after.agents[a.id].where === 'gone') after.agents[a.id].where = 'home'; }
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const go = async (st, hash, ready) => {
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, st, SAVE_VERSION);
+        await page.goto(GAME + hash, { waitUntil: 'load' });
+        await page.waitForSelector(ready);
+      };
+      await go(after, '#ending/after', '#after-house');
+      ok(/ of its 1 person came home\.$/.test(await page.$eval('#after-house', e => e.textContent)), await page.$eval('#after-house', e => e.textContent));
+      await go(clone(road), '#ending/recall', '#ending-send');
+      const text = await page.$eval('[data-page="recall"] .ending-body', e => e.textContent);
+      ok(text.includes('the plague killed many in Cairo too'), text);
+      ok(!/most likely live/.test(text), text);
+      await page.close();
     });
     for (const how of ['pointer', 'keyboard']) {
       const { page, consoleErrors } = await open(FRAMES[0]);
