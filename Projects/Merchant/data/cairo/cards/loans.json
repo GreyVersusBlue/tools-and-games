@@ -160,32 +160,25 @@
       "role": "Cairo",
       "seal": "seal-3"
     },
-    "title": "Samir asks for road money",
-    "body": "Samir is about to leave on a long trip. He asks you for 40 dinars now, to pay for food, boats and gate fees on the way. He says the house should carry those costs.",
+    "title": "Samir asks who pays the road",
+    "body": "Samir is about to leave for {to} with {good}. He asks that the house pay for his food, boats and gate fees on the way. He says the house should carry those costs.",
     "when": {
-      "agent": "samir",
-      "hired": true,
-      "where": "cairo"
+      "trip": {
+        "agent": "samir",
+        "is": "ready"
+      }
     },
     "weight": 3,
     "repeat": false,
     "choices": [
       {
         "id": "give",
-        "label": "Give him 40 dinars for the road",
-        "hint": "It costs now. He will trust a house that pays.",
-        "requires": {
-          "money": {
-            "gte": 40
-          }
-        },
+        "label": "Let the house pay his costs",
+        "hint": "The house pays for the trip and keeps all the profit. The next sheet shows the cost. Agents hear of a house that pays.",
         "now": [
           {
-            "money": -40
-          },
-          {
-            "trust": "samir",
-            "by": 1
+            "outfit": "samir",
+            "contract": "own"
           }
         ],
         "later": [
@@ -203,15 +196,15 @@
       {
         "id": "own",
         "label": "Tell him to pay from his own share",
-        "hint": "It costs nothing. He will not forget it.",
+        "hint": "He keeps a third of the profit and pays his own way. Partners respect that. He will not forget it.",
         "now": [
-          {
-            "trust": "samir",
-            "by": -1
-          },
           {
             "memory": "samir",
             "kind": "unfair"
+          },
+          {
+            "outfit": "samir",
+            "contract": "qirad"
           }
         ],
         "later": [
@@ -219,8 +212,8 @@
             "in": 3,
             "do": [
               {
-                "rep": "agents",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }

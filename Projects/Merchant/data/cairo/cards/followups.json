@@ -76,76 +76,6 @@
     ]
   },
   {
-    "id": "samir-comes-home",
-    "group": "followups",
-    "from": {
-      "name": "Samir, your agent",
-      "role": "Cairo",
-      "seal": "seal-3"
-    },
-    "title": "Samir is back from Alexandria",
-    "body": "Two seasons ago you made a qirad with Samir. He sold the pepper at Alexandria and kept a third of the profit, as agreed. Now he asks to go again.",
-    "when": {
-      "notebook": "term-qirad"
-    },
-    "weight": 0,
-    "repeat": false,
-    "choices": [
-      {
-        "id": "same",
-        "label": "Send him again on the same terms",
-        "hint": "He keeps a third.",
-        "now": [
-          {
-            "trust": "samir",
-            "by": 1
-          }
-        ],
-        "later": [
-          {
-            "in": 3,
-            "do": [
-              {
-                "money": 60
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "more",
-        "label": "Offer him half the profit",
-        "hint": "He keeps more. He will be loyal. You keep 30 dinars less.",
-        "now": [
-          {
-            "trust": "samir",
-            "by": 2
-          }
-        ],
-        "later": [
-          {
-            "in": 3,
-            "do": [
-              {
-                "money": 30
-              }
-            ]
-          }
-        ]
-      }
-    ],
-    "note": "In the contracts Goitein read, the traveller's share was normally one third.",
-    "unlocks": [
-      "term-dinar"
-    ],
-    "sources": [
-      {
-        "src": "goitein-1964",
-        "at": "p. 317; the worker's smaller share, normally one third"
-      }
-    ]
-  },
-  {
     "id": "silk-order-due",
     "group": "followups",
     "from": {
@@ -842,75 +772,6 @@
     ]
   },
   {
-    "id": "yusuf-aleppo",
-    "group": "followups",
-    "from": {
-      "name": "Yusuf, your agent",
-      "role": "Cairo",
-      "seal": "seal-1"
-    },
-    "title": "Yusuf is back from Aleppo",
-    "body": "Yusuf went on to Aleppo, as you allowed. He sold well there. Now he says a Persian merchant wants to deal with your house.",
-    "weight": 0,
-    "repeat": false,
-    "choices": [
-      {
-        "id": "meet",
-        "label": "Meet the Persian merchant",
-        "hint": "It costs a gift. It may pay.",
-        "requires": {
-          "money": {
-            "gte": 30
-          }
-        },
-        "now": [
-          {
-            "money": -30
-          }
-        ],
-        "later": [
-          {
-            "in": 3,
-            "do": [
-              {
-                "money": 80
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "decline",
-        "label": "Keep to Damascus",
-        "hint": "Yusuf will be glad of a safe road.",
-        "now": [
-          {
-            "trust": "yusuf",
-            "by": 1
-          }
-        ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "rep": "agents",
-                "by": 1
-              }
-            ]
-          }
-        ]
-      }
-    ],
-    "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
-    "sources": [
-      {
-        "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 71 n. 1, pp. 71 to 72, and p. 118 n. 182; the stations in the sands of Sinai, and the days counted by Gibb from the dates"
-      }
-    ]
-  },
-  {
     "id": "khalid-news",
     "group": "followups",
     "from": {
@@ -1211,7 +1072,7 @@
       "seal": null
     },
     "title": "Yusuf wants it in writing",
-    "body": "Yusuf has not forgotten the fee. Before he rides again he asks you to write down what the house owes him for each trip. He says words on paper last longer than words in the air.",
+    "body": "Yusuf has not forgotten the fee. He asks you to write down what the house owes him each time he goes out. He says words in writing last longer than words in the air.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -1373,7 +1234,7 @@
       "seal": null
     },
     "title": "Matteo has sold the linen",
-    "body": "Matteo has sold your two loads at Alexandria and kept his fee. He asks to carry for the house again. This time he wants the house's seal on his paper, so that other traders know who he works for.",
+    "body": "Matteo has done the job and kept his fee. He asks to work for the house again. This time he wants the house's seal on his orders, so that other traders know who he works for.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -1445,80 +1306,13 @@
     "note": "In the Geniza papers a special job was paid with a fee of its own.",
     "unlocks": [
       "term-dinar",
-      "term-load"
+      "term-load",
+      "term-orders"
     ],
     "sources": [
       {
         "src": "goitein-1964",
         "at": "p. 316; the commission paid for a special service"
-      }
-    ]
-  },
-  {
-    "id": "tadros-first-trip",
-    "group": "followups",
-    "from": {
-      "name": "Tadros, your agent",
-      "role": "Cairo",
-      "seal": null
-    },
-    "title": "Tadros has finished his first trip",
-    "body": "Tadros has come back from his first trip. He did well, and Ilyas has written to ask how he behaved. Tadros asks if the house will keep him on, and if it will write back to his uncle.",
-    "weight": 0,
-    "repeat": false,
-    "choices": [
-      {
-        "id": "keep",
-        "label": "Keep him on and write well of him",
-        "hint": "It costs a clerk's time. Ilyas will be glad.",
-        "now": [
-          {
-            "trust": "tadros",
-            "by": 1
-          },
-          {
-            "rep": "foreign",
-            "by": 1
-          }
-        ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "money": -5
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "thank",
-        "label": "Thank him and let him return to his uncle",
-        "hint": "Ilyas gets his nephew back.",
-        "now": [
-          {
-            "dismiss": "tadros"
-          }
-        ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "rep": "foreign",
-                "by": 1
-              }
-            ]
-          }
-        ]
-      }
-    ],
-    "note": "In a letter of the Geniza papers one merchant tells another: he serves there and I serve here. Merchants in different cities did each other favours and expected the same.",
-    "sources": [
-      {
-        "src": "goitein-1964",
-        "at": "p. 316; he serves there and I serve here"
       }
     ]
   }

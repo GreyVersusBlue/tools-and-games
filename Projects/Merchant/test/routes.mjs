@@ -998,7 +998,7 @@ test('a seeded testport game with a scripted plan runs to the end in both length
 
 test('a seeded cairo three-act game with a scripted plan runs to the end in Node, jumps twice, and ends with the recall', () => {
   // an expedition is sent in the final season, so it is on the road when the game ends whatever the cards drew
-  const plan = { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  const plan = { seed: 10, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
   const a = run(C, plan);
   const b = run(C, plan);
   ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');

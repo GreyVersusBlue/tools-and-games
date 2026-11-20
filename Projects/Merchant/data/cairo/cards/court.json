@@ -219,11 +219,12 @@
       "seal": "seal-1"
     },
     "title": "Yusuf and the road costs",
-    "body": "Yusuf is back from Damascus. He spent 60 dinars on food, boats and gate fees. He says the house should pay it back. You never wrote this down, and he says a judge would agree with him.",
+    "body": "Yusuf is home from {to}. He spent 60 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
     "when": {
-      "agent": "yusuf",
-      "hired": true,
-      "where": "cairo"
+      "trip": {
+        "agent": "yusuf",
+        "is": "home"
+      }
     },
     "weight": 3,
     "repeat": false,
@@ -287,7 +288,8 @@
     "note": "One court record shows a quarrel over who paid for the road. The investor said the traveller should. The traveller said the partnership should.",
     "unlocks": [
       "term-agent-pay",
-      "term-dinar"
+      "term-dinar",
+      "term-orders"
     ],
     "sources": [
       {

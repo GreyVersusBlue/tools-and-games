@@ -172,7 +172,7 @@
       "seal": null
     },
     "title": "A gift, and a nephew",
-    "body": "Ilyas is a merchant in Damascus. He sends your house two loads of Damascus glass as a gift. He asks you to take his nephew Tadros as an agent for one trip. Tadros is careful, and he knows the road to Qus.",
+    "body": "Ilyas is a merchant in Syria. He sends your house two loads of glass as a gift. He asks you to take his nephew Tadros as an agent. Tadros is careful, and good with figures.",
     "when": {
       "all": [
         {
@@ -191,7 +191,7 @@
       {
         "id": "take",
         "label": "Take Tadros and keep the glass",
-        "hint": "It costs 30 dinars for his road. Ilyas will owe you.",
+        "hint": "It costs 30 dinars to take him on. Ilyas will owe you.",
         "requires": {
           "money": {
             "gte": 30
@@ -221,8 +221,7 @@
                 "rep": "foreign",
                 "by": 1
               }
-            ],
-            "card": "tadros-first-trip"
+            ]
           }
         ]
       },
@@ -303,16 +302,18 @@
     "group": "gifts",
     "from": {
       "name": "A grateful buyer",
-      "role": "Alexandria",
+      "role": "On the road",
       "seal": null
     },
     "title": "A gift meant for Samir",
-    "body": "On the road Samir found a buyer who paid more than the house had hoped. The buyer sends 20 dinars to your desk as a gift for the man who found him. The gift came to the house, but it was meant for Samir.",
+    "body": "Samir is home from {to}. A buyer there was pleased with the price Samir got for him. He sends 20 dinars to your desk as a gift for the man who found him. The gift came to the house, but it was meant for Samir.",
     "when": {
       "all": [
         {
-          "agent": "samir",
-          "hired": true
+          "trip": {
+            "agent": "samir",
+            "is": "home"
+          }
         },
         {
           "notebook": "term-agent-pay"
@@ -384,5 +385,79 @@
         "at": "p. 316; the commission paid for a special service, and the favour repaid by a favour"
       }
     ]
+  },
+  {
+    "id": "tadros-first-trip",
+    "group": "gifts",
+    "from": {
+      "name": "Tadros, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Tadros is home from {to}",
+    "body": "Tadros has finished his first trip. Ilyas has written to ask how he behaved. Tadros asks if the house will keep him on, and if it will write back to his uncle.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "keep",
+        "label": "Keep him on and write well of him",
+        "hint": "It costs a clerk's time. Ilyas will be glad.",
+        "now": [
+          {
+            "trust": "tadros",
+            "by": 1
+          },
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "thank",
+        "label": "Thank him and let him return to his uncle",
+        "hint": "Ilyas gets his nephew back.",
+        "now": [
+          {
+            "dismiss": "tadros"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a letter of the Geniza papers one merchant tells another: he serves there and I serve here. Merchants in different cities did each other favours and expected the same.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; he serves there and I serve here"
+      }
+    ],
+    "when": {
+      "trip": {
+        "agent": "tadros",
+        "is": "home"
+      }
+    }
   }
 ]

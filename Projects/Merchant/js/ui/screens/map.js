@@ -431,7 +431,7 @@ export function createMap(app, nav) {
       onSent: ({ agent, stop }) => {
         closeOutfit();
         draw();
-        showToast(`${agent.name} set out for ${stop.name}. A sealed letter lies on the desk's done pile.`);
+        showToast(`${agent.name} set out for ${stop.name}. Watch the desk for a letter from the road.`);
       },
       onCancel: () => closeOutfit(),
       onDesk: () => { closeOutfit(false); nav.toDesk(); },
