@@ -1947,6 +1947,46 @@ try {
     }
   }
 
+
+  // ---- MER-73: the page between acts says what your people did. Seed 1324 played in Node to the last season
+  // of act one with one more trip sent in it, so the jump has an expedition to settle and an agent who retires.
+  // Each line on the page is checked against the jump's own log entry, and the order is trips, the money line,
+  // who left, then the history.
+  {
+    let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    for (let guard = 0; guard < 20 && g.phase !== 'interlude'; guard++) {
+      for (const p of g.desk) {
+        if (p.state !== 'open') continue;
+        const c = eng.paperChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        g = eng.choose(g, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
+      }
+      if (g.t === 7) g = eng.outfit(g, nodeContent, eng.suggestPlan(g, nodeContent, 'damascus'));
+      g = eng.endSeason(g, nodeContent);
+    }
+    const entry = g.log.find(e => e.kind === 'jump');
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    await test('the page between acts lists each settled trip, the money from trips, who left and why, before the history', async () => {
+      ok(entry.settled.length > 0 && entry.agents.length > 0, 'the seeded jump settles a trip and loses an agent, or this case checks nothing');
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((st, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...st, __v: v })); }, JSON.parse(JSON.stringify(g)), SAVE_VERSION);
+      await page.goto(GAME + '#desk', { waitUntil: 'load' });
+      await page.waitForSelector('#btn-open-house');
+      const lines = await page.$$eval('.kind-phase .sheet-body', ps => ps.map(p => ({ text: p.textContent.replace(/\s+/g, ' ').trim(), settled: p.dataset.settled ?? null, left: p.dataset.left ?? null, id: p.id })));
+      const settledOnPage = lines.filter(l => l.settled !== null).map(l => l.text);
+      eq(settledOnPage, entry.settled.map(x => x.text), 'each settled trip, in the jump\'s words');
+      const net = entry.settled.reduce((n, x) => n + x.houseNet, 0);
+      eq(lines.find(l => l.id === 'interlude-trips').text, `Your people's trips brought ${net.toLocaleString('en-US')} ${net === 1 ? 'dinar' : 'dinars'}.`, 'the money line from the trips');
+      const leftOnPage = lines.filter(l => l.left);
+      eq(leftOnPage.map(l => l.left), entry.agents.map(a => (a.left === 'retired' ? 'retired' : 'house')), 'each agent who left, with the reason');
+      eq(leftOnPage.map(l => l.text), entry.agents.map(a => `${nodeContent.agents.find(x => x.id === a.id).name} ${a.left === 'retired' ? 'has retired' : 'has gone to work for another house'}.`), 'the reason in words');
+      const hist = lines.findIndex(l => !l.settled && !l.left && !l.id);
+      ok(hist > lines.findIndex(l => l.left) && hist > lines.findIndex(l => l.id === 'interlude-trips') && lines.findIndex(l => l.id === 'interlude-trips') > lines.findIndex(l => l.settled !== null), `order: trips, money, who left, then history (${JSON.stringify(lines.map(l => l.id || l.settled || l.left || 'h'))})`);
+    });
+    await test('the page between acts: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.close();
+  }
+
 } finally {
   await browser.close();
   server.close();

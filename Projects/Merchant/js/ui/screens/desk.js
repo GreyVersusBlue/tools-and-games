@@ -171,6 +171,12 @@ export function createDesk(app) {
     }
   }
 
+  // what the settled trips came to for the house, from the jump's own lines (`houseNet` of each)
+  function tripsLine(settled) {
+    const net = settled.reduce((n, x) => n + (x.houseNet ?? 0), 0);
+    return net < 0 ? `Your people's trips cost ${dinars(-net)}.` : net === 0 ? `Your people's trips came out even.` : `Your people's trips brought ${dinars(net)}.`;
+  }
+
   function phasePage(phase) {
     const v = app.view();
     const wrap = (title, ...rest) => h('article', { class: 'paper sheet front kind-phase', dataset: { phase, face: 'front' }, 'aria-labelledby': 'phase-title' },
@@ -179,11 +185,13 @@ export function createDesk(app) {
       const gap = v.interlude;
       return wrap('Years pass',
         gap ? h('p', { class: 'span', id: 'interlude-span' }, `${gap.from} to ${gap.to}`) : null,
-        ...(gap?.paragraphs ?? []).map(p => h('p', { class: 'sheet-body' }, p.text)),
+        ...(gap?.settled ?? []).map(x => h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text)),
+        ...(gap?.settled?.length ? [h('p', { class: 'sheet-body', id: 'interlude-trips' }, tripsLine(gap.settled))] : []),
         ...(gap?.agents ?? []).map(g => {
           const name = content.agents.find(a => a.id === g.id)?.name ?? g.id;
           return h('p', { class: 'sheet-body', dataset: { left: leftHow(app.state, g.id) ?? '' } }, `${name} ${leftHow(app.state, g.id) === 'retired' ? 'has retired' : 'has gone to work for another house'}.`);
         }),
+        ...(gap?.paragraphs ?? []).map(p => h('p', { class: 'sheet-body' }, p.text)),
         h('p', { class: 'sheet-body' }, `The house carries ${dinars(app.state.money)} into the next years.`),
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
           `Open the house in ${cap(v.season)} ${v.year}`));
