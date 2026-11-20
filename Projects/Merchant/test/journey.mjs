@@ -573,7 +573,7 @@ try {
           source: sheet.querySelector('.source')?.textContent, next: !!document.getElementById('btn-next'),
           order: [...sheet.children].map(c => c.className || c.tagName) };
       });
-      eq(b.tag, 'H2'); eq(b.heading, 'Nothing changed at once.');
+      eq(b.tag, 'H2'); eq(b.heading, 'Sabir opens the ledger. The first letters are already on the desk.'); // the choice's own result text (MER-88), not the stock line
       ok(b.note.startsWith('Ibn Battuta wrote that Cairo surged'), b.note);
       ok(b.fresh.startsWith('New in your notebook: '), b.fresh);
       ok(b.source.startsWith('Source: Ibn Battuta, The Travels of Ibn Battuta') && !/https?:|www\./.test(b.source), b.source);
