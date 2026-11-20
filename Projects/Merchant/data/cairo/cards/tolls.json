@@ -2,6 +2,7 @@
   {
     "id": "aydhab-toll",
     "group": "tolls",
+    "kind": "favour",
     "from": {
       "name": "Hamza, a carter",
       "role": "Cairo",
@@ -71,6 +72,7 @@
   {
     "id": "harbour-count",
     "group": "tolls",
+    "kind": "world",
     "from": {
       "name": "A customs officer",
       "role": "Alexandria",
@@ -147,6 +149,7 @@
   {
     "id": "harbour-vouch",
     "group": "tolls",
+    "kind": "favour",
     "from": {
       "name": "Giorgio, a young merchant",
       "role": "Alexandria",
@@ -211,6 +214,7 @@
   {
     "id": "karimi-papers",
     "group": "tolls",
+    "kind": "trade",
     "from": {
       "name": "Nabil, a spice dealer",
       "role": "Cairo",

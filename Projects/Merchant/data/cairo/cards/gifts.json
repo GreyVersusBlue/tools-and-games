@@ -2,6 +2,7 @@
   {
     "id": "opening-letter",
     "group": "gifts",
+    "kind": "world",
     "from": {
       "name": "Old Sabir, the clerk",
       "role": "Your house, Cairo",
@@ -50,6 +51,7 @@
   {
     "id": "opening-letter-broker",
     "group": "gifts",
+    "kind": "world",
     "from": {
       "name": "Nabil, the broker",
       "role": "Cairo",
@@ -98,6 +100,7 @@
   {
     "id": "favour-for-friend",
     "group": "gifts",
+    "kind": "favour",
     "from": {
       "name": "Girgis, a merchant",
       "role": "Damascus",
@@ -166,6 +169,7 @@
   {
     "id": "ilyas-sends-his-nephew",
     "group": "gifts",
+    "kind": "people",
     "from": {
       "name": "Ilyas, a merchant",
       "role": "Damascus",
@@ -300,6 +304,7 @@
   {
     "id": "samir-found-a-buyer",
     "group": "gifts",
+    "kind": "people",
     "from": {
       "name": "A grateful buyer",
       "role": "On the road",
@@ -389,6 +394,7 @@
   {
     "id": "tadros-first-trip",
     "group": "gifts",
+    "kind": "people",
     "from": {
       "name": "Tadros, your agent",
       "role": "Cairo",

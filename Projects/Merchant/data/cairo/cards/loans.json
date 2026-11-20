@@ -2,6 +2,7 @@
   {
     "id": "partner-loan",
     "group": "loans",
+    "kind": "favour",
     "from": {
       "name": "Farid, a partner",
       "role": "Cairo",
@@ -80,6 +81,7 @@
   {
     "id": "friend-needs-loan",
     "group": "loans",
+    "kind": "favour",
     "from": {
       "name": "Murad, a friend",
       "role": "Cairo",
@@ -155,6 +157,7 @@
   {
     "id": "road-money",
     "group": "loans",
+    "kind": "people",
     "from": {
       "name": "Samir, your agent",
       "role": "Cairo",
@@ -235,6 +238,7 @@
   {
     "id": "dalal-grows",
     "group": "loans",
+    "kind": "favour",
     "from": {
       "name": "Dalal, a cloth seller",
       "role": "Cairo",

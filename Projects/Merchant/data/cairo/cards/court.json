@@ -2,6 +2,7 @@
   {
     "id": "muhtasib-visit",
     "group": "court",
+    "kind": "world",
     "from": {
       "name": "Bishr, your clerk",
       "role": "Cairo",
@@ -74,6 +75,7 @@
   {
     "id": "chief-of-merchants",
     "group": "court",
+    "kind": "favour",
     "from": {
       "name": "Tamer, a rich merchant",
       "role": "Cairo",
@@ -134,6 +136,7 @@
   {
     "id": "elders-no-claim",
     "group": "court",
+    "kind": "world",
     "from": {
       "name": "Isaac, a trader",
       "role": "Cairo",
@@ -213,6 +216,7 @@
   {
     "id": "road-costs-court",
     "group": "court",
+    "kind": "people",
     "from": {
       "name": "Yusuf, your agent",
       "role": "Cairo",
@@ -301,6 +305,7 @@
   {
     "id": "hamid-accounts",
     "group": "court",
+    "kind": "people",
     "from": {
       "name": "Hamid, a partner",
       "role": "Cairo",

@@ -2,6 +2,7 @@
   {
     "id": "first-expedition",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Yusuf, your agent",
       "role": "Cairo",
@@ -77,6 +78,7 @@
   {
     "id": "linen-neighbour",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Abu Bakr, your neighbour",
       "role": "Cairo",
@@ -158,6 +160,7 @@
   {
     "id": "silk-order",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Nabil, the broker",
       "role": "Cairo",
@@ -253,6 +256,7 @@
   {
     "id": "sugar-pots",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Amina, a sugar maker",
       "role": "Fustat",
@@ -335,6 +339,7 @@
   {
     "id": "shared-stay",
     "group": "orders",
+    "kind": "favour",
     "from": {
       "name": "Khalid, a spice merchant",
       "role": "Cairo",
@@ -403,6 +408,7 @@
   {
     "id": "broker-bales",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Salih, a broker",
       "role": "Cairo",
@@ -498,6 +504,7 @@
   {
     "id": "yusuf-carries-cloth",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Rizq, a draper",
       "role": "Cairo",
@@ -607,6 +614,7 @@
   {
     "id": "cloth-for-the-east",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Wadud, a cloth dealer",
       "role": "Cairo",
@@ -712,6 +720,7 @@
   {
     "id": "samir-comes-home",
     "group": "orders",
+    "kind": "people",
     "from": {
       "name": "Samir, your agent",
       "role": "Cairo",
@@ -810,6 +819,7 @@
   {
     "id": "yusuf-aleppo",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Yusuf, your agent",
       "role": "Cairo",

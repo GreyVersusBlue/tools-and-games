@@ -186,10 +186,18 @@ export function decide(s, content, x, idx, { again = false } = {}) {
   const held = () => (x.held ?? 0) < MAX_HOLD && (x.held = (x.held ?? 0) + 1);
   const due = (x.orders ?? []).filter(o => o.at !== undefined && o.at <= idx).sort((a, b) => a.at - b.at);
   if (due.length) {
-    for (const o of due) if (!o.used) { o.used = true; s.log.push({ at: idx, kind: 'order', ref: o.letter, choice: o.go }); }
+    const fresh = due.filter(o => !o.used);
+    const alone = fresh.length ? byTrait(s, content, x, idx, again) : null;   // what the agent would have done unasked, read before the order moves `held`
+    for (const o of fresh) { o.used = true; s.log.push({ at: idx, kind: 'order', ref: o.letter, choice: o.go }); }
     const go = due[due.length - 1].go;
     // an agent woken after a hold has already waited here, so a wait order has been kept
-    return go === WAIT && !again && held() ? WAIT : go === HOME ? HOME : ON;
+    const did = go === WAIT && !again && held() ? WAIT : go === HOME ? HOME : ON;
+    // the return paper tells the player what an order changed (routes.js `orderLine`): the last order is the one that acted
+    if (fresh.length && x.book) {
+      const stop = routeOf(content, x.route)?.legs?.[x.leg]?.from;
+      for (const o of fresh) (x.book.orders ??= []).push({ letter: o.letter, go: o.go, stop, did: o === due[due.length - 1] ? did : null, changed: o === due[due.length - 1] && did !== alone });
+    }
+    return did;
   }
   const asked = pending(s, x, idx);
   if (!asked.length) return ON;
@@ -203,6 +211,18 @@ export function decide(s, content, x, idx, { again = false } = {}) {
   if (traits.includes('bold')) return ON;
   const go = defaultOf(content, asked[asked.length - 1]);
   return go === WAIT ? (held() ? WAIT : ON) : go === HOME ? HOME : ON;
+}
+
+/** What `decide` would answer with no order due, changing nothing: used to tell whether an order changed what the agent did. */
+function byTrait(s, content, x, idx, again) {
+  const asked = pending(s, x, idx);
+  if (!asked.length) return ON;
+  const room = (x.held ?? 0) < MAX_HOLD;
+  const traits = agentOf(content, x.agent)?.traits ?? [];
+  if (traits.includes('careful') || wary(s, x.agent)) return room ? WAIT : ON;
+  if (again || traits.includes('bold')) return ON;
+  const go = defaultOf(content, asked[asked.length - 1]);
+  return go === WAIT ? (room ? WAIT : ON) : go === HOME ? HOME : ON;
 }
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];

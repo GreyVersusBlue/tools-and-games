@@ -13,7 +13,7 @@
 // risk (each season ridden is rolled), tolls (arrivals: toll, trade, start the next leg).
 // Trade is after risk, so a vessel lost on the way does not first sell its cargo.
 import { seasonIndex, seasonName, playedSeasons, actOfSeason, year } from './calendar.js';
-import { holds } from './conditions.js';
+import { holds, fillTrip, tripFacts, mainGoodOf } from './conditions.js';
 import { applyAll } from './effects.js';
 import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
@@ -257,7 +257,63 @@ function lostPaper(s, content, x, loss, leg) {
     lines.push({ label: 'The house', text: `${coins(content, costs.house)} of its money` });
     lines.push({ label: 'The partners', text: `${coins(content, costs.partners)} of theirs` });
   }
-  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, route: route.id, whole: loss.whole, survived: loss.survived, lines, costs } };
+  const idx = seasonIndex(s, content);
+  const trip = tripFacts(content, x.agent, route, leg.to, mainGoodOf(x.book?.cargo ?? x.cargo), idx + 1 - x.sent, x.id);
+  const entry = pickEntry(s, content, 'loss', { by: leg.by, whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
+  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, route: route.id, whole: loss.whole, survived: loss.survived, lines, costs, trip, ...askOf(content, entry, trip) } };
+}
+
+// ---------------------------------------------------------------------------------------------
+// What a return or a loss asks (returns.json, DESIGN 2.1 rules 3 and 4)
+
+/** Whether a trip's `facts` (one value per key) fit an entry's `facts`: every key the entry names must match.
+    A list holds the values that fit, `seasons` is a { gte, lte } range, a true-or-false key matches by truth. */
+function factsFit(want, have) {
+  for (const [k, w] of Object.entries(want ?? {})) {
+    const v = have[k];
+    if (k === 'seasons') { if (!Number.isFinite(v) || (w.gte !== undefined && v < w.gte) || (w.lte !== undefined && v > w.lte)) return false; }
+    else if (typeof w === 'boolean') { if (!!v !== w) return false; }
+    else if (!w.includes(v)) return false;
+  }
+  return true;
+}
+
+/** The entry of returns.json for `paper` ('return' or 'loss') that fits the trip's facts and whose `when` holds: the one
+    that names the most facts, then the heavier, then the first in the file. No draw is spent, so the seed's stream does
+    not move. null when none fits. */
+export function pickEntry(s, content, paper, facts) {
+  const fit = (content.returns ?? []).filter(e => e.paper === paper && (e.weight ?? 1) > 0 && factsFit(e.facts, facts) && holds(e.when, s, content));
+  const named = e => Object.keys(e.facts ?? {}).length;
+  return fit.reduce((best, e) => (!best || named(e) > named(best) || (named(e) === named(best) && (e.weight ?? 1) > (best.weight ?? 1)) ? e : best), null);
+}
+
+/** The `choices` slot of a paper: the entry's title, body and choices with the trip's words filled in ({agent}, {to},
+    {good}, {route}, {seasons}). The effects are the entry's own; nothing runs until a choice is made. */
+function askOf(content, entry, trip) {
+  if (!entry) return { entry: null, ask: null, choices: [] };
+  const fill = text => (text === undefined ? text : fillTrip(content, text, trip));
+  return {
+    entry: entry.id,
+    ask: { title: fill(entry.title) ?? null, body: fill(entry.body) ?? null },
+    choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })),
+  };
+}
+
+/** One sentence for a return whose orders changed what the expedition did (DESIGN 2.1 rule 5), or null. It is the last
+    order that acted: `decide` (letters.js) wrote what the agent did and whether the agent would have done it unasked. */
+export function orderLine(content, x) {
+  const o = (x.book?.orders ?? []).filter(e => e.changed).at(-1);
+  if (!o) return null;
+  const name = agentOf(content, x.agent)?.name ?? x.agent, at = stopName(content, o.stop);
+  const by = routeOf(content, x.route)?.legs?.find(l => l.from === o.stop && l.by)?.by;
+  const party = `the ${VESSEL[by] ?? 'party'}`;
+  if (o.did === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited a season there before going on.`;
+  if (o.did === HOME) {
+    if (x.book.turned === o.stop) return `Because you told ${name} to turn back at ${at}, ${party} came home from there.`;
+    return `Because you told ${name} to turn back at ${at}, ${party} would have, but no road leads home from there, so it went on.`;
+  }
+  if (o.go === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited as long as a trip may, then went on.`;
+  return `Because you told ${name} to go on from ${at}, ${party} did not wait there.`;
 }
 
 /** What a loss costs each party under the contract: the capital bears it in proportion to stake. */
@@ -729,10 +785,17 @@ function returnPaper(s, content, r) {
   }
   if (r.short) rows.push({ label: 'Not paid', text: `the house could not pay ${coins(content, r.short)} of what it owed, and its good name suffers` });
   const seasons = r.elapsed;
+  const trip = { ...tripFacts(content, x.agent, route, x.book.turned ?? route.to, mainGoodOf(book.cargo), seasons, x.id), orders: (book.orders ?? []).map(o => ({ ...o })) };
+  const line = orderLine(content, x);
+  const entry = pickEntry(s, content, 'return', {
+    outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even', agent: x.agent, to: trip.to, good: trip.good, seasons, orders: !!line,
+    contract: x.contract.kind, lost: Object.keys(book.lost ?? {}).length > 0,
+  });
   return {
     kind: 'return', ref: 'return', agent: x.agent, expedition: x.id,
     data: {
-      headline,
+      headline: line ? `${line} ${headline}` : headline,
+      orderLine: line, trip, ...askOf(content, entry, trip),
       route: `${homeName} to ${dest} and back, ${words(seasons)} ${plural(seasons, 'season', 'seasons')}`,
       account: rows, houseNet: n, outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even',
       shares: { agent: r.shares.agent, partners: r.shares.partners, house: r.shares.house },

@@ -2,6 +2,7 @@
   {
     "id": "yusuf-asks-for-work",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Yusuf, a trader of Cairo",
       "role": "Cairo",
@@ -68,6 +69,7 @@
   {
     "id": "qirad-offer",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Samir, a young man of Cairo",
       "role": "Cairo",
@@ -187,6 +189,7 @@
   {
     "id": "contract-limits",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Yusuf, your agent",
       "role": "Cairo",
@@ -261,6 +264,7 @@
   {
     "id": "mariam-asks-for-work",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Mariam, a trader",
       "role": "Cairo",
@@ -374,6 +378,7 @@
   {
     "id": "matteo-for-one-load",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Matteo, a Genoese trader",
       "role": "Cairo",
