@@ -16,6 +16,7 @@
       {
         "id": "begin",
         "label": "Let's begin",
+        "result": "Sabir opens the ledger. The first letters are already on the desk.",
         "now": [],
         "later": [
           {
@@ -65,6 +66,7 @@
       {
         "id": "begin",
         "label": "Let's begin",
+        "result": "Nabil hands you the keys. The first letters are already on the desk.",
         "now": [],
         "later": [
           {
