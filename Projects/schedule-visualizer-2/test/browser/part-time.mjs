@@ -519,6 +519,66 @@ test('16. an entry\'s days and periods offer "Every day" and "The whole day" as 
   await fresh();
 });
 
+test('17. the summary is said on close, and said again on a second close with the same words; a teacher with times opens on Not in school with the focus there', async () => {
+  await fresh();
+  await page.evaluate(() => {
+    globalThis.__said = [];
+    const node = document.getElementById('announcer');
+    globalThis.__sayer?.disconnect();
+    globalThis.__sayer = new MutationObserver(() => globalThis.__said.push(node.textContent));
+    globalThis.__sayer.observe(node, { childList: true, characterData: true, subtree: true });
+  });
+  const name = await page.evaluate((id) => globalThis.sv2.store.project.teachers.find((teacher) => teacher.id === id).name, T);
+  const summary = name + ': Full-time.';
+  const saidTimes = () => page.evaluate((words) => globalThis.__said.filter((each) => each === words).length, summary);
+  await open();
+  await page.keyboard.press('Escape');
+  await shows((words) => globalThis.__said.includes(words), summary);
+  await open();
+  await press(key('close'));
+  await shows((words) => globalThis.__said.filter((each) => each === words).length === 2, summary);
+  assert.equal(await saidTimes(), 2, 'said on each close');
+  const log = await page.evaluate(() => globalThis.__said.slice());
+  const second = log.lastIndexOf(summary);
+  assert.ok(log.slice(log.indexOf(summary) + 1, second).includes(''), 'emptied between the two, so the second is spoken: ' + JSON.stringify(log));
+  // a teacher with a time that is not weekdays only: Not in school is checked and has the focus (the checked radio of the group)
+  await setAway([P(3)]);
+  await open();
+  assert.equal(await page.$eval(key('radio:not'), (el) => el.checked), true);
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:radio:not');
+  await page.keyboard.press('Escape');
+  await shows((words) => globalThis.__said.some((each) => each.startsWith(words) && /Not in school in Period 4/.test(each)), name + ': ');
+  await page.evaluate(() => globalThis.__sayer.disconnect());
+  await fresh();
+});
+
+test('18. Edit then Cancel keeps the entry as it was, and the hint says Only in school on… replaces times set under Not in school', async () => {
+  await fresh();
+  await setAway([P(3), { dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await open();
+  await press(key('edit:0'));
+  await page.waitForSelector('[data-entry="0"] fieldset');
+  await press(key('e0:period:5'));
+  await press(key('e0:day:2'));
+  await press(key('e0:cancel'));
+  await page.waitForSelector(key('edit:0'));
+  assert.deepEqual(await formAt(), [], 'the form is closed');
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:edit:0', 'focus back on Edit');
+  assert.deepEqual(await away(), [P(3), { dayTypeIds: [], weekdays: [4], periods: [] }], 'nothing stored');
+  assert.match(await text('[data-entry="0"]'), /Period 4/);
+  assert.doesNotMatch(await text('[data-entry="0"]'), /Period 6/);
+  // the hint under Only in school on…
+  await press(key('radio:only'));
+  await shows((selector) => /Choosing days here replaces the times set under Not in school\./.test(document.querySelector(selector)?.textContent || ''), editor);
+  await press(key('day:2'));
+  await awayIs([{ dayTypeIds: [], weekdays: [2], periods: [] }]);
+  await settled();
+  assert.doesNotMatch(await text(editor), /replaces the times set under Not in school/, 'gone once the days are what is stored');
+  await undo();
+  await awayIs([P(3), { dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await fresh();
+});
+
 test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, and every control is 44 px', async () => {
   await fresh();
   await page.evaluate(() => globalThis.sv2.storage.flush());

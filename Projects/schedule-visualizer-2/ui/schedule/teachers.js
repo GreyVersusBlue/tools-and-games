@@ -201,10 +201,20 @@ export function mount(env) {
     env.render(partKey(teacher, 'radio:' + view.part.mode));
   }
 
+  // The summary is said once on close (16.12 item 4). The shell's polite
+  // announcer only speaks when its words change, so it is emptied first and
+  // given the words a moment later: closing twice on the same summary says it
+  // twice.
+  let summaryTimer = null;
   function closePart(teacher) {
     const fresh = ctx.store.project.teachers.find((each) => each.id === teacher.id);
     view.part = null;
-    if (fresh) ctx.announce(fresh.name + ': ' + partTimeWords(ctx.store.project, fresh) + '.');
+    if (fresh) {
+      const said = fresh.name + ': ' + partTimeWords(ctx.store.project, fresh) + '.';
+      clearTimeout(summaryTimer);
+      ctx.announce('');
+      summaryTimer = setTimeout(() => ctx.announce(said), 100);
+    }
     env.render(partKey(teacher, 'button'));
   }
 
