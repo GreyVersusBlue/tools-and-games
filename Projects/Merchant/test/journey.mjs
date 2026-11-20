@@ -1140,7 +1140,9 @@ try {
       eq(await engineState(page), JSON.parse(JSON.stringify(model)), 'the page sent what the engine would');
       const ts = await tokens(page);
       eq(ts.length, 1);
-      ok(ts[0].label.startsWith('Yusuf, home about '), ts[0].label);
+      // the season is the engine's own answer (view().homeBy), not a count the map makes (MER-93)
+      const by = eng.view(model, nodeContent).homeBy[model.expeditions.at(-1).id].season;
+      eq(ts[0].label, `Yusuf, home about ${by}`);
       const cairoDot = await page.$eval('.dot[data-stop="cairo"]', d => [parseFloat(d.style.left), parseFloat(d.style.top)]);
       eq([ts[0].left, ts[0].top], cairoDot, 'a sent expedition is at its first stop');
       ok((await page.$eval('#map-toast', e => e.textContent)).includes('Yusuf set out for Damascus'));
@@ -1231,7 +1233,8 @@ try {
         });
         const want = [info.a[0] + (info.b[0] - info.a[0]) * 0.25, info.a[1] + (info.b[1] - info.a[1]) * 0.25];
         ok(Math.abs(ts[0].left - want[0]) < 0.15 && Math.abs(ts[0].top - want[1]) < 0.15, `token at ${ts[0].left}, ${ts[0].top}, a quarter along is ${want}`);
-        ok(ts[0].label.startsWith('2 expeditions, home about '), ts[0].label);
+        const soonest = await page.evaluate(() => Object.values(window.__merchant.view.homeBy).sort((p, q) => p.in - q.in)[0].season);
+        eq(ts[0].label, `2 expeditions, home about ${soonest}`, 'a stack says the soonest of its trips, from the engine\'s view');
       });
     }
     await page.close();
@@ -1827,7 +1830,7 @@ try {
       await test(`${how}: the ledger's road and people sections name where each is, when due, the traits and trust in words, and the four reputations with numbers`, async () => {
         const trip = (await texts(page, '#ledger-trips li'))[0];
         ok(trip.startsWith('Yusuf to Damascus Last heard of on the '), trip);
-        ok(/Due home about (Spring|Summer|Autumn|Winter) \d{4}\.$/.test(trip), trip);
+        ok(trip.endsWith(`Due home about ${eng.view(book, nodeContent).homeBy[book.expeditions[0].id].season}.`), trip);
         eq(await page.$$eval('#ledger-trips li', es => es.length), book.expeditions.length);
         const yusuf = await page.$eval('[data-agent="yusuf"]', e => e.textContent.replace(/\s+/g, ' ').trim());
         eq(yusuf, 'Yusuf careful, knows Damascus Yusuf is uneasy with the house. On the road to Damascus.');
