@@ -2,8 +2,7 @@
 // title, body and source line; one not yet met is a blank ruled line, and the count says how many
 // are found. Entries stand in the order they were met (state.notebook is that order).
 import { h } from '../dom.js';
-// index.js is MER-92's and does not export readEntry yet; it should, and this import then moves there.
-import { readEntry } from '../../engine/turn.js';
+import { readEntry } from '../../engine/index.js';
 
 export const TABS = [['terms', 'Terms'], ['places', 'Places'], ['people', 'People'], ['goods', 'Goods']];
 

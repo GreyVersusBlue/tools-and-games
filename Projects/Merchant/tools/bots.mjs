@@ -28,7 +28,7 @@ import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { loadContent } from '../js/data.js';
-import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score, proposePlan, estimate } from '../js/engine/index.js';
+import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score, proposePlan, estimate, readEntry } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 import { outEnd, jumpChances } from '../js/engine/routes.js';
 import { truePrice, baseOf } from '../js/engine/market.js';
@@ -397,6 +397,8 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
     }
   }
   if (s.phase !== 'ended') throw new Error(`bots: game ${bot}/${seed} did not end (phase ${s.phase})`);
+  // A player who finds a notebook page opens it to read it (DESIGN 2.2 rule 6): every bot reads what it found.
+  for (const id of s.notebook ?? []) s = readEntry(s, content, id);
   out.worth = netWorth(s, content);
   const sc = score(s, content);   // the engine's own score of the finished game (ARCHITECTURE 4.10)
   out.score = sc.total;

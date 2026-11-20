@@ -105,7 +105,7 @@ test('state: freshState has every field of ARCHITECTURE 3 with the right type', 
   eq(s.score, null);
   eq(s.phase, 'desk');
   eq(Object.keys(s).sort(), ['agents', 'city', 'desk', 'done', 'expeditions', 'flags', 'house', 'known', 'length', 'loans', 'log', 'market',
-    'money', 'notebook', 'phase', 'post', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
+    'money', 'notebook', 'notebookRead', 'phase', 'post', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
 });
 test('state: the house sets money, stock, hired agents and reputation; the market starts level', () => {
   const s = fresh();
