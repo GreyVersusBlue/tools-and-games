@@ -1191,6 +1191,21 @@ try {
     }
     await page.waitForSelector('#outfit-send');
 
+    await test('MER-72: the first card\'s choice takes no money; Back, and a reload, before Send leave the house as it was', async () => {
+      eq(await moneyOf(page), before, 'choosing "Send Yusuf" took nothing');
+      const state0 = await engineState(page);
+      eq(state0.expeditions, [], 'nobody has left');
+      ok((await page.$eval('#outfit-cost-total', e => e.textContent)).startsWith('Send takes 0 dinars.'), await page.$eval('#outfit-cost-total', e => e.textContent));
+      await page.click('#outfit-cancel');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      eq(await moneyOf(page), before, 'Back to the map: money as it was');
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('#screen-map[data-ready], #screen-desk');
+      eq(await moneyOf(page), before, 'reload: money as it was');
+      eq((await engineState(page)).expeditions, [], 'reload: Yusuf is still at home');
+      eq((await engineState(page)).agents.yusuf.where, 'cairo');
+    });
+
     await test('MER-72: the purse moves by 50 a press, 10 with Shift, and a typed amount is taken, commas and all', async () => {
       await goMap(page);
       await page.click('#btn-outfit');
