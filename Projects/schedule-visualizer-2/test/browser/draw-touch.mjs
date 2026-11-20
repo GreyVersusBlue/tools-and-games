@@ -270,8 +270,10 @@ test('a pen draws, and a newly drawn room takes the number as a mouse\'s would',
 });
 
 test('the pen\'s barrel button moves the map, and a palm that rests while the pen is down does nothing', async () => {
-  const before = await state(page);
+  // SV2-134: the key comes first: leaving the Room tool takes its options row away and the plan
+  // grows, which moves the view; the map's own move is measured from where it then is
   await page.keyboard.press('c');
+  const before = await state(page);
   const at = await point(page, 30, 20);
   await pen('mouseMoved', at, 'none', 0);
   await pen('mousePressed', at, 'right', 2);
