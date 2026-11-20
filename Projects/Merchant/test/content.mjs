@@ -212,6 +212,7 @@ test('validate: every condition leaf is accepted, and agrees with the engine\'s 
     season: { season: ['spring'] }, year: { year: [1200, 1202] }, act: { act: 1 }, length: { length: 'acts' },
     notebook: { notebook: 'testport' }, out: { out: { lte: 2 } }, money: { money: { lte: 900 } },
     stock: { stock: 'wool', gte: 1 }, flag: { flag: 'x', not: true }, rep: { rep: 'partners', gte: 1 }, agent: { agent: 'mira', hired: true },
+    trip: { trip: { agent: 'mira', is: 'ready' } },
   };
   eq(Object.keys(samples).sort(), Object.keys(CONDITION_LEAVES).sort());
   const c2 = variant(c => { c.notebook = entries; });
@@ -235,7 +236,7 @@ test('validate: a bad condition is an error', () => {
 });
 test('validate: a letter\'s when may test the expedition, a card\'s may not', () => {
   const letter = { id: 'road-1', kind: 'question', title: 'A question from the road', body: 'Mira asks what to do.', when: { leg: { by: 'mules' } },
-    choices: [{ id: 'go', label: 'Go on', now: [{ order: { do: 'go' } }] }, { id: 'wait', label: 'Wait', now: [{ order: { do: 'wait' } }] }],
+    choices: [{ id: 'go', label: 'Go on', now: [{ order: { go: 'on' } }] }, { id: 'wait', label: 'Wait', now: [{ order: { go: 'wait' } }] }],
     note: 'An invented letter.', sources: [{ src: 'testport-fiction' }] };
   eq(problemsOf(variant(c => { c.letters = [letter]; })), []);
   ok(problemsOf(variant(c => { c.letters = [{ ...letter, kind: 'report', choices: letter.choices }]; })).some(x => /not orders/.test(x.message)));
@@ -310,7 +311,7 @@ test('rule 4: dominates needs better somewhere and no worse anywhere', () => {
   ok(!dominates({ money: 5 }, { money: 0, 'stock:wool': 1 }), 'a trade-off is not domination');
 });
 test('rule 4: only the opening letters named in the lint\'s head are exempt', () => {
-  eq(OPENING_LETTERS, { cairo: ['opening-letter', 'opening-letter-broker'], testport: ['welcome-note'] });
+  eq(OPENING_LETTERS, { cairo: ['opening-letter', 'opening-letter-broker', 'first-expedition'], testport: ['welcome-note'] });
   const dominated = id => variant(c => {
     c.cards.find(x => x.id === 'welcome-note').id = id;
     c.city.opening = { plain: [id, 'wool-offer'], rich: [id, 'salt-dispute'] };

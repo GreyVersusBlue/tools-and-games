@@ -211,9 +211,17 @@
         "label": "Sell in her market",
         "hint": "Her fee is high. Your neighbours will see you go.",
         "requires": {
-          "money": {
-            "gte": 30
-          }
+          "all": [
+            {
+              "money": {
+                "gte": 30
+              }
+            },
+            {
+              "stock": "linen",
+              "gte": 1
+            }
+          ]
         },
         "now": [
           {
@@ -263,6 +271,219 @@
       {
         "src": "agir-2017",
         "at": "Introduction n. 11, and Background n. 24; the count of markets, and shops of one trade standing together"
+      }
+    ],
+    "when": {
+      "stock": "linen",
+      "gte": 1
+    }
+  },
+  {
+    "id": "grain-from-syria",
+    "group": "news",
+    "from": {
+      "name": "Bilal, a grain buyer",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Bread is dear",
+    "body": "Bread is dear in Cairo this year. The sultan has grain brought up from Syria and Palestine, and buyers crowd the markets. Bilal needs carts for the grain roads, and he asks if the house will lend two.",
+    "when": {
+      "year": [
+        1336,
+        1336
+      ]
+    },
+    "weight": 6,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "carts",
+        "label": "Lend two carts for a fee",
+        "hint": "You earn 20 dinars. The street will talk, and the officers will remember.",
+        "now": [
+          {
+            "money": 20
+          },
+          {
+            "rep": "partners",
+            "by": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "bread",
+        "label": "Give bread money to your street",
+        "hint": "It costs 20 dinars. Your neighbours will remember.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "own",
+        "label": "Keep your carts for your own goods",
+        "hint": "Nothing changes for the house.",
+        "now": [
+          {
+            "flag": "grain-carts-kept",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "In 1336 Cairo had one of its ten big food shortages. The sultan ordered grain to be brought in from Syria and Palestine. A historian of Cairo's grain prices reports this.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "soderberg-2007",
+        "at": "p. 198 and note 8; the sultan's order of 1336, which he takes from Shoshan 1993, p. 61"
+      }
+    ]
+  },
+  {
+    "id": "rival-asks-about-yusuf",
+    "group": "news",
+    "from": {
+      "name": "A friend in the market",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Another house asks about Yusuf",
+    "body": "A friend warns you. The Mansur house is asking what you pay Yusuf. A big house can offer more than a small one. Yusuf has said nothing to you about it.",
+    "when": {
+      "all": [
+        {
+          "agent": "yusuf",
+          "hired": true,
+          "where": "cairo"
+        },
+        {
+          "rep": "agents",
+          "lte": 0
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "ask",
+        "label": "Ask Yusuf if he is content",
+        "hint": "It costs 5 dinars for the visit. He will tell you the truth.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "raise",
+        "label": "Raise his pay a little and tell him why",
+        "hint": "It costs 15 dinars. Other agents will hear of it.",
+        "requires": {
+          "money": {
+            "gte": 15
+          }
+        },
+        "now": [
+          {
+            "money": -15
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "silent",
+        "label": "Say nothing and watch",
+        "hint": "It costs nothing now. Yusuf may feel unseen.",
+        "now": [
+          {
+            "flag": "yusuf-watched",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A big Jewish merchant house of the 1020s and 1030s traded flax. It is said to have used a whole army of Jewish and Muslim agents. Two scholars report this from an earlier historian, Norman Stillman.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "edwards-ogilvie-2008",
+        "at": "p. 17; the whole army of agents, from Stillman, as they report it"
       }
     ]
   }

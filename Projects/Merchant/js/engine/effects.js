@@ -8,11 +8,12 @@
 // in the content.
 import { seasonIndex } from './calendar.js';
 import { find, addPaper, REP_GROUPS } from './state.js';
+import { leftHow } from './agents.js';
 
 const ARGS = {
   money: [], stock: ['by'], rep: ['by'], trust: ['by'], memory: ['kind'],
   flag: ['set', 'clear'], price: ['good', 'by'], loan: [], hire: [], dismiss: [],
-  card: [], unlock: [], order: [],
+  card: [], unlock: [], order: [], outfit: ['contract'],
 };
 export const EFFECT_KEYS = Object.keys(ARGS);
 
@@ -26,6 +27,52 @@ function agentId(state, ref, ctx) {
   if (!id) throw new Error('effect: "$agent" used on a paper with no agent');
   if (!state.agents[id]) throw new Error(`unknown agent "${id}"`);
   return id;
+}
+
+const nameOf = (content, id) => (content.agents ?? []).find(a => a.id === id)?.name ?? id;
+
+/** The agent a trust or memory effect names. A queued effect (it fires seasons after the choice) that
+    names an agent who has since left throws, so `fireDue` drops the item and logs it; a trial run
+    of the same effect at the choice does not, since the agent was there when it was chosen. */
+function stayedId(state, content, ref, ctx, what) {
+  const id = agentId(state, ref, ctx);
+  if (ctx.later && !ctx.dry && state.agents[id].where === 'gone') {
+    const gone = leftHow(state, id) === 'retired' ? 'has retired' : 'has left the house';
+    throw new Error(`${nameOf(content, id)} ${gone}, so their ${what} cannot change`);
+  }
+  return id;
+}
+
+// The keys of a card's `when`, a choice's `requires` and its effects that name an agent.
+const NAMES_AGENT = ['agent', 'trust', 'memory', 'hire', 'dismiss', 'outfit'];
+
+/** Every agent a card names, in its `when`, its choices' `requires`, and the effects of its choices
+    (now and later): an id, or "$agent" read as the paper's agent. A string that is not an agent of
+    the game is not a name. */
+function agentsNamed(state, node, ctx, out = new Set()) {
+  if (Array.isArray(node)) for (const n of node) agentsNamed(state, n, ctx, out);
+  else if (node && typeof node === 'object') {
+    for (const [k, v] of Object.entries(node)) {
+      if (NAMES_AGENT.includes(k) && typeof v === 'string') {
+        const id = v === '$agent' ? ctx.agent : v;
+        if (id && state.agents[id]) out.add(id);
+      } else agentsNamed(state, v, ctx, out);
+    }
+  }
+  return out;
+}
+
+/** A follow-up card is not drawn for an agent who has left: when its `when` or any choice names one
+    who is gone, the queue item throws here and `fireDue` drops it and logs why (MER-61c). A trial run
+    at the choice does not throw, since the agent was there when it was chosen. */
+function stayedCard(state, content, id, ctx) {
+  if (ctx.dry) return;
+  const card = find(content.cards, id, 'card');
+  for (const a of agentsNamed(state, { when: card.when, choices: card.choices }, ctx)) {
+    if (state.agents[a].where !== 'gone') continue;
+    const gone = leftHow(state, a) === 'retired' ? 'has retired' : 'has left the house';
+    throw new Error(`${nameOf(content, a)} ${gone}, so "${id}" is not drawn`);
+  }
 }
 
 /** Structure check only: returns the effect's head key or throws. */
@@ -59,13 +106,13 @@ export function apply(state, content, effect, ctx = {}) {
       state.rep[v] = clamp3(state.rep[v] + whole(effect.by, 'rep'));
       return;
     case 'trust': {
-      const a = state.agents[agentId(state, v, ctx)];
+      const a = state.agents[stayedId(state, content, v, ctx, 'trust')];
       a.trust = clamp3(a.trust + whole(effect.by, 'trust'));
       return;
     }
     case 'memory':
       if (typeof effect.kind !== 'string') throw new Error('effect memory: needs a kind');
-      state.agents[agentId(state, v, ctx)].memory.push({ at: nowOf(state, content, ctx), kind: effect.kind });
+      state.agents[stayedId(state, content, v, ctx, 'memory')].memory.push({ at: nowOf(state, content, ctx), kind: effect.kind });
       return;
     case 'flag':
       if (typeof v !== 'string') throw new Error('effect flag: needs a name');
@@ -91,15 +138,21 @@ export function apply(state, content, effect, ctx = {}) {
       state.money += v.principal;
       return;
     }
-    case 'hire':
-      state.agents[agentId(state, v, ctx)].hired = true;
+    case 'hire': {
+      const id = agentId(state, v, ctx);
+      if (state.agents[id].where === 'gone') {
+        throw new Error(`${nameOf(content, id)} ${leftHow(state, id) === 'retired' ? 'has retired' : 'has gone to work for another house'} and cannot be hired again`);
+      }
+      state.agents[id].hired = true;
       return;
+    }
     case 'dismiss':
       state.agents[agentId(state, v, ctx)].hired = false;
       return;
     case 'card':
       if (!ctx.later) throw new Error('effect card: only inside a later effect');
       find(content.cards, v, 'card');
+      stayedCard(state, content, v, ctx);
       if (ctx.dry) return;
       // follow-ups go first, in firing order; the caller numbers them (id null until then)
       if (!addPaper(state, { kind: 'card', ref: v, ...(ctx.agent ? { agent: ctx.agent } : {}), ...(ctx.expedition ? { expedition: ctx.expedition } : {}) }, { first: true })) {
@@ -111,6 +164,15 @@ export function apply(state, content, effect, ctx = {}) {
       if (typeof v !== 'string') throw new Error('effect unlock: needs an entry id');
       if (!state.notebook.includes(v)) state.notebook.push(v);
       return;
+    case 'outfit': {
+      // Opens the outfit sheet for this agent and contract (the screens read the effect off the choice).
+      // It moves no money and changes nothing: the money moves only at Send. It is refused, so the
+      // choice is not open, for an agent who could not be sent.
+      const id = agentId(state, v, ctx), a = state.agents[id];
+      if (!['own', 'qirad'].includes(effect.contract)) throw new Error(`effect outfit: no contract called "${effect.contract}"`);
+      if (!a.hired || a.where !== content.city?.home || state.expeditions.some(x => x.agent === id)) throw new Error(`${nameOf(content, id)} is not free to be sent out`);
+      return;
+    }
     case 'order': {
       const x = ctx.expedition && state.expeditions.find(e => e.id === ctx.expedition);
       if (!x) throw new Error('effect order: only on a letter from an expedition on the road');

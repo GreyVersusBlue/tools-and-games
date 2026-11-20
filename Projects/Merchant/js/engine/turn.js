@@ -5,25 +5,26 @@
 // can replace a stub:
 //   open:  returns, letters, news, events, drawCards
 //   close: move, risk, tolls, drift, fireDue, advance, (jump), end, then open
-// letters is a stub here; its unit fills it in. Expeditions and the jump are routes.js, markets
-// market.js.
+// Expeditions and the jump are routes.js, letters from the road letters.js, markets market.js.
 import { playedSeasons, seasonIndex, seasonName, year, actOf, actPosition, isLastSeason } from './calendar.js';
-import { holds } from './conditions.js';
+import { holds, describeTrips } from './conditions.js';
 import { apply, applyAll, check } from './effects.js';
 import { find, addPaper, deskFull, cityOf, MAX_PAPERS } from './state.js';
 import { weighted } from './rng.js';
 import * as market from './market.js';
 import * as routes from './routes.js';
+import * as letters from './letters.js';
+import * as agents from './agents.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
 
-const noop = () => {};
-
 export const steps = {
   // opening a season
+  agents(s, content) { agents.opening(s, content); },
+  settle(s) { agents.settle(s); },
   returns(s, content) { routes.returns(s, content); },
-  letters: noop,
+  letters(s, content) { letters.letters(s, content); },
   news(s, content) {
     // city.json's priceNews (default true) turns price letters off for a city
     if (content.city?.priceNews === false) return;
@@ -101,6 +102,7 @@ function numberPapers(s) {
 }
 
 function open(s, content) {
+  steps.agents(s, content);
   steps.returns(s, content);
   steps.letters(s, content);
   steps.news(s, content);
@@ -166,11 +168,14 @@ export function openSeason(state, content) {
 /** Papers that tell the player something and are answered with "ok": no card behind them. */
 const INFO = { notice: 'Noted', news: 'Noted', return: 'Into the ledger', lost: 'Noted', accounts: 'Noted' };
 
+/** The card or letter a paper was drawn from. */
+const definition = (content, p) => find(p.kind === 'letter' ? content.letters : content.cards, p.ref, p.kind === 'letter' ? 'letter' : 'card');
+
 export function paperChoices(state, content, paperId) {
   const p = state.desk.find(x => x.id === paperId);
   if (!p) throw new Error(`no paper "${paperId}" on the desk`);
   if (p.kind in INFO) return [{ id: 'ok', label: INFO[p.kind] }];
-  return structuredClone(find(content.cards, p.ref, 'card').choices ?? []);
+  return structuredClone(definition(content, p).choices ?? []);
 }
 
 export function choose(state, content, paperId, choiceId) {
@@ -184,18 +189,19 @@ export function choose(state, content, paperId, choiceId) {
   if (paper.kind in INFO) {
     if (choiceId !== 'ok') throw new Error(`choose: a notice is answered with "ok"`);
   } else {
-    const card = find(content.cards, paper.ref, 'card');
+    const card = definition(content, paper);
     const choice = (card.choices ?? []).find(c => c.id === choiceId);
     if (!choice) throw new Error(`choose: card "${card.id}" has no choice "${choiceId}"`);
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
     const ctx = { agent: paper.agent, expedition: paper.expedition };
     const refuse = e => new Error(`choose: "${choice.label}" on card "${card.id}" is refused: ${e.message}`);
     const later = choice.later ?? [];
+    const now = paper.kind === 'letter' ? letters.reachable(s, paper, choice.now) : choice.now;
     // Every reference in `later` is checked now, on a scratch copy, so a bad card id, good,
     // stop or agent refuses the choice here and never throws when the item fires.
     const trial = clone(s);
     try {
-      applyAll(trial, content, choice.now, ctx);
+      applyAll(trial, content, now, ctx);
       for (const l of later) {
         if (!Number.isInteger(l.in) || l.in < 1) throw new Error(`later.in must be a whole number above 0`);
         const item = { do: l.do ?? [], ...(l.card ? { card: l.card } : {}) };
@@ -205,7 +211,8 @@ export function choose(state, content, paperId, choiceId) {
         applyAll(trial, content, item.do, { ...ctx, later: true, dry: true });
       }
     } catch (e) { throw refuse(e); }
-    applyAll(s, content, choice.now, ctx);
+    applyAll(s, content, now, ctx);
+    if (paper.kind === 'letter') letters.stamp(s, paper, idx);
     for (const l of later) {
       s.queue.push({
         at: idx + l.in, do: structuredClone(l.do ?? []), ...(l.card ? { card: l.card } : {}),
@@ -233,6 +240,7 @@ export function endSeason(state, content) {
   const can = canEndSeason(state);
   if (!can.ok) throw new Error(`endSeason: ${can.reason}`);
   const s = clone(state);
+  const moneyAtClose = s.money;
   s.desk = [];
   s.done = [];
   steps.move(s, content);
@@ -240,12 +248,27 @@ export function endSeason(state, content) {
   steps.tolls(s, content);
   steps.drift(s, content);
   steps.fireDue(s, content);
-  const before = seasonIndex(s, content);
+  steps.settle(s);
+  const closing = seasonIndex(s, content), first = s.t === 0;
   const moved = steps.advance(s, content);
-  if (moved && seasonIndex(s, content) - before > 1) steps.jump(s, content);
+  if (moved && seasonIndex(s, content) - closing > 1) steps.jump(s, content);
+  logSeason(s, content, moneyAtClose, closing, first); // after the jump, so its money is in the season it happened
   steps.end(s, content, moved);
   if (s.phase === 'desk') open(s, content);
   return s;
+}
+
+/** One `{ at, kind: 'season', change, money }` entry per closed season, for the ledger. `change`
+    is the net dinars from the end of the season before to the end of this one (the opening's
+    returns, the answers at the desk and the closing steps all count), `money` what the house had
+    then, which is where the next season's change starts. The first season starts from its
+    house's money; a save from before this entry reads its first change from the money it was
+    holding when the season closed. */
+function logSeason(s, content, moneyAtClose, at, firstSeason) {
+  const last = [...s.log].reverse().find(e => e.kind === 'season' && Number.isInteger(e.money));
+  const start = (content.houses ?? []).find(h => h.id === s.house)?.money ?? 0;
+  const from = last ? last.money : (firstSeason ? start : moneyAtClose);
+  s.log.push({ at, kind: 'season', change: s.money - from, money: s.money });
 }
 
 /** The ending's last choice (ARCHITECTURE 4.9): routes.js rolls each expedition and each agent at home. */
@@ -269,6 +292,9 @@ export function view(state, content) {
     last: isLastSeason(state, content),
     phase: state.phase,
     prices: market.knownPrices(state, content),
+    letters: letters.describe(state, content),
+    cards: describeTrips(state, content),   // filled words of the cards that tell of a trip, by paper id
+    ...agents.standing(state, content),
     interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,
   };
 }

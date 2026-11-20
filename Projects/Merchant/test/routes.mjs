@@ -63,7 +63,7 @@ test('outfit refuses each bad plan with its reason in words, and checkPlan says 
     ['half a load', { ...WOOL, cargo: { wool: 1.5 } }, /1.5 is not a number of loads/],
     ['nothing carried at all', { ...WOOL, cargo: {}, purse: 0 }, /Send some goods or some coins/],
     ['a good the house lacks and home does not sell', { ...WOOL, cargo: { lamps: 3 }, sell: [] }, /none in the warehouse and Harbour does not sell lamps/],
-    ['more money than the house has', { ...WOOL, purse: 9999 }, /The house has 500 coins and this costs 9999 coins/],
+    ['more money than the house has', { ...WOOL, purse: 9999 }, /The house has 500 coins and this costs 9,999 coins/],
     ['selling what is not carried', { ...WOOL, sell: ['salt'] }, /Mira is not carrying any salt to sell/],
     ['selling where the stop does not trade the good', { ...WOOL, cargo: { wool: 1, salt: 1 }, sell: ['salt'] }, /Hilltown does not trade in salt/],
     ['buying what the stop does not have', { ...WOOL, buy: ['lamps'] }, /Hilltown has no lamps to buy/],
@@ -85,6 +85,50 @@ test('outfit refuses each bad plan with its reason in words, and checkPlan says 
   ok(reasons(sent, calm, WOOL).some(m => /Mira is already on the road/.test(m)), 'an agent already out');
   ok(reasons({ ...s, agents: { ...s.agents, mira: { ...s.agents.mira, where: 'dead' } } }, calm, WOOL).some(m => /Mira is not in Harbour/.test(m)), 'an agent who is not at home');
   eq(s.expeditions.length, 0, 'checkPlan and a refused outfit leave the state alone');
+});
+
+// ---- MER-72: the number on the sheet is the number taken
+test('estimate: checkPlan\'s cost.total is exactly what outfit takes from the house, for an own plan, a qirad and a bought-in cargo', () => {
+  const c = variant(calm, x => { x.city.contracts = { qirad: { agentShare: [1, 3] } }; });
+  const s = game(c);
+  const plans = [
+    ['stock only', { ...WOOL, cargo: { wool: 10 } }],
+    ['bought in, price rising with each load', { ...WOOL, cargo: { wool: 28 }, purse: 10 }],
+    ['a qirad: the partners\' share is not the house\'s', { ...WOOL, cargo: { wool: 20 }, purse: 100, contract: 'qirad', partners: 60 }],
+    ['money only', { ...WOOL, cargo: {}, purse: 75, sell: [] }],
+  ];
+  for (const [what, plan] of plans) {
+    const chk = checkPlan(s, c, plan);
+    ok(chk.ok, `${what}: ${JSON.stringify(chk.reasons)}`);
+    const t = outfit(s, c, plan);
+    eq(chk.cost.total, s.money - t.money, `${what}: the estimate is the amount taken, to the coin`);
+    const parts = chk.cost.bought + chk.cost.purse - chk.cost.partners + chk.cost.wagePaid;
+    eq(parts, chk.cost.total, `${what}: the listed parts add up to the total`);
+    eq(chk.cost.goods.reduce((n, g) => n + g.cost, 0), chk.cost.bought, `${what}: the goods lines add up to what was bought`);
+  }
+  // the bought-in line prices each load as the market will, not at the flat home price
+  const dear = checkPlan(s, c, { ...WOOL, cargo: { wool: 28 } }).cost;
+  const flat = (dear.goods[0].bought) * M.truePrice(s, c, 'harbour', 'wool');
+  ok(dear.goods[0].bought === 18 && dear.goods[0].cost > flat, `twenty loads bought cost ${dear.goods[0].cost}, more than ${flat} at the flat price`);
+  eq(dear.goods[0].fromWarehouse, 10);
+});
+
+test('estimate: what the road takes later is listed apart from what is taken now, and a prepaid wage moves into the total', () => {
+  const s = game();
+  const k = checkPlan(s, calm, WOOL).cost;
+  eq(k.later.wagePerSeason, 10, 'Mira\'s wage');
+  ok(k.later.wage > 0 && k.later.tolls >= 0, JSON.stringify(k.later));
+  eq(k.total, 0, 'a cargo from the warehouse and no purse costs nothing at Send');
+  eq(checkPlan(s, calm, { ...WOOL, cargo: {} , purse: 0 }).cost.later, k.later, 'the road costs the same whatever is on it');
+  ok(checkPlan(s, calm, { ...WOOL, route: undefined }).cost.later === null, 'no road, nothing known of it');
+  eq(checkPlan(s, calm, undefined).cost, null, 'no plan, no cost');
+});
+
+test('refusals write numbers with commas, on any machine', () => {
+  const rich = game(calm, { house: 'rich' });
+  const r = reasons(rich, calm, { ...WOOL, purse: 1234567 });
+  ok(r.some(m => /costs 1,234,567 coins/.test(m)), JSON.stringify(r));
+  ok(reasons(game(), calm, { ...WOOL, purse: 999 }).some(m => /costs 999 coins/.test(m)), 'three digits carry no comma');
 });
 
 test('outfit: a qirad needs partners, and partners cannot put in more than goes out', () => {
@@ -203,7 +247,9 @@ function ride(s, c, seen = () => {}) {
 }
 
 test('a careful agent plays out the seasons project() counted: the later leg of two seasons or more starts with one more', () => {
-  const c = risk(T, 0);
+  // MER-60: testport has letters now, and a careful agent who has asked a question waits at the end of the leg
+  // (test/letters.mjs), so this case, which is about legs, plays without any.
+  const c = variant(risk(T, 0), y => { y.letters = []; });
   const road = c.routes.find(r => r.id === 'harbour-hilltown');
   const s = game(c, { house: 'rich' });
   for (const [name, agent, seasons, later] of [['careful', 'mira', 7, 3], ['bold', 'tobin', 6, 2]]) {
@@ -682,8 +728,10 @@ test('the act jump: loans fall due with interest for the years passed, and what 
 test('the act jump: trust halves toward 0, an agent at -2 or lower leaves, and some retire', () => {
   const c = risk(T, 0);
   let s = game(c, { length: 'acts', house: 'rich' });
-  s.agents.mira.trust = 3; s.agents.tobin.trust = -2;
-  s = play(s, c, 3);
+  s.agents.mira.trust = 3;
+  s = play(s, c, 2);
+  s.agents.tobin.trust = -2;   // set late: an agent at home with -2 at an opening leaves then, before any jump
+  s = play(s, c, 1);
   eq([s.agents.tobin.hired, s.agents.tobin.where], [false, 'gone']);
   ok(s.agents.mira.trust === 1 || s.agents.mira.where === 'gone', `mira's trust 3 halves to 1: ${s.agents.mira.trust}`);
   eq(view(s, c).interlude.agents.find(a => a.id === 'tobin'), { id: 'tobin', left: 'trust' });
@@ -902,17 +950,28 @@ test('gold is traded by the chest: the goods file says so, and the account says 
 
 /** Plays a game to its end with a scripted plan: answer everything, send whoever is free to each stop in
     turn when suggestPlan has a plan, recall everyone at the end. */
-function run(c, { seed, length, house, stops }) {
+/** A plan for the final season: the first free agent, one load of a good the stop trades bought at home if the warehouse has none, the house's own contract. */
+function lastPlan(s, c, stop) {
+  const home = c.city.home;
+  const agent = c.agents.find(a => s.agents[a.id].hired && s.agents[a.id].where === home && !s.expeditions.some(x => x.agent === a.id));
+  const good = Object.keys(s.market[home] ?? {}).find(g => c.stops.find(x => x.id === stop)?.sells?.[g]);
+  const hit = agent && good && R.routeFor(s, c, stop, agent);
+  const plan = hit && { agent: agent.id, route: hit.route.id, cargo: { [good]: 1 }, purse: 0, contract: 'own', sell: [good], buy: [] };
+  return plan && checkPlan(s, c, plan).ok ? plan : null;
+}
+function run(c, { seed, length, house, stops, last = [] }) {
   let s = newGame(c, { seed, length, house });
-  let sent = 0;
+  let sent = 0, lastSent = false;
   while (s.phase !== 'recall') {
     if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
     s = answer(s, c);
     for (const stop of stops) { const p = suggestPlan(s, c, stop); if (p) { s = outfit(s, c, p); sent++; } }
+    // `last`: in the final season send one more, to the first of these stops the house can, so an expedition has just left when the game ends
+    if (view(s, c).last) for (const stop of last) { const p = !lastSent && lastPlan(s, c, stop); if (p) { s = outfit(s, c, p); sent++; lastSent = true; } }
     s = endSeason(s, c);
   }
   const decisions = Object.fromEntries(s.expeditions.map(x => [x.id, 'recall']));
-  return { s: recall(s, c, decisions), sent };
+  return { s: recall(s, c, decisions), sent, lastSent };
 }
 const sound = s => {
   ok(Number.isInteger(s.money) && s.money >= 0, `money ${s.money}`);
@@ -938,8 +997,11 @@ test('a seeded testport game with a scripted plan runs to the end in both length
 });
 
 test('a seeded cairo three-act game with a scripted plan runs to the end in Node, jumps twice, and ends with the recall', () => {
-  const a = run(C, { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
-  const b = run(C, { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
+  // an expedition is sent in the final season, so it is on the road when the game ends whatever the cards drew
+  const plan = { seed: 10, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  const a = run(C, plan);
+  const b = run(C, plan);
+  ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');
   eq(a.s.phase, 'ended');
   sound(a.s);
   eq(JSON.stringify(a.s), JSON.stringify(b.s), 'a second run is the same game');

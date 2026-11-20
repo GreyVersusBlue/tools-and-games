@@ -18,9 +18,11 @@ import { applyAll } from './effects.js';
 import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
 import * as M from './market.js';
-import { riskFactor, bargain, legSeasons } from './agents.js';
+import { riskFactor, bargain, legSeasons, returnTrust, refusesOwn, refusesAny } from './agents.js';
+import { decide, close, seasonsLeft, MAX_HOLD, WAIT, HOME } from './letters.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
+export const QIRAD_STAKE = 60;      // coins the partners put in for a suggested qirad, at most (a fifth of the house's money when that is less)
 export const UPKEEP = 4;            // coins a season for an expedition waiting at a stop (an estimate; the bots tune it)
 // What happens to an expedition that is lost, and to an agent at home across the act jump: the
 // defaults for city.json's `jump` block (ARCHITECTURE 5.1). A loss is rolled the same way on the
@@ -31,7 +33,7 @@ export const DEFAULT_JUMP = {
   survivesWhole: 0.75,   // an agent whose vessel was lost gets home
   partial: [0.25, 0.75], // a partial loss takes this share of each good
 };
-export const MAX_WAIT = 4;          // seasons a plan may wait at one stop before it is refused
+export const MAX_WAIT = MAX_HOLD;   // seasons a plan may wait at one stop before it is refused (and a trip may be held in all, letters.js)
 export const DEFAULT_RECALL = {
   reach: { start: 0.95, perSeason: 0.15, floor: 0.1 }, // chance word reaches an agent in time, by seasons from home
   recalledKeeps: 0.6, recalledSurvives: 0.9,
@@ -63,9 +65,10 @@ const cargoText = (content, cargo) => {
   const parts = Object.entries(cargo).filter(([, n]) => n > 0).map(([g, n]) => qty(content, g, n));
   return parts.length ? parts.join(', ') : 'no goods';
 };
+const commas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');   // 2663 reads "2,663", on every machine
 function coins(content, n) {
   const cur = cityOf(content, 'expeditions').currency ?? 'coins';
-  return `${n} ${Math.abs(n) === 1 && cur.endsWith('s') ? cur.slice(0, -1) : cur}`;
+  return `${commas(n)} ${Math.abs(n) === 1 && cur.endsWith('s') ? cur.slice(0, -1) : cur}`;
 }
 const addStock = (s, good, n) => { const v = (s.stock[good] ?? 0) + n; if (v > 0) s.stock[good] = v; else delete s.stock[good]; };
 
@@ -281,6 +284,20 @@ function put(s, paper) {
 
 const isCount = n => Number.isInteger(n) && n >= 0;
 
+/** The way back is open only where there is no qirad to offer instead. */
+const canPrepay = city => !city.contracts?.qirad?.agentShare;
+
+/** The wage for the whole trip, paid up front: the return opens `seasons` ahead, so the agent is
+    out `seasons - 1` of them, at the agent's wage. */
+const tripWage = (agent, proj) => Math.max(1, proj.seasons - 1) * (agent.wage ?? 0);
+
+/** What the house would pay up front for `agentId` on `routeId`, in coins, or 0 when the road does not project. */
+export function prepayCost(state, content, routeId, agentId) {
+  const route = routeOf(content, routeId), agent = agentOf(content, agentId);
+  const proj = route && agent ? project(state, content, route, agent) : null;
+  return proj?.ok ? tripWage(agent, proj) : 0;
+}
+
 /** Checks `plan` against `s` and, when it holds, applies it to `s` (a clone). Returns
     { problems, warnings }; `s` is changed only when there are no problems. */
 function build(s, content, plan) {
@@ -291,7 +308,7 @@ function build(s, content, plan) {
   const no = msg => { problems.push(msg); };
 
   if (s.phase !== 'desk') no('You can send people out only while the desk is open.');
-  if (!plan || typeof plan !== 'object') return { problems: ['There is no plan to send.'], warnings };
+  if (!plan || typeof plan !== 'object') return { problems: ['There is no plan to send.'], warnings, cost: null };
 
   // who goes
   const agent = plan.agent ? agentOf(content, plan.agent) : null;
@@ -301,6 +318,7 @@ function build(s, content, plan) {
   else if (!rec.hired) no(`${agent.name} does not work for the house.`);
   else if (rec.where === 'road' || s.expeditions.some(x => x.agent === agent.id)) no(`${agent.name} is already on the road.`);
   else if (rec.where !== home) no(`${agent.name} is not in ${homeName}.`);
+  else { const leaving = refusesAny(s, agent); if (leaving) no(leaving); }
 
   // where
   const route = plan.route ? routeOf(content, plan.route) : null;
@@ -327,17 +345,20 @@ function build(s, content, plan) {
   // the part bought now, at the home price, and what it costs
   const sim = { ...s, market: structuredClone(s.market) };
   let buyCost = 0, stockValue = 0;
-  const taken = {};
+  const taken = {}, goodsCost = [];
   for (const [g, n] of Object.entries(cargo)) {
     const have = s.stock[g] ?? 0;
     const fromStock = Math.min(have, n);
     const need = n - fromStock;
     taken[g] = fromStock;
     stockValue += fromStock * (M.truePrice(s, content, home, g) ?? 0);
+    let spent = 0;
     if (need > 0) {
       if (!s.market[home]?.[g]) { no(`The house has ${have ? `only ${have}` : 'none'} in the warehouse and ${homeName} does not sell ${goodName(content, g)}.`); continue; }
-      for (let i = 0; i < need; i++) { buyCost += M.buyPrice(sim, content, home, g); M.notePurchase(sim, content, home, g, 1); }
+      for (let i = 0; i < need; i++) { spent += M.buyPrice(sim, content, home, g); M.notePurchase(sim, content, home, g, 1); }
     }
+    buyCost += spent;
+    goodsCost.push({ good: g, loads: n, fromWarehouse: fromStock, bought: need, cost: spent });
   }
 
   // the contract
@@ -351,6 +372,12 @@ function build(s, content, plan) {
     else if (!isCount(partners) || partners < 1) no('A qirad needs partners who put in some money. Say how much.');
     else if (partners > purse + buyCost) no(`The partners cannot put in more than the ${coins(content, purse + buyCost)} that goes out in money and bought goods.`);
   } else partners = 0;
+  // the way back for an agent who will not go on a wage again, in a city with no qirad: the house pays the trip's wage now (ARCH 4.11)
+  const prepay = kind === 'own' && plan.prepay === true;
+  const wants = agent && kind === 'own' ? refusesOwn(s, agent, !!city.contracts?.qirad?.agentShare) : null;
+  if (wants && !(prepay && canPrepay(city))) no(wants);
+  else if (prepay && agent && !wants) no(`${agent.name} has no reason to ask for the wage first.`);
+  const wagePaid = prepay && proj?.ok ? tripWage(agent, proj) : 0;
 
   // selling and buying at the far end
   const carried = new Set(Object.keys(cargo));
@@ -368,10 +395,20 @@ function build(s, content, plan) {
     }
   }
 
-  // money
-  const houseMoney = buyCost + purse - partners;
-  if (!problems.length && s.money < houseMoney) no(`The house has ${coins(content, s.money)} and this costs ${coins(content, houseMoney)}.`);
-  if (problems.length) return { problems, warnings };
+  // money: the one sum the sheet shows and the apply below takes (MER-72). `now` is charged at Send;
+  // `later` is what the road will cost, from the purse and the cargo (tolls) and at the return (wage),
+  // as far as the plan can know it.
+  const houseMoney = buyCost + purse - partners + wagePaid;
+  const cost = {
+    goods: goodsCost, bought: buyCost, purse: isCount(purse) ? purse : 0, partners, wagePaid, total: houseMoney,
+    later: route && proj?.ok ? {
+      tolls: route.legs.reduce((n, l) => n + (l.toll ?? 0), 0),
+      wage: kind === 'own' && !prepay && agent ? Math.max(1, proj.seasons - 1) * (agent.wage ?? 0) : 0,
+      wagePerSeason: agent?.wage ?? 0,
+    } : null,
+  };
+  if (!problems.length && s.money < houseMoney) no(`The house has ${coins(content, s.money)} and this costs ${coins(content, houseMoney)}${wagePaid ? `, with ${coins(content, wagePaid)} of it ${agent.name}'s wage paid first` : ''}.`);
+  if (problems.length) return { problems, warnings, cost };
 
   // apply
   for (const [g, n] of Object.entries(taken)) addStock(s, g, -n);
@@ -383,23 +420,28 @@ function build(s, content, plan) {
   const x = {
     id: `x${n}`, agent: agent.id, route: route.id, leg: 0, left: legSeasons(agent, route.legs[0]), waiting: 0, status: first.waits ? 'waiting' : 'out',
     cargo, purse,
-    contract: kind === 'qirad' ? { kind, agentShare: share[0], of: share[1] } : { kind },
+    contract: kind === 'qirad' ? { kind, agentShare: share[0], of: share[1] } : prepay ? { kind, prepaid: true } : { kind },
     staked: { house: stockValue + buyCost + purse - partners, partners },
     orders: [], sent: idx, out: 0, start: first.startIdx,
     plan: { sell: [...sell], buy: [...buy] },
     quote: Object.fromEntries(Object.keys(dest.sells ?? {}).map(g => [g, M.truePrice(s, content, route.to, g)])),
-    book: { cargo: { ...cargo }, purse, capital: stockValue + buyCost + purse, sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] },
+    book: { cargo: { ...cargo }, purse, capital: stockValue + buyCost + purse, ...(wagePaid ? { wagePaid } : {}), sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] },
   };
   s.expeditions.push(x);
   rec.where = 'road';
   s.log.push({ at: idx, kind: 'outfit', ref: x.id, choice: route.id });
-  return { problems, warnings };
+  return { problems, warnings, cost };
 }
 
-/** The same check `outfit` makes, without sending: { ok, reasons, warnings }. */
+/** The same check `outfit` makes, without sending: { ok, reasons, warnings, cost }. `cost.total` is
+    the dinars `outfit` takes from the house, from the same pass (MER-72); `cost.goods` lists each
+    good ({ good, loads, fromWarehouse, bought, cost }), `cost.purse`, `cost.partners` (what the
+    partners put in, which the house does not pay) and `cost.wagePaid` make up the rest; `cost.later`
+    is { tolls, wage, wagePerSeason } the road will take afterwards, or null when the road does not
+    project. `cost` is null when the plan is too broken to price (no plan at all). */
 export function checkPlan(state, content, plan) {
-  const { problems, warnings } = build(structuredClone(state), content, plan);
-  return { ok: problems.length === 0, reasons: problems, warnings };
+  const { problems, warnings, cost } = build(structuredClone(state), content, plan);
+  return { ok: problems.length === 0, reasons: problems, warnings, cost };
 }
 
 /** Sends an expedition, or throws with every reason the plan was refused, in words. */
@@ -426,33 +468,37 @@ export function suggestPlan(state, content, stopId) {
     return r?.hired && r.where === home && !state.expeditions.some(x => x.agent === a.id);
   });
   if (!free.length) return null;
-  const agent = free.find(a => a.traits.includes(`knows-${stopId}`)) ?? free[0];
-  const hit = routeFor(state, content, stopId, agent);
-  if (!hit) return null;
-  const homePrice = g => state.known[home]?.[g]?.p ?? M.truePrice(state, content, home, g) ?? 0;
-  const there = g => state.known[stopId]?.[g]?.p ?? null;
-  const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0)
-    .sort((a, b) => ((there(b) ?? 0) - homePrice(b)) - ((there(a) ?? 0) - homePrice(a)) || state.stock[b] - state.stock[a] || (a < b ? -1 : 1));
-  if (!goods.length) return null;
-  const g = goods[0];
-  const load = Math.max(1, Math.floor(state.stock[g] / 2));
-  // buy back the good that is cheaper there than at home by what the house knows
-  const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
-    .sort((a, b) => (homePrice(b) - there(b)) - (homePrice(a) - there(a)) || (a < b ? -1 : 1));
-  const plan = { agent: agent.id, route: hit.route.id, cargo: { [g]: load }, purse: 0, contract: 'own', sell: [g], buy: back.slice(0, 1) };
-  return build(structuredClone(state), content, plan).problems.length ? null : plan;
+  const tryAgent = agent => {
+    const hit = routeFor(state, content, stopId, agent);
+    if (!hit) return null;
+    const homePrice = g => state.known[home]?.[g]?.p ?? M.truePrice(state, content, home, g) ?? 0;
+    const there = g => state.known[stopId]?.[g]?.p ?? null;
+    const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0)
+      .sort((a, b) => ((there(b) ?? 0) - homePrice(b)) - ((there(a) ?? 0) - homePrice(a)) || state.stock[b] - state.stock[a] || (a < b ? -1 : 1));
+    if (!goods.length) return null;
+    const g = goods[0];
+    const load = Math.max(1, Math.floor(state.stock[g] / 2));
+    // buy back the good that is cheaper there than at home by what the house knows
+    const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
+      .sort((a, b) => (homePrice(b) - there(b)) - (homePrice(a) - there(a)) || (a < b ? -1 : 1));
+    const plan = { agent: agent.id, route: hit.route.id, cargo: { [g]: load }, purse: 0, contract: 'own', sell: [g], buy: back.slice(0, 1) };
+    // an agent who will not go for a wage again is offered a qirad: partners put in a small purse and the house sends no money
+    if (refusesOwn(state, agent)) {
+      const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
+      Object.assign(plan, { contract: 'qirad', partners: stake, purse: stake });
+    }
+    return build(structuredClone(state), content, plan).problems.length ? null : plan;
+  };
+  // one who knows the stop first; an agent who refuses (a wage again, or a house they are leaving) is passed over for the next
+  const order = [...free.filter(a => a.traits.includes(`knows-${stopId}`)), ...free.filter(a => !a.traits.includes(`knows-${stopId}`))];
+  for (const agent of order) { const plan = tryAgent(agent); if (plan) return plan; }
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------
 // The closing steps
 
-const seasonsHome = (content, x) => {
-  const legs = routeOf(content, x.route).legs;
-  const agent = agentOf(content, x.agent);
-  let n = x.status === 'out' ? x.left : legSeasons(agent, legs[x.leg]);
-  for (let i = x.leg + 1; i < legs.length; i++) n += legSeasons(agent, legs[i]);
-  return n;
-};
+const seasonsHome = seasonsLeft;
 
 /** Fills in what an expedition written before these fields existed (or by hand, in a test) lacks. */
 function norm(x) {
@@ -485,8 +531,33 @@ export function move(s, content) {
     x.book.upkeep += UPKEEP;
     const given = payFromExpedition(s, content, x, UPKEEP);
     for (const [g, q] of Object.entries(given)) x.book.paidInGoods[g] = (x.book.paidInGoods[g] ?? 0) + q;
+    // held at a decision point by a careful agent: ask again, an answer may have come (letters.js)
+    if (x.hold) {
+      const go = decide(s, content, x, idx, { again: true });
+      if (go === WAIT) continue;
+      proceed(s, content, x, go, idx);
+      continue;
+    }
     startLeg(s, content, x, 1);
   }
+}
+
+/** What an expedition does at a decision point once `decide` has answered ON or HOME: ride the
+    next leg, or turn back. Turning back is possible only on the way out (the next leg is still an
+    out leg) and only if the road has a leg home from this stop; the goods the stop buys are sold
+    here, the rest are carried home. */
+function proceed(s, content, x, go, idx) {
+  const route = routeOf(content, x.route);
+  if (go === HOME && x.leg <= outEnd(route)) {
+    const stop = route.legs[x.leg].from;
+    const back = route.legs.findIndex((l, i) => i > outEnd(route) && l.from === stop);
+    if (back > 0) {
+      tradeAt(s, content, x, stop, { sell: Object.keys(x.cargo), buy: [] }, idx);
+      x.leg = back;
+      x.book.turned = stop;
+    }
+  }
+  startLeg(s, content, x, 1);
 }
 
 /** Starts leg x.leg if it is open `k` seasons ahead (the season after this one: k = 1). */
@@ -514,8 +585,9 @@ export function risk(s, content) {
     // the vessel is gone: the agent is home or dead, the expedition is over
     const a = s.agents[x.agent];
     a.where = loss.survived ? homeOf(content) : 'dead';
-    if (loss.survived && x.contract.kind === 'own') pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
+    if (loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
     lost.push(x.id);
+    close(s, content, x, seasonIndex(s, content));
     s.log.push({ at: seasonIndex(s, content), kind: 'lost', ref: x.id, choice: loss.survived ? 'survived' : 'died' });
   }
   s.expeditions = s.expeditions.filter(x => !lost.includes(x.id));
@@ -523,10 +595,12 @@ export function risk(s, content) {
 
 /** Sells the goods the plan names and buys the ones it names with the money there, at the far
     end, through market.js with glut: each load is priced after the one before it. */
-function tradeAtFar(s, content, x, route, idx) {
-  const stop = route.to;
+function tradeAtFar(s, content, x, route, idx) { tradeAt(s, content, x, route.to, x.plan, idx); }
+
+/** The same at any stop, for `plan` = { sell, buy }: goods the stop does not trade stay in the cargo. */
+function tradeAt(s, content, x, stop, plan, idx) {
   const agent = agentOf(content, x.agent);
-  for (const g of x.plan.sell) {
+  for (const g of plan.sell) {
     const q = x.cargo[g] ?? 0;
     if (!q || !s.market[stop]?.[g]) continue;
     bumpSeen(x, stop, g, M.sellPrice(s, content, stop, g), idx);
@@ -539,7 +613,7 @@ function tradeAtFar(s, content, x, route, idx) {
     x.purse += got;
     x.book.sold.push({ good: g, q, got, stop });
   }
-  const goods = x.plan.buy.filter(g => s.market[stop]?.[g]);
+  const goods = plan.buy.filter(g => s.market[stop]?.[g]);
   goods.forEach((g, k) => {
     const budget = Math.floor(x.purse / (goods.length - k));
     bumpSeen(x, stop, g, M.buyPrice(s, content, stop, g), idx);
@@ -578,7 +652,10 @@ export function tolls(s, content) {
     for (const [g, q] of Object.entries(given)) x.book.paidInGoods[g] = (x.book.paidInGoods[g] ?? 0) + q;
     if (rode.leg === route.legs.length - 1) { x.status = 'home'; x.leg = route.legs.length; continue; }
     x.leg = rode.leg + 1;
-    startLeg(s, content, x, 1);
+    // an order from a letter, or the agent's trait until one comes (letters.js): wait a season here
+    const go = decide(s, content, x, idx);
+    if (go === WAIT) { x.status = 'waiting'; continue; }
+    proceed(s, content, x, go, idx);
   }
 }
 
@@ -610,10 +687,13 @@ function bringHome(s, content, x, { elapsed }) {
   const shares = split(x.contract, x.staked, value);
   for (const [g, n] of Object.entries(x.cargo)) addStock(s, g, n);
   s.money += x.purse;
-  const short = pay(s, content, shares.partners) + pay(s, content, shares.agent);
-  const wage = x.contract.kind === 'own' ? x.out * (agent.wage ?? 0) : 0;
-  const wageShort = pay(s, content, wage);
+  const partnersShort = pay(s, content, shares.partners), agentShort = pay(s, content, shares.agent);
+  const short = partnersShort + agentShort;
+  // a prepaid wage was charged at outfitting: it is shown on the paper and counted against the house, and charged no more
+  const wage = x.contract.kind !== 'own' ? 0 : x.contract.prepaid ? (x.book.wagePaid ?? 0) : x.out * (agent.wage ?? 0);
+  const wageShort = x.contract.prepaid ? 0 : pay(s, content, wage);
   if (short || wageShort) s.rep.partners = clamp(s.rep.partners - 1, -3, 3);
+  returnTrust(s, content, x, { qirad: x.contract.kind === 'qirad', prepaid: !!x.contract.prepaid, agentShare: shares.agent, agentShort, wage, wageShort, lost: Object.keys(x.book.lost ?? {}).length > 0, since: x.sent }, seasonIndex(s, content));
   agentRec.where = home;
   for (const k of x.book.seen) bumpKnown(s, k.stop, k.good, k.p, k.at);
   const houseNet = shares.house - x.staked.house - wage;
@@ -623,7 +703,7 @@ function bringHome(s, content, x, { elapsed }) {
 /** The return paper: the headline sentence first (DESIGN 4.6), then the account. */
 function returnPaper(s, content, r) {
   const { x, route } = r;
-  const agent = agentOf(content, x.agent), dest = stopName(content, route.to), homeName = stopName(content, homeOf(content));
+  const agent = agentOf(content, x.agent), dest = stopName(content, x.book.turned ?? route.to), homeName = stopName(content, homeOf(content));
   const n = r.houseNet;
   const headline = `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`;
   const book = x.book;
@@ -671,6 +751,7 @@ export function returns(s, content) {
     if (deskFull(s)) break;
     const r = bringHome(s, content, x, { elapsed: idx - x.sent });
     put(s, returnPaper(s, content, r));
+    close(s, content, x, idx);
     back.push(x.id);
     s.log.push({ at: idx, kind: 'return', ref: x.id, choice: r.houseNet >= 0 ? 'profit' : 'loss' });
   }
@@ -720,13 +801,13 @@ function settle(s, content, x) {
 
 /** One line for an expedition settled off stage (the interlude page, the ending). */
 function settledLine(s, content, x, out, r) {
-  const agent = agentOf(content, x.agent), dest = stopName(content, routeOf(content, x.route).to);
+  const agent = agentOf(content, x.agent), dest = stopName(content, x.book?.turned ?? routeOf(content, x.route).to);
   if (out.result === 'lost') {
     const surv = out.fate === 'died' ? `${agent.name} did not come back.` : `${agent.name} got home.`;
-    return { expedition: x.id, agent: x.agent, result: 'lost', text: `${agent.name}'s expedition to ${dest} was lost on the way. ${surv}`, houseNet: -x.staked.house };
+    return { expedition: x.id, agent: x.agent, result: 'lost', cargo: { ...x.book?.cargo }, text: `${agent.name}'s expedition to ${dest} was lost on the way. ${surv}`, houseNet: -x.staked.house };
   }
   const n = r.houseNet;
-  return { expedition: x.id, agent: x.agent, result: 'home', text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
+  return { expedition: x.id, agent: x.agent, result: 'home', cargo: { ...x.book?.cargo }, text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
 }
 
 /** Settles `x` (settle, then bring it home or write it off). Returns its line. */
@@ -735,7 +816,7 @@ function settleAndClose(s, content, x, elapsed) {
   if (out.result === 'lost') {
     out.fate = out.loss.survived ? 'survived' : 'died';
     s.agents[x.agent].where = out.loss.survived ? homeOf(content) : 'dead';
-    if (out.loss.survived && x.contract.kind === 'own') pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
+    if (out.loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
     return settledLine(s, content, x, out);
   }
   const r = bringHome(s, content, x, { elapsed });
@@ -768,6 +849,7 @@ export function jump(s, content) {
     const road = routeOf(content, x.route) ? wholeRoad(content, x) : 0;
     x.out = Math.max(x.out, road);
     entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out)));
+    close(s, content, x, to);
   }
   s.expeditions = [];
 

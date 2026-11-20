@@ -8,6 +8,7 @@ export const num = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '
 export const dinars = n => `${num(n)} ${Math.abs(n) === 1 ? 'dinar' : 'dinars'}`;
 const loads = n => `${num(n)} ${Math.abs(n) === 1 ? 'load' : 'loads'}`;
 const SIGN_MINUS = '−';
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 const goodName = (content, id) => (content.goods ?? []).find(g => g.id === id)?.name?.toLowerCase() ?? id;
 
@@ -30,10 +31,26 @@ export function seenEffects(content, effects) {
   return out;
 }
 
-/** Sentences for "what happened now", or the plain line when nothing changed. */
-export function happened(content, effects) {
-  const seen = seenEffects(content, effects);
-  return seen.length ? seen.map(s => s.said).join(' ') : 'Nothing changed at once.';
+const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'the court', foreign: 'foreign merchants' };
+
+/** Sentences for "what happened now": money and goods first, then whose trust or standing moved
+    (`app` is optional; with it a reputation also says where it stands now, in the engine's words from
+    view()), else the plain line when nothing a player can see changed. */
+export function happened(content, effects, app = null) {
+  const parts = seenEffects(content, effects).map(s => s.said);
+  const view = app?.view?.();
+  for (const e of effects ?? []) {
+    if (typeof e.by !== 'number' || e.by === 0) continue;
+    const up = e.by > 0;
+    if (typeof e.trust === 'string') {
+      const name = (content.agents ?? []).find(a => a.id === e.trust)?.name ?? e.trust;
+      parts.push(`${name} trusts the house ${up ? 'more' : 'less'}.`);
+    } else if (typeof e.rep === 'string') {
+      const who = cap(REP_WORDS[e.rep] ?? e.rep), now = view?.rep?.[e.rep]?.words;
+      parts.push(`${who} think ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
+    }
+  }
+  return parts.length ? parts.join(' ') : 'Nothing changed at once.';
 }
 
 /** "Cairo pays 25 a load. Damascus paid 38, two seasons ago." from what the house knows
@@ -56,26 +73,76 @@ export function priceLine(app) {
   return parts.length ? parts.join(' ') : null;
 }
 
+const listOf = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+
+/** The first thing a condition asks for that the house does not have, in words; null when the
+    condition holds. Reads the same fields the engine's `holds` reads (turn.js, conditions.js) and
+    only words them: whether a choice is open is still the engine's answer (choicesOf below). */
+export function whyNot(cond, state, content) {
+  if (!cond || typeof cond !== 'object') return null;
+  if (Array.isArray(cond.all)) { for (const c of cond.all) { const w = whyNot(c, state, content); if (w) return w; } return null; }
+  if (Array.isArray(cond.any)) {
+    const ws = cond.any.map(c => whyNot(c, state, content));
+    return ws.every(Boolean) ? listOf(ws.map(w => w.replace(/\.$/, '').replace(/^(\w)/, c => c.toLowerCase()))).replace(/^(\w)/, c => c.toUpperCase()) + '.' : null;
+  }
+  const lo = (v, n) => v?.gte !== undefined && n < v.gte, hi = (v, n) => v?.lte !== undefined && n > v.lte;
+  if ('money' in cond) {
+    if (lo(cond.money, state.money)) return `You need ${dinars(cond.money.gte)} for this and you have ${dinars(state.money)}.`;
+    if (hi(cond.money, state.money)) return `Only a house with ${dinars(cond.money.lte)} or less may ask for this.`;
+  } else if ('stock' in cond) {
+    const have = state.stock[cond.stock] ?? 0;
+    if (have < cond.gte) return `You need ${loads(cond.gte)} of ${goodName(content, cond.stock)} in the warehouse and you have ${loads(have)}.`;
+  } else if ('out' in cond) {
+    const n = state.expeditions.length;
+    if (lo(cond.out, n)) return `You need ${cond.out.gte === 1 ? 'an expedition' : `${cond.out.gte} expeditions`} on the road first.`;
+    if (hi(cond.out, n)) return cond.out.lte === 0 ? 'Not while an expedition is on the road.' : `Not with more than ${cond.out.lte} on the road.`;
+  } else if ('rep' in cond) {
+    const n = state.rep[cond.rep], who = REP_WORDS[cond.rep] ?? cond.rep;
+    if (cond.gte !== undefined && n < cond.gte) return `${cap(who)} think too little of the house for this.`;
+    if (cond.lte !== undefined && n > cond.lte) return `${cap(who)} think too well of the house for this.`;
+  } else if ('flag' in cond) {
+    const set = cond.flag in state.flags && (cond.gte === undefined || (typeof state.flags[cond.flag] === 'number' && state.flags[cond.flag] >= cond.gte));
+    if (cond.not ? set : !set) return cond.not ? 'You have already done this.' : 'Something has to happen first.';
+  } else if ('notebook' in cond) {
+    if (!state.notebook.includes(cond.notebook)) return `You have not yet learned about ${(content.notebook ?? []).find(n => n.id === cond.notebook)?.title?.toLowerCase() ?? 'this'}.`;
+  } else if ('agent' in cond) {
+    const a = state.agents[cond.agent], name = (content.agents ?? []).find(x => x.id === cond.agent)?.name ?? cond.agent;
+    if (!a || a.where === 'gone') return `${name} is no longer with the house.`;
+    if (cond.hired === true && !a.hired) return `${name} is not working for you.`;
+    if (cond.hired === false && a.hired) return `${name} already works for you.`;
+    if (cond.where !== undefined && a.where !== cond.where) return `${name} is not ${cond.where === 'home' ? 'at home' : 'on the road'} now.`;
+  } else if ('season' in cond) {
+    const ses = cond.season.map(x => x);
+    if (!ses.includes(engine.view(state, content).season)) return `Only in ${listOf(ses)}.`;
+  }
+  return null;
+}
+
 /** The choices of an open paper with their availability. The engine says whether a choice can
-    be made by being asked to make it on a copy of the state. */
+    be made by being asked to make it on a copy of the state. When it cannot, `why` is the
+    engine's own refusal in words when it gave one ("Ali has retired and cannot be hired again"),
+    else the condition on the choice put into words (whyNot). */
 export function choicesOf(app, paper) {
   const { content } = app;
   const state = app.state;
+  const filled = app.view().cards?.[paper.id]?.choices ?? {};
   return engine.paperChoices(state, content, paper.id).map(c => {
-    let available = true;
-    try { engine.choose(state, content, paper.id, c.id); } catch { available = false; }
+    let available = true, refusal = null;
+    try { engine.choose(state, content, paper.id, c.id); } catch (e) { available = false; refusal = /is refused: (.+)$/.exec(e.message)?.[1] ?? null; }
     let why = null;
     if (!available) {
-      const need = c.requires?.money?.gte;
-      why = typeof need === 'number' ? `You have ${dinars(state.money)}.` : 'Not open to you now.';
+      why = (refusal && `${refusal.charAt(0).toUpperCase()}${refusal.slice(1)}${/[.!?]$/.test(refusal) ? '' : '.'}`)
+        || whyNot(c.requires, state, content) || 'Not open to you now.';
     }
-    return { ...c, available, why, seen: seenEffects(content, c.now), prices: c.ui === 'outfit-first' ? priceLine(app) : null };
+    return { ...c, label: filled[c.id]?.label ?? c.label, hint: filled[c.id]?.hint ?? c.hint, available, why, seen: seenEffects(content, c.now), prices: c.ui === 'outfit-first' ? priceLine(app) : null };
   });
 }
 
 /** The definition a paper was made from: a card, a letter, or the event behind a notice. */
 export function sourceOf(content, paper) {
   if (paper.kind === 'notice') {
+    // a notice the engine wrote itself carries its words (the `agent-left` notice has no event behind it)
+    if (paper.data?.title) return { title: paper.data.title, body: paper.data.body ?? paper.data.headline, from: { name: 'Word in the city', role: 'Cairo', seal: null }, unlocks: [] };
     const ev = (content.events ?? []).find(e => e.id === paper.ref);
     return { ...ev?.notice, from: { name: 'Word in the city', role: 'Cairo', seal: null }, note: ev?.note, sources: ev?.sources, unlocks: [] };
   }
@@ -89,24 +156,30 @@ export const RECORD_KINDS = ['return', 'lost', 'news', 'accounts'];
 
 const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.name ?? id;
 
-export function paperTitle(content, paper) {
+export function paperTitle(content, paper, cards) {
   if (paper.kind === 'return' || paper.kind === 'lost') return paper.data?.headline ?? 'News of the house';
   if (paper.kind === 'news') {
     const n = paper.letters?.length ?? 0;
     return n === 1 ? `News from ${stopName(content, paper.letters[0].stop)}` : `News from ${n} cities`;
   }
   if (paper.kind === 'accounts') return 'Accounts';
-  const s = sourceOf(content, paper);
-  return s.title ?? 'A paper';
+  return cards?.[paper.id]?.title ?? sourceOf(content, paper).title ?? 'A paper';
 }
 
 /** Who a paper is from: the agent's seal on a return or a loss, a plain mark on the rest. */
 export function senderOf(content, paper) {
   const agent = paper.agent && (content.agents ?? []).find(a => a.id === paper.agent);
-  if (agent) return { name: agent.name, role: paper.kind === 'lost' ? 'Word from the road' : 'Home from the road', seal: agent.seal };
+  if (agent && paper.kind === 'letter') return { name: agent.name, role: 'Word from the road', seal: agent.seal };
+  if (agent && paper.kind !== 'notice') return { name: agent.name, role: paper.kind === 'lost' ? 'Word from the road' : 'Home from the road', seal: agent.seal };
   if (paper.kind === 'news') return { name: 'Price letters', role: 'Cairo', seal: null };
   if (paper.kind === 'accounts') return { name: 'Your clerk', role: 'The house, Cairo', seal: null };
   return sourceOf(content, paper).from ?? null;
+}
+
+/** What a letter says about itself, from the engine's view (DESIGN 4.5): where and when it was
+    written, when it reached the desk, and for a question how long the answer takes. */
+export function letterNotes(app, paper) {
+  return paper.kind === 'letter' ? app.view().letters?.[paper.id] ?? null : null;
 }
 
 /** "Source: Author, Title, year, where." The line a teacher reads; never an address. */
@@ -138,11 +211,13 @@ export function head(app, from) {
 /** The front of a card, letter or notice. onChoose(choice, index). */
 export function front(app, paper, { onChoose, locked }) {
   const s = sourceOf(app.content, paper);
+  const cards = app.view().cards;
   const titleId = `paper-${paper.id}-title`;
+  const note = letterNotes(app, paper);
   const choices = paper.kind === 'notice'
     ? [{ id: 'ok', label: 'Noted', available: true, seen: [] }]
     : choicesOf(app, paper);
-  const list = h('div', { class: 'choices', role: 'group', 'aria-labelledby': titleId },
+  const list = h('div', { class: 'choices', role: 'group', 'aria-labelledby': titleId, 'aria-describedby': note?.answer ? `paper-${paper.id}-answer` : null },
     choices.map((c, i) => h('button', {
       class: 'choice', type: 'button', id: `choice-${paper.id}-${c.id}`, dataset: { choice: c.id },
       'aria-disabled': c.available ? null : 'true',
@@ -157,10 +232,12 @@ export function front(app, paper, { onChoose, locked }) {
         c.prices ? h('span', { class: 'prices' }, c.prices) : null) : null)
       : h('span', { class: 'costline why' }, c.why))));
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
-    head(app, s.from),
-    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(app.content, paper)),
-    h('p', { class: 'sheet-body' }, s.body ?? ''),
-    list);
+    head(app, senderOf(app.content, paper)),
+    note?.line ? h('p', { class: 'letter-line', id: `paper-${paper.id}-line` }, note.line) : null,
+    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(app.content, paper, cards)),
+    h('p', { class: 'sheet-body' }, cards?.[paper.id]?.body ?? s.body ?? ''),
+    list,
+    note?.answer ? h('p', { class: 'letter-answer', id: `paper-${paper.id}-answer` }, note.answer) : null);
 }
 
 /** The back of an answered paper: what happened now, the note, new notebook entries, Next,
@@ -206,7 +283,15 @@ export function record(app, paper, { onDone, open }) {
   } else {
     for (const i of paper.items ?? []) body.push(h('p', { class: 'account-item' }, i.text));
   }
-  return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
+  // Focus lands on the heading, so Enter there sets the paper aside, as it turns a card's back
+  // over to Next (DESIGN 6). A focused button or the account's summary keeps its own Enter.
+  const onKey = e => {
+    if (e.key !== 'Enter' || e.repeat || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.target.closest?.('button, summary, a, input, select, textarea')) return;
+    e.preventDefault();
+    onDone();
+  };
+  return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId, onkeydown: onKey },
     head(app, senderOf(content, paper)),
     h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(content, paper)),
     ...body,
@@ -216,6 +301,6 @@ export function record(app, paper, { onDone, open }) {
 /** The edge of a paper lower in the stack: seal and title, pressed to raise it. */
 export function edge(app, paper, { onRaise, tilt }) {
   return h('button', { class: 'edge', type: 'button', style: `--tilt:${tilt}deg`, dataset: { paper: paper.id }, onclick: onRaise,
-    'aria-label': `Raise: ${paperTitle(app.content, paper)}` },
-  seal(app, senderOf(app.content, paper)?.seal), h('span', null, paperTitle(app.content, paper)));
+    'aria-label': `Raise: ${paperTitle(app.content, paper, app.view().cards)}` },
+  seal(app, senderOf(app.content, paper)?.seal), h('span', null, paperTitle(app.content, paper, app.view().cards)));
 }

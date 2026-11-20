@@ -182,5 +182,294 @@
         "at": "pp. 72 and 172 to 173, as quoted by Edwards and Ogilvie (2008), p. 17"
       }
     ]
+  },
+  {
+    "id": "samir-share-count",
+    "group": "disputes",
+    "from": {
+      "name": "Samir, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Samir counts his share again",
+    "body": "Samir is home from {to}. He says your clerk counted his share 10 dinars too low. Your clerk says the cost of the trip comes out of the profit first. Samir kept no book, but he remembers every sale.",
+    "when": {
+      "all": [
+        {
+          "trip": {
+            "agent": "samir",
+            "is": "home"
+          }
+        },
+        {
+          "notebook": "term-qirad"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "his-count",
+        "label": "Pay the 10 dinars he asks for",
+        "hint": "It costs a little. Samir will go again gladly.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          },
+          {
+            "trust": "samir",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Keep your clerk's count and take back 15 for the trip's costs",
+        "hint": "You gain 15 dinars. Samir will not forget it.",
+        "now": [
+          {
+            "money": 15
+          },
+          {
+            "trust": "samir",
+            "by": -1
+          },
+          {
+            "memory": "samir",
+            "kind": "unfair"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "samir-wants-a-share"
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza contracts the traveller's share was normally one third. Partners made up their accounts every year, and a quarrel over the sums could end in a judge's court.",
+    "unlocks": [
+      "term-dinar",
+      "term-qirad"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's share, normally one third"
+      },
+      {
+        "src": "goitein-1964",
+        "at": "pp. 326 to 327; court records of a quarrel over sums, and the yearly accounts"
+      }
+    ]
+  },
+  {
+    "id": "ali-beyond-the-paper",
+    "group": "disputes",
+    "from": {
+      "name": "Ali, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Ali broke his orders",
+    "body": "Ali is home from {to}. Your orders said to sell at {to}. Ali sold part of the load on the way instead, to a buyer whose price looked better. Your clerk says that sale came to 60 dinars less than {to} would have paid. Ali says he did it for the house.",
+    "when": {
+      "trip": {
+        "agent": "ali",
+        "is": "home"
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Make Ali pay what he can",
+        "hint": "You win back 40 dinars. Ali is bitter.",
+        "now": [
+          {
+            "money": 40
+          },
+          {
+            "trust": "ali",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "share",
+        "label": "Share the loss with him",
+        "hint": "You win back 20 dinars. He promises to keep to his orders.",
+        "now": [
+          {
+            "money": 20
+          },
+          {
+            "trust": "ali",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "forgive",
+        "label": "Forgive him and write stricter orders",
+        "hint": "You win nothing back. Ali is grateful.",
+        "now": [
+          {
+            "trust": "ali",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -5
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers contracts said where an agent could trade. An agent who went beyond them and lost money paid the whole loss himself.",
+    "unlocks": [
+      "term-dinar",
+      "term-load",
+      "term-orders"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 327; a manager who broke the conditions of the contract"
+      }
+    ]
+  },
+  {
+    "id": "two-judges",
+    "group": "disputes",
+    "from": {
+      "name": "Jabir and Ezra",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Two judges for one quarrel",
+    "body": "Jabir is Muslim and Ezra is Jewish. Each put money into a venture with your house, and now they quarrel over 50 dinars. Each wants his own judge. Your house is asked to say where they go.",
+    "when": {
+      "rep": "court",
+      "gte": 1
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "both",
+        "label": "Ask the Muslim judge to call in a Jewish judge",
+        "hint": "It costs two fees. Both men will trust the answer.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "one",
+        "label": "Send them to one judge only",
+        "hint": "It costs one fee. One of them will feel slighted.",
+        "requires": {
+          "money": {
+            "gte": 15
+          }
+        },
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "settle",
+        "label": "Settle it yourselves over a meal",
+        "hint": "It costs 25 dinars. The quarrel may come back.",
+        "now": [
+          {
+            "money": -25
+          },
+          {
+            "flag": "two-judges-settled",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "In one case from the Geniza papers a Muslim judge asked a Jewish judge to help. The quarrel was between a Muslim and a Jew. The case is not dated. Edwards and Ogilvie report it from the historian Moshe Gil.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "edwards-ogilvie-2008",
+        "at": "p. 18, citing Gil 2003, pp. 281 to 282 (not read); the Muslim judge who asked for the Jewish judge"
+      }
+    ]
   }
 ]

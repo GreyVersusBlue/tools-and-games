@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadContent } from '../js/data.js';
 import { validateContent } from '../js/engine/content.js';
+import { tripLeaf } from '../js/engine/conditions.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -27,8 +28,10 @@ const DATA = path.join(ROOT, 'data');
 
 // The only exceptions (rule 4): each city's opening letter. Its choices are a first handshake,
 // not a trade-off. Cairo has two because ARCHITECTURE 5.1 names one for each starting house.
+// first-expedition is the scripted card that teaches sending a trip; its go takes no money
+// because the trip's costs are charged at Send (MER-72), so it is not a trade-off either.
 export const OPENING_LETTERS = {
-  cairo: ['opening-letter', 'opening-letter-broker'],
+  cairo: ['opening-letter', 'opening-letter-broker', 'first-expedition'],
   testport: ['welcome-note'],
 };
 
@@ -41,7 +44,39 @@ export const RULES = {
   6: 'ids, files and keys',
   7: 'text rules',
   8: 'the direction of trade',
+  9: 'a card that tells of a trip is bound to one',
 };
+
+// Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
+// leaf, and takes its places from that trip, so a card with the leaf names no stop but home.
+// It fails the run (MER-75). The two exemptions: Cairo's first-expedition is the scripted opening card
+// that teaches sending a trip, and there is no trip yet for it to bind to (Yusuf is not hired until it
+// is answered); Testport's bridge-toll is a toll card whose "long road round" is a road for carts, not
+// a trip an agent made, and the word match cannot tell the two apart.
+export const TRIP_EXEMPT = {
+  cairo: ['first-expedition'],
+  testport: ['bridge-toll'],
+};
+const ROAD_WORDS = /\b(road|roads|caravan|caravans|dhow|dhows|galley|galleys|voyage|voyages|journey|journeys|trip|trips|expedition|expeditions)\b/i;
+const wordIn = (text, word) => new RegExp(`(^|[^\\p{L}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}])`, 'iu').test(text);
+
+/** The failures of rule 9 for one card: [{ rule: 9, path, message }]. */
+export function tripFailures(content, card) {
+  const texts = [card.title, card.body, ...(card.choices ?? []).flatMap(ch => [ch.label, ch.hint])].filter(t => typeof t === 'string');
+  const text = texts.join(' ').replace(/\{(agent|to|good|route|seasons)\}/g, ' ');
+  const where = `cards[${card.id}]`;
+  if ((TRIP_EXEMPT[content.cityId] ?? []).includes(card.id)) return [];
+  const home = content.city?.home;
+  const stops = (content.stops ?? []).filter(x => x.id !== home);
+  const leaf = tripLeaf(card.when);
+  if (leaf) {
+    const written = stops.find(x => wordIn(text, x.name));
+    return written ? [{ rule: 9, path: where, message: `carries a trip leaf but writes the place "${written.name}"; use {to} or {route}` }] : [];
+  }
+  const agent = (content.agents ?? []).find(a => wordIn(text, a.name.split(' ')[0]));
+  const place = stops.find(x => wordIn(text, x.name))?.name ?? text.match(ROAD_WORDS)?.[0];
+  return agent && place ? [{ rule: 9, path: where, message: `names ${agent.name} and "${place}" but has no trip leaf` }] : [];
+}
 
 /** Load a city the way the tools do. `overlay` is a folder whose files win over the city's. */
 export async function loadCity(city, { overlay } = {}) {
@@ -203,6 +238,9 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
       if (TODO.test(s.text)) fail(7, s.path, 'TODO');
     }
   }
+
+  // rule 9
+  for (const c of cards) out.push(...tripFailures(content, c));
 
   // rule 8
   for (const [i, g] of (content.city?.gradients ?? []).entries()) {

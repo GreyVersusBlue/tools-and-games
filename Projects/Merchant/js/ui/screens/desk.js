@@ -4,6 +4,7 @@
 // paper is raised, which back is being read, whether a flip is under way.
 import { h, qs } from '../dom.js';
 import * as engine from '../../engine/index.js';
+import { leftHow } from '../../engine/agents.js';
 import { front, back, record, edge, paperTitle, happened, num, dinars, RECORD_KINDS } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
@@ -95,11 +96,12 @@ export function createDesk(app) {
 
   /** The map table is its own screen with its own hash (#map). `outfitFor` is a stop to open the
       one-press sheet on once the map has drawn (DESIGN 7); the map reads it from the app and clears it. */
-  function toMap(outfitFor = null) {
+  function toMap(outfitFor = null, outfitWith = null) {
     if (busy) return;
     if (backOf && !outfitFor) { barNote('Press Next first.'); return; }
     if (app.state.phase !== 'desk') { barNote('The map table is for the seasons, not the years between.'); return; }
     app.outfitFor = outfitFor;
+    app.outfitWith = outfitFor && outfitWith ? { ...outfitWith, stop: outfitFor } : null;
     location.hash = 'map';
   }
 
@@ -170,6 +172,21 @@ export function createDesk(app) {
     }
   }
 
+  // what the settled trips came to for the house, from the jump's own lines (`houseNet` of each)
+  function tripsLine(settled) {
+    const net = settled.reduce((n, x) => n + (x.houseNet ?? 0), 0);
+    return net < 0 ? `Your people's trips cost ${dinars(-net)}.` : net === 0 ? `Your people's trips came out even.` : `Your people's trips brought ${dinars(net)}.`;
+  }
+
+  /** "It carried 20 loads of silk." for a settled line's cargo, or "" when it has none. */
+  const cargoLine = cargo => {
+    const parts = Object.entries(cargo ?? {}).filter(([, n]) => n > 0).map(([g, n]) => {
+      const good = content.goods.find(x => x.id === g), unit = good?.unit ?? 'load';
+      return `${n} ${n === 1 ? unit : `${unit}s`} of ${(good?.name ?? g).toLowerCase()}`;
+    });
+    return parts.length ? `It carried ${parts.join(', ')}.` : '';
+  };
+
   function phasePage(phase) {
     const v = app.view();
     const wrap = (title, ...rest) => h('article', { class: 'paper sheet front kind-phase', dataset: { phase, face: 'front' }, 'aria-labelledby': 'phase-title' },
@@ -178,6 +195,15 @@ export function createDesk(app) {
       const gap = v.interlude;
       return wrap('Years pass',
         gap ? h('p', { class: 'span', id: 'interlude-span' }, `${gap.from} to ${gap.to}`) : null,
+        ...(gap?.settled ?? []).flatMap(x => [
+          h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text),
+          ...(cargoLine(x.cargo) ? [h('p', { class: 'sheet-body', id: `cargo-${x.expedition}` }, cargoLine(x.cargo))] : []),
+        ]),
+        ...(gap?.settled?.length ? [h('p', { class: 'sheet-body', id: 'interlude-trips' }, tripsLine(gap.settled))] : []),
+        ...(gap?.agents ?? []).map(g => {
+          const name = content.agents.find(a => a.id === g.id)?.name ?? g.id;
+          return h('p', { class: 'sheet-body', dataset: { left: leftHow(app.state, g.id) ?? '' } }, `${name} ${leftHow(app.state, g.id) === 'retired' ? 'has retired' : 'has gone to work for another house'}.`);
+        }),
         ...(gap?.paragraphs ?? []).map(p => h('p', { class: 'sheet-body' }, p.text)),
         h('p', { class: 'sheet-body' }, `The house carries ${dinars(app.state.money)} into the next years.`),
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
@@ -191,6 +217,7 @@ export function createDesk(app) {
   function flip(node, then) {
     const half = cssMs('--flip-time') / 2;
     if (!half || !node.animate) { then(); return; }
+    node.dataset.flip = 'out';
     node.animate([{ transform: 'rotateY(0)' }, { transform: 'rotateY(90deg)' }], { duration: half, easing: 'ease-in' }).finished.then(then, then);
   }
 
@@ -200,18 +227,34 @@ export function createDesk(app) {
     const node = qs(`[data-paper="${paper.id}"]`, sheetBox);
     node?.setAttribute('inert', '');
     const before = new Set(app.state.notebook);
+    const tripTo = app.view().cards?.[paper.id]?.trip?.to ?? null;   // where the card says the agent would go
     try { app.act(s => engine.choose(s, content, paper.id, choice.id)); } catch (e) { busy = false; node?.removeAttribute('inert'); app.say(e.message); return; }
     if (RECORD_KINDS.includes(paper.kind)) { busy = false; raised = null; draw({ focus: 'next' }); return; }
     const fresh = app.state.notebook.filter(id => !before.has(id)).map(id => (content.notebook ?? []).find(n => n.id === id)?.title ?? id);
     const answered = app.state.desk.find(p => p.id === paper.id);
-    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now);
+    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app);
     const done = () => {
-      backOf = { paper: answered, now, fresh, outfit: choice.ui === 'outfit-first' };
+      backOf = { paper: answered, now, fresh, outfit: outfitOf(choice, tripTo) };
       busy = false;
       draw({ focus: 'back', flipped: true });
-      if (node) { const b = qs('.sheet', sheetBox); b?.animate?.([{ transform: 'rotateY(90deg)' }, { transform: 'rotateY(0)' }], { duration: cssMs('--flip-time') / 2, easing: 'ease-out' }); }
+      // `data-flip` is on the back from its first frame until it lies flat: a press or a click on
+      // Next while the sheet is edge-on lands on nothing, so a caller waits for the attribute to go
+      const b = qs('.sheet', sheetBox);
+      if (b?.animate && cssMs('--flip-time')) {
+        b.dataset.flip = 'in';
+        const flat = () => { delete b.dataset.flip; };
+        b.animate([{ transform: 'rotateY(90deg)' }, { transform: 'rotateY(0)' }], { duration: cssMs('--flip-time') / 2, easing: 'ease-out' }).finished.then(flat, flat);
+      }
     };
     flip(node ?? document.createElement('div'), done);
+  }
+
+  /** What a choice asks of the outfit sheet: the `outfit` effect in its `now` (agent and contract),
+      on the stop the card's trip names when it has one, or the plain one-press sheet for ui: outfit-first; null when it opens no sheet. */
+  function outfitOf(choice, tripTo) {
+    const e = (choice.now ?? []).find(x => x && x.outfit !== undefined);
+    if (e) return { agent: e.outfit, contract: e.contract, stop: tripTo };
+    return choice.ui === 'outfit-first' ? {} : null;
   }
 
   function next() {
@@ -219,7 +262,7 @@ export function createDesk(app) {
     const outfit = backOf.outfit;
     backOf = null; raised = null;
     // the one-press paper is the outfitting sheet over the map table, filled in for the first stop (DESIGN 7)
-    if (outfit) { toMap(content.city.firstStop ?? 'damascus'); return; }
+    if (outfit) { toMap(outfit.stop ?? content.city.firstStop ?? 'damascus', outfit); return; }
     draw({ focus: 'next' });
   }
 
