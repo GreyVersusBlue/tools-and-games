@@ -495,6 +495,11 @@ test('one letter on every badge: the cell\'s words, the printed plan, and a one-
   assert.deepEqual(shown.letters, ['A'], 'one letter at the middle stop, not "A B" or "A, A"');
   assert.deepEqual(shown.caption, ['A']);
   assert.equal(shown.ways, 1, 'both flights go up: one mark');
+  // the canvas: the pill at the middle stop holds one letter and one mark
+  await showFloor('Floor 2');
+  let screen = await drawnAt(14, 10);
+  assert.deepEqual(screen.texts.map((each) => each.text), ['A'], 'the canvas wrote the middle stop\'s letter twice: ' + JSON.stringify(screen));
+  assert.equal(screen.marks.length, 1, 'both flights go up: one mark on the canvas');
   // one flight both ways: no mark at the middle stop
   await page.evaluate(async () => {
     const { store } = globalThis.sv2;
@@ -503,6 +508,9 @@ test('one letter on every badge: the cell\'s words, the printed plan, and a one-
   });
   shown = await printed();
   assert.equal(shown.ways, 0, 'the flights differ at the middle stop: no mark');
+  screen = await drawnAt(14, 10);
+  assert.deepEqual(screen.texts.map((each) => each.text), ['A']);
+  assert.equal(screen.marks.length, 0, 'the flights differ at the middle stop: no mark on the canvas');
   // the cell's words
   await showFloor('Floor 2');
   await hover(14, 10);
