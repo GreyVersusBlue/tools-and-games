@@ -1,5 +1,5 @@
 // Small choices this device remembers, in localStorage under `sv2:device`:
-// { theme, lastSection, playback, paper, movement, schedule, grid }. The name
+// { theme, lastSection, playback, paper, movement, schedule, grid, autoNumber }. The name
 // is permanent.
 //
 // Every write reads what is stored first and changes only the keys it was
@@ -180,4 +180,22 @@ export function writeGridDay(day, storage) {
   const device = readDevice(store);
   writeDevice({ grid: { ...(isObject(device.grid) ? device.grid : {}), day: String(day) } }, store);
   return String(day);
+}
+
+// `autoNumber`: whether the room tool continues a sequence of room numbers as
+// rooms are drawn (spec 4.3's wish, ARCHITECTURE 22.5): true or false. Absent
+// is off. The next number is not kept here: it is the Building section's view
+// state, per floor, and is never saved.
+export function autoNumberOf(device) {
+  return isObject(device) && device.autoNumber === true;
+}
+
+export function readAutoNumber(storage) {
+  return autoNumberOf(readDevice(storage));
+}
+
+// Remember the Auto-number switch. Throws when the browser refuses.
+export function writeAutoNumber(on, storage) {
+  writeDevice({ autoNumber: on === true }, storage);
+  return on === true;
 }

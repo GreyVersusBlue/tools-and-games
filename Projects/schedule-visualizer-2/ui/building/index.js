@@ -39,11 +39,14 @@ import { wayLine } from './inspector/floor.js';
 import { buildingMenu } from './menu.js';
 import { createConnect } from './connect.js';
 import { createTrace } from './trace.js';
+import { floorMenu } from './floor-menu.js';
 import { createFinder, parseBuildingRest } from './search.js';
-import { ActionError, addFloor, deleteSpaces, pasteSpaces, describeSpaceDelete } from '../../engine/actions.js';
+import { ActionError, addFloor, placeRoom, deleteSpaces, pasteSpaces, describeSpaceDelete } from '../../engine/actions.js';
+import { nextRoomNumber, firstRoomNumber, plainNext, splitNumber } from '../../engine/numbering.js';
+import { readAutoNumber, writeAutoNumber } from '../../storage/device.js';
 import { counts, describeCell, copySpaces, isLoss } from '../../engine/building.js';
 import { buildingChecks } from '../../engine/building-checks.js';
-import { spaceOwners, stairsLetter } from '../../engine/schema.js';
+import { spaceOwners, stairsLetter, roomNumberKey, allRooms } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
 import { SAMPLE_PROJECT_ID } from '../../data/sample-school.js';
 
@@ -67,7 +70,11 @@ function stylesheet() {
 
 // What this section remembers while another one is on screen: the floor, the
 // tool and the zoom of the project that is open.
-const memory = { projectId: null, floorId: null, toolId: null, view: null, fitBox: null, clip: null };
+//
+// Auto-number's view state is here too (ARCHITECTURE 22.5, DESIGN 16.12 item 5), never
+// saved and never undone: `autoNext` is the next number per floor, and `autoStack`
+// the numbers it assigned, newest last, so Undo of a drawn room steps the next back.
+const memory = { projectId: null, floorId: null, toolId: null, view: null, fitBox: null, clip: null, autoNext: new Map(), autoStack: [] };
 
 const HEADLINE = 'This is the building.';
 const FIRST = 'Draw a corridor, then rooms along it. Give each room its number, and mark the stairs and the exits.';
@@ -202,6 +209,7 @@ export const section = {
     let queued = false;
     let cardDismissed = false;
     let lastSource = 'pointer';
+    let lastPointer = 'mouse';
     let pointerOver = false;
     let spaceDown = false;
 
@@ -223,10 +231,19 @@ export const section = {
     const card = h('div', { class: 'bld-empty', id: 'empty-floor', hidden: true, data: { empty: 'building' } }, cardWords, cardActions, cardNote);
 
     const strip = toolStrip({ tools: TOOLS, pick: (id) => setTool(id) });
+    // The Room tool's options (DESIGN 16.3): Auto-number, and its Next number
+    const autoSwitch = h('input', { type: 'checkbox', role: 'switch', id: 'auto-number', class: 'bld-options__switch', 'aria-describedby': 'auto-number-hint' });
+    const nextInput = h('input', { type: 'text', inputmode: 'text', id: 'next-number', class: 'field__input bld-options__input', size: '7', maxlength: '12', autocomplete: 'off', spellcheck: 'false', 'aria-describedby': 'next-number-hint next-number-note' });
+    const nextField = h('div', { class: 'bld-options__field', id: 'next-number-field', hidden: true }, h('label', { class: 'bld-options__label', for: 'next-number' }, 'Next number'), nextInput);
+    const nextHint = h('p', { class: 'bld-options__hint', id: 'next-number-hint', hidden: true }, 'Starts after the highest number on this floor.');
+    const nextNote = h('p', { class: 'bld-options__note', id: 'next-number-note', role: 'status', hidden: true });
+    const options = h('div', { class: 'bld-options', id: 'plan-options', role: 'group', 'aria-label': 'Room options', hidden: true },
+      h('label', { class: 'bld-options__toggle' }, autoSwitch, h('span', null, 'Auto-number')),
+      nextField, nextHint, nextNote);
     const status = statusLine({ zoomIn: () => zoomBy(ZOOM_STEP), zoomOut: () => zoomBy(1 / ZOOM_STEP), fit: () => fit() });
-    const tabs = floorTabs({ panelId: 'plan', open: (id) => ctx.navigate('#building/' + id), add: () => addAFloor() });
+    const tabs = floorTabs({ panelId: 'plan', open: (id) => ctx.navigate('#building/' + id), add: () => addAFloor(), actions: (id, anchor, opener) => ed.floorMenu.open(id, anchor, opener) });
     const stage = h('div', { class: 'bld-stage' }, canvas, card);
-    const element = h('div', { class: 'bld', data: { styled: 'false' } }, intro, strip.element, stage, status.element);
+    const element = h('div', { class: 'bld', data: { styled: 'false' } }, intro, strip.element, options, stage, status.element);
 
     // ------------------------------------------------------------ drawing
 
@@ -427,27 +444,10 @@ export const section = {
       //   options.toast(outcome)   the message to show, or null for none. By
       //                            default one is shown when something was replaced.
       // Returns what engine/building.js reported (cells, loss, spaceId), or null.
+      // While Auto-number is on, a room drawn gets the next number in the same step.
       commit(action, payload, options) {
-        const opts = options || {};
-        const before = store.project;
-        let outcome = null;
-        const done = ed.attempt(() => {
-          // the action runs once, in the store; what it reported for the
-          // change (cells, loss, the new space's id) is on the undo entry
-          if (store.apply(action, payload) === before) return false;
-          outcome = store.undoOutcome || {};
-          return true;
-        });
-        if (done === null) return null;
-        if (done === false) {
-          say(opts.same || 'Nothing changed.');
-          return null;
-        }
-        const sentence = opts.done ? opts.done(outcome) : capital(store.undoLabel || 'Done') + '.';
-        say(sentence);
-        const message = opts.toast === undefined ? (outcome.loss && isLoss(outcome.loss) ? sentence : null) : opts.toast === null ? null : opts.toast(outcome);
-        if (message) ctx.toast({ text: message, action: { label: 'Undo', run: ctx.undo } });
-        return outcome;
+        if (action === placeRoom && autoSwitch.checked && payload && payload.number === undefined) return commitNumbered(payload, options);
+        return commitPlain(action, payload, options);
       },
       // A new room is selected; its number field takes the focus unless a
       // finger drew it, so the on-screen keyboard does not rise over the plan.
@@ -499,6 +499,156 @@ export const section = {
     };
     element.editor = ed;
 
+function commitPlain(action, payload, options) {
+  const opts = options || {};
+  const before = store.project;
+  let outcome = null;
+  const done = ed.attempt(() => {
+    // the action runs once, in the store; what it reported for the
+    // change (cells, loss, the new space's id) is on the undo entry
+    if (store.apply(action, payload) === before) return false;
+    outcome = store.undoOutcome || {};
+    return true;
+  });
+  if (done === null) return null;
+  if (done === false) {
+    say(opts.same || 'Nothing changed.');
+    return null;
+  }
+  const sentence = opts.done ? opts.done(outcome) : capital(store.undoLabel || 'Done') + '.';
+  say(sentence);
+  const message = opts.toast === undefined ? (outcome.loss && isLoss(outcome.loss) ? sentence : null) : opts.toast === null ? null : opts.toast(outcome);
+  if (message) ctx.toast({ text: message, action: { label: 'Undo', run: ctx.undo } });
+  return outcome;
+}
+
+    // ------------------------------------------------------------ auto-number
+
+    // The next number of a floor: the one kept for it this session, else one past the
+    // highest on the floor. '' for none to give (every step taken).
+    function nextFor(each) {
+      if (!memory.autoNext.has(each.id)) memory.autoNext.set(each.id, firstRoomNumber(project, each.id) || '');
+      return memory.autoNext.get(each.id);
+    }
+
+    // The options row follows the tool, the switch and the floor.
+    function showOptions() {
+      options.hidden = !tool || tool.id !== 'room';
+      const on = autoSwitch.checked;
+      nextField.hidden = !on;
+      nextHint.hidden = !on;
+      if (!on) {
+        nextNote.hidden = true;
+        return;
+      }
+      if (document.activeElement !== nextInput) nextInput.value = nextFor(floor);
+      checkNext();
+    }
+
+    // "Auto-number needs digits, such as 101": the field's refusal. The switch stays on, and
+    // rooms are drawn without numbers until it is put right.
+    function checkNext() {
+      const bad = nextInput.value.trim() !== '' && splitNumber(nextInput.value) === null;
+      const empty = nextInput.value.trim() === '';
+      nextInput.setAttribute('aria-invalid', String(bad || empty));
+      nextNote.hidden = !(bad || empty);
+      nextNote.textContent = bad || empty ? 'Auto-number needs digits, such as 101' : '';
+    }
+
+    autoSwitch.checked = (() => {
+      try {
+        return readAutoNumber();
+      } catch (error) {
+        return false;
+      }
+    })();
+    autoSwitch.addEventListener('change', () => {
+      try {
+        writeAutoNumber(autoSwitch.checked);
+      } catch (error) {
+        refuse('This browser is not keeping the Auto-number switch: ' + error.message + '. It lasts until this tab closes.');
+      }
+      // turned on, the sequence starts again after the highest number on the floor
+      if (autoSwitch.checked) memory.autoNext.delete(floor.id);
+      showOptions();
+      say(autoSwitch.checked ? 'Auto-number is on. Next: ' + (nextFor(floor) || 'none') + '.' : 'Auto-number is off.');
+    });
+    nextInput.addEventListener('input', () => {
+      memory.autoNext.set(floor.id, nextInput.value.trim());
+      checkNext();
+    });
+    nextInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        toSurface();
+      }
+    });
+
+    // A room drawn while Auto-number is on: the number is in the placement, so
+    // drawing and numbering are one undo step. A number taken is skipped, and said.
+    function commitNumbered(payload, opts) {
+      const seed = nextFor(floor);
+      const before = seed;
+      let number;
+      let skipped = null;
+      if (splitNumber(seed) !== null) {
+        const taken = new Set(allRooms(project).filter((room) => room.number.trim() !== '').map((room) => roomNumberKey(room.number)));
+        number = taken.has(roomNumberKey(seed)) ? nextRoomNumber(project, seed) : seed.trim();
+        if (number !== null && number !== seed.trim()) skipped = seed.trim();
+      }
+      if (number === undefined || number === null) return commitPlain(placeRoom, payload, opts);
+      const info = { following: null, said: '' };
+      const outcome = commitPlain(placeRoom, { ...payload, number }, {
+        ...opts,
+        done: (result) => {
+          info.following = nextRoomNumber(store.project, number) || plainNext(number) || '';
+          const said = 'Room ' + number + ' drawn. Next: ' + info.following + '.';
+          info.said = skipped === null ? said : skipped + ' is taken; this is ' + number + '. ' + said;
+          return info.said;
+        },
+        toast: (result) => {
+          if (skipped !== null) return skipped + ' is taken; this is ' + number;
+          if (lastPointer === 'touch') return 'Room ' + number;
+          return result.loss && isLoss(result.loss) ? info.said : null;
+        },
+      });
+      if (outcome === null) return null;
+      memory.autoStack.push({ floorId: floor.id, roomId: outcome.spaceId, number, previous: before });
+      memory.autoNext.set(floor.id, info.following);
+      status.setHint('Room ' + number + ' drawn. Next: ' + info.following + '.');
+      showOptions();
+      return outcome;
+    }
+
+    // After any change of the project: a number whose room is gone is popped and the next
+    // steps back (Undo of the drawing); a number typed into the room just drawn re-seats
+    // the sequence from it. Typing into any other room never moves it.
+    function keepSequence() {
+      const stack = memory.autoStack;
+      let changed = false;
+      while (stack.length > 0) {
+        const top = stack[stack.length - 1];
+        const each = project.building.floors.find((candidate) => candidate.id === top.floorId);
+        const room = each ? each.spaces.find((space) => space.id === top.roomId) : null;
+        if (room) {
+          const typed = room.number.trim();
+          if (typed !== top.number && roomNumberKey(typed) !== roomNumberKey(top.number) && splitNumber(typed) !== null) {
+            top.number = typed;
+            const following = nextRoomNumber(project, typed) || plainNext(typed) || '';
+            memory.autoNext.set(top.floorId, following);
+            status.setHint('Next: ' + following + '.');
+            say('Next: ' + following + '.');
+            changed = true;
+          }
+          break;
+        }
+        stack.pop();
+        if (each) memory.autoNext.set(top.floorId, top.previous);
+        changed = true;
+      }
+      if (changed && floor && !options.hidden) showOptions();
+    }
+
     // ------------------------------------------------------------ the inspector, the menu, finding
 
     const trace = createTrace(ed, ctx);
@@ -508,6 +658,7 @@ export const section = {
     ed.underlay = trace.underlay;
     ed.overlays.push(connect.overlay, finder.overlay);
     ed.menu = buildingMenu(ed, { connect: () => connect, inspector: () => inspector });
+    ed.floorMenu = floorMenu(ed);
     ed.show = finder.show;
     ed.finder = finder;
     ed.inspector = inspector;
@@ -532,6 +683,7 @@ export const section = {
       strip.setActive(next.id);
       status.setHint(next.hint);
       canvas.dataset.tool = next.id;
+      showOptions();
       canvas.style.cursor = next.cursor;
       if (!quiet) say(next.hint);
       schedule();
@@ -544,6 +696,7 @@ export const section = {
       floor: () => floor,
       down(ev) {
         lastSource = ev.source;
+        lastPointer = ev.pointerType || 'mouse';
         dismissCard();
         finder.clear();
         if (ev.source === 'pointer') {
@@ -803,6 +956,7 @@ export const section = {
       floor = next;
       memory.floorId = next.id;
       refresh();
+      showOptions();
       fitted = false;
       settle();
       if (!quiet) say(next.name + '.');
@@ -870,6 +1024,8 @@ export const section = {
       memory.view = null;
       memory.fitBox = null;
       memory.clip = null;
+      memory.autoNext = new Map();
+      memory.autoStack = [];
       floor = floors[0];
       selection = [];
       needsFit = true;
@@ -898,6 +1054,7 @@ export const section = {
       // the address no longer names a floor of this building
       if (location.hash.startsWith('#building/') && !floors.some((each) => '#building/' + each.id === location.hash.split('?')[0])) history.replaceState(null, '', '#building');
       connect.update(project);
+      keepSequence();
       refresh();
     }
 

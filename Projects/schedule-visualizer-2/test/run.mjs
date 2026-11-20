@@ -163,6 +163,8 @@ export const GROUPS = {
     'browser/doors-stairs.mjs', // SV2-07
     'browser/elevators.mjs', // SV2-101
     'browser/stairwells.mjs', // SV2-131
+    'browser/floor-copy.mjs', // SV2-134
+    'browser/auto-number.mjs', // SV2-134
     'browser/inspector.mjs', // SV2-07
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
@@ -344,6 +346,8 @@ export const BROWSER_SECONDS = {
   'browser/doors-stairs.mjs': 5,
   'browser/elevators.mjs': 6,
   'browser/stairwells.mjs': 10,
+  'browser/floor-copy.mjs': 10,
+  'browser/auto-number.mjs': 9,
   'browser/m1-pass.mjs': 5,
   'browser/congestion-scenario.mjs': 5,
   'browser/shell-owed.mjs': 4,

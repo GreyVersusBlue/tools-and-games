@@ -199,20 +199,23 @@ function joinsFor(building, source, top) {
 
 // ---------------------------------------------------------------- the dialog
 
-// What the dialog says before anything changes.
+// What the dialog says before anything changes. `options.name` is the name the
+// user has typed so far, which the sentences then use.
 //   { floorId, name, newName, newLevel, topName,
 //     rooms, otherSpaces, namedCorridors, zones, refuges,
 //     numbered, renumber: { possible, reason, examples: [{ from, to }], count },
 //     unnumbered, notes,
 //     joins: [{ type, cell, text }], joinText, separateText,
 //     copied, notCopied, sentence }
-export function describeFloorDuplicate(project, floorId) {
+export function describeFloorDuplicate(project, floorId, options) {
   const building = project.building;
   const source = building.floors.find((floor) => floor.id === floorId);
   if (!source) return null;
   const top = topFloor(building);
   const newLevel = top.level + 1;
-  const newName = nameForCopy(building, source, newLevel);
+  // the name typed in the dialog, when there is one, is the name the sentences use
+  const typed = options && typeof options.name === 'string' && options.name.trim() !== '' ? options.name.trim() : null;
+  const newName = typed !== null ? typed : nameForCopy(building, source, newLevel);
   const rooms = source.spaces.filter((space) => space.kind === 'room').length;
   const otherSpaces = source.spaces.length - rooms;
   const named = source.corridors.length;
@@ -297,7 +300,7 @@ export const duplicateFloor = action(
     const data = payload || {};
     const building = project.building;
     const source = needFloor(project, data.floorId);
-    const info = describeFloorDuplicate(project, source.id);
+    const info = describeFloorDuplicate(project, source.id, { name: data.name });
     const top = topFloor(building);
     const makeId = idMaker(project, ctx.ids);
 
