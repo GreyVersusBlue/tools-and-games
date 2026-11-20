@@ -3,6 +3,7 @@
 // Testport (the invented city) carries the arithmetic; cairo carries the Venice roads, the
 // between-act events and a whole three-act game.
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import { test, eq, ok, throws, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { validateContent } from '../js/engine/content.js';
@@ -1014,6 +1015,94 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   ok(end.results.some(r => r.how === 'home'), 'and an agent at home faced the plague');
   eq(new Set(end.results.map(r => r.agent)).size, end.results.length, 'no agent is rolled for twice');
   eq(end.results.every(r => typeof r.text === 'string' && r.text.length > 0), true);
+});
+
+// ---- MER-78: what a return and a loss ask (returns.json, DESIGN 2.1 rules 3 and 4). data.js does not load returns.json yet, so
+// the cases put the file into the content by hand.
+const RET = JSON.parse(await fs.readFile(new URL('../data/testport/returns.json', import.meta.url), 'utf8'));
+const withReturns = (c, extra = []) => variant(c, y => { y.returns = [...structuredClone(RET), ...structuredClone(extra)]; });
+const entry = (id, paper, facts, over = {}) => ({ id, paper, ...(facts ? { facts } : {}), title: 'T', body: 'B', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], note: 'n', sources: [{ src: 'testport-fiction' }], ...over });
+const homeWith = (c, plan = WOOL) => {
+  let s = outfit(game(c), c, plan);
+  for (let i = 0; i < 12 && !s.desk.some(p => p.kind === 'return'); i++) s = step(s, c);
+  return s;
+};
+
+test('returns.json of both cities is valid content, and a bad entry is refused in words', () => {
+  validateContent(withReturns(T), {});
+  const cairoRet = JSON.parse(readFileSyncOf('cairo'));
+  validateContent(variant(C, y => { y.returns = cairoRet; }), {});
+  const bad = e => { try { validateContent(withReturns(T, [e]), {}); } catch (err) { return err.problems.map(p => p.message).join(' | '); } return null; };
+  ok(/no fact "by"/.test(bad(entry('x', 'return', { by: ['galley'] }))), 'a return has no vessel fact');
+  ok(/no fact "outcome"/.test(bad(entry('x', 'loss', { outcome: ['profit'] }))), 'a loss has no outcome fact');
+  ok(/needs one of profit, loss, even/.test(bad(entry('x', 'return', { outcome: ['lucky'] }))));
+  ok(/no stop "nowhere"/.test(bad(entry('x', 'return', { to: ['nowhere'] }))));
+  ok(/needs a number/.test(bad(entry('x', 'return', { seasons: { gte: 'three' } }))));
+  ok(/used twice/.test(bad(entry('return-bonus', 'return'))));
+  ok(/needs at least 1 item/.test(bad(entry('x', 'return', null, { choices: [] }))));
+});
+function readFileSyncOf(city) { return fsSync.readFileSync(new URL(`../data/${city}/returns.json`, import.meta.url), 'utf8'); }
+
+test('a return paper carries the trip in data (route, to, good, seasons, orders) and a choices list from returns.json by its facts', () => {
+  const c = withReturns(calm), s = homeWith(c), p = s.desk.find(q => q.kind === 'return'), d = p.data;
+  eq([d.trip.route, d.trip.to, d.trip.good, d.trip.agent, d.trip.expedition], ['harbour-hilltown', 'hilltown', 'wool', 'mira', p.expedition]);
+  eq(d.trip.seasons, idx(s, c) - 0, 'the seasons are the ones between the sending (season 0) and the opening that brought it home');
+  eq(d.trip.orders, [], 'no order took effect');
+  eq(d.entry, d.outcome === 'profit' ? 'return-bonus' : 'return-out-again', `by the outcome, ${d.outcome}`);
+  eq(d.choices.map(x => x.id), d.outcome === 'profit' ? ['bonus', 'none'] : ['again', 'rest']);
+  ok(d.choices.every(x => !/[{}]/.test(x.label)) && /Mira/.test(JSON.stringify(d.choices)), 'the agent\'s name is in the words, no braces are left');
+  ok(/Mira is home from Hilltown after/.test(d.ask.body), d.ask.body);
+  eq(d.choices[0].now.length > 0, true, 'the entry\'s own effects ride on the choice');
+});
+test('a return paper of a city with no returns.json has an empty choices list and no entry, and still plays', () => {
+  const s = homeWith(calm), d = s.desk.find(q => q.kind === 'return').data;
+  eq([d.entry, d.choices, d.ask], [null, [], null]);
+});
+test('returns.json: the entry that names the most facts wins, and an entry whose fact does not fit is shut out', () => {
+  const s = game(withReturns(calm)), pick = (c, facts, paper = 'return') => R.pickEntry(s, c, paper, facts)?.id;
+  const base = { outcome: 'profit', agent: 'mira', to: 'hilltown', good: 'wool', seasons: 4, orders: false, contract: 'own', lost: false };
+  const c = withReturns(calm, [
+    entry('mira-profit', 'return', { outcome: ['profit'], agent: ['mira'] }),
+    entry('far-profit', 'return', { outcome: ['profit'], seasons: { gte: 6 } }),
+    entry('saltmarsh', 'return', { outcome: ['profit'], to: ['saltmarsh'] }),
+    entry('never', 'return', { outcome: ['profit'], agent: ['mira'], good: ['wool'] }, { weight: 0 }),
+    entry('shut', 'return', { outcome: ['profit'], agent: ['mira'], good: ['wool'], orders: false }, { when: { flag: 'no-such-flag' } }),
+  ]);
+  eq(pick(c, base), 'mira-profit', 'two facts beat one (return-bonus), and the entries of weight 0 or a failing `when` are out');
+  eq(pick(c, { ...base, agent: 'tobin' }), 'return-bonus', 'another agent: back to the one-fact entry');
+  eq(pick(c, { ...base, seasons: 6, agent: 'tobin' }), 'far-profit', 'a range of seasons fits at its edge');
+  eq(pick(c, { ...base, seasons: 5, agent: 'tobin' }), 'return-bonus', 'and not below it');
+  eq(pick(c, { ...base, to: 'saltmarsh', agent: 'tobin' }), 'saltmarsh', 'a stop fits by name');
+  eq(pick(c, { ...base, outcome: 'loss' }), 'return-out-again', 'a loss: only the entry that names no fact fits');
+  eq(R.pickEntry(s, withReturns(calm), 'loss', { whole: false, survived: true })?.id, 'loss-survivor');
+  eq(R.pickEntry(s, { ...calm, returns: [] }, 'return', base), null, 'no entry, no choices');
+});
+test('a loss paper carries the trip and a choices list likewise: a lost agent and a safe one are asked different things', () => {
+  const c = withReturns(risk(T, 1));
+  const lose = (jump, seed) => {
+    const x = variant(c, y => { y.city.jump = jump; });
+    const s = outfit(game(x), x, { ...WOOL, purse: 30 });
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, x);
+    return s;
+  };
+  let seen = 0;
+  for (let seed = 1; seed <= 60 && seen < 2; seed++) {
+    const dead = lose({ wholeLoss: 1, survivesWhole: 0 }, seed), paper = dead.desk.find(p => p.kind === 'lost');
+    if (paper) {
+      seen++;
+      eq([paper.data.entry, paper.data.choices.map(x => x.id)], ['loss-lost-agent', ['family', 'nothing']]);
+      eq([paper.data.trip.agent, paper.data.trip.to, paper.data.trip.good, paper.data.trip.expedition], ['mira', 'hilltown', 'wool', paper.expedition]);
+      ok(/Mira did not come back/.test(paper.data.ask.title) && /lost on the road to Hilltown/.test(paper.data.ask.body), JSON.stringify(paper.data.ask));
+    }
+  }
+  ok(seen === 2, 'two whole losses turned up');
+  let safe = 0;
+  for (let seed = 1; seed <= 60 && !safe; seed++) {
+    const s = lose({ wholeLoss: 0, partial: [0.5, 0.5] }, seed), paper = s.desk.find(p => p.kind === 'lost');
+    if (paper) { safe++; eq([paper.data.entry, paper.data.choices.map(x => x.id)], ['loss-survivor', ['forgive', 'blame']]); }
+  }
+  ok(safe, 'a partial loss turned up');
 });
 
 done();

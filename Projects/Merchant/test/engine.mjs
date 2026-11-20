@@ -730,4 +730,48 @@ test('engine files name no city, no page, no Math.random and no Date', async () 
   }
 });
 
+// ---- MER-78: the draw (DESIGN 2.1 rules 1 and 2). Each case builds the pool from cards of its own, at the opening of season 2 of a
+// full game (the third of its act, so the season wants three cards), and calls the draw step alone.
+const pooled = (id, group, kind, over = {}) => ({ id, group, kind, from: { name: 'A', role: 'B', seal: null }, title: 't', body: 'b', weight: 100, repeat: true, choices: [choice([{ money: 1 }])], note: 'n', sources: [], ...over });
+const NOTICE = { id: null, state: 'open', kind: 'notice', ref: 'welcome' };
+const MIRA_OUT = { id: 'x1', agent: 'mira', route: 'harbour-hilltown', leg: 0, left: 1, status: 'out', cargo: { wool: 2 }, purse: 0, sent: 0, contract: { kind: 'own' }, staked: { house: 0, partners: 0 }, orders: [] };
+/** The cards the draw adds: from `cards` only, with `desk` already on the desk, an expedition out or not. */
+function dealt(cards, { out = false, desk = [], seed = 3 } = {}) {
+  const c = variant(x => { x.cards = cards; });
+  const s = fresh({ seed, length: 'full' });
+  s.t = 2; s.desk = structuredClone(desk);
+  if (out) s.expeditions.push(structuredClone(MIRA_OUT));
+  steps.drawCards(s, c);
+  return s.desk.slice(desk.length).map(p => p.ref);
+}
+const FOUR = [pooled('fav', 'gifts', 'favour'), pooled('tra', 'orders', 'trade'), pooled('peo', 'hiring', 'people'), pooled('wor', 'court', 'world')];
+test('draw: a card that tells of a trip is dealt before any other pool card, whatever the weights', () => {
+  const trip = pooled('trip', 'orders', 'trade', { weight: 1, when: { trip: { agent: 'mira', is: 'out' } } });
+  const heavy = pooled('heavy', 'disputes', 'world', { weight: 1000 });
+  eq(dealt([trip, heavy], { out: true, desk: [NOTICE, NOTICE, NOTICE, NOTICE] }), ['trip'], 'one slot left, and the trip card takes it');
+  eq(dealt([trip, heavy], { desk: [NOTICE, NOTICE, NOTICE, NOTICE] }), ['heavy'], 'with no trip out there is no trip card to deal');
+});
+test('draw: at most two pool cards while a trip is out, three otherwise', () => {
+  eq(dealt(FOUR, { out: true }).length, 2, 'a trip is out');
+  eq(dealt(FOUR).length, 3, 'none is');
+  const home = [{ id: null, state: 'open', kind: 'return', ref: 'return', agent: 'mira', expedition: 'x1', data: {} }];
+  eq(dealt(FOUR, { desk: home }).length, 2, 'a trip came home this season: its return paper is on the desk');
+});
+test('draw: a favour already on the desk, a follow-up\'s too, keeps a pool favour off it', () => {
+  const follow = pooled('follow', 'followups', 'favour', { weight: 0 });
+  const cards = [follow, pooled('fav', 'gifts', 'favour', { weight: 1000 }), pooled('tra', 'orders', 'trade', { weight: 1 })];
+  eq(dealt(cards, { desk: [{ id: null, state: 'open', kind: 'card', ref: 'follow' }] }), ['tra'], 'only the trade card is drawn');
+  eq(dealt(cards), ['fav', 'tra'], 'with no favour on the desk the favour is a card like another');
+});
+test('draw: no two pool cards of one kind in a season', () => {
+  const cards = [pooled('peo1', 'hiring', 'people', { weight: 1000 }), pooled('peo2', 'disputes', 'people', { weight: 1000 }), pooled('wor', 'court', 'world', { weight: 1 })];
+  const drawn = dealt(cards);
+  eq(drawn.length, 2, 'one people card and the world card');
+  eq(new Set(drawn.map(r => cards.find(c => c.id === r).kind)).size, 2, `${drawn}`);
+});
+test('draw: every card of both cities has a kind, and the kinds are the four of DESIGN 2.1', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  for (const c of [...content.cards, ...cairo.cards]) ok(['favour', 'trade', 'people', 'world'].includes(c.kind), `${c.id}: ${c.kind}`);
+});
+
 await done();

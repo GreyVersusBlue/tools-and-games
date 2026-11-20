@@ -206,17 +206,37 @@ test('lag: a letter written at s1 reaches the desk the next season, one written 
   for (let seed = 1; seed <= 40; seed++) for (const s of play(c, seed, { n: 5 })) for (const p of s.post) seen[p.id] ??= { ...p };
   for (const [id, lag] of [['r1', 1], ['r2', 2]]) eq([seen[id].lag, seen[id].arrive - seen[id].written], [lag, lag], id);
 });
-test('one letter at most for an expedition in a season, whatever the pool holds, and about half the draws write', () => {
+test('one letter at most for an expedition in a season, whatever the pool holds', () => {
   const c = writing(trek(calm), report('r1', at('s2'), { repeat: true }), report('r2', at('s2'), { repeat: true }), question('q1', at('s2'), { repeat: true }));
-  let wrote = 0;
   for (let seed = 1; seed <= 200; seed++) {
     const states = play(c, seed, { n: 3 });          // season 3 is the one opening where the expedition stands at s2
     const byWritten = {};
     for (const s of states) for (const p of s.post) (byWritten[`${p.expedition}@${p.written}`] ??= new Set()).add(p.id);
     for (const ids of Object.values(byWritten)) ok(ids.size <= 1, `seed ${seed}: ${[...ids]}`);
-    wrote += Object.keys(byWritten).length;
   }
-  ok(wrote > 60 && wrote < 140, `about half of 200 eligible openings write (${wrote}); the chance is ${LETTER_CHANCE}`);
+});
+// MER-78 (DESIGN 2.1 rule 5): the plain chance is LETTER_CHANCE; a trip that has written nothing gains SILENT_RAMP for each
+// opening it could have written at. On the trek a one-season leg means the expedition stands at s1 in season 2 (the first
+// opening it can write at), at s2 in season 3, and so on, so every opening from 2 has a letter to write.
+const everyStop = () => writing(trek(calm), ...[1, 2, 3, 4, 5].map(i => report(`r${i}`, at(`s${i}`), { repeat: true })));
+const wroteAt = (states, season) => states.some(s => s.post.some(p => p.written === season));
+const tripsOf = (c, seeds, n) => Array.from({ length: seeds }, (_, i) => play(c, i + 1, { n }));
+test('the plain chance: about half of the first openings a trip can write at do', () => {
+  const trips = tripsOf(everyStop(), 400, 2), wrote = trips.filter(st => wroteAt(st, 2)).length;
+  ok(wrote > 160 && wrote < 240, `${wrote} of 400 first openings wrote; the chance is ${LETTER_CHANCE}`);
+});
+test('a trip that has written nothing is surer at each opening and is sure by its third', () => {
+  const quiet = tripsOf(everyStop(), 600, 4).filter(st => !wroteAt(st, 2));
+  const third = quiet.filter(st => wroteAt(st, 3)).length;
+  ok(quiet.length > 240 && third / quiet.length > 0.65 && third / quiet.length < 0.85, `${third} of ${quiet.length} trips quiet at the first opening wrote at the second (three in four expected)`);
+  const still = quiet.filter(st => !wroteAt(st, 3));
+  ok(still.length > 20, `${still.length} trips were quiet twice`);
+  eq(still.filter(st => !wroteAt(st, 4)).length, 0, 'every trip quiet at two openings writes at the third');
+});
+test('once a trip has written, its chance falls back to the plain one, however quiet it was before', () => {
+  // quiet at the first opening, then wrote at the second: the ramp is spent, so the third opening is an ordinary draw
+  const late = tripsOf(everyStop(), 800, 4).filter(st => !wroteAt(st, 2) && wroteAt(st, 3)), again = late.filter(st => wroteAt(st, 4)).length;
+  ok(late.length > 200 && again / late.length > 0.38 && again / late.length < 0.62, `${again} of ${late.length} trips that wrote at their second opening wrote again at the third (half expected)`);
 });
 test('never at home: a letter that wants Harbour is never written, however many seeds', () => {
   const c = writing(trek(calm), report('r1', at('harbour'), { repeat: true }));
@@ -369,6 +389,42 @@ test('(3) a turn-back sells the cargo the stop buys and carries the rest home', 
   eq([x0(kept[4]).cargo, x0(kept[5]).cargo], [{ salt: 2 }, { salt: 2 }], 'salt is not bought there, so it is carried home');
   const back = kept[9].desk.find(p => p.kind === 'return').data.account.find(r => r.label === 'Back home').text;
   ok(/2 loads of salt/.test(back), back);
+});
+// ---- MER-78: the first question is sure, and the return says what an order changed
+
+test('(MER-78) the first question a house can be asked is written whatever the weights and the chance', () => {
+  const c = writing(trek(calm), report('r1', at('s1'), { weight: 1000, repeat: true }), question('q1', at('s1'), { weight: 1 }));
+  for (let seed = 1; seed <= 100; seed++) eq(play(c, seed, { n: 2 }).at(-1).post.map(p => p.id), ['q1'], `seed ${seed}: season 2 is the first opening the expedition stands at s1`);
+});
+test('(MER-78) city.json\'s secondSeason.letter is the sure question when it can be written', () => {
+  const c = variant(writing(trek(calm), question('q1', at('s1')), question('q2', at('s1'))), x => { x.city.secondSeason = { letter: 'q2' }; });
+  for (let seed = 1; seed <= 60; seed++) eq(play(c, seed, { n: 2 }).at(-1).post.map(p => p.id), ['q2'], `seed ${seed}`);
+});
+test('(MER-78) after the first question, a question is an ordinary draw again', () => {
+  const c = writing(trek(calm), question('q1', at('s1')), report('r2', at('s2'), { weight: 1000, repeat: true }), question('q2', at('s2'), { weight: 1 }));
+  let q2 = 0;
+  for (let seed = 1; seed <= 200; seed++) q2 += play(c, seed, { n: 3 }).at(-1).post.filter(p => p.id === 'q2').length;   // season 3: at s2
+  ok(q2 <= 5, `q2 weighs 1 against 1000 and was written ${q2} times in 200 games`);
+});
+const returnOf = states => states.flatMap(s => s.desk).find(p => p.kind === 'return');
+test('(MER-78) a return whose order changed what the expedition did says so first: a turn-back', () => {
+  const p = returnOf(play(one, seedQ, { choices: { q1: 'home' }, n: 12 }));
+  ok(/^Because you told [A-Z][a-z]+ to turn back at Stop 4, the mule train came home from there\. [A-Z][a-z]+ came home from Stop 4\./.test(p.data.headline), p.data.headline);
+  eq(p.data.orderLine, p.data.headline.slice(0, p.data.orderLine.length), 'the line is also kept apart');
+  eq(p.data.trip.orders.map(o => [o.letter, o.go, o.stop, o.did, o.changed]), [['q1', 'home', 's4', 'home', true]]);
+});
+test('(MER-78) a return whose order changed what the expedition did says so first: a wait', () => {
+  const p = returnOf(play(one, seedQ, { choices: { q1: 'wait' }, n: 16 }));
+  ok(/^Because you told [A-Z][a-z]+ to wait at Stop 4, the mule train waited a season there before going on\. /.test(p.data.headline), p.data.headline);
+});
+test('(MER-78) an order that changed nothing leaves no line: a bold agent told to go on was going on', () => {
+  const p = returnOf(play(one, seedQ, { choices: { q1: 'on' }, n: 12 }));
+  eq([p.data.orderLine, p.data.trip.orders.map(o => [o.go, o.changed])], [null, [['on', false]]]);
+  ok(/^[A-Z][a-z]+ came home from Stop 5\./.test(p.data.headline), p.data.headline);
+});
+test('(MER-78) a return with no order has none', () => {
+  const p = returnOf(play(writing(trek(calm)), 3, { n: 12 }));
+  eq([p.data.orderLine, p.data.trip.orders], [null, []]);
 });
 test('(2) an order answered long before it is due acts at the next decision point whatever leg the question was asked on', () => {
   // the question was asked on leg 1; the order is due in 4 and acts at the end of leg 3, two decision points later

@@ -35,6 +35,9 @@ import { wary, legSeasons } from './agents.js';
 
 /** The chance a letter is written, for an expedition with a letter to write, in a season. */
 export const LETTER_CHANCE = 0.5;
+/** A trip that has written nothing yet gains this much chance for each opening it could have written at and did not (`x.quiet`),
+    up to a sure thing (DESIGN 2.1 rule 5: a long trip brings a letter). Once it has written, the plain chance holds. */
+export const SILENT_RAMP = 0.25;
 /** The three orders: hold a season at a decision point, go on, turn back toward home. */
 export const WAIT = 'wait', ON = 'on', HOME = 'home';
 export const GOES = [WAIT, ON, HOME];
@@ -128,15 +131,30 @@ function deliver(s, content, idx) {
   s.post = waiting;
 }
 
-/** One draw at most for an expedition that is on the road and not at home. */
+/** The chance an expedition writes now: the plain chance, and a rising one while it has written nothing on this trip. */
+export const chanceFor = x => (x.wrote ? LETTER_CHANCE : Math.min(1, LETTER_CHANCE + SILENT_RAMP * (x.quiet ?? 0)));
+
+/** One draw at most for an expedition that is on the road and not at home. The first question a house can be asked
+    is sure (DESIGN 2.1 rule 5, "the second season's question letter"): while no question has been written in this game, an
+    expedition with one that can be written now writes it, with no chance draw and whatever the weights; city.json's
+    `secondSeason.letter` if that is one of them, else one by weight. DESIGN says season two, but an expedition sent in
+    season one is still at home at season two's opening (it does not move in the season it is sent, and nobody writes from
+    home), so the first opening a letter can be written at is season three; the sure question is that one. A question that
+    could not matter (see the head) is never written, so a trip with no decision point left brings none, and the
+    guarantee waits for the next trip that can. */
 function write(s, content, x, idx) {
   const place = placeOf(content, x);
   if (!place || x.sent === idx || s.post.some(p => p.expedition === x.id && p.written === idx)) return; // one a season
   const lag = lagOf(content, place.stop);
   if (!lag) return; // at home (0) or at a stop no route reaches (null): nobody writes
   const choices = pool(s, content, x, idx, lag);
-  if (!choices.length || !chance(s, LETTER_CHANCE)) return;
-  const letter = weighted(s, choices);
+  const first = !(content.letters ?? []).some(l => l.kind === 'question' && s.seen[l.id]);
+  const sure = first ? choices.filter(l => l.kind === 'question') : [];
+  let letter = null;
+  if (sure.length) letter = sure.find(l => l.id === content.city?.secondSeason?.letter) ?? weighted(s, sure);
+  else if (choices.length && chance(s, chanceFor(x))) letter = weighted(s, choices);
+  if (!letter) { x.quiet = (x.quiet ?? 0) + 1; return; }   // an opening it could have written at and did not
+  x.wrote = (x.wrote ?? 0) + 1;
   s.seen[letter.id] = (s.seen[letter.id] ?? 0) + 1;
   s.post.push({ id: letter.id, kind: letter.kind, expedition: x.id, agent: x.agent, stop: place.stop, standing: place.standing, written: idx, lag, arrive: idx + lag });
 }
