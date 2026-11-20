@@ -250,24 +250,17 @@
             "trust": "yusuf",
             "by": 1
           }
-        ],
-        "later": [
-          {
-            "in": 3,
-            "do": [
-              {
-                "rep": "agents",
-                "by": 1
-              }
-            ]
-          }
         ]
       },
       {
         "id": "judge",
         "label": "Let a judge decide",
-        "hint": "It costs 2 dinars later. Yusuf will not like it.",
+        "hint": "It costs 2 dinars later. The court thinks well of you. Yusuf does not.",
         "now": [
+          {
+            "rep": "court",
+            "by": 1
+          },
           {
             "trust": "yusuf",
             "by": -1

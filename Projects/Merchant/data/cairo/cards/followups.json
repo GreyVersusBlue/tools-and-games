@@ -510,7 +510,7 @@
       {
         "id": "place",
         "label": "Buy a place in her next pressing",
-        "hint": "It costs money now. It may pay later.",
+        "hint": "It costs 5 dinars now and may pay 11 later. Other merchants hear of it.",
         "requires": {
           "money": {
             "gte": 5
@@ -519,6 +519,10 @@
         "now": [
           {
             "money": -5
+          },
+          {
+            "rep": "foreign",
+            "by": 1
           }
         ],
         "later": [
