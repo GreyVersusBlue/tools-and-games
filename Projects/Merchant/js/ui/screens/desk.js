@@ -96,11 +96,12 @@ export function createDesk(app) {
 
   /** The map table is its own screen with its own hash (#map). `outfitFor` is a stop to open the
       one-press sheet on once the map has drawn (DESIGN 7); the map reads it from the app and clears it. */
-  function toMap(outfitFor = null) {
+  function toMap(outfitFor = null, outfitWith = null) {
     if (busy) return;
     if (backOf && !outfitFor) { barNote('Press Next first.'); return; }
     if (app.state.phase !== 'desk') { barNote('The map table is for the seasons, not the years between.'); return; }
     app.outfitFor = outfitFor;
+    app.outfitWith = outfitFor && outfitWith ? { ...outfitWith, stop: outfitFor } : null;
     location.hash = 'map';
   }
 
@@ -226,13 +227,14 @@ export function createDesk(app) {
     const node = qs(`[data-paper="${paper.id}"]`, sheetBox);
     node?.setAttribute('inert', '');
     const before = new Set(app.state.notebook);
+    const tripTo = app.view().cards?.[paper.id]?.trip?.to ?? null;   // where the card says the agent would go
     try { app.act(s => engine.choose(s, content, paper.id, choice.id)); } catch (e) { busy = false; node?.removeAttribute('inert'); app.say(e.message); return; }
     if (RECORD_KINDS.includes(paper.kind)) { busy = false; raised = null; draw({ focus: 'next' }); return; }
     const fresh = app.state.notebook.filter(id => !before.has(id)).map(id => (content.notebook ?? []).find(n => n.id === id)?.title ?? id);
     const answered = app.state.desk.find(p => p.id === paper.id);
-    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now);
+    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app);
     const done = () => {
-      backOf = { paper: answered, now, fresh, outfit: choice.ui === 'outfit-first' };
+      backOf = { paper: answered, now, fresh, outfit: outfitOf(choice, tripTo) };
       busy = false;
       draw({ focus: 'back', flipped: true });
       // `data-flip` is on the back from its first frame until it lies flat: a press or a click on
@@ -247,12 +249,20 @@ export function createDesk(app) {
     flip(node ?? document.createElement('div'), done);
   }
 
+  /** What a choice asks of the outfit sheet: the `outfit` effect in its `now` (agent and contract),
+      on the stop the card's trip names when it has one, or the plain one-press sheet for ui: outfit-first; null when it opens no sheet. */
+  function outfitOf(choice, tripTo) {
+    const e = (choice.now ?? []).find(x => x && x.outfit !== undefined);
+    if (e) return { agent: e.outfit, contract: e.contract, stop: tripTo };
+    return choice.ui === 'outfit-first' ? {} : null;
+  }
+
   function next() {
     if (busy || !backOf) return;
     const outfit = backOf.outfit;
     backOf = null; raised = null;
     // the one-press paper is the outfitting sheet over the map table, filled in for the first stop (DESIGN 7)
-    if (outfit) { toMap(content.city.firstStop ?? 'damascus'); return; }
+    if (outfit) { toMap(outfit.stop ?? content.city.firstStop ?? 'damascus', outfit); return; }
     draw({ focus: 'next' });
   }
 

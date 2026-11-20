@@ -126,6 +126,13 @@ resolver is `link-guard.mjs`, proved on fixtures every run; its `EXEMPT` table
 FAIL line. Pathfinder's campaigns and characters pages linked "Back to
 greyversusblue.com" to a `Pathfinder/index.html` that never existed (TG-60).
 
+It also fails a `Projects/` card in the root `index.html` whose page, or a script in
+its folder, holds no link that resolves to the site root: a visitor from a
+shared link needs a way back to the board (TG-97, #1084). `linksHome()` in
+`link-guard.mjs` is proved on fixtures every run; `HOME_EXEMPT` there lists
+Merchant and Schedule Visualizer 2 (their streams add their own), and an entry
+whose page now links home is a FAIL line.
+
 This is here because a game's `src/npc.js` contained JSON instead of
 JavaScript, which meant `main.js` could not `import { NPC }` and the game hung
 on its loading screen. (That was Castle Conundrum, which is its own repository

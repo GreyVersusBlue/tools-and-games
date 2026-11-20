@@ -31,10 +31,26 @@ export function seenEffects(content, effects) {
   return out;
 }
 
-/** Sentences for "what happened now", or the plain line when nothing changed. */
-export function happened(content, effects) {
-  const seen = seenEffects(content, effects);
-  return seen.length ? seen.map(s => s.said).join(' ') : 'Nothing changed at once.';
+const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'the court', foreign: 'foreign merchants' };
+
+/** Sentences for "what happened now": money and goods first, then whose trust or standing moved
+    (`app` is optional; with it a reputation also says where it stands now, in the engine's words from
+    view()), else the plain line when nothing a player can see changed. */
+export function happened(content, effects, app = null) {
+  const parts = seenEffects(content, effects).map(s => s.said);
+  const view = app?.view?.();
+  for (const e of effects ?? []) {
+    if (typeof e.by !== 'number' || e.by === 0) continue;
+    const up = e.by > 0;
+    if (typeof e.trust === 'string') {
+      const name = (content.agents ?? []).find(a => a.id === e.trust)?.name ?? e.trust;
+      parts.push(`${name} trusts the house ${up ? 'more' : 'less'}.`);
+    } else if (typeof e.rep === 'string') {
+      const who = cap(REP_WORDS[e.rep] ?? e.rep), now = view?.rep?.[e.rep]?.words;
+      parts.push(`${who} think ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
+    }
+  }
+  return parts.length ? parts.join(' ') : 'Nothing changed at once.';
 }
 
 /** "Cairo pays 25 a load. Damascus paid 38, two seasons ago." from what the house knows
@@ -57,7 +73,6 @@ export function priceLine(app) {
   return parts.length ? parts.join(' ') : null;
 }
 
-const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'the court', foreign: 'foreign merchants' };
 const listOf = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
 
 /** The first thing a condition asks for that the house does not have, in words; null when the
@@ -110,6 +125,7 @@ export function whyNot(cond, state, content) {
 export function choicesOf(app, paper) {
   const { content } = app;
   const state = app.state;
+  const filled = app.view().cards?.[paper.id]?.choices ?? {};
   return engine.paperChoices(state, content, paper.id).map(c => {
     let available = true, refusal = null;
     try { engine.choose(state, content, paper.id, c.id); } catch (e) { available = false; refusal = /is refused: (.+)$/.exec(e.message)?.[1] ?? null; }
@@ -118,7 +134,7 @@ export function choicesOf(app, paper) {
       why = (refusal && `${refusal.charAt(0).toUpperCase()}${refusal.slice(1)}${/[.!?]$/.test(refusal) ? '' : '.'}`)
         || whyNot(c.requires, state, content) || 'Not open to you now.';
     }
-    return { ...c, available, why, seen: seenEffects(content, c.now), prices: c.ui === 'outfit-first' ? priceLine(app) : null };
+    return { ...c, label: filled[c.id]?.label ?? c.label, hint: filled[c.id]?.hint ?? c.hint, available, why, seen: seenEffects(content, c.now), prices: c.ui === 'outfit-first' ? priceLine(app) : null };
   });
 }
 
@@ -140,15 +156,14 @@ export const RECORD_KINDS = ['return', 'lost', 'news', 'accounts'];
 
 const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.name ?? id;
 
-export function paperTitle(content, paper) {
+export function paperTitle(content, paper, cards) {
   if (paper.kind === 'return' || paper.kind === 'lost') return paper.data?.headline ?? 'News of the house';
   if (paper.kind === 'news') {
     const n = paper.letters?.length ?? 0;
     return n === 1 ? `News from ${stopName(content, paper.letters[0].stop)}` : `News from ${n} cities`;
   }
   if (paper.kind === 'accounts') return 'Accounts';
-  const s = sourceOf(content, paper);
-  return s.title ?? 'A paper';
+  return cards?.[paper.id]?.title ?? sourceOf(content, paper).title ?? 'A paper';
 }
 
 /** Who a paper is from: the agent's seal on a return or a loss, a plain mark on the rest. */
@@ -196,6 +211,7 @@ export function head(app, from) {
 /** The front of a card, letter or notice. onChoose(choice, index). */
 export function front(app, paper, { onChoose, locked }) {
   const s = sourceOf(app.content, paper);
+  const cards = app.view().cards;
   const titleId = `paper-${paper.id}-title`;
   const note = letterNotes(app, paper);
   const choices = paper.kind === 'notice'
@@ -218,8 +234,8 @@ export function front(app, paper, { onChoose, locked }) {
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
     head(app, senderOf(app.content, paper)),
     note?.line ? h('p', { class: 'letter-line', id: `paper-${paper.id}-line` }, note.line) : null,
-    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(app.content, paper)),
-    h('p', { class: 'sheet-body' }, s.body ?? ''),
+    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(app.content, paper, cards)),
+    h('p', { class: 'sheet-body' }, cards?.[paper.id]?.body ?? s.body ?? ''),
     list,
     note?.answer ? h('p', { class: 'letter-answer', id: `paper-${paper.id}-answer` }, note.answer) : null);
 }
@@ -285,6 +301,6 @@ export function record(app, paper, { onDone, open }) {
 /** The edge of a paper lower in the stack: seal and title, pressed to raise it. */
 export function edge(app, paper, { onRaise, tilt }) {
   return h('button', { class: 'edge', type: 'button', style: `--tilt:${tilt}deg`, dataset: { paper: paper.id }, onclick: onRaise,
-    'aria-label': `Raise: ${paperTitle(app.content, paper)}` },
-  seal(app, senderOf(app.content, paper)?.seal), h('span', null, paperTitle(app.content, paper)));
+    'aria-label': `Raise: ${paperTitle(app.content, paper, app.view().cards)}` },
+  seal(app, senderOf(app.content, paper)?.seal), h('span', null, paperTitle(app.content, paper, app.view().cards)));
 }

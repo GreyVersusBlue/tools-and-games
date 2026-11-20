@@ -67,6 +67,7 @@ button{font-family:inherit;cursor:pointer}
   font-family:var(--serif-display);
 }
 .tb-btn:hover{background:var(--line);color:var(--brass-hi)}
+a.tb-btn{display:inline-block;text-decoration:none;line-height:1.4} /* TG-97: the way back to the board */
 .tb-btn:focus-visible,.title-btn:focus-visible,.nav-btn:focus-visible,.choice-btn:focus-visible,.opt-card:focus-visible{outline:2px solid var(--brass-hi);outline-offset:2px}
 /* gvb-save's bar, dressed as a pair of tb-btns. The module reads none of this;
    it exposes the four custom properties precisely so a host page can. */
@@ -483,6 +484,7 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
          exporting mid-adventure costs no page reload, the open item v7 §9
          raised against The Fourth Quarter. -->
     <div id="save-bar"></div>
+    <a class="tb-btn" id="lnk-all-games" href="/">All games</a>
     <button class="tb-btn" id="btn-to-title">Title</button>
   </div>
   <div id="main">

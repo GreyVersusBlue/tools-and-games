@@ -27,6 +27,10 @@ for (let day = 1; day <= DAYS; day++) {
   const cost = (performance.now() - mark) / (day - markDay);
   const snap = w.snapshot();
   const u0 = performance.now(); w.load(snap.save, snap.step); const unpack = performance.now() - u0;
+  // Garbage from the snapshot and the reload above is still in the heap here; a container near its limit collects it before it would
+  // run out, so with --expose-gc the reading is taken after a full collection (2026-11-17's nightly read 417 MB without, 309 the next
+  // night, same seed and saves). Without the flag it reads as before.
+  if (typeof globalThis.gc === 'function') globalThis.gc();
   const rss = process.memoryUsage().rss / 1048576, people = w.summary().people;
   const row = { day, cost, lz: snap.save.length, rss, unpack, people };
   rows.push(row);

@@ -426,6 +426,18 @@ if (mode === 'twelve') {
     const an = AC.createAnalyser(); an.fftSize = 2048;
     h.buses.master.connect(an);
     const buf = new Float32Array(an.fftSize);
+    // The sung tune alone, off the sfx bus it is sung into (songTune connects only to sfxG): the wind, the sea and the rain are
+    // on other buses, so this reading is the instrument without the room's random bed under it.
+    const anS = AC.createAnalyser(); anS.fftSize = 2048; h.buses.sfxG.connect(anS);
+    const bufS = new Float32Array(anS.fftSize);
+    const peakSfxFor = ms => new Promise(res => {
+      let peak = 0; const t0 = performance.now();
+      const iv = setInterval(() => {
+        anS.getFloatTimeDomainData(bufS);
+        for (let i = 0; i < bufS.length; i++) { const a = Math.abs(bufS[i]); if (a > peak) peak = a; }
+        if (performance.now() - t0 > ms) { clearInterval(iv); res(peak); }
+      }, 25);
+    });
     const peakFor = ms => new Promise(res => {
       let peak = 0; const t0 = performance.now();
       const iv = setInterval(() => {
@@ -458,9 +470,15 @@ if (mode === 'twelve') {
     // a song is two passes of up to ten notes; it needs a longer window to peak in and a longer tail to die in,
     // or it bleeds into the duck measurement below and the storm bed reads hot for no reason.
     const peakWindow = n => n === 'songTune' ? 3000 : n === 'dawnMotif' ? 4800 : n === 'owl' ? 1800 : (n === 'thunder' || n === 'bell') ? 2200 : 1300;
+    // The sung tune is also read alone, off the sfx bus, at the same time as the master bus (print only, not checked). On 2026-11-19
+    // the alone reading was 0.066 to 0.072 when the tune follows wayTune's 250 ms settle (wayTune's tail is still on the bus) and
+    // 0.049 on a clean bus, while the master-bus reading the band below is written against swings with the wind and sea under it.
+    let songAlone = null;
     for (const [name, fn] of shots) {
       h.audioTick(.05); // resets the per-frame sfx cap so every shot actually fires
-      fn(); out[name] = +(await peakFor(peakWindow(name))).toFixed(4);
+      fn();
+      if (name === 'songTune') { const [m, a] = await Promise.all([peakFor(peakWindow(name)), peakSfxFor(peakWindow(name))]); out[name] = +m.toFixed(4); songAlone = +a.toFixed(4); }
+      else out[name] = +(await peakFor(peakWindow(name))).toFixed(4);
       await settle(name === 'songTune' ? 7000 : name === 'dawnMotif' ? 3500 : 250);
     }
     // A lost song is silent, measured on the same analyser as everything else: nothing scheduled, nothing heard.
@@ -476,6 +494,7 @@ if (mode === 'twelve') {
     const played = h.songTune(sung, 1);
     await settle(7000);
     out.song = {
+      songAlone,
       degrees: h.songDegrees(0),
       sameTwice: JSON.stringify(h.songDegrees(3)) === JSON.stringify(h.songDegrees(3)),
       playedIsDerived: JSON.stringify(played) === JSON.stringify(h.songDegrees(0)),
@@ -628,7 +647,7 @@ if (mode === 'twelve') {
     const sg = audio.song;
     console.log(`  song: degrees [${sg.degrees.join(' ')}], same twice ${sg.sameTwice}, ` +
       `played-is-derived ${sg.playedIsDerived}, lost returns ${sg.lostReturn} at ${sg.lostPeak.toFixed(4)} ` +
-      `against a room floor of ${sg.floor.toFixed(4)} (a sung one peaks ${audio.songTune.toFixed(4)})`);
+      `against a room floor of ${sg.floor.toFixed(4)} (a sung one peaks ${audio.songTune.toFixed(4)}; alone on the sfx bus ${sg.songAlone})`);
     if (!(sg.degrees.length >= 6 && sg.degrees.length <= 10)) {
       failed = true; console.log(`FAIL: a phrase is ${sg.degrees.length} degrees, not 6-10`);
     }

@@ -331,6 +331,11 @@ canvas{ display:block; width:100%; height:auto; touch-action:none; }
   --gvb-btn-border:var(--line); --gvb-btn-radius:4px; }
 .save-bar button{ font-family:var(--ui); }
 #save-bar-title{ justify-content:center; margin-top:22px; }
+/* TG-97: the way back to the board, under the save bar so the Begin button does not move. */
+.title-home{ display:inline-block; margin-top:14px; padding:12px 14px; font-size:13px; letter-spacing:.3em; text-transform:uppercase;
+  color:var(--cream-dim); text-decoration:underline; text-underline-offset:4px; }
+.title-home:hover{ color:var(--gold); }
+.title-home:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; border-radius:4px; }
 /* Continue sits beside Begin when a save exists, and is display:none when not. */
 #btn-continue{ margin-right:14px; }
 .hub-section-label{ font-size:10px; letter-spacing:.34em; text-transform:uppercase; color:var(--gold); margin-bottom:10px; }
@@ -380,6 +385,7 @@ canvas{ display:block; width:100%; height:auto; touch-action:none; }
     <button class="btn-main" id="btn-continue" style="display:none">Continue</button>
     <button class="btn-main" id="btn-begin">Begin</button>
     <div class="save-bar" id="save-bar-title"></div>
+    <a class="title-home" href="/">All games</a>
   </div>
 </div>
 

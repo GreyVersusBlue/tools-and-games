@@ -161,6 +161,14 @@
     color: var(--amber); letter-spacing: 0.2em;
     border: 1px solid rgba(255,179,103,0.4); padding: 10px 26px; border-radius: 3px;
   }
+  /* TG-97: the way back to the board, in the panel's own mono and amber. */
+  #title .home {
+    margin-top: 6px; min-height: 44px; display: inline-flex; align-items: center; padding: 0 18px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em;
+    color: var(--amber); text-decoration: underline; text-underline-offset: 3px;
+  }
+  #title .home:hover { color: var(--ink); }
+  #title .home:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 3px; }
   #title.hidden { display: none; }
 
   @media (prefers-reduced-motion: reduce) {
@@ -207,6 +215,7 @@
     <p>a quiet life, far from anywhere</p>
     <div class="go">CLICK TO BOARD</div>
     <p style="margin-top:26px">WASD move · mouse or arrow keys look · E interact · TAB logbook</p>
+    <a class="home" href="/">All games</a>
   </div>
 
   <script type="module" src="./src/main.js"></script>
