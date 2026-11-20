@@ -1515,10 +1515,9 @@ try {
         await reduceMotion(page);
       }
     }
-    // the end: phase recall, the stub page, and the same saved game as the engine's
-    await page.waitForSelector('#btn-to-title');
-    eq(await page.$eval('#phase-title', e => e.textContent), 'The last season is over');
-    eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: the ended game`);
+    // the end: phase recall hands over to the ending's first page (MER-84), and the saved game is the engine's
+    await page.waitForSelector('#ending-next');
+    eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: the game at the plague notice`);
     return { seasonsSeen, interludes, reloaded, model };
   };
 
@@ -1536,8 +1535,106 @@ try {
       eq(out.interludes.length, 2, 'two interludes, between acts one and two and acts two and three');
       eq(out.model.phase, 'recall');
     });
+    // ---- MER-84: the ending, page by page, against the engine run on the same game. The seeded game reaches the
+    // plague with nobody on the road, so the recall page is the empty one here; the road is the block below.
+    {
+      let model = out.model;
+      const clone = x => JSON.parse(JSON.stringify(x));
+      const text = sel => page.$eval(sel, e => e.textContent.trim());
+      const here = () => page.evaluate(() => ({ hash: location.hash, focus: document.activeElement.id, page: document.querySelector('[data-page]')?.dataset.page }));
+      const press = async id => {
+        if (how === 'pointer') await page.click(`#${id}`);
+        else { await page.focus(`#${id}`); await page.keyboard.press('Enter'); }
+      };
+      const pts = n => (Number.isInteger(n) ? withCommas(n) : n.toFixed(1));
+      await test(`ending by ${how}: the notice is the plague event's own words over the empty harbour, and Go on is the next Tab stop`, async () => {
+        const ev = nodeContent.events.find(e => e.id === 'plague-reaches-egypt');
+        eq(await here(), { hash: '#ending/notice', focus: 'ending-title', page: 'notice' });
+        eq(await text('#ending-title'), ev.notice.title);
+        eq(await text('[data-page="notice"] .ending-body'), ev.notice.body);
+        eq(await page.$eval('.desk-still', i => i.getAttribute('src')), 'assets/art/harbour-empty.webp');
+        ok((await text('[data-page="notice"] .source')).startsWith('Source: '), 'the notice names its source');
+        if (how === 'keyboard') { await page.keyboard.press('Tab'); eq((await here()).focus, 'ending-next'); await page.keyboard.press('Enter'); }
+        else await page.click('#ending-next');
+        await page.waitForSelector('#ending-send');
+        eq((await here()).hash, '#ending/recall');
+      });
+      await test(`ending by ${how}: with nobody on the road the recall page says so, and sending changes only what the engine's recall changes`, async () => {
+        eq(model.expeditions, [], 'the seeded game has nobody out at its end');
+        eq(await page.$$('.ending-row'), [], 'no rows');
+        eq(await text('#ending-send'), 'Wait for the plague');
+        ok((await text('[data-page="recall"] .ending-body')).startsWith('Nobody from the house is on the road'));
+        await press('ending-send');
+        await page.waitForSelector('#home-count');
+        model = eng.recall(model, nodeContent, {});
+        eq(await engineState(page), clone(model));
+        eq((await here()).hash, '#ending/home');
+      });
+      await test(`ending by ${how}: who came home lists every agent the house employed, and says plainly who died`, async () => {
+        const employed = nodeContent.agents.filter(a => model.agents[a.id].hired || model.agents[a.id].where === 'gone');
+        const rows = await page.$$eval('.person', rs => rs.map(r => ({ id: r.dataset.agent, fate: r.dataset.fate, name: r.querySelector('strong').textContent, line: r.querySelector('.ending-line').textContent, seal: r.querySelector('.seal')?.tagName })));
+        eq(rows.map(r => r.id), employed.map(a => a.id));
+        const fateOf = a => ({ dead: 'dead', gone: 'gone' })[model.agents[a.id].where] ?? 'home';
+        eq(rows.map(r => r.fate), employed.map(fateOf));
+        const said = new Map(model.log.filter(e => e.kind === 'recall').flatMap(e => e.results).map(r => [r.agent, r.text]));
+        for (const r of rows) {
+          ok(r.line.includes(r.name), `${r.id}'s line names them`);
+          if (said.has(r.id)) eq(r.line, said.get(r.id), `${r.id}: the recall's own line`);
+          if (r.fate === 'dead') ok(/died/.test(r.line), `${r.id} died and the line says so: ${r.line}`);
+          ok(r.seal, `${r.id} has a seal`);
+        }
+        ok(rows.some(r => r.fate === 'dead'), 'this seed has a death on the page, so the plain line is tested');
+        eq(await text('#home-count'), `${rows.filter(r => r.fate === 'home').length} of the ${rows.length} people who worked for the house came home.`);
+      });
+      await test(`ending by ${how}: the score shows the engine's four parts, reasons, multiplier, total and rank, and a reload resumes the page`, async () => {
+        await press('ending-next');
+        await page.waitForSelector('#score-total');
+        const sc = eng.score(model, nodeContent);
+        eq(clone(model.score), clone(sc), 'the saved score is the engine\'s');
+        const read = () => page.evaluate(() => ({
+          parts: [...document.querySelectorAll('.ending-part')].map(p => [p.dataset.part, p.querySelector('strong').textContent, p.querySelector('.points').textContent, p.querySelector('.ending-line').textContent]),
+          sum: document.getElementById('score-sum').textContent, mult: document.getElementById('score-multiplier').textContent,
+          total: document.getElementById('score-total').textContent, rank: document.getElementById('score-rank').textContent }));
+        const names = { wealth: 'Wealth', reputation: 'Reputation', people: 'People who came home', notebook: 'Notebook pages' };
+        const want = { parts: sc.parts.map(p => [p.id, names[p.id], `${pts(p.points)} points`, p.reason]), sum: `Together: ${pts(sc.sum)} points.`,
+          mult: `The spice house, multiplied by ${sc.multiplier}.`, total: `Total: ${withCommas(sc.total)} points`, rank: sc.rank };
+        eq(await read(), want);
+        eq(sc.parts.map(p => p.id), ['wealth', 'reputation', 'people', 'notebook']);
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('#score-total');
+        eq((await here()).hash, '#ending/score');
+        eq(await read(), want, 'the page after a reload');
+        eq(await engineState(page), clone(model));
+      });
+      await test(`ending by ${how}: after 1347 is text.json's pages with their sources, and its two buttons`, async () => {
+        await press('ending-next');
+        await page.waitForSelector('#ending-again');
+        eq(await page.$$eval('.ending-entry h3', hs => hs.map(x => x.textContent)), nodeContent.text.ending.map(e => e.title));
+        eq(await page.$$eval('.ending-entry .ending-body', hs => hs.map(x => x.textContent)), nodeContent.text.ending.map(e => e.body));
+        eq((await page.$$('.ending-entry .source')).length, nodeContent.text.ending.length, 'a source under every page');
+        eq(await page.$$eval('.ending-actions button', bs => bs.map(b => b.textContent)), ['Play again', 'Back to the title']);
+        ok((await text('#after-house')).includes(model.score.rank.toLowerCase()), 'the house line names its rank');
+        await page.screenshot({ path: path.join(SHOTS, `ending-after-${how}.png`) });
+      });
+      if (how === 'pointer') {
+        await test('ending by pointer: Play again clears the finished game and opens New game over the title', async () => {
+          await page.click('#ending-again');
+          await page.waitForSelector('#panel-newgame');
+          eq(await page.evaluate(() => [location.hash, localStorage.getItem('merchant-save'), !!document.getElementById('screen-title')]), ['#newgame', null, true]);
+        });
+      } else {
+        await test('ending by keyboard: Back to the title keeps the game, and Continue returns to the ending', async () => {
+          await page.focus('#ending-title-btn'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#btn-continue');
+          eq((await here()).hash, '#title');
+          await page.focus('#btn-continue'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#home-count');
+          eq((await here()).hash, '#ending/home');
+          eq(await engineState(page), clone(model));
+        });
+      }
+    }
     await test(`whole game by ${how}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
-    await page.screenshot({ path: path.join(SHOTS, `ending-stub-${how}.png`) });
     await page.close();
   }
 
@@ -2520,6 +2617,109 @@ try {
     });
     await test('the MER-80 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.close();
+  }
+
+  // ---- MER-84: the recall with people on the road. The last season of seed 1324 is played in Node with four
+  // expeditions sent on the engine's own plans, so four people are out when the plague comes; the page's rows,
+  // its two buttons per row, the engine's recall and every later page are checked against the engine.
+  {
+    const { recallChances } = await import(pathToFileURL(path.join(MER, 'engine', 'routes.js')).href);
+    const { seasonsLeft } = await import(pathToFileURL(path.join(MER, 'engine', 'letters.js')).href);
+    const answerAll = st => {
+      for (const p of st.desk) {
+        if (p.state !== 'open') continue;
+        const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        st = eng.choose(st, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
+      }
+      return st;
+    };
+    let st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    for (let i = 0; i < 60 && !(st.phase === 'desk' && st.t === 23); i++) st = st.phase === 'interlude' ? eng.openSeason(st, nodeContent) : eng.endSeason(answerAll(st), nodeContent);
+    st = answerAll(st);
+    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = eng.suggestPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
+    const road = eng.endSeason(st, nodeContent);
+    const clone = x => JSON.parse(JSON.stringify(x));
+    const DECIDED = Object.fromEntries(road.expeditions.map((x, i) => [x.id, i % 2 === 0 ? 'recall' : 'stay']));
+    await test('MER-84 setup: four people are out at the plague, and the engine settles them by the decisions', () => {
+      eq(road.phase, 'recall');
+      ok(road.expeditions.length >= 3, `expeditions out: ${road.expeditions.length}`);
+      const after = eng.recall(road, nodeContent, DECIDED);
+      eq(after.phase, 'ended');
+      eq(after.expeditions, []);
+      ok(after.score && after.score.parts.length === 4, 'recall fills the score');
+    });
+    for (const how of ['pointer', 'keyboard']) {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const here = () => page.evaluate(() => ({ hash: location.hash, focus: document.activeElement.id, page: document.querySelector('[data-page]')?.dataset.page }));
+      const load = async hash => {
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, clone(road), SAVE_VERSION);
+        await page.goto(GAME + hash, { waitUntil: 'load' });
+      };
+      const pressChoice = async (id) => {
+        if (how === 'pointer') await page.click(`#${id}`);
+        else { await page.focus(`#${id}`); await page.keyboard.press('Space'); }
+      };
+      const pressedOf = () => page.$$eval('.recall-choice', gs => Object.fromEntries(gs.map(g => [g.dataset.expedition, [...g.querySelectorAll('button')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.choice)])));
+      await test(`recall by ${how}: a row for every expedition out, with where, cargo and the word the engine's chance gives, all on stay`, async () => {
+        await load('#ending/recall');
+        await page.waitForSelector('#ending-send');
+        eq((await here()).page, 'recall');
+        const cfg = recallChances(nodeContent);
+        const rows = await page.$$eval('.ending-row', rs => rs.map(r => ({ agent: r.dataset.agent, word: r.querySelector('[data-word]').dataset.word, said: r.querySelector('[data-word]').textContent, where: r.querySelector('[id$="-where"]').textContent })));
+        eq(rows.map(r => r.agent), road.expeditions.map(x => x.agent));
+        road.expeditions.forEach((x, i) => {
+          const name = nodeContent.agents.find(a => a.id === x.agent).name;
+          const chance = Math.max(cfg.reach.floor, Math.min(1, cfg.reach.start - cfg.reach.perSeason * seasonsLeft(nodeContent, x)));
+          const bucket = chance >= 0.8 ? 'sure' : chance >= 0.5 ? 'likely' : chance >= 0.25 ? 'maybe' : 'unlikely';
+          eq(rows[i].word, bucket, `${name}: the word`);
+          ok(rows[i].said.includes(name) && /in time\.$/.test(rows[i].said), rows[i].said);
+          ok(/^On the road to \w+\./.test(rows[i].where), rows[i].where);
+        });
+        eq(await pressedOf(), Object.fromEntries(road.expeditions.map(x => [x.id, ['stay']])));
+        eq(await page.$$eval('.ending-row button', bs => bs.map(b => b.textContent)), road.expeditions.flatMap(() => ['Call them home', 'Let them finish']));
+      });
+      await test(`recall by ${how}: a choice is a press of its button, and a reload forgets what was not sent`, async () => {
+        for (const [id, which] of Object.entries(DECIDED)) await pressChoice(`recall-${id}-${which}`);
+        eq(await pressedOf(), Object.fromEntries(Object.entries(DECIDED).map(([id, w]) => [id, [w]])));
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('#ending-send');
+        eq((await here()).hash, '#ending/recall');
+        eq(await pressedOf(), Object.fromEntries(road.expeditions.map(x => [x.id, ['stay']])), 'unsent choices are not saved');
+        eq(await engineState(page), clone(road), 'nothing was sent');
+      });
+      await test(`recall by ${how}: sending runs the engine's recall on those decisions, and Back never returns to the recall page`, async () => {
+        for (const [id, which] of Object.entries(DECIDED)) await pressChoice(`recall-${id}-${which}`);
+        if (how === 'pointer') await page.click('#ending-send');
+        else { await page.focus('#ending-send'); await page.keyboard.press('Enter'); }
+        await page.waitForSelector('#home-count');
+        const after = eng.recall(road, nodeContent, DECIDED);
+        eq(await engineState(page), clone(after));
+        eq((await here()).hash, '#ending/home');
+        await page.goBack(); // the browser's Back reaches the recall page's entry, which the ended game replaces
+        await page.waitForSelector('#home-count');
+        eq((await here()).hash, '#ending/home');
+        eq(await engineState(page), clone(after));
+        // each expedition's person is on the page with the line the recall wrote for them
+        const said = new Map(after.log.filter(e => e.kind === 'recall').flatMap(e => e.results).map(r => [r.agent, r.text]));
+        const lines = await page.$$eval('.person', rs => Object.fromEntries(rs.map(r => [r.dataset.agent, r.querySelector('.ending-line').textContent])));
+        for (const x of road.expeditions) eq(lines[x.agent], said.get(x.agent), `${x.agent}'s line`);
+      });
+      await test(`recall by ${how}: a page the phase does not open is replaced, and the desk hash leads to the ending`, async () => {
+        await load('#ending/after');                       // phase recall: after 1347 is not open yet
+        await page.waitForSelector('#ending-next');
+        eq((await here()).hash, '#ending/notice');
+        await load('#desk');
+        await page.waitForSelector('#ending-next');
+        eq((await here()).hash, '#ending/notice');
+        await load('#map');
+        await page.waitForSelector('#ending-next');
+        eq((await here()).hash, '#ending/notice');
+      });
+      await test(`recall by ${how}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
   }
 
 } finally {

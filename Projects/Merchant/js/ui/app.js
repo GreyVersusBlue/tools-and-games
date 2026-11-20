@@ -12,11 +12,12 @@ import { newGameBody } from './screens/newgame.js';
 import { settingsBody, applySettings } from './screens/settings.js';
 import { createDesk } from './screens/desk.js';
 import { createMap } from './screens/map.js';
+import { createEnding, ENDING_PAGES } from './screens/ending.js';
 import { ledgerBody } from './screens/ledger.js';
 import { notebookBody } from './screens/notebook.js';
 
-const SCREENS = new Set(['title', 'desk', 'map']);
-const NEEDS_GAME = new Set(['desk', 'map']);
+const SCREENS = new Set(['title', 'desk', 'map', 'ending']);
+const NEEDS_GAME = new Set(['desk', 'map', 'ending']);
 const PANELS = new Set(['about', 'settings', 'newgame']);
 const GAME_PANELS = new Set(['ledger', 'notebook']);   // dialogs over the desk, which need a game
 const WORDS = ['one', 'two', 'three', 'four'];
@@ -50,14 +51,20 @@ const app = {
   /** The ledger or the notebook over the desk; `section` is where the ledger opens ('warehouse'). */
   openBook: (name, opener, section) => open(name, opener, { section }),
   toTitle: () => goTo('title'),
+  /** The last season is played: the ending's first page (DESIGN 4.12). */
+  toEnding: () => goTo(`ending/${ENDING_PAGES[app.state.phase]?.[0] ?? 'notice'}`),
+  recallPlan: {},  // expedition id -> 'recall' | 'stay', chosen on the recall page and not yet sent
 };
 
 let screen = null;       // 'title' | 'desk', what is drawn behind the panels
 let desk = null;
 let map = null;         // the map table, and under it the #outfit sheet
+let ending = null;      // the ending's pages
 let openPanel = null;    // { name, dialog, opener }
 
 const hashName = () => location.hash.replace(/^#/, '');
+/** `ending/home` is the screen `ending` on its page `home`; every other hash is a bare name. */
+const splitHash = () => { const [name, page] = hashName().split('/'); return { name, page }; };
 
 // ---- helpers
 
@@ -241,6 +248,13 @@ async function begin({ length, house }) {
   goTo('desk', true);
 }
 
+/** Play again (DESIGN 4.12 step 6): the finished game's save goes, and the New game panel opens on the title. */
+function playAgain(opener) {
+  app.slots.game.clear(); app.state = null; app.running = false; app.recallPlan = {};
+  goTo('title', true);
+  open('newgame', opener);
+}
+
 /** Go to a screen. `replace` swaps the current history entry (a panel's) instead of adding one. */
 function goTo(name, replace = false) {
   if (name === 'title') app.running = false;
@@ -253,6 +267,7 @@ function goTo(name, replace = false) {
 function renderScreen(name) {
   desk?.destroy(); desk = null;
   map?.destroy(); map = null;
+  ending?.destroy(); ending = null;
   screen = name;
   document.documentElement.removeAttribute('data-season');
   if (name === 'map') {
@@ -264,6 +279,15 @@ function renderScreen(name) {
     });
     root.replaceChildren(map.el);
     map.focusFirst();
+    return;
+  }
+  if (name === 'ending') {
+    ending = createEnding(app, {
+      go: page => { history.pushState(null, '', `#ending/${page}`); route(); },
+      toTitle: () => goTo('title'),
+      playAgain: opener => playAgain(opener),
+    });
+    root.replaceChildren(ending.el);
     return;
   }
   if (name === 'desk') {
@@ -285,7 +309,7 @@ function renderScreen(name) {
 }
 
 function route() {
-  let name = hashName();
+  let { name, page } = splitHash();
   // #outfit is the sheet over the map. Its draft lives in memory, so a reload (or a hash typed in)
   // has nothing to show and goes to the map table instead (DESIGN 4.8).
   if (name === 'outfit') {
@@ -322,15 +346,25 @@ function route() {
     const saved = app.slots.game.load();
     if (saved) { app.state = saved; app.running = true; }
   }
-  const want = SCREENS.has(name) && (!NEEDS_GAME.has(name) || app.running) ? name : app.running ? 'desk' : 'title';
+  let want = SCREENS.has(name) && (!NEEDS_GAME.has(name) || app.running) ? name : app.running ? 'desk' : 'title';
+  // Once the last season is played the game is the ending: the desk and the map have nothing to show,
+  // and a page of the ending that the phase does not open (Back after the recall was sent) is replaced.
+  const pages = ENDING_PAGES[app.state?.phase];
+  if (want !== 'title' && app.running && pages) {
+    if (want !== 'ending') page = undefined;
+    want = 'ending';
+    if (!pages.includes(page)) page = pages[0];
+  } else if (want === 'ending') want = 'desk';
+  const wanted = want === 'ending' ? `ending/${page}` : want;
   // An unknown or unplayable hash is replaced, never pushed, so Back never meets it twice.
-  if (want !== name) history.replaceState(null, '', `#${want}`);
+  if (wanted !== hashName()) history.replaceState(null, '', `#${wanted}`);
   if (screen !== want) renderScreen(want);
+  if (want === 'ending') ending.show(page);
 }
 
 // ---- keyboard, save on leaving
 
-addEventListener('keydown', e => { desk?.key(e); map?.key(e); });
+addEventListener('keydown', e => { desk?.key(e); map?.key(e); ending?.key(e); });
 addEventListener('pagehide', () => app.persist());
 
 // ---- boot

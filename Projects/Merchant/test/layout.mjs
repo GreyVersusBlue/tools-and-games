@@ -6,7 +6,7 @@
 // Screens: the title (with and without a save), New game, the desk with a letter raised, a question and a report from the road, the desk
 // with a full stack, a return paper, the outfitting sheet, the price board on the map table, the ledger,
 // the notebook (MER-62), the page
-// between acts and the ending stub. The labels on the map table are MER-44b's check in
+// between acts and the five pages of the ending (MER-84: notice, recall, who came home, score, after 1347). The labels on the map table are MER-44b's check in
 // journey.mjs and are not measured here.
 //
 // Each screen at each frame fails on:
@@ -65,7 +65,7 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
 ];
 const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
-const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts', 'ending-stub']);
+const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts']);
 
 // ---- the same game the engine plays in Node (the policy of journey.mjs: first open choice,
 // first expedition sent on the engine's plan, every other paper set aside)
@@ -135,6 +135,21 @@ const plain = s => JSON.parse(JSON.stringify(s));
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'b' },
     { from: 'gift/yes', card: 'A gift for the court', choice: 'Send the gift', changes: ['good name with court +1'], text: 'c' }] }] };
 }
+
+// MER-84: the ending's pages after the recall was sent. Every expedition still out is called home, so the
+// engine's own rolls decide who lives; the pages read the state this leaves.
+// The seeded game reaches the plague with nobody out, so the recall page is also drawn from the last season
+// replayed with four expeditions sent on the engine's plans: four rows with their two buttons each.
+states.road = (() => {
+  let s = fresh();
+  for (let i = 0; i < 80 && !(s.phase === 'desk' && s.t === 23); i++) s = s.phase === 'interlude' ? eng.openSeason(s, content) : playSeason(s);
+  s = playPapers(s);
+  for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = eng.suggestPlan(s, content, stop); if (plan) s = eng.outfit(s, content, plan); }
+  s = eng.endSeason(s, content);
+  if (s.phase !== 'recall' || s.expeditions.length < 3) throw new Error('layout.mjs: the last season did not end with people on the road');
+  return s;
+})();
+states.ended = eng.recall(states.road, content, Object.fromEntries(states.road.expeditions.map((x, i) => [x.id, i % 2 ? 'stay' : 'recall'])));
 
 const server = await serve(PORT);
 const browser = await launch();
@@ -225,8 +240,9 @@ const SCREENS = [
     } },
   { name: 'between-acts',
     go: async (p, f) => { await load(p, '#desk', { state: states.interlude, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
-  { name: 'ending-stub',
-    go: async (p, f) => { await load(p, '#desk', { state: states.recall, large: f.large }); await p.waitForSelector('#btn-to-title'); } },
+  ...[['notice', 'road', 'ending-next'], ['recall', 'road', 'ending-send'], ['recall-empty', 'recall', 'ending-send'], ['home', 'ended', 'ending-next'], ['score', 'ended', 'ending-next'], ['after', 'ended', 'ending-again']].map(([page, st, ready]) => ({
+    name: `ending-${page}`,
+    go: async (p, f) => { const at = page.replace('-empty', ''); await load(p, `#ending/${at}`, { state: states[st], large: f.large }); await p.waitForSelector(`#${ready}`); await p.waitForSelector(`[data-page="${at}"]`); } })),
 ];
 
 // ---- the measuring, in the page. `scopeSel` is what is measured (a dialog when one is open).
@@ -322,8 +338,9 @@ const collectText = scopeSel => {
       const ih = (y1 - y0) * 0.2; x0 += 1; x1 -= 1; y0 += ih; y1 -= ih;
       if (x1 - x0 < 2 || y1 - y0 < 2) continue;
       // text under something else (a fixed bar, another paper) is not on screen: ask what is on top
-      // at the middle, each end, top and bottom of the line; a line partly covered waits until it scrolls clear
-      const covered = [[(x0 + x1) / 2, (y0 + y1) / 2], [x0 + 1, (y0 + y1) / 2], [x1 - 1, (y0 + y1) / 2], [(x0 + x1) / 2, y0 + 1], [(x0 + x1) / 2, y1 - 1]].some(([x, y]) => {
+      // at the middle, each end, and half a pixel outside the sampled box above and below (a bar whose layout edge is 0.15 px short of the pixel row it paints
+      // tinted one sampled row and read as a 1.5:1 label, MER-84); a line partly covered waits until it scrolls clear
+      const covered = [[(x0 + x1) / 2, (y0 + y1) / 2], [x0 + 1, (y0 + y1) / 2], [x1 - 1, (y0 + y1) / 2], [(x0 + x1) / 2, y0 - 0.5], [(x0 + x1) / 2, y1 + 0.5]].some(([x, y]) => {
         const top = document.elementFromPoint(x, y);
         return top && !(el.contains(top) || top.contains(el));
       });
@@ -458,7 +475,7 @@ try {
           });
         }
         // MER-71 (finding 14): between the acts and at the end there is no End the season, and no empty bar where it was
-        if (screen.name === 'between-acts' || screen.name === 'ending-stub') {
+        if (screen.name === 'between-acts') {
           await test(`${tag}: no stray bar where End the season was`, async () => {
             const m = await page.evaluate(() => ({ row: document.querySelector('.end-row')?.checkVisibility() ?? false, reason: document.querySelector('.end-reason')?.checkVisibility() ?? false }));
             eq(m, { row: false, reason: false });
