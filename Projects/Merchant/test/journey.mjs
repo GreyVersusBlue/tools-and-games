@@ -90,8 +90,8 @@ const sendFromMap = async page => {
   if (!['#map', '#outfit'].includes(await hashOf(page))) return false;
   await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
   if (await page.$('#outfit-send')) {
-    // a card's outfit effect (MER-77) can open a sheet that cannot be sent yet: leave it by Back to the map
-    if (await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true')) await page.click('#outfit-cancel');
+    // the walkers send only the one-press first expedition, which their Node model sends too; a card's outfit effect (MER-77) opens a sheet they leave by Back to the map
+    if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) await page.click('#outfit-cancel');
     else { await page.click('#outfit-send'); await page.waitForSelector('#map-toast:not([hidden])'); }
   }
   await page.click('#map-desk-top');
@@ -1433,7 +1433,7 @@ try {
     const sendByKeys = async () => {
       await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
       if (await page.$('#outfit-send')) {
-        if (await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true')) { await page.focus('#outfit-cancel'); await page.keyboard.press('Enter'); }
+        if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) { await page.focus('#outfit-cancel'); await page.keyboard.press('Enter'); }
         else { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
       }
       await page.keyboard.press('Escape');
