@@ -267,7 +267,8 @@ export function featuresField(env, source) {
         return;
       }
       if (shown.length === 0) {
-        ctx.announce('Nothing to add: ' + (list.textContent || 'no match') + '.');
+        // the list's words end in their own full stop
+        ctx.announce('Nothing to add: ' + (list.textContent || 'no match.'));
         return;
       }
       // near matches, and Enter has not been told which: say so, add nothing

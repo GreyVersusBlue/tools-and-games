@@ -178,6 +178,11 @@ test('3. near matches come first and Add is last; Enter takes Add only when an a
   await page.keyboard.press('Enter');
   await announced('Sin added');
   assert.deepEqual(await roomHas(), ['Lab', 'Lap', 'Sin']);
+  // a name the room has already: nothing to add, said once with one full stop
+  await page.keyboard.type('Lab');
+  await page.keyboard.press('Enter');
+  await announced('Nothing to add: Lab is on this room already.');
+  await page.$eval('#room-features-add', (el) => { el.value = ''; });
   // Escape shuts the list and keeps what was typed
   await page.keyboard.type('Ki');
   assert.equal(await page.$eval('#room-features-list', (el) => el.hidden), false);
