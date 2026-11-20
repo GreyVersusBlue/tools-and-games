@@ -461,6 +461,14 @@ card, so Devon can play it on any device.
 
 **Ends with:** Cairo complete from title to score.
 
+**As landed (2026-11-20):** the playthrough found the ending strong and the
+trips weak: a venture earned single-digit dinars against card money, and the
+score barely followed play. Before M5 comes a trade pass: the outfit sheet
+proposes a real venture and what to bring back, shows an estimate the return
+paper answers, price news arrives as leads, card money is scaled under trip
+money, and the score counts reputation from the middle and notebook pages
+read. The full-years length is balanced in M6.
+
 ### M5. Art in, polish, the full public landing
 
 - Final art replaces placeholders as it arrives; nothing else waits for it.
