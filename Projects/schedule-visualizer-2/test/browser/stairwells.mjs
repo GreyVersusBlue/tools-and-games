@@ -108,6 +108,18 @@ const title = () => text('#inspector-properties #inspector-title');
 const key = (name) => '#inspector-properties [data-key="' + name + '"]';
 const dialogOpen = (id) => page.waitForFunction((wanted) => Boolean(document.getElementById(wanted)) && document.getElementById(wanted).open, {}, id);
 const dialogGone = (id) => page.waitForFunction((wanted) => !document.getElementById(wanted), {}, id);
+// A dialog's primary button set aside the app's way (app.css's .btn[aria-disabled="true"]):
+// aria-disabled, not disabled, so it keeps its place in the Tab order, drawn dashed,
+// and described by the note that says why.
+const SET_ASIDE = { aria: 'true', disabled: false, focusable: true, dashed: true, described: true };
+const setAside = (dialog) => page.$eval(dialog + ' .dialog__buttons .btn--primary', (el) => {
+  const had = document.activeElement;
+  el.focus();
+  const focusable = document.activeElement === el;
+  if (had && had.focus) had.focus();
+  const note = el.getAttribute('aria-describedby');
+  return { aria: el.getAttribute('aria-disabled'), disabled: el.disabled, focusable, dashed: getComputedStyle(el).borderTopStyle === 'dashed', described: Boolean(note && document.getElementById(note) && document.getElementById(note).textContent !== '') };
+});
 const waitFor = (selector, wanted) => page.waitForFunction((s, w) => { const el = document.querySelector(s); return Boolean(el) && el.textContent === w; }, {}, selector, wanted);
 
 async function undo() {
@@ -150,7 +162,15 @@ test('a chain of three floors offers Make one stairwell in the stair\'s properti
   // too long: said in words, and the button is off
   await retype('#stairwell-letter', 'x'.repeat(9));
   await waitFor('#stairwell-note', 'A stairwell\'s letter or name is at most 8 characters, and this one has 9. Shorten it.');
-  assert.equal(await page.$eval('.dialog__buttons .btn--primary', (el) => el.disabled), true);
+  assert.deepEqual(await setAside('#stairwell-make-dialog'), SET_ASIDE, 'the button is set aside the app\'s way');
+  // pressed while set aside, by the pointer and by Enter on it: nothing happens, the dialog stays
+  await page.click('#stairwell-make-dialog .btn--primary');
+  assert.equal(await page.evaluate(() => Boolean(document.getElementById('stairwell-make-dialog') && document.getElementById('stairwell-make-dialog').open)), true, 'a click on the set-aside button closed the dialog');
+  await page.focus('#stairwell-make-dialog .btn--primary');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => Boolean(document.getElementById('stairwell-make-dialog') && document.getElementById('stairwell-make-dialog').open)), true, 'a set-aside button closed the dialog');
+  assert.equal(await entries(), before);
+  await page.focus('#stairwell-letter');
   // Escape calls it off, nothing changes
   await page.keyboard.press('Escape');
   await dialogGone('stairwell-make-dialog');
@@ -326,14 +346,21 @@ test('Stairwell through floors…, by the pointer: a row a floor saying what is 
   const rows = await page.$$eval('#stairwell-floors label', (all) => all.map((label) => ({ text: label.textContent, checked: label.querySelector('input').checked, disabled: label.querySelector('input').disabled })));
   assert.deepEqual(rows.map((row) => row.text), FLOOR_ROWS);
   assert.deepEqual(rows.map((row) => [row.checked, row.disabled]), [[false, true], [false, false], [true, true], [false, false]]);
-  const join = () => page.$eval('#stairwell-through-dialog .btn--primary', (el) => ({ text: el.textContent, disabled: el.disabled }));
+  const join = () => page.$eval('#stairwell-through-dialog .btn--primary', (el) => ({ text: el.textContent, disabled: el.getAttribute('aria-disabled') === 'true' }));
   assert.deepEqual(await join(), { text: 'Join floors as a stairwell', disabled: true });
   assert.equal(await text('#stairwell-through-note'), 'Tick at least one more floor: a stairwell is for three or more.');
+  assert.deepEqual(await setAside('#stairwell-through-dialog'), SET_ASIDE, 'the button is set aside the app\'s way');
+  // a click on it while set aside does nothing
+  const unchanged = await entries();
+  await page.click('#stairwell-through-dialog .btn--primary');
+  assert.equal(await page.evaluate(() => Boolean(document.getElementById('stairwell-through-dialog') && document.getElementById('stairwell-through-dialog').open)), true, 'a set-aside button closed the dialog');
+  assert.equal(await entries(), unchanged);
   const ticks = await page.$$('#stairwell-floors input');
   await ticks[1].click();
   assert.equal((await join()).disabled, true, 'two floors are not a stairwell');
   await ticks[3].click();
   assert.deepEqual(await join(), { text: 'Join Floors 1 to 3 as Stairwell A', disabled: false });
+  assert.equal(await page.$eval('#stairwell-through-dialog .btn--primary', (el) => el.hasAttribute('aria-describedby')), false, 'the reason went with it');
   const before = await entries();
   await page.click('#stairwell-through-dialog .btn--primary');
   await dialogGone('stairwell-through-dialog');

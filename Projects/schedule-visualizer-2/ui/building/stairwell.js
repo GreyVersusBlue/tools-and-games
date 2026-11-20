@@ -148,7 +148,24 @@ function pin(dialog) {
   buttons.style.borderTop = 'var(--border)';
   // a finger's size
   for (const button of buttons.querySelectorAll('button')) button.style.minHeight = '44px';
+  // a button that cannot be used yet is aria-disabled, not disabled (app.css styles
+  // it set aside, and it stays in the Tab order): its press, by click, Enter or
+  // Space, stops here, before the dialog's own handler closes the dialog
+  buttons.addEventListener('click', (event) => {
+    const pressed = event.target.closest ? event.target.closest('button') : null;
+    if (pressed && pressed.getAttribute('aria-disabled') === 'true') {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
   return { body, buttons: Array.from(buttons.querySelectorAll('button')) };
+}
+
+// The app's way to set a button aside: aria-disabled, the reason in `note`.
+function setOff(button, off, note) {
+  button.setAttribute('aria-disabled', String(off));
+  if (off) button.setAttribute('aria-describedby', note.id);
+  else button.removeAttribute('aria-describedby');
 }
 
 function giveBack(ed, opener) {
@@ -196,14 +213,14 @@ export function openMakeStairwell(ed, connectionId, opener) {
       make.textContent = 'Make Stairwell ' + (outcome.letter || letter);
       note.hidden = true;
       note.textContent = '';
-      make.disabled = false;
+      setOff(make, false, note);
       refused = false;
     } catch (error) {
       if (!(error instanceof ActionError)) throw error;
       make.textContent = 'Make one stairwell';
       note.hidden = false;
       note.textContent = error.message;
-      make.disabled = true;
+      setOff(make, true, note);
       refused = true;
     }
   };
@@ -297,7 +314,7 @@ export function openStairwellThrough(ed, where, opener) {
   const reread = () => {
     const floors = chosen().slice().reverse();
     const enough = floors.length >= 3;
-    join.disabled = !enough;
+    setOff(join, !enough, note);
     join.textContent = enough ? 'Join ' + floorsSentence(floors.map((floor) => floor.name)) + ' as Stairwell ' + letter : 'Join floors as a stairwell';
     note.textContent = enough ? '' : 'Tick at least one more floor: a stairwell is for three or more.';
   };
