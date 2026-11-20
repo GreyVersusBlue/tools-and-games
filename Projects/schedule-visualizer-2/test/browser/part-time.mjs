@@ -11,15 +11,25 @@
 // entries collapse to their words with Edit and a named Remove; Add another
 // time focuses the new entry's first control. The sentence under the editor
 // and the staff-browser line, the one-time offer from Notes that name
-// weekdays, a class put in an away period shown in Checks, a name as typed,
-// by pointer and by keyboard at 1280 by 900, and by tap at 390 by 844. Every
+// weekdays (once for each teacher), a class put in an away period shown in
+// Checks, a name as typed, by pointer and by keyboard at 1280 by 900, and by
+// tap and by keyboard at 390 by 844. SV2-132b added: an open entry kept in
+// its place when a row above it is removed and closed by Undo; a refusal said
+// once; Every day and The whole day; the summary said again on a second close;
+// Edit then Cancel; the Teachers table's widths; axe on the editor in both
+// themes; noteDays on its own. Every
 // wait is on a state the page sets (`data-pending` gone from the section, an
 // attribute or a store value), never on a first paint or a sleep.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go as goHash, assertTouch, loadModule } from './harness.mjs';
+import path from 'node:path';
+
+import { openPlanner, go as goHash, assertTouch, loadModule, TOOL_DIR } from './harness.mjs';
+
+const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
+const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
 
 const HOSTILE = '<b>Lin</b> "Q" 名前';
 const T = 'tsample001'; // teaches 8B in period 2 of A Day (the sample school)
@@ -610,6 +620,34 @@ test('19. at 1280 px the Subject select shows its longest subject, Notes is a re
   assert.ok(got.select >= got.wanted - 0.5, 'the select is not cut short: ' + JSON.stringify(got));
   assert.ok(got.notes >= 7 * got.rem - 0.5, 'Notes is at least 7 rem: ' + JSON.stringify(got));
   assert.ok(got.table <= got.box, 'no sideways scroll in the table at 1280 px: ' + JSON.stringify(got));
+});
+
+test('21. axe finds nothing on the open editor, an entry and a refusal showing, in the light theme and the dark', async () => {
+  await fresh();
+  await setAway([{ dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await open();
+  await press(key('radio:not'));
+  await page.waitForSelector(key('add'));
+  await press(key('add'));
+  await page.waitForSelector('[data-entry="1"] fieldset');
+  await press(key('e1:types:some'));
+  await page.waitForSelector(key('e1:type:' + A));
+  await press(key('e1:done'));
+  await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+  if (!(await page.evaluate(() => Boolean(globalThis.axe)))) await page.addScriptTag({ path: AXE });
+  try {
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: scheme }]);
+      await shows((wanted) => getComputedStyle(document.documentElement).colorScheme === wanted, scheme);
+      await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+      const result = await page.evaluate((selector, tags) => globalThis.axe.run(document.querySelector(selector), { runOnly: { type: 'tag', values: tags }, resultTypes: ['violations'] }).then((found) => ({ passes: found.passes.length, violations: found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', ')) })), editor, AXE_TAGS);
+      assert.ok(result.passes > 0, 'axe ran its rules on the editor');
+      assert.deepEqual(result.violations, [], 'axe in the ' + scheme + ' theme');
+    }
+  } finally {
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  }
+  await fresh();
 });
 
 test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, and every control is 44 px', async () => {
