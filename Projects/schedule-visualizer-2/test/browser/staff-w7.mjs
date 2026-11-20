@@ -501,6 +501,50 @@ test('Coverage says who is not in school then, in a line of its own, and does no
   }
 });
 
+// Ms. Halloran's entry names Fridays only (DESIGN 16.12 item 4: the staff
+// browser leaves her out on Fridays by the calendar). Fri 4 Sep 2026 is an
+// A Day by the rotation; at 11:40 it is the fifth period, as on Wednesday.
+const FRI = '2026-09-04T15:40:00Z';
+
+test('on a Friday, by the calendar, Free right now, Coverage and Common planning leave out the teacher away on Fridays', async () => {
+  for (const [at, friday] of [[WED, false], [FRI, true]]) {
+    const session = await openPage({ at });
+    try {
+      const { page } = session;
+      const when = friday ? 'on Friday' : 'on Wednesday';
+      await goto(page, files.w7, '#/free');
+      await freeReady(page);
+      assert.match(await one(page, '.lede[role="status"]'), /A Day/, 'A Day ' + when);
+      const names = await texts(page, '[data-list="teachers"] .list__name');
+      assert.equal(names.includes('Ms. Halloran'), !friday, 'Ms. Halloran is free in Lesson 5 ' + when + ': ' + names.join(', '));
+      assert.equal(names.includes('Mr. Castellanos'), true, 'her colleague is free ' + when);
+
+      // Coverage for a teacher who teaches then: she is offered on Wednesday, and on Friday is in the line of her own
+      await goto(page, files.w7, '#/coverage/tsample004');
+      await page.waitForFunction(() => document.querySelector('[data-out="coverage"] .card[data-period="4"]'), { timeout: 10000 });
+      const offered = await texts(page, '[data-out="coverage"] .card[data-period="4"] [data-list="candidates"] .list__name');
+      assert.equal(offered.some((name) => name.startsWith('Ms. Halloran')), !friday, 'offered ' + when + ': ' + offered.join(', '));
+      const away = await texts(page, '[data-out="coverage"] .card[data-period="4"] [data-coverage="away"]');
+      // Ms. Oyelaran is away then on every A Day; Ms. Halloran joins her in the line on a Friday only
+      assert.equal(away.length, 1, 'one away line ' + when);
+      assert.equal(away[0].includes('Ms. Halloran'), friday, 'the away line ' + when + ': ' + away[0]);
+      assert.match(away[0], /Ms\. Oyelaran/);
+      const notFree = await texts(page, '[data-out="coverage"] [data-list="notfree"] .list__name');
+      assert.equal(notFree.some((name) => name.startsWith('Ms. Halloran')), false, 'never in the list of the busy ' + when);
+
+      // Common planning: on Wednesday she and Mr. Castellanos share Lesson 5 on A Day; on Friday, nothing
+      await goto(page, files.w7, '#/common?t=tsample001,tsample003');
+      const common = await commonOf(page, A);
+      assert.ok(common, 'an A Day card ' + when);
+      if (friday) assert.deepEqual(common.periods, [], 'no shared period on A Day on a Friday');
+      else assert.equal(common.periods.includes('4'), true, 'Lesson 5 on A Day is shared on Wednesday (' + common.periods.join(' ') + ')');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
 // ---------------------------------------------------------------- the stairwell
 
 // The map writes a stairs cell's letter where a cell is 10 px or more across
