@@ -1333,7 +1333,7 @@
         ]
       }
     ],
-    "note": "About 1183 Ibn Jubayr went by boat from Cairo to Qus, and Gibb counts the trip as 18 days. A boat on the river was not fast, and a boatman had his own business to do.",
+    "note": "A traveller of the 1100s, Ibn Jubayr, went by boat from Cairo to Qus. Gibb counts the trip as 18 days.",
     "unlocks": [],
     "sources": [
       {
@@ -1975,18 +1975,14 @@
         ]
       }
     ],
-    "note": "A handbook for merchants from about 1340 says goods put in at Alexandria paid 20 in every hundred. Goods going out paid nothing. A historian says Pisans and North Africans in fact paid 16 to 18.",
+    "note": "A handbook for merchants from about 1340 says goods put in at Alexandria paid 20 in every hundred. Goods going out paid nothing. What a merchant really paid could be less than the list.",
     "unlocks": [
       "term-customs"
     ],
     "sources": [
       {
         "src": "pegolotti-1936",
-        "at": "the duty at Alexandria, 20 percent on entry and nothing on leaving; the number rests on Ashtor's reading of the handbook"
-      },
-      {
-        "src": "ashtor-1983",
-        "at": "the 20 percent, and what Pisans and North Africans actually paid"
+        "at": "print p. 72; the duty at Alexandria, 20 percent on entry and nothing on leaving; the number rests on a modern reading of the handbook"
       }
     ]
   },
