@@ -100,8 +100,24 @@ function fileFor(href) {
 // not mid-play.
 const TOOL_PREVIEWS = new Set(['converter', 'schedule-visualizer-2']);
 
+const urlFor = n => `${ORIGIN}/${n.href.replace(/ /g, '%20')}`;
+
+// A page's canonical, read off the page itself. Returns null when absent, and
+// the list of problems otherwise empty: ML-35 (2026-11-20) found no page had
+// one, so the check fails on missing, duplicated, or not-equal-to-og:url.
+function canonProblems(src, url) {
+  const tags = [...src.matchAll(/<link\s+rel="canonical"\s+href="([^"]*)"/g)].map(m => m[1]);
+  const og = src.match(/<meta property="og:url" content="([^"]*)"/)?.[1];
+  if (!tags.length) return ['no <link rel="canonical">'];
+  if (tags.length > 1) return [`${tags.length} canonical links, wanted 1`];
+  const out = [];
+  if (tags[0] !== url) out.push(`canonical ${tags[0]} is not ${url}`);
+  if (og !== undefined && tags[0] !== og) out.push(`canonical ${tags[0]} does not match og:url ${og}`);
+  return out;
+}
+
 function blockFor(n, eol = '\n') {
-  const url = `${ORIGIN}/${n.href.replace(/ /g, '%20')}`;
+  const url = urlFor(n);
   const img = n.preview
     ? `${ORIGIN}/assets/og/${n.preview}.jpg`
     : `${ORIGIN}/assets/og/guild-board.png`;
@@ -116,6 +132,7 @@ function blockFor(n, eol = '\n') {
     `<meta property="og:type" content="website">`,
     `<meta property="og:site_name" content="greyversusblue">`,
     `<meta property="og:url" content="${url}">`,
+    `<link rel="canonical" href="${url}">`,
     `<meta property="og:title" content="${title}">`,
     `<meta property="og:description" content="${desc}">`,
     `<meta property="og:image" content="${img}">`,
@@ -148,7 +165,7 @@ function blockFor(n, eol = '\n') {
 // guarantee. Add a page here only when it really does generate its own.
 const OWN_TAGS = new Set(['Numina/index.html']);
 
-let wrote = 0, same = 0, stale = 0, missing = 0, failed = 0, offsite = 0, own = 0;
+let wrote = 0, same = 0, stale = 0, missing = 0, failed = 0, offsite = 0, own = 0, canon = 0;
 
 for (const n of notices) {
   // The board carries two notices that are not pages on this site:
@@ -187,17 +204,25 @@ for (const n of notices) {
     } else {
       own++;
     }
+    for (const p of canonProblems(src, urlFor(n))) { canon++; console.log(`  FAIL  ${label}  ${p}`); }
     continue;
   }
 
   const block = blockFor(n, src.includes('\r\n') ? '\r\n' : '\n');
   let out;
 
+  // Checked on the page as it stands, so --check names the canonical itself
+  // rather than only reporting that the block drifted.
+  if (check) for (const p of canonProblems(src, urlFor(n))) { canon++; console.log(`  FAIL  ${label}  ${p}`); }
+
   const s = src.indexOf(START);
   if (s !== -1) {
     const e = src.indexOf(END, s);
     if (e === -1) { failed++; console.log(`  FAIL  ${label}  unterminated gvb:social block`); continue; }
     out = src.slice(0, s) + block + src.slice(e + END.length);
+    // A canonical written by hand outside the block would sit beside the
+    // generated one.
+    if ((out.match(/rel="canonical"/g) || []).length > 1) { failed++; console.log(`  FAIL  ${label}  a hand-written canonical sits outside the gvb:social block`); continue; }
     if (out === src) { same++; continue; }
     stale++;
   } else {
@@ -208,7 +233,7 @@ for (const n of notices) {
     const after = src.indexOf('\n', t) + 1;
     // An already-hand-written icon or og tag would end up duplicated. Say so
     // rather than quietly emitting two of each.
-    if (/rel="icon"|property="og:/.test(src)) {
+    if (/rel="icon"|rel="canonical"|property="og:/.test(src)) {
       failed++;
       console.log(`  FAIL  ${label}  already has hand-written icon/og tags — remove them first`);
       continue;
@@ -221,15 +246,52 @@ for (const n of notices) {
   console.log(`  ${check ? 'DRIFT' : 'ok   '}  ${label}`);
 }
 
+/* ------------------------------------------- the board itself and the sitemap -- */
+
+// The board is hand-written (its notices are the source for everything above),
+// so its canonical is hand-written too; it is only checked here.
+for (const p of canonProblems(boardHtml, `${ORIGIN}/`)) { canon++; console.log(`  FAIL  index.html  ${p}`); }
+
+// sitemap.xml: the board plus every onsite page a notice links to, in board
+// order. Offsite notices and pages marked noindex are left out. No <lastmod>:
+// file dates do not survive a git clone, so any value would be invented.
+const NOINDEX = /<meta\s+name="robots"[^>]*noindex/i;
+const seen = new Set([`${ORIGIN}/`]);
+const urls = [`${ORIGIN}/`];
+let noindexed = 0;
+for (const n of notices) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(n.href)) continue;
+  const file = fileFor(n.href);
+  if (!fs.existsSync(file)) continue; // already reported above
+  if (NOINDEX.test(fs.readFileSync(file, 'utf8'))) { noindexed++; continue; }
+  const u = urlFor(n);
+  if (!seen.has(u)) { seen.add(u); urls.push(u); }
+}
+const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+  urls.map(u => `  <url><loc>${u}</loc></url>\n`).join('') +
+  '</urlset>\n';
+const sitemapFile = path.join(SITE, 'sitemap.xml');
+const sitemapOnDisk = fs.existsSync(sitemapFile) ? fs.readFileSync(sitemapFile, 'utf8') : null;
+const sitemapDrift = sitemapOnDisk !== sitemap;
+if (sitemapDrift) {
+  console.log(`  ${check ? 'DRIFT' : 'ok   '}  sitemap.xml  ${sitemapOnDisk === null ? 'missing' : 'out of date'}`);
+  if (!check) fs.writeFileSync(sitemapFile, sitemap);
+}
+const robots = fs.readFileSync(path.join(SITE, 'robots.txt'), 'utf8');
+const robotsMissing = !robots.includes(`Sitemap: ${ORIGIN}/sitemap.xml`);
+if (robotsMissing) console.log(`  FAIL  robots.txt  does not name ${ORIGIN}/sitemap.xml`);
+
+console.log(`\n${urls.length} sitemap urls (${noindexed} noindex left out)`);
 console.log(`\n${notices.length} notices · ${same} already current · ` +
   `${missing} had no block · ${stale} out of date · ${offsite} offsite · ` +
   `${own} bring their own · ${failed} failed`);
 if (check) {
-  const drift = missing + stale + failed;
+  const drift = missing + stale + failed + canon + (sitemapDrift ? 1 : 0) + (robotsMissing ? 1 : 0);
   console.log(drift
     ? `${drift} page(s) out of sync with the board — run \`npm run social\``
     : 'every page is in sync with the board');
   process.exit(drift ? 1 : 0);
 }
-console.log(failed ? `${failed} page(s) need a human` : 'all pages written');
-process.exit(failed ? 1 : 0);
+console.log(failed + canon + (robotsMissing ? 1 : 0) ? `${failed + canon + (robotsMissing ? 1 : 0)} problem(s) need a human` : 'all pages written');
+process.exit(failed + canon + (robotsMissing ? 1 : 0) ? 1 : 0);
