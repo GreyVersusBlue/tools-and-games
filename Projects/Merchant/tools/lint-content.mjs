@@ -49,6 +49,14 @@ export const RULES = {
 
 // Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
 // leaf, and takes its places from that trip, so a card with the leaf names no stop but home.
+// It fails the run (MER-75). The two exemptions: Cairo's first-expedition is the scripted opening card
+// that teaches sending a trip, and there is no trip yet for it to bind to (Yusuf is not hired until it
+// is answered); Testport's bridge-toll is a toll card whose "long road round" is a road for carts, not
+// a trip an agent made, and the word match cannot tell the two apart.
+export const TRIP_EXEMPT = {
+  cairo: ['first-expedition'],
+  testport: ['bridge-toll'],
+};
 const ROAD_WORDS = /\b(road|roads|caravan|caravans|dhow|dhows|galley|galleys|voyage|voyages|journey|journeys|trip|trips|expedition|expeditions)\b/i;
 const wordIn = (text, word) => new RegExp(`(^|[^\\p{L}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}])`, 'iu').test(text);
 
@@ -57,6 +65,7 @@ export function tripFailures(content, card) {
   const texts = [card.title, card.body, ...(card.choices ?? []).flatMap(ch => [ch.label, ch.hint])].filter(t => typeof t === 'string');
   const text = texts.join(' ').replace(/\{(agent|to|good|route|seasons)\}/g, ' ');
   const where = `cards[${card.id}]`;
+  if ((TRIP_EXEMPT[content.cityId] ?? []).includes(card.id)) return [];
   const home = content.city?.home;
   const stops = (content.stops ?? []).filter(x => x.id !== home);
   const leaf = tripLeaf(card.when);
@@ -161,7 +170,7 @@ const URL_RE = /(https?:\/\/|www\.)\S+|\b[a-z0-9][a-z0-9-]*\.(com|org|net|edu|go
 const TODO = /\bTODO\b/i;
 
 /** Lint one loaded city. Returns [{ rule, path, message }]. */
-export function lintContent(content, { artIds, banned = [], city = content.cityId, trip = false } = {}) {
+export function lintContent(content, { artIds, banned = [], city = content.cityId } = {}) {
   const out = [];
   const fail = (rule, where, message) => out.push({ rule, path: where, message });
 
@@ -230,8 +239,8 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
     }
   }
 
-  // rule 9, only when asked for (`trip`): MER-75 makes it part of every run
-  if (trip) for (const c of cards) out.push(...tripFailures(content, c));
+  // rule 9
+  for (const c of cards) out.push(...tripFailures(content, c));
 
   // rule 8
   for (const [i, g] of (content.city?.gradients ?? []).entries()) {
@@ -276,9 +285,7 @@ export function gradientFailures(g, stops, where) {
   return out.filter(f => !seen.has(f.message) && seen.add(f.message));
 }
 
-export function report(tool, city, failures, summary, warnings = []) {
-  for (const f of warnings) console.log(`WARN rule ${f.rule} (${RULES[f.rule]}): ${f.path}: ${f.message}`);
-  if (warnings.length) console.log(`${tool}: ${city}: ${warnings.length} warning${warnings.length === 1 ? '' : 's'} (rule 9, from --trip-warn; they do not fail the run)`);
+export function report(tool, city, failures, summary) {
   for (const f of failures) console.log(`FAIL rule ${f.rule} (${RULES[f.rule] ?? f.rule}): ${f.path}: ${f.message}`);
   if (failures.length) {
     console.log(`${tool}: ${city}: ${failures.length} problem${failures.length === 1 ? '' : 's'}`);
@@ -287,10 +294,9 @@ export function report(tool, city, failures, summary, warnings = []) {
 }
 
 export function parseArgs(argv) {
-  const a = { city: 'cairo', overlay: undefined, tripWarn: false };
+  const a = { city: 'cairo', overlay: undefined };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--overlay') a.overlay = path.resolve(argv[++i]);
-    else if (argv[i] === '--trip-warn') a.tripWarn = true;
     else if (!argv[i].startsWith('-')) a.city = argv[i];
     else throw new Error(`unknown option ${argv[i]}`);
   }
@@ -299,13 +305,12 @@ export function parseArgs(argv) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { city, overlay, tripWarn } = parseArgs(process.argv.slice(2));
+    const { city, overlay } = parseArgs(process.argv.slice(2));
     const content = await loadCity(city, { overlay });
     const artIds = await loadArtIds();
-    const all = lintContent(content, { artIds, banned: await loadBanned(), trip: tripWarn });
-    const failures = all.filter(f => f.rule !== 9), warnings = all.filter(f => f.rule === 9);
+    const failures = lintContent(content, { artIds, banned: await loadBanned() });
     const n = (content.cards?.length ?? 0), l = (content.letters?.length ?? 0);
-    report('lint-content', city, failures, `${n} cards, ${l} letters, ${content.sources.length} sources${artIds ? '' : ', art manifest not present so picture ids unchecked'}`, warnings);
+    report('lint-content', city, failures, `${n} cards, ${l} letters, ${content.sources.length} sources${artIds ? '' : ', art manifest not present so picture ids unchecked'}`);
   } catch (e) {
     console.log(`FAIL rule 6 (${RULES[6]}): ${e.message}`);
     console.log('lint-content: could not load the city');

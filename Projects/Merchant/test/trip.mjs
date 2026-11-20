@@ -228,17 +228,24 @@ test('rule 9: a card with the leaf may not write a stop, only use {to} and {rout
   const f = rule9(plainCard('{agent} went to Hilltown.', leaf('out')));
   ok(/writes the place "Hilltown"/.test(f[0].message), JSON.stringify(f));
 });
-test('rule 9 is off until asked for, and reported as a warning by --trip-warn that does not fail the run', async () => {
+test('rule 9 fails the run (MER-75): lintContent reports it with no flag, and the CLI exits 1 on a card that breaks it', async () => {
   const c = withCards(plainCard('Mira has been to Hilltown.'));
-  eq(lintContent(c, { banned: [] }).filter(f => f.rule === 9), []);
-  eq(lintContent(c, { banned: [], trip: true }).filter(f => f.rule === 9 && f.path === 'cards[plain]').length, 1);
+  eq(lintContent(c, { banned: [] }).filter(f => f.rule === 9 && f.path === 'cards[plain]').length, 1);
+  eq(lintContent({ ...c, cityId: 'cairo' }, { banned: [] }).filter(f => f.rule === 9 && f.path === 'cards[plain]').length, 1, 'no exemption for a card that is not on the list');
   const { spawnSync } = await import('node:child_process');
   const url = new URL('../tools/lint-content.mjs', import.meta.url);
   const run = (...a) => spawnSync(process.execPath, [url.pathname.replace(/^\/([A-Za-z]:)/, '$1'), ...a], { encoding: 'utf8' });
-  const r = run('cairo', '--trip-warn');
+  const r = run('cairo');
   eq(r.status, 0, r.stdout + r.stderr);
-  ok(/^WARN rule 9 /m.test(r.stdout) && /warnings? \(rule 9/.test(r.stdout), r.stdout.slice(0, 300));
-  eq(/WARN/.test(run('cairo').stdout), false, 'without the flag, nothing is said');
+  ok(!/rule 9/.test(r.stdout), 'cairo has no rule 9 failure');
+  eq(run('cairo', '--trip-warn').status, 1, 'the old flag is gone, and an unknown option fails');
+});
+test('rule 9: only the two named cards are exempt, and by city', () => {
+  const card = plainCard('Mira has been to Hilltown.');
+  eq(rule9({ ...card, id: 'first-expedition' }, { ...calm, cityId: 'cairo' }), []);
+  eq(rule9({ ...card, id: 'first-expedition' }, { ...calm, cityId: 'testport' }).length, 1);
+  eq(rule9({ ...card, id: 'bridge-toll' }, { ...calm, cityId: 'testport' }), []);
+  eq(rule9({ ...card, id: 'bridge-toll' }, { ...calm, cityId: 'cairo' }).length, 1);
 });
 
 // ---- the cargo on the jump's settled line
