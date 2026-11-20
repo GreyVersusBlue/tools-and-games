@@ -231,7 +231,7 @@
       "seal": null
     },
     "title": "Farid's ship never came",
-    "body": "Two seasons ago you lent Farid 6. His ship was lost at sea. He has paid back 4, which is all he has. He asks you to forgive the rest.",
+    "body": "Two seasons ago you lent Farid 5. His ship was lost at sea. He has paid back 4, which is all he has. He asks you to forgive the rest.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -870,7 +870,7 @@
       "seal": null
     },
     "title": "Zubayda wants a standing deal",
-    "body": "Two seasons ago you sold your linen in Zubayda's market. She was fair about the fee. Now she wants you to sell with her every season.",
+    "body": "Two seasons ago you took Zubayda's offer to sell in her market. She asked a small fee. Now she wants you to sell with her every season.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -1263,8 +1263,8 @@
       "role": "Cairo",
       "seal": null
     },
-    "title": "Matteo has sold the linen",
-    "body": "Matteo has done the job and kept his fee. He asks to work for the house again. This time he wants the house's seal on his orders, so that other traders know who he works for.",
+    "title": "Matteo wants to work again",
+    "body": "Matteo took the house's fee. He asks to work for the house again. This time he wants the house's seal on his orders, so that other traders know who he works for.",
     "weight": 0,
     "repeat": false,
     "choices": [

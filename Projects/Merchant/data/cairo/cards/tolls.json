@@ -9,13 +9,13 @@
       "seal": null
     },
     "title": "A toll at Aydhab",
-    "body": "Hamza leads caravans to the Red Sea. A caravan is a group of travellers and animals that go together. At Aydhab a toll, a fee to pass, is taken on every load. Hamza asks your house to pay its share.",
+    "body": "Hamza leads caravans to the Red Sea. A caravan is a group of travellers and animals that go together. At Aydhab a toll, a fee to pass, is taken on every load. Hamza asks every house that sends goods his way to pay a share.",
     "weight": 3,
     "repeat": false,
     "choices": [
       {
         "id": "pay",
-        "label": "Pay your share of the toll",
+        "label": "Pay a share of the toll",
         "hint": "It costs now. Hamza will speak well of you.",
         "requires": {
           "money": {
@@ -41,7 +41,7 @@
       },
       {
         "id": "quseir",
-        "label": "Send the goods by Quseir",
+        "label": "Send goods by Quseir instead",
         "hint": "It costs less, later. Quseir is nearer to Qus, and partners like a house that counts its costs.",
         "now": [],
         "later": [
@@ -87,7 +87,7 @@
       "seal": null
     },
     "title": "The officer counts twice",
-    "body": "Your carters bring goods up from a ship at Alexandria. A customs officer there has not met your house, so he counts every bundle twice. Customs are taxes on goods that enter a port. He asks for 5 dinars.",
+    "body": "Your carters wait at Alexandria to bring a merchant's goods up from a ship. A customs officer there has not met your house, so he counts every bundle twice. Customs are taxes on goods that enter a port. He asks for 5 dinars.",
     "when": {
       "rep": "court",
       "lte": 0
@@ -229,7 +229,7 @@
       "seal": null
     },
     "title": "Papers for the road",
-    "body": "Nabil belongs to the Karimi, a loose group of merchants who trade spices. One writer says a spice office gave them papers for the road. It took 2.5 in every hundred of their goods. He says he could send two loads of yours under his papers.",
+    "body": "Nabil belongs to the Karimi, a loose group of merchants who trade spices. One writer says a spice office gave them papers for the road. It took 2.5 in every hundred of their goods. He says he could carry two loads for your house under his papers.",
     "when": {
       "rep": "partners",
       "gte": 1
@@ -265,7 +265,7 @@
       },
       {
         "id": "alone",
-        "label": "Send them alone",
+        "label": "Go without his papers",
         "hint": "It costs less. Nabil may feel left out, but the officers see your own count.",
         "now": [],
         "later": [

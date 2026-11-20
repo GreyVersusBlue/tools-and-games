@@ -97,7 +97,7 @@
       "seal": null
     },
     "title": "Two partners, one share",
-    "body": "Idris and Binyamin both put money into your last venture. Each says he put in more. Your ledger says they paid the same.",
+    "body": "Idris and Binyamin put money into a venture together. Each says he put in more. Their own ledger says they paid the same. They ask your house, which keeps honest books, to settle it.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -199,7 +199,7 @@
       "seal": null
     },
     "title": "Samir counts his share again",
-    "body": "Samir is home from {to}. He says your clerk counted his share 5 dinars too low. Your clerk says the cost of the trip comes out of the profit first. Samir kept no book, but he remembers every sale.",
+    "body": "Samir is home from {to}. He says your clerk counted what he is owed 5 dinars too low. Your clerk says the cost of the trip comes off first. Samir kept no book, but he remembers every sale.",
     "when": {
       "all": [
         {
@@ -296,8 +296,8 @@
       "role": "Cairo",
       "seal": null
     },
-    "title": "Ali broke his orders",
-    "body": "Ali is home from {to}. Your orders said to sell at {to}. Ali sold part of the load on the way instead, to a buyer whose price looked better. Your clerk says that sale came to 12 dinars less than {to} would have paid. Ali says he did it for the house.",
+    "title": "Ali and the price",
+    "body": "Ali is home from {to}. Your clerk thinks Ali sold too cheaply, and says the house lost about 12 dinars. Ali says the prices were fair and that he did it for the house.",
     "when": {
       "trip": {
         "agent": "ali",
@@ -391,7 +391,7 @@
       "seal": null
     },
     "title": "Two judges for one quarrel",
-    "body": "Jabir is Muslim and Ezra is Jewish. Each put money into a venture with your house, and now they quarrel over 20 dinars. Each wants his own judge. Your house is asked to say where they go.",
+    "body": "Jabir is Muslim and Ezra is Jewish. Each put money into the same venture, and now they quarrel over 20 dinars. Each wants his own judge. Your house is asked to say where they go.",
     "when": {
       "rep": "court",
       "gte": 1

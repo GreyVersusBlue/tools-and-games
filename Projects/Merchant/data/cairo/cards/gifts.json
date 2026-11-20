@@ -313,7 +313,7 @@
       "seal": null
     },
     "title": "A gift meant for Samir",
-    "body": "Samir is home from {to}. A buyer there was pleased with the price Samir got for him. He sends 7 dinars to your desk as a gift for the man who found him. The gift came to the house, but it was meant for Samir.",
+    "body": "Samir is home from {to}. A buyer Samir met there was pleased to deal with him. He sends 7 dinars to your desk as a gift for the man who found him. The gift came to the house, but it was meant for Samir.",
     "when": {
       "all": [
         {
@@ -403,7 +403,7 @@
       "seal": null
     },
     "title": "Tadros is home from {to}",
-    "body": "Tadros has finished his first trip. Ilyas has written to ask how he behaved. Tadros asks if the house will keep him on, and if it will write back to his uncle.",
+    "body": "Tadros is home from {to}. Ilyas has written to ask how he behaved. Tadros asks if the house will keep him on, and if it will write back to his uncle.",
     "weight": 3,
     "repeat": false,
     "choices": [

@@ -143,7 +143,7 @@
       "seal": null
     },
     "title": "The elders hear a loss",
-    "body": "Isaac sailed with 70 dinars of yours and lost almost 50 of them. He says the loss is bad luck, and that you have no claim on him. You can ask the elders of your community to hear it, or take it to a judge.",
+    "body": "Daud is a friend of yours. He gave Isaac 70 dinars to trade overseas, and Isaac lost almost 50 of them. Isaac says the loss is bad luck, and that Daud has no claim on him. Daud asks your house to help. You can ask the elders of your community to hear it, or take it to a judge.",
     "when": {
       "rep": "court",
       "gte": 1
@@ -170,8 +170,8 @@
       },
       {
         "id": "judge",
-        "label": "Press your claim before a judge",
-        "hint": "It costs now. Isaac will not forgive it.",
+        "label": "Press Daud's claim before a judge",
+        "hint": "It costs now. Daud will thank you in coin. Isaac will not forgive it.",
         "requires": {
           "money": {
             "gte": 4
@@ -223,7 +223,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf and the road costs",
-    "body": "Yusuf is home from {to}. He spent 7 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
+    "body": "Yusuf is home from {to}. He says he spent 7 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
     "when": {
       "trip": {
         "agent": "yusuf",
@@ -305,14 +305,14 @@
       "seal": null
     },
     "title": "Hamid never gives accounts",
-    "body": "Hamid has traded with your money for years. He has never given you a full account of it. You can ask him for the accounts as partners should, or take him to a judge.",
+    "body": "Nur is a friend of yours. He has had money with Hamid for years, and Hamid has never given him a full account. Nur asks your house to help. You can ask Hamid for the accounts as partners should, or take him to a judge.",
     "weight": 3,
     "repeat": false,
     "choices": [
       {
         "id": "ask",
         "label": "Ask him for the accounts",
-        "hint": "It costs nothing. He may be offended.",
+        "hint": "It costs nothing. Hamid may be offended, and Nur will thank you.",
         "now": [],
         "later": [
           {
@@ -328,7 +328,7 @@
       {
         "id": "judge",
         "label": "Take him to a judge",
-        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues.",
+        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues. Nur pays you well.",
         "requires": {
           "money": {
             "gte": 5
