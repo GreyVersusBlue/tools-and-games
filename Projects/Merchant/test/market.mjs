@@ -200,36 +200,95 @@ for (const [name, C] of Object.entries(CITIES)) {
     ok(!s.known[farStop]);
   });
 
-  test(T('letters that arrive together are one paper, with one line in the first year and none after'), () => {
+  test(T('letters that arrive together are one paper with a price line, in every year'), () => {
     let s = game({ length: 'full' });
     s = play(s, content, C.foldAt);
     const papers = s.desk.filter(p => p.kind === 'news');
     eq(papers.length, 1, 'folded into one paper');
     ok(papers[0].letters.length >= 2, 'with more than one letter in it');
-    ok(/ pays \d+ for /.test(papers[0].line), `the one line: ${papers[0].line}`);
+    ok(typeof papers[0].line === 'string' && papers[0].line.length > 0, 'a line is always there, so the desk never shows the table');
     s = play(s, content, 4 - C.foldAt);
     const later = s.desk.find(p => p.kind === 'news');
-    ok(later && later.line === undefined, 'from the second year there is no one-line form');
+    ok(later && typeof later.line === 'string', 'from the second year too');
     eq(paperChoices(s, content, later.id), [{ id: 'ok', label: 'Noted' }]);
     s = choose(s, content, later.id, 'ok');
     eq(s.desk.find(p => p.kind === 'news').state, 'done');
   });
 
-  // ---- MER-72: what the house expects a good to fetch, and what the first letter names
-  test(T('first year line: it names every good the house holds that the stop sells, then home\'s price for each, once'), () => {
-    let s = game({ length: 'full' });
-    const held = Object.keys(s.stock).filter(g => s.stock[g] > 0 && s.market[home]?.[g]);
-    s = play(s, content, C.foldAt);
-    const paper = s.desk.find(p => p.kind === 'news');
-    const stopName = id => content.stops.find(x => x.id === id).name;
-    const gname = id => content.goods.find(x => x.id === id).name.toLowerCase();
-    for (const l of paper.letters) {
-      const goods = held.filter(g => l.prices[g] !== undefined);
-      if (!goods.length) continue;
-      for (const g of goods) ok(paper.line.includes(`${l.prices[g]} for ${gname(g)}`), `${stopName(l.stop)} letter names ${g}: ${paper.line}`);
+  // ---- MER-94: price news as leads. A scene where every letter of the season is arriving, with the
+  // far prices forced high, so the rules have more than two candidates to choose from.
+  const scene = (edit = () => {}) => {
+    const s = play(game({ length: 'full' }), content, C.foldAt);
+    s.desk = s.desk.filter(p => p.kind !== 'news');
+    const idx = idxOf(s, content);
+    const due = content.stops.filter(st => { const lag = M.lagOf(content, st.id); return lag && idx % lag === 0; });
+    for (const st of due) for (const g of Object.keys(s.market[st.id])) {
+      s.market[st.id][g].h = [[idx - M.lagOf(content, st.id), 100 + 10 * due.indexOf(st) + g.length]];
     }
-    ok(held.length >= 1, 'the house holds goods to name');
-    eq(paper.line.split(`${content.stops.find(x => x.id === home).name} pays`).length, 2, `home's sentence once: ${paper.line}`);
+    edit(s, due);
+    M.news(s, content);
+    return { s, idx, due, paper: s.desk.find(p => p.kind === 'news') };
+  };
+  const lineCount = line => (line.match(/ pays \d+ for /g) ?? []).length;
+
+  test(T('MER-94 never more than two price lines, widest margin first, written as the lead reads'), () => {
+    const { s, paper } = scene();
+    ok(paper.letters.length >= 2, 'several letters arrived');
+    ok(paper.letters.reduce((n, l) => n + Object.keys(l.prices).length, 0) > 2, 'with more than two prices between them');
+    eq(paper.leads.length, 2, 'two leads, not the whole table');
+    eq(lineCount(paper.line), 2, `two price lines: ${paper.line}`);
+    const m = l => l.p - l.home;
+    ok(m(paper.leads[0]) >= m(paper.leads[1]), 'the widest margin first');
+    for (const l of paper.leads) {
+      const stop = content.stops.find(x => x.id === l.stop).name, good = content.goods.find(x => x.id === l.good).name.toLowerCase();
+      const homeName = content.stops.find(x => x.id === home).name;
+      ok(paper.line.includes(`${stop} pays ${l.p} for ${good}. ${homeName} pays ${l.home}.`), `the lead's own words: ${paper.line}`);
+      ok(paper.line.includes(l.writtenIn), 'the news season is written');
+      eq(l.home, M.truePrice(s, content, home, l.good), 'home price is the price now');
+    }
+    const worst = Math.min(...paper.leads.map(m));
+    for (const l of paper.letters) for (const [g, p] of Object.entries(l.prices)) {
+      if (paper.leads.some(d => d.stop === l.stop && d.good === g) || !s.market[home][g]) continue;
+      ok(p - M.truePrice(s, content, home, g) <= worst, `${l.stop}/${g} is not wider than a lead`);
+    }
+  });
+
+  test(T('MER-94 a good the house cannot touch never gets a line'), () => {
+    // a good home does not trade: its price at a far stop is the highest on the table and still never leads
+    let touched = null;
+    const { paper } = scene((s, due) => {
+      const stopId = due[0].id, g = Object.keys(s.market[stopId]).find(x => s.market[home][x]);
+      touched = { stopId, g };
+      delete s.market[home][g];
+      s.market[stopId][g].h = [[idxOf(s, content) - M.lagOf(content, stopId), 9999]];
+      s.stock[g] = 0;
+    });
+    const gname = content.goods.find(x => x.id === touched.g).name.toLowerCase();
+    eq(paper.letters.find(l => l.stop === touched.stopId).prices[touched.g], 9999, 'the letter does carry the price');
+    ok(!paper.leads.some(l => l.good === touched.g), 'no lead names it');
+    ok(!paper.line.includes(` for ${gname}.`), `the line does not: ${paper.line}`);
+  });
+
+  test(T('MER-94 a stop with no open road gets no line, and known still updates for every city that wrote'), () => {
+    const { s, idx, due, paper } = scene((s) => { s.known = {}; });
+    for (const st of due) for (const g of Object.keys(paper.letters.find(l => l.stop === st.id).prices)) {
+      eq(s.known[st.id][g], { p: paper.letters.find(l => l.stop === st.id).prices[g], at: idx - M.lagOf(content, st.id) }, `${st.id}/${g} known`);
+    }
+    // every route to the first due stop closed in every season (the legs stay, so the lag and the letter do too)
+    const target = due[0].id;
+    const shut = { ...content, routes: content.routes.map(r => r.to !== target ? r : { ...r, legs: r.legs.map(l => ({ ...l, opens: [] })) }) };
+    const t = structuredClone(s); t.desk = t.desk.filter(p => p.kind !== 'news'); t.known = {};
+    M.news(t, shut);
+    const p2 = t.desk.find(p => p.kind === 'news');
+    ok(!p2.leads.some(l => l.stop === target), 'no lead about a stop with no road');
+    ok(p2.letters.some(l => l.stop === target), 'its letter is still there');
+    ok(t.known[target] && Object.keys(t.known[target]).length > 0, 'and known still has its prices');
+  });
+
+  test(T('MER-94 no lead leaves one plain sentence, not the table'), () => {
+    const { paper } = scene((s, due) => { for (const st of due) for (const g of Object.keys(s.market[st.id])) s.market[st.id][g].h = [[idxOf(s, content) - M.lagOf(content, st.id), 1]]; });
+    eq(paper.leads, []);
+    eq(paper.line, 'The letters hold no price worth a road this season.');
   });
 
   test(T('expectedPrice: no news is null; a price known this season is itself; an old one is pulled toward the base; it reads only what the house knows'), () => {
