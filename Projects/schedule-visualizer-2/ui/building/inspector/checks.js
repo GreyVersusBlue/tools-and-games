@@ -5,6 +5,7 @@
 import { h } from '../../components/dom.js';
 import { count, list } from '../../components/words.js';
 import { buildingChecks } from '../../../engine/building-checks.js';
+import { joinStairwell } from '../../../engine/stairwells.js';
 import { keepFocus } from './controls.js';
 
 const ORDER = { problem: 0, warning: 1, note: 2 };
@@ -55,7 +56,15 @@ export function checksPanel(env) {
           data: { key: 'show:' + finding.id, action: 'show' },
           'aria-label': 'Show me: ' + finding.text,
           on: { click: () => env.show(finding.where, 'On ' + floor.name + ': ' + finding.text) },
-        }, 'Show me') : null);
+        }, 'Show me') : null,
+        // the fix of a stairwell in parts: one flight between its parts, one undo step
+        finding.fixable && finding.kind === 'stairwell-split' ? h('button', {
+          type: 'button',
+          class: 'btn bi-small',
+          data: { key: 'join:' + finding.id, action: 'join' },
+          'aria-label': 'Join the parts of Stairwell ' + finding.where.well,
+          on: { click: () => env.editor().commit(joinStairwell, { well: finding.where.well }, { done: (made) => made.text, toast: (made) => made.text }) },
+        }, 'Join the parts') : null);
     })));
   }
 
