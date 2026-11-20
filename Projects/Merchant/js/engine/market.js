@@ -153,10 +153,10 @@ export function news(s, content) {
   addPaper(s, paper);
 }
 
-/** The first year's one line (DESIGN 4.7): "<Stop> pays 164 for pepper and 98 for linen." a stop, on
-    every good the house holds in its warehouse that the stop sells (else the first good both trade),
-    then one sentence for home: "Cairo pays 128 for pepper and 71 for linen." The goods the house holds
-    lead, so a house that carries linen reads the linen price whatever else the letter holds. */
+/** The first year's one line (DESIGN 4.7): "<Stop> pays 164 for <good> and 98 for <good>." for each
+    stop, on every good the house holds in its warehouse that the stop sells (else the first good
+    both trade), then one sentence for home with the home price of each good named. A house that
+    carries a good reads that good's price whatever else the letter holds. */
 function firstYearLine(s, content, letters, home) {
   const name = id => (content.goods ?? []).find(g => g.id === id)?.name.toLowerCase() ?? id;
   const homeName = stopOf(content, home).name;

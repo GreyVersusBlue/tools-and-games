@@ -1137,11 +1137,11 @@ try {
         eq(await page.$eval('#contract-qirad', e => e.getAttribute('aria-checked')), 'true', 'the qirad is the chosen contract');
         eq(await page.$eval('#step-partners', e => e.getAttribute('role')), 'spinbutton');
         await page.focus('#step-purse'); await page.keyboard.press('PageUp');
-        eq(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow')), '50');
+        eq(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow')), '250', 'PageUp moves the purse by 250 (MER-72)');
         await page.click('#outfit-send');
         await page.waitForFunction(() => !document.getElementById('panel-outfit'));
         const x = await page.evaluate(() => window.__merchant.state.expeditions.at(-1));
-        eq([x.contract.kind, x.contract.agentShare, x.contract.of, x.purse], ['qirad', 1, 3, 50]);
+        eq([x.contract.kind, x.contract.agentShare, x.contract.of, x.purse], ['qirad', 1, 3, 250]);
         ok(x.staked.partners > 0, 'partners put money in');
       });
       // Cairo's legs are all one season, so no seeded game ever stands a token part way along one.
@@ -1168,6 +1168,117 @@ try {
       });
     }
     await page.close();
+  }
+
+  // ---- MER-72: the outfit sheet's money. Starts apart from the games above: this one chooses "Send Yusuf"
+  // at the first expedition card, which the cases above never do.
+  {
+    const M72 = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
+    const moneyOf = page => page.evaluate(() => window.__merchant.state.money);
+    const numOf = t => Number(t.match(/[\d,]+(?= dinars?)/)[0].replace(/,/g, ''));
+    const { page, consoleErrors } = await open(FRAME);
+    await start(page, 'pointer');
+    // the first card's choice is the one on `go`; the opening letter first
+    let before = null;
+    for (const [p, id] of [['p0-0', 'begin'], ['p0-1', 'go']]) {
+      if (id === 'go') before = await moneyOf(page);
+      await page.$eval(`#choice-${p}-${id}`, b => b.scrollIntoView({ block: 'center' }));
+      await page.click(`#choice-${p}-${id}`);
+      await page.waitForSelector(BACK);
+      await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' }));
+      await page.click('#btn-next');
+      if (id === 'begin') await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"][data-face="back"]`), {}, p);
+    }
+    await page.waitForSelector('#outfit-send');
+
+    await test('MER-72: the purse moves by 50 a press, 10 with Shift, and a typed amount is taken, commas and all', async () => {
+      await goMap(page);
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await page.click('#change-carry');
+      await page.waitForSelector('#step-purse');
+      const val = () => page.$eval('#step-purse', e => e.getAttribute('aria-valuenow'));
+      eq(await val(), '0');
+      await page.click('#step-purse-plus'); eq(await val(), '50', 'one press, 50');
+      await page.click('#step-purse-plus'); eq(await val(), '100');
+      await page.keyboard.down('Shift'); await page.click('#step-purse-plus'); await page.keyboard.up('Shift');
+      eq(await val(), '110', 'Shift, 10');
+      await page.keyboard.down('Shift'); await page.click('#step-purse-minus'); await page.keyboard.up('Shift');
+      eq(await val(), '100');
+      await page.focus('#step-purse'); await page.keyboard.press('ArrowUp'); eq(await val(), '150', 'the arrow key is 50 as well');
+      await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); eq(await val(), '140');
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('1,250'); await page.keyboard.press('Enter');
+      await page.waitForSelector('#step-purse');
+      eq(await val(), '1250', 'a typed amount is taken');
+      eq(await page.$eval('#typed-purse', e => e.value), '1250');
+      eq(await page.evaluate(() => document.activeElement.id), 'typed-purse', 'focus stays in the box');
+      // an amount the house does not have is taken as typed and refused in words, with commas
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('99999'); await page.keyboard.press('Enter');
+      await page.waitForFunction(() => /99,999 dinars/.test(document.getElementById('outfit-reasons').textContent));
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+      ok((await page.$eval('#outfit-reasons', e => e.textContent)).includes('costs 99,999 dinars'), await page.$eval('#outfit-reasons', e => e.textContent));
+    });
+
+    await test('MER-72: the sheet lists what makes the cost up, and the number it shows is the number Send takes', async () => {
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('100'); await page.keyboard.press('Enter');
+      await page.waitForSelector('#step-purse');
+      // more linen than the warehouse holds, so some is bought in Cairo at a price that rises with each load
+      await page.focus('#step-cargo-linen');
+      for (let i = 0; i < 14; i++) await page.keyboard.press('ArrowUp');
+      const rows = await page.$$eval('#outfit-costs li', ls => ls.map(l => l.textContent));
+      ok(rows.length >= 2, JSON.stringify(rows));
+      ok(rows.some(r => /linen/.test(r) && /from the warehouse/.test(r) && /bought in Cairo/.test(r)), JSON.stringify(rows));
+      ok(rows.some(r => /Money to buy with on the way/.test(r) && /100 dinars/.test(r)), JSON.stringify(rows));
+      const shown = numOf(await page.$eval('#outfit-cost-total', e => e.textContent));
+      const money0 = await moneyOf(page);
+      ok(shown > 100, `the bought linen is in the number: ${shown}`);
+      const later = await page.$$eval('#outfit-costs .cost-later', ps => ps.map(p => p.textContent));
+      ok(later.some(t => /wage, about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
+      await page.click('#outfit-send');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      eq(money0 - await moneyOf(page), shown, 'the number shown is the number taken, to the dinar');
+    });
+    await test('MER-72: no console error, nothing offsite', async () => { eq(consoleErrors, []); eq(page.__blocked, []); });
+    await page.close();
+
+    // the far end: what the house last heard, its date, and a guess from the engine's own function
+    const q = await open(FRAME);
+    await start(q.page, 'pointer');
+    await answerFirst(q.page, 'pointer');
+    await goMap(q.page);
+    await test('MER-72: with no news, a good says so plainly and offers no guess; after a letter, the last price, its date and the engine\'s guess', async () => {
+      await q.page.click('#btn-outfit');
+      await q.page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await q.page.click('#change-carry');
+      await q.page.waitForSelector('#step-cargo-linen');
+      const far0 = await q.page.$eval('#step-cargo-linen', e => e.closest('li').querySelector('.far').textContent);
+      ok(/^No news of what linen fetches in Damascus\.$/.test(far0), far0);
+      eq(await q.page.$eval('#step-cargo-linen', e => e.closest('li').querySelector('.might')), null, 'no news, no guess');
+      await q.page.click('#outfit-cancel');
+      await q.page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      await goDesk(q.page);
+      await uiSeason(q.page, 'pointer');
+      await q.page.waitForFunction(() => window.__merchant.state.t === 1);
+      await goMap(q.page);
+      await q.page.click('#btn-outfit');
+      await q.page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await q.page.click('#change-carry');
+      await q.page.waitForSelector('#step-cargo-linen');
+      const li = await q.page.$eval('#step-cargo-linen', e => ({ far: e.closest('li').querySelector('.far').textContent, might: e.closest('li').querySelector('.might')?.textContent }));
+      const st = await engineState(q.page);
+      const k = st.known.damascus.linen, want = M72.expectedPrice(st, nodeContent, 'damascus', 'linen');
+      ok(k && want, 'a letter from Damascus has come');
+      ok(li.far.includes(`Damascus paid ${withCommas(k.p)}`) && li.far.includes(want.written), li.far);
+      eq(li.might, `Linen might sell for about ${withCommas(want.p)} there.`);
+    });
+    await test('MER-72: the first season\'s one-line price letter names the linen the house holds, not only the pepper', async () => {
+      const v = await q.page.evaluate(() => window.__merchant.state.desk.filter(p => p.kind === 'news').map(p => p.line));
+      ok(v.length === 1 && /for linen/.test(v[0]) && /for pepper/.test(v[0]), JSON.stringify(v));
+    });
+    await q.page.close();
   }
 
   // the board needs no horizontal scroll and the map table can be used at every frame
