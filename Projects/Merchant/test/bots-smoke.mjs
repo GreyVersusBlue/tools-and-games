@@ -228,6 +228,19 @@ test('policy: standing breaks a money tie for careful and is bought with cash by
   eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 0.1 })[0], 'warm', 'a house that values standing flips the same card');
 });
 
+test('policy: greedy prices standing against the money the house started with, so a richer house is no more pious (MER-101)', () => {
+  const paid = [choice('cash', [{ money: 50 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
+  const temper = { partners: 0.05, start: 1000 };   // standing is worth 1000 * 0.05 = 50 dinars: a tie, and list order keeps cash first
+  eq(pick('greedy', paid, { money: 1000, stock: {} }, temper)[0], 'cash');
+  eq(pick('greedy', paid, { money: 9000, stock: {} }, temper)[0], 'cash', 'nine times the money now values +1 standing no more than at the start');
+  eq(pick('greedy', paid, { money: 9000, stock: {} }, { partners: 0.05 })[0], 'warm', 'with no start recorded it falls back to the money now');
+});
+
+test('games: each game record keeps the house\'s money at the first season, and it is not the money at the end (MER-101)', () => {
+  for (const g of res.results.greedy.slice(0, 10)) eq(g.startMoney, content.houses.find(h => h.id === g.house).money ?? 0, `${g.house} game ${g.seed}`);
+  ok(res.results.greedy.some(x => x.startMoney !== x.worth), 'the record is its own figure');
+});
+
 test('policy: random shuffles the open choices and never reads their worth', () => {
   const list = [choice('a'), choice('b', [{ money: 500 }]), choice('c')];
   const seen = new Set();

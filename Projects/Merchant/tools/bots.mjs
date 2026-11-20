@@ -283,7 +283,8 @@ export function worthOf(state, content, choice, follow = 1, depth = 0) {
   return { net, outlay, standing, regard };
 }
 /** The choices a bot would take, best first. `open` are the ones whose requirements hold. */
-const standingOf = (w, state, temper) => Object.entries(w.regard).reduce((n, [g, by]) => n + by * state.money * (temper[g] ?? 0), 0);
+// Standing is priced against the house's money at the game's first season (`temper.start`, kept on the game record as `startMoney`), not its money now: a richer house does not grow more pious (DECISIONS 2026-11-20 16:3x, MER-101).
+export const standingOf = (w, state, temper) => Object.entries(w.regard).reduce((n, [g, by]) => n + by * (temper.start ?? state.money) * (temper[g] ?? 0), 0);
 export function ranked(bot, state, content, open, roll, temper = {}) {
   if (bot === 'random') return shuffle(open, roll);
   if (bot === 'first') return open;
@@ -342,7 +343,8 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   const tdice = dice(seed + 77); tdice(); tdice();   // the first draws of a nearby seed are alike, so two are spent
   const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, tdice() * STANDING_MAX]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
   let s = newGame(content, { seed, length, house });
-  const out = { bot, seed, house, trips: [], profits: [], cardMoney: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
+  temper.start = s.money;   // the house's money at the first season: what greedy prices standing against
+  const out = { bot, seed, house, startMoney: s.money, trips: [], profits: [], cardMoney: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
   const routeOfX = {};   // expedition id to its route, so a return or a settlement can be told by where it went
   for (let guard = 0; guard < 500; guard++) {
     if (s.phase === 'interlude') { s = openSeason(s, content); continue; }
