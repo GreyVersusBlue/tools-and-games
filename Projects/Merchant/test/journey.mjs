@@ -98,6 +98,9 @@ const sendFromMap = async page => {
   await page.waitForSelector('#screen-desk');
   return true;
 };
+/** What the Node model may answer a paper with. A return or a loss paper now carries choices (MER-81), but the page shows it
+    with Next and answers "ok" until the screens offer them (MER-80), so the model answers it the same way. */
+const nodeChoices = (s, c, id) => (['return', 'lost'].includes(s.desk.find(p => p.id === id)?.kind) ? [{ id: 'ok' }] : eng.paperChoices(s, c, id));
 const panelOpen = (page, name) => page.evaluate(n => !!document.getElementById(`panel-${n}`)?.open, name);
 const gone = (page, name) => page.waitForFunction(n => !document.getElementById(`panel-${n}`), {}, name);
 // Reduced motion on a page, for Playwright or Puppeteer alike.
@@ -832,7 +835,7 @@ try {
     const nodeSeason = s => {
       for (const p of s.desk) {
         if (p.state !== 'open') continue;
-        const cs = eng.paperChoices(s, nodeContent, p.id);
+        const cs = nodeChoices(s, nodeContent, p.id);
         const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
@@ -949,7 +952,7 @@ try {
   const modelSeason = s => {
     for (const p of s.desk) {
       if (p.state !== 'open') continue;
-      const cs = eng.paperChoices(s, nodeContent, p.id);
+      const cs = nodeChoices(s, nodeContent, p.id);
       const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
       s = eng.choose(s, nodeContent, p.id, c.id);
       if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
@@ -1422,7 +1425,7 @@ try {
     const nodeSeason = s => {
       for (const p of s.desk) {
         if (p.state !== 'open') continue;
-        const cs = eng.paperChoices(s, nodeContent, p.id);
+        const cs = nodeChoices(s, nodeContent, p.id);
         const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
@@ -1430,13 +1433,16 @@ try {
       return eng.endSeason(s, nodeContent);
     };
     const faceOf = () => page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
+    const backToDesk = async () => { await page.waitForSelector('#map-desk-top'); await page.focus('#map-desk-top'); await page.keyboard.press('Enter'); };
     const sendByKeys = async () => {
       await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
       if (await page.$('#outfit-send')) {
-        if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) { await page.focus('#outfit-cancel'); await page.keyboard.press('Enter'); }
-        else { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
-      }
-      await page.keyboard.press('Escape');
+        if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) {
+          // a card's outfit effect (MER-77) opens a sheet nothing can send: Back to the map, then the desk by its own button, as the pointer walker does
+          await page.focus('#outfit-cancel'); await page.keyboard.press('Enter');
+          await backToDesk();
+        } else { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); await page.keyboard.press('Escape'); }
+      } else await backToDesk(); // the map had nothing to send: a toast only, and Escape does nothing on the bare map
       await page.waitForSelector('#screen-desk');
     };
     const pointerSeason = async () => {
@@ -1538,7 +1544,7 @@ try {
     const policy = s => {
       for (const p of s.desk) {
         if (p.state !== 'open') continue;
-        const c = eng.paperChoices(s, nodeContent, p.id).find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        const c = nodeChoices(s, nodeContent, p.id).find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
       }
@@ -1976,7 +1982,7 @@ try {
       const playSeason = st => {
         for (const p of st.desk) {
           if (p.state !== 'open') continue;
-          const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
+          const c = nodeChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
           st = eng.choose(st, nodeContent, p.id, c.id);
           if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
         }
@@ -2217,7 +2223,7 @@ try {
     for (let guard = 0; guard < 20 && g.phase !== 'interlude'; guard++) {
       for (const p of g.desk) {
         if (p.state !== 'open') continue;
-        const c = eng.paperChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        const c = nodeChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
         g = eng.choose(g, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
       }
@@ -2252,11 +2258,11 @@ try {
   // cards of the test's own go into the page's `followups.json` request and into the Node content, and
   // the paper is put on a seeded desk by hand. Everything else is the engine's.
   {
-    const mk = (id, contract) => ({ id, group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null },
+    const mk = (id, contract) => ({ id, group: 'followups', kind: 'people', from: { name: 'A clerk', role: 'Cairo', seal: null },
       title: 'Send {agent} to {to}', body: '{agent} could take {good} to {to}, {seasons} out.',
       when: { trip: { agent: 'ali', is: 'ready' } }, weight: 0, repeat: false,
       choices: [{ id: 'go', label: 'Send {agent} to {to}', hint: 'About {seasons} on the road.', now: [{ outfit: 'ali', contract }], later: [] }], note: 'A test card.' });
-    const moved = { id: 'mer77-trust', group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null }, title: 'A word with Ali', body: 'Ali waits for an answer.',
+    const moved = { id: 'mer77-trust', group: 'followups', kind: 'people', from: { name: 'A clerk', role: 'Cairo', seal: null }, title: 'A word with Ali', body: 'Ali waits for an answer.',
       when: { agent: 'ali', hired: true }, weight: 0, repeat: false,
       choices: [{ id: 'thank', label: 'Thank him', hint: 'He will remember it.', now: [{ trust: 'ali', by: 1 }, { rep: 'agents', by: 1 }], later: [] }], note: 'A test card.' };
     const extra = [mk('mer77-own', 'own'), mk('mer77-qirad', 'qirad'), moved];
