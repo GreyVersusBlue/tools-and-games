@@ -209,6 +209,9 @@ jobs:
               node test/market.mjs
               node test/routes.mjs
               node test/swap.mjs
+              node test/letters.mjs
+              node test/agents.mjs
+              node test/trip.mjs
               node test/bots-smoke.mjs
               node tools/lint-content.mjs cairo
               node tools/reading-level.mjs cairo
