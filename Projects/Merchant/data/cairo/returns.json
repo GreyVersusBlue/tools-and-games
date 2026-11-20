@@ -1,5 +1,307 @@
 [
   {
+    "id": "return-sell-pepper",
+    "paper": "return",
+    "facts": {
+      "good": [
+        "pepper"
+      ],
+      "outcome": [
+        "profit",
+        "even"
+      ]
+    },
+    "title": "Sell the {good} now?",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take two loads today for 200 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell two loads to the broker",
+        "hint": "You get 200 dinars now. Buyers remember a house that sells fast.",
+        "requires": {
+          "stock": "pepper",
+          "gte": 2
+        },
+        "now": [
+          {
+            "money": 200
+          },
+          {
+            "stock": "pepper",
+            "by": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold the {good} for news",
+        "hint": "It stays in your store. The price may rise or fall.",
+        "now": []
+      }
+    ],
+    "note": "Pegolotti's handbook, written about 1340 for merchants, lists weights, duties and freight at many ports. A merchant could use such lists to work out what a price far away was really worth.",
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "the handbook as a whole; the Alexandria chapter, print p. 72, and freight, print p. 75"
+      }
+    ]
+  },
+  {
+    "id": "return-sell-silk",
+    "paper": "return",
+    "facts": {
+      "good": [
+        "silk"
+      ],
+      "outcome": [
+        "profit",
+        "even"
+      ]
+    },
+    "title": "Sell the {good} now?",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take one load today for 380 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell one load to the broker",
+        "hint": "You get 380 dinars now. Buyers remember a house that sells fast.",
+        "requires": {
+          "stock": "silk",
+          "gte": 1
+        },
+        "now": [
+          {
+            "money": 380
+          },
+          {
+            "stock": "silk",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold the {good} for news",
+        "hint": "It stays in your store. The price may rise or fall.",
+        "now": []
+      }
+    ],
+    "note": "Pegolotti's handbook, written about 1340 for merchants, lists weights, duties and freight at many ports. A merchant could use such lists to work out what a price far away was really worth.",
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "the handbook as a whole; the Alexandria chapter, print p. 72, and freight, print p. 75"
+      }
+    ]
+  },
+  {
+    "id": "return-sell-sugar",
+    "paper": "return",
+    "facts": {
+      "good": [
+        "sugar"
+      ],
+      "outcome": [
+        "profit",
+        "even"
+      ]
+    },
+    "title": "Sell the {good} now?",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell three loads to the broker",
+        "hint": "You get 110 dinars now. Buyers remember a house that sells fast.",
+        "requires": {
+          "stock": "sugar",
+          "gte": 3
+        },
+        "now": [
+          {
+            "money": 110
+          },
+          {
+            "stock": "sugar",
+            "by": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold the {good} for news",
+        "hint": "It stays in your store. The price may rise or fall.",
+        "now": []
+      }
+    ],
+    "note": "Pegolotti's handbook, written about 1340 for merchants, lists weights, duties and freight at many ports. A merchant could use such lists to work out what a price far away was really worth.",
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "the handbook as a whole; the Alexandria chapter, print p. 72, and freight, print p. 75"
+      }
+    ]
+  },
+  {
+    "id": "return-sell-linen",
+    "paper": "return",
+    "facts": {
+      "good": [
+        "linen"
+      ],
+      "outcome": [
+        "profit",
+        "even"
+      ]
+    },
+    "title": "Sell the {good} now?",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell three loads to the broker",
+        "hint": "You get 110 dinars now. Buyers remember a house that sells fast.",
+        "requires": {
+          "stock": "linen",
+          "gte": 3
+        },
+        "now": [
+          {
+            "money": 110
+          },
+          {
+            "stock": "linen",
+            "by": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold the {good} for news",
+        "hint": "It stays in your store. The price may rise or fall.",
+        "now": []
+      }
+    ],
+    "note": "Pegolotti's handbook, written about 1340 for merchants, lists weights, duties and freight at many ports. A merchant could use such lists to work out what a price far away was really worth.",
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "the handbook as a whole; the Alexandria chapter, print p. 72, and freight, print p. 75"
+      }
+    ]
+  },
+  {
+    "id": "return-qirad-share",
+    "paper": "return",
+    "facts": {
+      "contract": [
+        "qirad"
+      ],
+      "outcome": [
+        "profit"
+      ]
+    },
+    "title": "A bigger share for {agent}?",
+    "body": "{agent} is home from {to} after {seasons}. The house made money, and {agent} kept a third under the qirad. {agent} hints that the road was hard.",
+    "choices": [
+      {
+        "id": "more",
+        "label": "Offer {agent} a bigger share next time",
+        "hint": "{agent} will be glad. Your partners may grumble.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "same",
+        "label": "Keep to one third",
+        "hint": "Partners like a house that keeps its terms.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza contracts the traveller's share was normally one third. Other splits were found, and the split was a matter of the contract, not of law.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 317 and 325; the traveller's share, normally one third"
+      },
+      {
+        "src": "harris-2007",
+        "at": "the split of profit as a matter of contract, in the section on the commenda"
+      }
+    ]
+  },
+  {
     "id": "return-bonus",
     "paper": "return",
     "facts": {
@@ -8,7 +310,7 @@
       ]
     },
     "title": "A bonus for {agent}?",
-    "body": "{agent} is home from {to} after {seasons}, and the house made money.",
+    "body": "{agent} is home from {to} after {seasons}, and the house made money. A bonus is not in the contract. It would be a thank you.",
     "choices": [
       {
         "id": "bonus",
@@ -27,6 +329,17 @@
             "trust": "$agent",
             "by": 1
           }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
         ]
       },
       {
@@ -36,11 +349,201 @@
         "now": []
       }
     ],
-    "note": "Merchants paid an agent a wage or a share of the profit. An agent who did well was often sent out again.",
+    "note": "In the Geniza papers a commission, a fee for one special job, was paid for that service and not for the friendship. A traveller who kept a share of the profit was paid by results.",
     "sources": [
       {
-        "src": "goitein-1973",
-        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+        "src": "goitein-1964",
+        "at": "p. 316 for the commission paid for a special service; p. 317 for the share of the profit"
+      }
+    ]
+  },
+  {
+    "id": "return-lost-goods",
+    "paper": "return",
+    "weight": 2,
+    "facts": {
+      "lost": true,
+      "contract": [
+        "qirad"
+      ]
+    },
+    "title": "Some goods were lost",
+    "body": "{agent} is home from {to} after {seasons}, but some of the goods were lost on the road. Your partners put money in this trip. They will want to know.",
+    "choices": [
+      {
+        "id": "tell",
+        "label": "Tell the partners yourself",
+        "hint": "It is honest. {agent} may feel blamed.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "quiet",
+        "label": "Say nothing until they ask",
+        "hint": "{agent} is grateful. Partners dislike hearing it late.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In one Geniza case a man lost almost 50 of the 70 dinars he sent overseas. His community's elders convinced him he had no claim.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 325; the investor who lost almost fifty of seventy dinars"
+      }
+    ]
+  },
+  {
+    "id": "return-loss-qirad",
+    "paper": "return",
+    "facts": {
+      "outcome": [
+        "loss"
+      ],
+      "contract": [
+        "qirad"
+      ]
+    },
+    "title": "The trip lost money",
+    "body": "{agent} is home from {to} after {seasons}, and the trip lost money. Under a qirad the loss is yours and your partners'. {agent} owes nothing for it, unless the terms were broken.",
+    "choices": [
+      {
+        "id": "keep",
+        "label": "Keep the qirad as it stands",
+        "hint": "{agent} is grateful. Other agents hear of it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "check",
+        "label": "Ask {agent} for an account of every sale",
+        "hint": "{agent} feels doubted. Partners are glad you checked.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Muslim commenda the traveller did not repay lost money, even if it was all of it. He paid only if he broke his orders or the customs of merchants.",
+    "sources": [
+      {
+        "src": "harris-2007",
+        "at": "the loss in the commenda, in the section on its characteristics"
+      },
+      {
+        "src": "goitein-1964",
+        "at": "p. 325; the traveller who bears no loss"
+      }
+    ]
+  },
+  {
+    "id": "return-loss-forgive",
+    "paper": "return",
+    "facts": {
+      "outcome": [
+        "loss"
+      ]
+    },
+    "title": "The trip lost money",
+    "body": "{agent} is home from {to} after {seasons}, and the trip lost money. {agent} says the road was bad luck, and not a fault. You paid {agent} a wage, so the loss is yours.",
+    "choices": [
+      {
+        "id": "forgive",
+        "label": "Say it was a fair risk",
+        "hint": "{agent} is grateful. Other agents hear of it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "dock",
+        "label": "Take 20 dinars from {agent}'s next pay",
+        "hint": "The house gets some back. {agent} will not forget it.",
+        "now": [
+          {
+            "money": 20
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          },
+          {
+            "memory": "$agent",
+            "kind": "unfair"
+          }
+        ]
+      }
+    ],
+    "note": "In one Geniza case a man lost almost 50 of the 70 dinars he sent overseas. His community's elders convinced him he had no claim.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 325; the investor who lost almost fifty of seventy dinars"
       }
     ]
   },
@@ -48,7 +551,7 @@
     "id": "return-out-again",
     "paper": "return",
     "title": "Out again, or rest?",
-    "body": "{agent} is home from {to} after {seasons}.",
+    "body": "{agent} is home from {to} after {seasons}. A partnership usually ran for a year and was renewed if both sides liked it. Will you send {agent} out again?",
     "choices": [
       {
         "id": "again",
@@ -74,11 +577,680 @@
         ]
       }
     ],
-    "note": "Merchants paid an agent a wage or a share of the profit. An agent who did well was often sent out again.",
+    "note": "In the Geniza papers the standard period of a partnership was one year, and it was renewed if the partners wished. Where a venture ran longer, accounts were made every year.",
     "sources": [
       {
-        "src": "goitein-1973",
-        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+        "src": "goitein-1964",
+        "at": "p. 326 for the standard year and its renewal; p. 327 for yearly accounts"
+      }
+    ]
+  },
+  {
+    "id": "return-long-trip",
+    "paper": "return",
+    "weight": 2,
+    "facts": {
+      "seasons": {
+        "gte": 5
+      }
+    },
+    "title": "A long way home",
+    "body": "{agent} is home from {to} after {seasons}. That is a long time on the road. {agent} looks tired. A partnership usually ran for a year, and this one ran much longer.",
+    "choices": [
+      {
+        "id": "again",
+        "ui": "outfit-first",
+        "label": "Send {agent} out again",
+        "hint": "The next sheet shows what sending {agent} costs.",
+        "now": [
+          {
+            "outfit": "$agent",
+            "contract": "own"
+          }
+        ]
+      },
+      {
+        "id": "rest",
+        "label": "Let {agent} rest a season",
+        "hint": "A rested agent is glad of it. The house loses a season.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers the standard period of a partnership was one year, and it was renewed if the partners wished. Where a venture ran longer, accounts were made every year.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 326 for the standard year and its renewal; p. 327 for yearly accounts"
+      }
+    ]
+  },
+  {
+    "id": "loss-sea-gone",
+    "paper": "loss",
+    "facts": {
+      "by": [
+        "galley",
+        "dhow"
+      ],
+      "whole": true,
+      "survived": false
+    },
+    "title": "{agent} did not come back",
+    "body": "{agent} sailed for {to}, and the ship did not come in. No one has seen it since. Ships on the sea road were sometimes lost with all aboard.",
+    "choices": [
+      {
+        "id": "family",
+        "label": "Help {agent}'s family",
+        "hint": "It costs now. The other agents hear of it.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "share",
+        "label": "Ask the partners to share the loss",
+        "hint": "They may agree. They will not like being asked.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Do nothing more",
+        "hint": "The agents hear of that too.",
+        "now": [
+          {
+            "rep": "agents",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta saw a ship driven ashore and broken in pieces at Calicut. On that coast the goods of a wrecked ship went to the ruler. Only at Calicut did the owners keep them.",
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, pp. 815 to 816; the junk driven ashore and the custom of wrecks at Calicut"
+      }
+    ]
+  },
+  {
+    "id": "loss-sea-saved",
+    "paper": "loss",
+    "facts": {
+      "by": [
+        "galley",
+        "dhow"
+      ],
+      "whole": true,
+      "survived": true
+    },
+    "title": "{agent} is safe",
+    "body": "The ship for {to} was lost, but {agent} came ashore alive. The goods are gone.",
+    "choices": [
+      {
+        "id": "forgive",
+        "label": "Say it was no one's fault",
+        "hint": "{agent} is grateful.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "blame",
+        "label": "Blame {agent} for the loss",
+        "hint": "{agent} will not forget it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": -1
+          },
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "share",
+        "label": "Ask the partners to share the loss",
+        "hint": "They may agree. They will not like being asked.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta saw a ship driven ashore and broken in pieces at Calicut. On that coast the goods of a wrecked ship went to the ruler. Only at Calicut did the owners keep them.",
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, pp. 815 to 816; the junk driven ashore and the custom of wrecks at Calicut"
+      }
+    ]
+  },
+  {
+    "id": "loss-desert-gone",
+    "paper": "loss",
+    "facts": {
+      "by": [
+        "caravan",
+        "mules"
+      ],
+      "whole": true,
+      "survived": false
+    },
+    "title": "{agent} did not come back",
+    "body": "{agent} set out for {to} with the caravan, and it did not arrive. The road is long, and a caravan that misses its wells can be lost.",
+    "choices": [
+      {
+        "id": "family",
+        "label": "Help {agent}'s family",
+        "hint": "It costs now. The other agents hear of it.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "share",
+        "label": "Ask the partners to share the loss",
+        "hint": "They may agree. They will not like being asked.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Do nothing more",
+        "hint": "The agents hear of that too.",
+        "now": [
+          {
+            "rep": "agents",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "The desert crossing from Qus to Aydhab took 15 to 20 days. Al-Maqrizi wrote that Bedouin raided Aydhab. In the Sahara, Ibn Battuta wrote, it was ten days' travel beyond Taghaza with no water, or only rarely.",
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 34 for the crossing of 15 or 20 days; p. 38 for the raids, citing al-Maqrizi"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 947; ten days beyond Taghaza with no water, or only rarely"
+      }
+    ]
+  },
+  {
+    "id": "loss-desert-saved",
+    "paper": "loss",
+    "facts": {
+      "by": [
+        "caravan",
+        "mules"
+      ],
+      "whole": true,
+      "survived": true
+    },
+    "title": "{agent} is safe",
+    "body": "The caravan for {to} was lost, but {agent} walked out alive. The goods are gone.",
+    "choices": [
+      {
+        "id": "forgive",
+        "label": "Say it was no one's fault",
+        "hint": "{agent} is grateful.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "blame",
+        "label": "Blame {agent} for the loss",
+        "hint": "{agent} will not forget it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": -1
+          },
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "share",
+        "label": "Ask the partners to share the loss",
+        "hint": "They may agree. They will not like being asked.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The desert crossing from Qus to Aydhab took 15 to 20 days. Al-Maqrizi wrote that Bedouin raided Aydhab. In the Sahara, Ibn Battuta wrote, it was ten days' travel beyond Taghaza with no water, or only rarely.",
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 34 for the crossing of 15 or 20 days; p. 38 for the raids, citing al-Maqrizi"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 947; ten days beyond Taghaza with no water, or only rarely"
+      }
+    ]
+  },
+  {
+    "id": "loss-river-gone",
+    "paper": "loss",
+    "facts": {
+      "by": [
+        "nileboat"
+      ],
+      "whole": true,
+      "survived": false
+    },
+    "title": "{agent} did not come back",
+    "body": "{agent} took a boat for {to}, and the boat did not come in. The river was high, and the boatmen could not say where it was lost.",
+    "choices": [
+      {
+        "id": "family",
+        "label": "Help {agent}'s family",
+        "hint": "It costs now. The other agents hear of it.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "share",
+        "label": "Ask the partners to share the loss",
+        "hint": "They may agree. They will not like being asked.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Do nothing more",
+        "hint": "The agents hear of that too.",
+        "now": [
+          {
+            "rep": "agents",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "No account of a lost Nile boat was reached, so this scene is invented. What is recorded is that boats loaded with crops, spices and sugar sailed in the flood. In July 1326 Ibn Battuta came down from Qus in eight nights.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 150, quoting al-Maqrizi on the loaded boats of the flood"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 71; eight nights in the flood of July 1326"
+      }
+    ]
+  },
+  {
+    "id": "loss-river-saved",
+    "paper": "loss",
+    "facts": {
+      "by": [
+        "nileboat"
+      ],
+      "whole": true,
+      "survived": true
+    },
+    "title": "{agent} is safe",
+    "body": "The boat for {to} was lost, but {agent} swam to the bank. The goods are gone.",
+    "choices": [
+      {
+        "id": "forgive",
+        "label": "Say it was no one's fault",
+        "hint": "{agent} is grateful.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "blame",
+        "label": "Blame {agent} for the loss",
+        "hint": "{agent} will not forget it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": -1
+          },
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "share",
+        "label": "Ask the partners to share the loss",
+        "hint": "They may agree. They will not like being asked.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "No account of a lost Nile boat was reached, so this scene is invented. What is recorded is that boats loaded with crops, spices and sugar sailed in the flood. In July 1326 Ibn Battuta came down from Qus in eight nights.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 150, quoting al-Maqrizi on the loaded boats of the flood"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 71; eight nights in the flood of July 1326"
+      }
+    ]
+  },
+  {
+    "id": "loss-robbers",
+    "paper": "loss",
+    "facts": {
+      "whole": false
+    },
+    "title": "Robbers took some of the goods",
+    "body": "Robbers took part of the load on the way to {to}. {agent} is safe and goes on. The rest of the goods are still with {agent}.",
+    "choices": [
+      {
+        "id": "officers",
+        "label": "Ask the officers to search",
+        "hint": "It costs now. The court may remember you asked.",
+        "requires": {
+          "money": {
+            "gte": 15
+          }
+        },
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "account",
+        "label": "Ask {agent} for an account of the day",
+        "hint": "Your partners are glad you asked. {agent} feels doubted.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "let-go",
+        "label": "Let it go",
+        "hint": "{agent} is grateful that you did not fuss.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      }
+    ],
+    "note": "Al-Maqrizi wrote of Bedouin raids on Aydhab, as the Peacocks tell it. In 1326 a war stopped Ibn Battuta there. The king of the Beja was fighting the sultan's soldiers.",
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 38; raids by Bedouin on Aydhab, citing al-Maqrizi, and Ibn Battuta stopped by the fighting"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 68 to 69; the crossing shut in 1326 by the war"
       }
     ]
   },
@@ -104,10 +1276,17 @@
         "now": [
           {
             "money": -40
-          },
+          }
+        ],
+        "later": [
           {
-            "rep": "agents",
-            "by": 1
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
           }
         ]
       },
@@ -123,11 +1302,11 @@
         ]
       }
     ],
-    "note": "Every trade road carried the risk of loss, so merchants split cargoes among ships and caravans and shared risk with partners.",
+    "note": "A merchant who sent goods far away could lose them to any hazard on the way. Merchants spread this risk by dividing cargoes and taking partners.",
     "sources": [
       {
         "src": "goitein-1967",
-        "at": "vol. 1, the economic foundations: how merchants spread risk"
+        "at": "vol. 1, the economic foundations; how merchants shared risk"
       }
     ]
   },
@@ -149,6 +1328,17 @@
             "trust": "$agent",
             "by": 1
           }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
         ]
       },
       {
@@ -159,15 +1349,30 @@
           {
             "trust": "$agent",
             "by": -1
+          },
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
           }
         ]
       }
     ],
-    "note": "Every trade road carried the risk of loss, so merchants split cargoes among ships and caravans and shared risk with partners.",
+    "note": "A merchant who sent goods far away could lose them to any hazard on the way. Merchants spread this risk by dividing cargoes and taking partners.",
     "sources": [
       {
         "src": "goitein-1967",
-        "at": "vol. 1, the economic foundations: how merchants spread risk"
+        "at": "vol. 1, the economic foundations; how merchants shared risk"
       }
     ]
   }
