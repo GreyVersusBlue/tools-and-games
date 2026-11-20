@@ -357,7 +357,7 @@ test('bestTrades: the trades with their road, the news age and the risk word, be
   know(s, c, 'saltmarsh', 'salt', 5, 1);      // back: 10 over 5, +100%
   know(s, c, 'saltmarsh', 'lamps', 1, 0);     // the house does not trade lamps at home: never a trade
   const t = bestTrades(s, c);
-  eq(t.map(x => [x.stop, x.good, x.direction]), [['saltmarsh', 'salt', 'back'], ['hilltown', 'salt', 'back'], ['hilltown', 'wool', 'out']], 'a nearer road with less margin outranks the wider one on a longer road');
+  eq(t.map(x => [x.stop, x.good, x.direction]), [['saltmarsh', 'salt', 'back'], ['hilltown', 'salt', 'back'], ['hilltown', 'wool', 'out']], 'by dinars a season with the age of the news counted: the nearer road with the fresher news and less margin goes first');
   eq(t.map(x => Math.round(x.margin * 100)), [100, 233, 50]);
   eq([t[0].ageWords, t[1].ageWords, t[2].ageWords], ['one season old', 'three seasons old', 'this season']);
   eq([t[1].riskWord, t[1].road, t[1].route], ['safe', 'Harbour to Hilltown', 'harbour-hilltown']);
