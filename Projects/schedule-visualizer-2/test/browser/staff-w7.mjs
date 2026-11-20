@@ -405,15 +405,29 @@ test('Free right now leaves a teacher who is not in school out of the period the
   }
 });
 
+// The periods a Common planning card marks as every teacher free, and its
+// sentence, for the card that holds day type `day`.
+const commonOf = (page, day) => page.evaluate((id) => {
+  const card = Array.from(document.querySelectorAll('[data-out="common"] .card')).find((el) => el.dataset.days.split(' ').includes(id));
+  return card ? { periods: Array.from(card.querySelectorAll('tr[data-all="true"]'), (el) => el.dataset.period), sentence: card.querySelector('[data-common="sentence"]').textContent.replace(/\s+/g, ' ').trim() } : null;
+}, day);
+
 test('Common planning leaves a teacher who is not in school out of the periods they are away', async () => {
   const session = await openPage();
   try {
     const { page } = session;
     await goto(page, files.w7, '#/common?t=tsample005,tsample006');
-    const w7 = await one(page, 'main');
+    const w7 = await commonOf(page, A);
+    assert.ok(w7, 'an A Day card');
+    assert.equal(w7.periods.includes('4'), false, 'Lesson 5 on A Day is not shared: Ms. Oyelaran is not in school then (' + w7.periods.join(' ') + ')');
+    assert.equal(w7.periods.some((period) => ['1', '2'].includes(period)), false, 'nor Lessons 2 and 3');
+    assert.doesNotMatch(w7.sentence, /Lesson 5\b/);
+    // with no away entry (the plain sample) Lesson 5 on A Day is shared
     await goto(page, files.plain, '#/common?t=tsample005,tsample006');
-    const plain = await one(page, 'main');
-    assert.notEqual(w7, plain, 'the page differs: she is not free in Lesson 5 on A Day');
+    const plain = await commonOf(page, A);
+    assert.ok(plain, 'an A Day card on the plain sample');
+    assert.equal(plain.periods.includes('4'), true, 'Period 5 on A Day is shared when she is in school (' + plain.periods.join(' ') + ')');
+    assert.deepEqual(session.errors, []);
   } finally {
     await session.close();
   }
