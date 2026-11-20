@@ -835,7 +835,8 @@ export function planSvg(project, floor, options) {
       else here.push({ label: letter, ways: [way], way: null });
     });
   }
-  // the one-way mark stands only where every flight at the stop goes the same way
+  // a letter's one-way mark stands only where every flight of that letter at the stop goes the
+  // same way (ARCHITECTURE 22.17); the screen (renderer.js) keeps the same rule
   for (const entries of lettersAt.values()) for (const entry of entries) entry.way = entry.ways.every((way) => way !== null && way === entry.ways[0]) ? entry.ways[0] : null;
   const letters = [];
   for (const cell of shownStairs) {

@@ -521,6 +521,85 @@ test('one letter on every badge: the cell\'s words, the printed plan, and a one-
   assert.equal(words.words, flightWords, 'one letter, and each flight\'s way where the flights differ');
 });
 
+// What the canvas was told for one cell, read from the calls the renderer
+// makes on it while it draws: the texts written in the cell (each with its x)
+// and the one-way marks (a stroke of three points with round joins, which only
+// a pill's mark has; the stairs glyph's chevron is mitred), each by the x of
+// its point. The plan is drawn at twice the zoom, where a pill holds a mark.
+function drawnAt(x, y) {
+  return page.evaluate((cx, cy) => {
+    const editor = document.querySelector('.bld').editor;
+    editor.view.zoom = 2;
+    editor.view.x = 120 - (cx - 2) * editor.view.size;
+    editor.view.y = 80 - (cy - 2) * editor.view.size;
+    const g = editor.canvas.getContext('2d');
+    const texts = [];
+    const marks = [];
+    let path = [];
+    const spy = {
+      fillText: (text, tx, ty) => texts.push({ text: String(text), x: tx, y: ty }),
+      beginPath: () => { path = []; },
+      moveTo: (px, py) => path.push([px, py]),
+      lineTo: (px, py) => path.push([px, py]),
+      stroke: () => { if (path.length === 3 && g.lineJoin === 'round') marks.push({ x: path[1][0], y: path[1][1] }); },
+    };
+    for (const [name, record] of Object.entries(spy)) {
+      const real = Object.getPrototypeOf(g)[name];
+      g[name] = function (...args) { record(...args); return real.apply(g, args); };
+    }
+    try {
+      editor.drawNow();
+    } finally {
+      for (const name of Object.keys(spy)) delete g[name];
+    }
+    const at = editor.view.toScreen(cx, cy);
+    const size = editor.view.size;
+    const inCell = (each) => each.x >= at.x && each.x <= at.x + size && each.y >= at.y && each.y <= at.y + size;
+    return { texts: texts.filter(inCell).map((each) => ({ text: each.text, x: Math.round(each.x) })), marks: marks.filter(inCell).map((each) => Math.round(each.x)), size };
+  }, x, y);
+}
+
+test('the one-way rule is a letter\'s, on the screen and on paper: plain A up only and plain B both ways at one stop mark A alone', async () => {
+  await floors(3, [1, 2, 3], { flights: [[1, 2], [2, 3]] });
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    // A runs from Floor 1 (its a end) to Floor 2: up only. B stays both ways.
+    store.apply(actions.setConnection, { connectionId: store.project.building.connections[0].id, direction: 'ab' });
+  });
+  await showFloor('Floor 2');
+  // the screen: one pill, A with its mark straight after it, B with none
+  const screen = await drawnAt(14, 10);
+  assert.deepEqual(screen.texts.map((each) => each.text), ['A', 'B'], 'the pill\'s letters: ' + JSON.stringify(screen));
+  assert.equal(screen.marks.length, 1, 'one mark at the stop: ' + JSON.stringify(screen));
+  const [a, b] = screen.texts;
+  assert.ok(screen.marks[0] > a.x && screen.marks[0] < b.x, 'the mark is not A\'s: ' + JSON.stringify(screen));
+  // paper: the same, a mark after A and none by B
+  const paper = await page.evaluate(async () => {
+    const { planSvg } = await import('./ui/prints/plan-svg.js');
+    const project = globalThis.sv2.store.project;
+    const svg = planSvg(project, project.building.floors[1], {}).svg;
+    return { a: svg.indexOf('>A</text>'), b: svg.indexOf('>B</text>'), marks: Array.from(svg.matchAll(/plan__oneway/g), (match) => match.index) };
+  });
+  assert.equal(paper.marks.length, 1, 'one mark on the printed plan: ' + JSON.stringify(paper));
+  assert.ok(paper.a < paper.marks[0] && paper.marks[0] < paper.b, 'the printed mark is not A\'s: ' + JSON.stringify(paper));
+  // and the words, letter by letter
+  const words = await page.evaluate(async () => {
+    const { stairsWords } = await import('./ui/building/index.js');
+    const { store } = globalThis.sv2;
+    return stairsWords(store.project, store.project.building.connections);
+  });
+  assert.equal(words, 'Stairs A (up only), B');
+  // both one way, the same way: a mark after each letter, on both
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    store.apply(actions.setConnection, { connectionId: store.project.building.connections[1].id, direction: 'ab' });
+  });
+  const both = await drawnAt(14, 10);
+  assert.equal(both.marks.length, 2, 'a mark after each letter: ' + JSON.stringify(both));
+});
+
 // ---------------------------------------------------------------- the pills
 
 // The pill under a stop's glyph, measured from the pixels of the canvas: the
