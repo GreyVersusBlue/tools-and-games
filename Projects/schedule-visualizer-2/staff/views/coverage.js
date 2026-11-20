@@ -15,10 +15,12 @@ import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
 //
-//   [{ period, entry, candidates: [{ teacher, sameSubject }], notFree: [{ teacher, reason }] }]
+//   [{ period, entry, candidates: [{ teacher, sameSubject }], notFree: [{ teacher, reason }], away: [teacher] }]
 //
 // A teacher on duty, at a meeting or under a mark is not a candidate: they
-// are listed in `notFree` with the reason ("On duty: Lunch duty"). `date`
+// are listed in `notFree` with the reason ("On duty: Lunch duty"). A teacher
+// who is not in school then (part-time) is not a candidate either and is in
+// `away`, not `notFree`: the page says so in a line of its own. `date`
 // settles a duty that holds on some days only.
 //
 // Same-subject teachers come first; within each part the order is the
@@ -32,9 +34,14 @@ export function coverageFor(school, teacherId, dayTypeId, date) {
     if (entry.kind !== 'teaching') continue;
     const free = freeTeachers(school, dayTypeId, entry.period, date).filter((teacher) => teacher.id !== teacherId);
     const notFree = [];
+    const away = [];
     for (const teacher of school.teachers) {
       const theirs = days.get(teacher.id)[entry.period];
       if (teacher.id === teacherId || !theirs || theirs.kind !== 'planning' || entryIsFree(theirs)) continue;
+      if (theirs.marked === 'away') {
+        away.push(teacher);
+        continue;
+      }
       const taken = takenBy(school, theirs, dayTypeId, date);
       notFree.push({ teacher, reason: taken ? taken.reason : 'Busy' });
     }
@@ -43,6 +50,7 @@ export function coverageFor(school, teacherId, dayTypeId, date) {
       period: entry.period,
       entry,
       notFree,
+      away,
       candidates: free.filter(same).map((teacher) => ({ teacher, sameSubject: true })).concat(free.filter((teacher) => !same(teacher)).map((teacher) => ({ teacher, sameSubject: false }))),
     });
   }
@@ -136,6 +144,7 @@ export const coverageView = {
                 h('span', { class: 'list__name' }, typed(candidate.teacher.name), candidate.sameSubject ? h('span', { class: 'tag' }, 'Same subject') : null),
                 h('span', { class: 'list__detail' }, teacherDetail(school, candidate.teacher)),
               ], 'list__link')))),
+          item.away.length === 0 ? null : h('p', { class: 'muted', dataset: { coverage: 'away' } }, listOf(item.away.map((teacher) => typed(teacher.name))), item.away.length === 1 ? ' is' : ' are', ' not in school then.'),
           item.notFree.length === 0 ? null : h('details', { class: 'notfree', dataset: { notfree: String(item.period) } },
             h('summary', { class: 'notfree__summary' }, 'Not free (' + item.notFree.length + ')'),
             h('ul', { class: 'list', dataset: { list: 'notfree' } }, item.notFree.map((one) => h('li', { dataset: { teacher: one.teacher.id } },

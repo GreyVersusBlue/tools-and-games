@@ -589,6 +589,46 @@ h1:focus {
   background: var(--chip, var(--line-strong));
 }
 
+.chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.chips-row[hidden] {
+  display: none;
+}
+
+.toggle {
+  min-height: var(--tap);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-2);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+  cursor: pointer;
+}
+
+.toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.toggle:disabled {
+  border-color: var(--line);
+  color: var(--ink-2);
+  cursor: not-allowed;
+}
+
+.toggle:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+
 .list {
   border: var(--border);
   border-radius: var(--r-2);
@@ -1179,6 +1219,7 @@ h1:focus {
     .stack                      cards one under another
     .chips  .chips__item        the teachers picked, each with its Remove
     .tag                        a word beside a name ("Same subject")
+    .chips-row  .toggle         Free right now's feature chips (buttons, aria-pressed)
     .scroll                     a table wider than a phone, scrolled sideways
     .steps                      numbered directions
     .plain                      a list with no frame

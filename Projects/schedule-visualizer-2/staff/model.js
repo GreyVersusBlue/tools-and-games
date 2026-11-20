@@ -4,7 +4,7 @@
 // a bell time is engine/bells.js's, a route is engine/routing.js's: the same
 // functions the planner uses, run on the published data.
 
-import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, stairsLetter, nameKey } from '../engine/schema.js';
+import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, stairsLetter, nameKey, roomFeatures } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule, effectiveDayType, dayShort, bellsShort } from '../engine/day-types.js';
 import { bellsFor, findBellSchedule, periodName, periodLabel, periodWordForms, parseTime, formatTime } from '../engine/bells.js';
 import { dayOn, calendarDays, isCalendarDate, addDays, daysBetween, weekdayOf, dateWords } from '../engine/calendar.js';
@@ -107,6 +107,31 @@ export function openSchool(data) {
     // An entry that holds nowhere is not listed (engine/marks.js awayEntry).
     awayOf(teacherId, dayTypeId) {
       return awayEntries(findById(data.teachers, teacherId), dayTypeId, { project: data }).map((read) => ({ words: awayWords(data.settings, read.entry, data.dayTypes), sometimes: read.sometimes, periods: read.periods }));
+    },
+    // The part-time line under a teacher's name: "Part-time: not in school on
+    // Fridays, and in Periods 7 to 8 when it is B Day", each entry worded by
+    // the engine's awayWords; '' for a teacher with none. An entry that holds
+    // nowhere is not in it.
+    awayLine(teacherId) {
+      const teacher = findById(data.teachers, teacherId);
+      const list = teacher && Array.isArray(teacher.away) ? teacher.away : [];
+      const rest = list.map((entry) => awayWords(data.settings, entry, data.dayTypes)).filter((words) => words !== '').map((words) => words.slice('Not in school'.length).trim());
+      if (rest.length === 0) return '';
+      const said = rest.map((part) => (part === '' ? 'every day' : part));
+      return 'Part-time: not in school ' + (said.length === 1 ? said[0] : said.slice(0, -1).join(', ') + ', and ' + said[said.length - 1]);
+    },
+    // A room's features as { id, name } in the school's list order.
+    featuresOf(room) {
+      return roomFeatures(data.building, room);
+    },
+    // The features some room has, as { id, name }, in the school's order.
+    // Only those a published room uses are in the file; none, none.
+    features() {
+      const used = new Set();
+      for (const room of school.rooms) {
+        for (const feature of roomFeatures(data.building, room)) used.add(feature.id);
+      }
+      return (Array.isArray(data.building.features) ? data.building.features : []).filter((feature) => feature && used.has(feature.id)).map((feature) => ({ id: feature.id, name: feature.name }));
     },
     group(id) {
       return findById(data.groups, id);

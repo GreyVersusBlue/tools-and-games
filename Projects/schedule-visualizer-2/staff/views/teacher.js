@@ -467,8 +467,11 @@ export function teacherPageOf(ctx, teacher, heading) {
   ];
   const notes = isMe(ctx, teacher.id) ? noteFields(ctx, days) : null;
   const summary = partsToNodes(teacherSummaryOf(school, teacher.id));
+  // a part-time teacher's line, under the name: where they are not in school
+  const partTime = school.awayLine(teacher.id);
+  const away = partTime === '' ? null : h('p', { class: 'muted', dataset: { part: 'part-time' } }, partTime);
   return pageOf(heading || typed(teacher.name), heading ? [typed(teacher.name), '. ', summary] : summary,
-    map ? besideMap([header, days, notes], map, after) : [header, days, notes, after]);
+    away, map ? besideMap([header, days, notes], map, after) : [header, days, notes, after]);
 }
 
 export const teacherView = {

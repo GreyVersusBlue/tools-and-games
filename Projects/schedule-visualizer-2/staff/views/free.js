@@ -14,7 +14,11 @@
 // no duty or mark takes the period; a duty that holds on some days counts on
 // today's date only); a room is empty when no group's meeting slots put a
 // group in it (engine/runs.js: a No class period books nothing). Rooms can be narrowed
-// by seats, subject and wing (?seats=40&subject=…&wing=…).
+// by seats, subject and wing (?seats=40&subject=…&wing=…) and by features
+// (?features=h…,h…): one toggle chip for each feature a published room has,
+// a room shown when it has every chip chosen. Each chip says how many empty
+// rooms it would give with the others chosen; one that would give none is
+// disabled (a chosen one never is, so it can be turned off).
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
@@ -39,6 +43,31 @@ export function emptyRooms(school, dayTypeId, period, bellsId) {
 
 function countOf(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);
+}
+
+// "Lab", "Lab and Sink", "Lab, Sink and Projector" (names typed, each in a bdi)
+function namesOf(names) {
+  const out = [];
+  names.forEach((name, at) => {
+    if (at > 0) out.push(at === names.length - 1 ? ' and ' : ', ');
+    out.push(typed(name));
+  });
+  return out;
+}
+
+/// The empty rooms a reader's choices leave: seats, subject, wing, and the
+// feature ids chosen (a room has every one); `withFeature` adds one more
+// to the choice, for a chip's count with the others chosen.
+export function roomsMatching(school, empty, filters, withFeature) {
+  const wanted = new Set(filters.features);
+  if (withFeature) wanted.add(withFeature);
+  return empty.filter((room) => (filters.seats === 0 || (typeof room.capacity === 'number' && room.capacity >= filters.seats))
+    && (filters.subject === '' || room.subjectId === filters.subject)
+    && (filters.wing === '' || room.wing === filters.wing)
+    && (wanted.size === 0 || (() => {
+      const has = new Set(school.featuresOf(room).map((feature) => feature.id));
+      return Array.from(wanted).every((id) => has.has(id));
+    })()));
 }
 
 function roomDetail(school, room) {
@@ -72,6 +101,11 @@ export const freeView = {
       seats: /^\d+$/.test(route.query.seats || '') ? Number(route.query.seats) : 0,
       subject: school.subject(route.query.subject) ? route.query.subject : '',
       wing: route.query.wing || '',
+      // the features chosen, known ones only, in the school's order
+      features: (() => {
+        const asked = new Set((route.query.features || '').split(',').filter(Boolean));
+        return school.features().filter((feature) => asked.has(feature.id)).map((feature) => feature.id);
+      })(),
     };
     let lastKey = '';
     let lastToday = '';
@@ -101,18 +135,58 @@ export const freeView = {
         seats: state.seats > 0 ? state.seats : '',
         subject: state.subject,
         wing: state.wing,
+        features: state.features.join(','),
       }));
     };
 
-    const drawRooms = (period) => {
+    const chipsOut = h('div', { class: 'chips-row', role: 'group', 'aria-label': 'Features', dataset: { out: 'features' } });
+    const featureList = school.features();
+    const drawChips = (empty) => {
+      if (featureList.length === 0) {
+        chipsOut.replaceChildren();
+        chipsOut.hidden = true;
+        return;
+      }
+      chipsOut.hidden = false;
+      const others = { seats: state.seats, subject: state.subject, wing: state.wing, features: state.features };
+      chipsOut.replaceChildren(...featureList.map((feature) => {
+        const on = state.features.includes(feature.id);
+        // what choosing it gives with the others chosen; a chosen chip's own count is what is shown now
+        const n = roomsMatching(school, empty, others, on ? null : feature.id).length;
+        const off = n === 0 && !on;
+        return h('button', {
+          class: 'toggle', type: 'button', 'aria-pressed': on ? 'true' : 'false', disabled: off, dataset: { feature: feature.id, count: String(n) },
+          onclick: () => {
+            state.features = featureList.map((each) => each.id).filter((id) => (id === feature.id ? !on : state.features.includes(id)));
+            address();
+            drawRooms(shownPeriod(momentNow()), feature.id);
+          },
+        }, typed(feature.name), ' (', String(n), ')');
+      }));
+    };
+
+    // `keep` is the id of the chip just pressed, which gets its focus back
+    // when the chips are made again.
+    const drawRooms = (period, keep) => {
       const empty = emptyRooms(school, state.dayType.id, period, state.bellsId);
       const unknown = state.seats > 0 ? empty.filter((room) => typeof room.capacity !== 'number').length : 0;
-      const shown = empty.filter((room) => (state.seats === 0 || (typeof room.capacity === 'number' && room.capacity >= state.seats))
-        && (state.subject === '' || room.subjectId === state.subject)
-        && (state.wing === '' || room.wing === state.wing));
-      const narrowed = state.seats > 0 || state.subject !== '' || state.wing !== '';
+      const shown = roomsMatching(school, empty, state, null);
+      const narrowed = state.seats > 0 || state.subject !== '' || state.wing !== '' || state.features.length > 0;
+      // the empty rooms the other choices leave, to say how many lack a feature
+      const byOthers = roomsMatching(school, empty, { ...state, features: [] }, null);
+      const chosen = featureList.filter((feature) => state.features.includes(feature.id));
+      const lack = byOthers.length - shown.length;
+      const featureLine = chosen.length === 0 ? null : h('p', { class: 'muted', role: 'status', dataset: { out: 'features-count' } },
+        shown.length + (shown.length === 1 ? ' empty room has ' : ' empty rooms have '), namesOf(chosen.map((feature) => feature.name)),
+        ' · ', lack + (lack === 1 ? ' other empty room lacks ' : ' other empty rooms lack '), chosen.length === 1 ? 'it' : 'one of them', '.');
+      drawChips(empty);
+      if (keep) {
+        const again = chipsOut.querySelector('[data-feature="' + keep + '"]');
+        if (again) again.focus();
+      }
       roomList.replaceChildren(...[
         sectionHeading(narrowed ? 'Rooms empty that match' : 'Rooms empty', shown.length),
+        featureLine,
         shown.length === 0
           ? h('p', { class: 'muted' }, narrowed ? 'No empty room matches. Ask for less above.' : 'Every room has a group in it.')
           : h('ul', { class: 'list', dataset: { list: 'rooms' } }, shown.map((room) => h('li', null,
@@ -137,6 +211,7 @@ export const freeView = {
         // a period the day's bells leave out: nobody has a class in it
         teachersOut.replaceChildren();
         roomList.replaceChildren();
+        chipsOut.replaceChildren();
         says.replaceChildren(h('span', null, school.periodName(period), ' does not meet on ', dayWords(school, state.dayType, state.bellsId), '.'));
         says.dataset.period = String(period);
         says.dataset.moment = 'off';
@@ -240,6 +315,7 @@ export const freeView = {
         h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'free-seats' }, 'Seats, at least'), seats),
         subjects.length > 0 ? h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'free-subject' }, 'Subject'), subject) : null,
         wings.length > 0 ? h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'free-wing' }, 'Wing'), wing) : null),
+      chipsOut,
       roomList);
 
     drawPickers(null);
