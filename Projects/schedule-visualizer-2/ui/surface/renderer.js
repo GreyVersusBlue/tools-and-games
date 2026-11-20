@@ -55,6 +55,9 @@ const TOKENS = ['paper', 'card', 'ink', 'ink-2', 'line', 'line-strong', 'accent'
 // Below this many pixels a label is left out rather than drawn unreadable.
 const MIN_LABEL = 9;
 const MAX_LABEL = 18;
+// The least cell, in px, a stop's letter pill is drawn on: the elevator's letter
+// was drawn from here before the pill was shared with stairs, and still is.
+const PILL_LEAST = 18;
 const SIDES = ['n', 'e', 's', 'w'];
 
 // The problem disc on a stairs cell nothing connects, w px a side: in the
@@ -397,7 +400,7 @@ export function createRenderer(canvas) {
   // Letters that share a cell, some with a mark: each mark straight after its
   // own letter. Where the marks do not fit, the letters alone, as one text.
   function drawParts(left, top, w, parts, ink, t) {
-    if (w < 19) return null;
+    if (w < PILL_LEAST) return null;
     const room = w - 4;
     const wideAt = (s) => {
       g.font = font(700, s);
@@ -431,8 +434,9 @@ export function createRenderer(canvas) {
   }
 
   function drawOne(left, top, w, text, ink, t, wanted) {
-    if (w < 19) return null;
-    const least = w >= 22 ? MIN_LABEL : 8;
+    if (w < PILL_LEAST) return null;
+    // never under the least size of a label, at any cell a pill is drawn on
+    const least = MIN_LABEL;
     // the letter matters more than its mark: where both do not fit, the letter alone
     let mark = wanted;
     let s = 0;

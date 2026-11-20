@@ -175,8 +175,11 @@ function baselineScenes(modules, extra) {
 // renderer.js, lanes.js, viewport.js and sample school (git archive
 // be5f4c88), unchanged since but for labelScale.
 // SV2-131 re-recorded the 21 scenes that draw a lettered stairs cell (the
-// letter is now in the same pill an elevator's is, DESIGN 16.7); the others are
-// as recorded at be5f4c88.
+// letter is now in the same pill an elevator's is, DESIGN 16.7, and the
+// elevator's pill was resized with it, which these digests took in too); the
+// others are as recorded at be5f4c88. SV2-131b re-recorded "the lanes overlay
+// at 20" alone: on a 20 px cell the pills' letters are written at 9 px, the
+// least label size, where SV2-131 let them fall to 8.
 const BASELINE = {
   "Floor 1 at 10": "27ff385ff8611d34 599",
   "Floor 1 at 16": "7036aa11b3a2e4d9 654",
@@ -204,7 +207,7 @@ const BASELINE = {
   "a stairs cell with no connection at 40": "6e1837ffe36ef03d 773",
   "a stairs cell with no connection at 64": "668275d12fee917c 833",
   "the lanes overlay at 16": "93c58aa8584c9b33 736",
-  "the lanes overlay at 20": "2917c3c0efe9f81c 776",
+  "the lanes overlay at 20": "74bd33fd8167010c 776", // SV2-131b: 9 px letters in the pills, not 8
   "the lanes overlay at 24": "85c3bee9b891ff8f 792",
   "the lanes overlay at 40": "26c45334e44fd5b0 840",
   "a stair link between two ends": "0109e16af7b4331f 32",
@@ -497,4 +500,29 @@ test('the hotspot rings\' least radius grows with the scale, so three ranks stan
   assert.equal(ringRadius(40, 1.5), 36, 'the scale does not grow a ring past its least');
   assert.ok(clear(three(1), RANK_RADIUS), 'at 1 the three discs overlap: ' + JSON.stringify(three(1)));
   assert.ok(clear(three(1.5), RANK_RADIUS * 1.5), 'at 1.5 the three discs overlap on a ' + ringRadius(4, 1.5) + ' px ring: ' + JSON.stringify(three(1.5)));
+});
+
+// The letter pill of an elevator stop and of stairs on the small cells where
+// SV2-131 first shared it (SV2-131b): from 18 px a cell the elevator's letter is
+// written, as it was before the pill was shared, and on every cell a pill is
+// drawn on its letter is at least MIN_LABEL (9 px), never 8.
+test('the elevator\'s and the stairs\' letters on 18 to 21 px cells: written from 18 px, never under 9 px', () => {
+  const project = sampleSchool();
+  const floor = project.building.floors[1];
+  const lifts = project.building.connections.filter((connection) => connection.kind === 'elevator' || connection.elevator === true);
+  assert.ok(lifts.length > 0, 'the sample school has no elevator: the case tests nothing');
+  const liftLetters = new Set(lifts.map((connection) => connection.car || connection.label));
+  const stairs = new Set(project.building.connections.filter((connection) => !lifts.includes(connection)).map((connection) => connection.label));
+  for (const cell of [17, 18, 19, 20, 21, 22]) {
+    const written = fills(drawFloor(project, floor, cell, {}));
+    const lift = written.filter((w) => liftLetters.has(w.text));
+    const lettered = written.filter((w) => stairs.has(w.text));
+    if (cell < 18) {
+      assert.equal(lift.length, 0, 'an elevator letter on a ' + cell + ' px cell, under the pill\'s least cell');
+      continue;
+    }
+    assert.ok(lift.length >= 1, 'no elevator letter on a ' + cell + ' px cell');
+    assert.ok(lettered.length >= 1, 'no stairs letter on a ' + cell + ' px cell');
+    for (const w of lift.concat(lettered)) assert.ok(w.size >= 9, w.text + ' is written at ' + w.size + ' px on a ' + cell + ' px cell, under the least label size');
+  }
 });
