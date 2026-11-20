@@ -543,7 +543,8 @@ try {
       const t = await page.$$eval('.sheet .choice', cs => cs.map(c => ({ label: c.querySelector('.label').textContent, cost: c.querySelector('.cost')?.textContent ?? null,
         key: c.querySelector('.key').textContent, disabled: c.getAttribute('aria-disabled') })));
       eq(t[0].label, 'Send Yusuf with ten loads of linen');
-      eq(t[0].cost, '−20 dinars now');
+      // MER-72: the first card's choice takes no money; the trip's costs are charged at Send on the sheet that follows
+      eq(t[0].cost, null);
       eq(t[0].key, '1'); eq(t[1].key, '2');
       eq(t[1].cost, null);
       eq(t[0].disabled, null);
@@ -590,7 +591,8 @@ try {
       await page.click('#choice-p0-1-go');
       await page.waitForSelector(BACK);
       const m1 = eng.choose(m0, nodeContent, 'p0-1', 'go');
-      eq(await page.$eval('.sheet-title', e => e.textContent), 'You paid 20 dinars.');
+      eq(await page.$eval('.sheet-title', e => e.textContent), 'Nothing changed at once.', 'the choice itself takes no money');
+      eq(await page.$eval('#bar-money', e => e.textContent.trim()), '1,500 dinars', 'the house still has all its money before Send');
       await page.click('#btn-next');
       // the one-press first expedition (DESIGN 7): the sheet over the map table, filled in for Damascus
       await page.waitForSelector('#outfit-send');
@@ -607,7 +609,7 @@ try {
       await sameScreen(page, m1b, 'after the expedition is sent');
       eq(await hashOf(page), '#desk');
       eq(await page.$eval('#end-reason', e => e.textContent), eng.canEndSeason(m1b).reason, 'the desk says why it cannot end the season yet');
-      eq(await page.$eval('#bar-money', e => e.textContent.trim()), '1,480 dinars');
+      eq(await page.$eval('#bar-money', e => e.textContent.trim()), `${withCommas(m1b.money)} dinars`, 'the money after Send is the engine\'s (the plan carries stock and costs nothing here)');
 
       // the neighbour, second choice ("Keep them")
       await page.click('#choice-p0-2-keep');
