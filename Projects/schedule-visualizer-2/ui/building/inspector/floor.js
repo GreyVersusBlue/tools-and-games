@@ -29,7 +29,9 @@ import { count, list } from '../../components/words.js';
 import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, eraseCells, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone, setStepCells } from '../../../engine/actions.js';
 import { lossText, counts, describeFloor } from '../../../engine/building.js';
 import { snapshotAfter, undoForStep } from '../../../storage/snapshots.js';
-import { RANGES, nameOfRoom, ELEVATOR_KIND } from '../../../engine/schema.js';
+import { RANGES, nameOfRoom, ELEVATOR_KIND, stairsLetter, nameKey } from '../../../engine/schema.js';
+import { setStairwellLetter, setStairwellDirection, splitStairwell } from '../../../engine/stairwells.js';
+import { stairwellFacts } from '../stairwell.js';
 import { keyedList, heading, cellWords, commitKeepingFocus } from './controls.js';
 import { legend } from './legend.js';
 import { focusCells } from './cell-focus.js';
@@ -539,6 +541,22 @@ export function floorPanel(env) {
 
     // stairs only: an elevator is listed under its own heading below
     const links = building.connections.filter((connection) => connection.kind !== ELEVATOR_KIND && (connection.a.floorId === floor.id || connection.b.floorId === floor.id));
+    // a stairwell's flights are one row, "Stairwell A · Floor 1 to Floor 4 · both ways" (DESIGN 16.7)
+    const entries = [];
+    const wellsSeen = new Set();
+    for (const connection of links) {
+      if (typeof connection.well === 'string' && connection.well.trim() !== '') {
+        const key = nameKey(connection.well);
+        if (wellsSeen.has(key)) continue;
+        wellsSeen.add(key);
+        const facts = stairwellFacts(state.project, connection.well);
+        if (facts) {
+          entries.push({ well: true, id: 'well:' + key, letter: facts.letter, facts });
+          continue;
+        }
+      }
+      entries.push(connection);
+    }
     const stairsCells = counts(building).byFloor[floor.id].stairsCells;
     parts.connectionsHost.hidden = links.length === 0;
     parts.noConnections.hidden = links.length > 0;
@@ -547,9 +565,7 @@ export function floorPanel(env) {
       : 'There are no stairs on this floor yet. Place some with the Stairs tool (S), then connect them to the stairs on another floor.';
 
     syncStepFree(floor, building);
-    parts.connections.update(links, {
-      key: (connection) => connection.id,
-      build: (connection) => {
+    const buildFlight = (connection) => {
         const label = field({ label: 'Letter or name', value: connection.label, commit: (value) => store.apply(setConnection, { connectionId: connection.id, label: value }) });
         label.input.dataset.key = 'connection:' + connection.id;
         const where = h('p', { class: 'bld-inspector__small' });
@@ -570,7 +586,7 @@ export function floorPanel(env) {
                 if (!input.checked) return;
                 const latest = state.project.building.connections.find((each) => each.id === now.id);
                 if (!latest || latest.direction === option.value) return;
-                const said = 'Stairs ' + latest.label + (option.value === 'both' ? ' now runs both ways.' : ' is now ' + option.label.charAt(0).toLowerCase() + option.label.slice(1) + '.');
+                const said = 'Stairs ' + stairsLetter(latest) + (option.value === 'both' ? ' now runs both ways.' : ' is now ' + option.label.charAt(0).toLowerCase() + option.label.slice(1) + '.');
                 ed().commit(setConnection, { connectionId: now.id, direction: option.value }, { done: () => said, toast: () => said });
               });
               wayHost.append(h('label', { class: 'bi-way__chip' }, input, h('span', { class: 'bi-way__text' }, option.label)));
@@ -583,14 +599,14 @@ export function floorPanel(env) {
           for (const input of wayHost.querySelectorAll('.bi-way__input')) input.checked = input.value === now.direction;
         };
         const buttons = [
-          small('Show me', 'show-connection:' + connection.id, 'Show me: stairs ' + connection.label, () => {
+          small('Show me', 'show-connection:' + connection.id, 'Show me: stairs ' + stairsLetter(connection), () => {
             const now = state.project.building.connections.find((each) => each.id === connection.id);
             const end = now.a.floorId === state.floor.id ? now.a : now.b;
             env.show({ floorId: end.floorId, cells: [end.cell] });
           }),
-          small('Disconnect', 'disconnect:' + connection.id, 'Disconnect stairs ' + connection.label, () => {
+          small('Disconnect', 'disconnect:' + connection.id, 'Disconnect stairs ' + stairsLetter(connection), () => {
             const now = state.project.building.connections.find((each) => each.id === connection.id);
-            ed().commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected stairs ' + now.label + '.', toast: () => 'Disconnected stairs ' + now.label + '.' });
+            ed().commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected stairs ' + stairsLetter(now) + '.', toast: () => 'Disconnected stairs ' + stairsLetter(now) + '.' });
           }),
         ];
         return {
@@ -602,11 +618,57 @@ export function floorPanel(env) {
               ? 'Joins two places on ' + floorName(now.a.floorId) + ': ' + cellWords(floor, now.a.cell) + ' and ' + cellWords(floor, now.b.cell) + '.'
               : 'Joins ' + floorName(now.a.floorId) + ' and ' + floorName(now.b.floorId) + '.';
             const way = wayLine(state.project, now);
-            if (way !== '') where.textContent += ' Stairs ' + now.label + ' is ' + way + '.';
+            if (way !== '') where.textContent += ' Stairs ' + stairsLetter(now) + ' is ' + way + '.';
             syncWay(now);
           },
         };
-      },
+    };
+
+    // one row for a stairwell: its letter, its floors and way, the way for every flight, Split
+    const buildWell = (entry) => {
+      const letter = field({ label: 'Letter or name', value: entry.letter, commit: (value) => {
+        store.apply(setStairwellLetter, { well: entry.letter, letter: value });
+        ctx.announce((store.undoOutcome || {}).text || 'Renamed the stairwell.');
+      } });
+      letter.input.dataset.key = 'well:' + entry.id;
+      const summary = h('p', { class: 'bld-inspector__small', data: { part: 'well-summary' } });
+      const wayId = 'bi-way-legend-' + entry.id;
+      const wayHost = h('fieldset', { class: 'bi-way', data: { way: entry.id } }, h('legend', { class: 'bi-way__legend', id: wayId }, 'Which way'));
+      const options = [{ value: 'both', label: 'Both ways' }, { value: 'up', label: 'Up only' }, { value: 'down', label: 'Down only' }];
+      let current = entry;
+      for (const option of options) {
+        const input = h('input', { type: 'radio', class: 'bi-way__input', name: 'way-' + entry.id, value: option.value, data: { key: 'way:' + entry.id + ':' + option.value } });
+        input.addEventListener('change', () => {
+          if (!input.checked) return;
+          const outcome = ed().commit(setStairwellDirection, { well: current.letter, direction: option.value }, { done: (made) => made.text, toast: (made) => made.text });
+          if (outcome === null) input.checked = false;
+        });
+        wayHost.append(h('label', { class: 'bi-way__chip' }, input, h('span', { class: 'bi-way__text' }, option.label)));
+      }
+      const buttons = [
+        small('Show me', 'show-' + entry.id, '', () => {
+          const stop = current.facts.stops.find((each) => each.floorId === state.floor.id) || current.facts.stops[0];
+          env.show({ floorId: stop.floorId, cells: [stop.cell] });
+        }),
+        small('Split into separate stairs', 'split:' + entry.id, '', () => {
+          ed().commit(splitStairwell, { well: current.letter }, { done: (made) => made.text, toast: (made) => made.text });
+        }),
+      ];
+      return {
+        element: h('li', { class: 'bi-row bi-row--stack', data: { well: entry.id } }, letter.element, summary, wayHost, h('div', { class: 'bi-row__buttons' }, buttons)),
+        sync: (now) => {
+          current = now;
+          letter.set(now.letter);
+          summary.textContent = 'Stairwell ' + now.letter + ' · ' + now.facts.span + ' · ' + now.facts.wayWords + (now.facts.parts > 1 ? ' · in ' + now.facts.parts + ' parts' : '');
+          for (const input of wayHost.querySelectorAll('.bi-way__input')) input.checked = input.value === now.facts.way;
+          buttons[0].setAttribute('aria-label', 'Show me: Stairwell ' + now.letter);
+          buttons[1].setAttribute('aria-label', 'Split Stairwell ' + now.letter + ' into separate stairs');
+        },
+      };
+    };
+    parts.connections.update(entries, {
+      key: (entry) => entry.id,
+      build: (entry) => (entry.well ? buildWell(entry) : buildFlight(entry)),
     });
 
     parts.corridorsHost.hidden = floor.corridors.length === 0;

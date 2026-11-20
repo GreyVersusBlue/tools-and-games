@@ -29,7 +29,7 @@
 // Every name is escaped and set in a span with dir="auto"; inside a sentence it is
 // isolated with U+2068 and U+2069.
 
-import { ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, nameOfRoom } from '../../engine/schema.js';
+import { ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, nameOfRoom, stairsLetter } from '../../engine/schema.js';
 import { routingGraph } from '../../engine/routing.js';
 import { evacuationRoutes } from '../../engine/evacuation.js';
 import { exitNumbers, exitName, corridorRooms } from '../../engine/exit-load.js';
@@ -225,8 +225,8 @@ function stairsSentence(project, entries, floor, ctx) {
     const to = level.get(other.floorId);
     const from = floor.level;
     const way = to > from ? 'up ' : to < from ? 'down ' : '';
-    const shared = project.building.connections.filter((each) => each.kind !== ELEVATOR_KIND && each.label === connection.label).length > 1;
-    const stairs = shared ? stairsName(project, connection) : connection.label ? 'Stairs ' + connection.label : 'Stairs';
+    const shared = project.building.connections.filter((each) => each.kind !== ELEVATOR_KIND && stairsLetter(each) === stairsLetter(connection)).length > 1;
+    const stairs = shared ? stairsName(project, connection) : stairsLetter(connection) ? 'Stairs ' + stairsLetter(connection) : 'Stairs';
     const key = way + stairs + '\u0000' + route.exitId;
     if (!seen.has(key)) seen.set(key, { way, stairs, info });
   }
@@ -244,11 +244,11 @@ function refugeSentence(project, floor) {
     // the stairs beside it, when one is within two cells: the nearest, then by label, then by id
     const near = [];
     for (const connection of project.building.connections) {
-      if (connection.kind === ELEVATOR_KIND || blank(connection.label)) continue;
+      if (connection.kind === ELEVATOR_KIND || blank(stairsLetter(connection))) continue;
       const apart = Math.min(...[connection.a, connection.b].filter((end) => end.floorId === floor.id).map((end) => cellsApart(floor.width, end.cell, refuge.cell)));
       if (apart <= 2) near.push({ apart, connection });
     }
-    near.sort((a, b) => a.apart - b.apart || compare(a.connection.label, b.connection.label) || compare(a.connection.id, b.connection.id));
+    near.sort((a, b) => a.apart - b.apart || compare(stairsLetter(a.connection), stairsLetter(b.connection)) || compare(a.connection.id, b.connection.id));
     return iso(words) + (near.length > 0 ? ' by ' + iso(stairsName(project, near[0].connection)) : '');
   });
   return 'If you cannot use the stairs, wait at ' + or(names) + ' and tell a member of staff.';

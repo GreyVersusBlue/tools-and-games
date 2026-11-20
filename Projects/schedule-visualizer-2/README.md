@@ -271,6 +271,7 @@ row names a file it does not run.
 | `test/browser/draw-touch.mjs` | Drawing with a finger and with a pen |
 | `test/browser/doors-stairs.mjs` | Doors, stairs connections, exits, corridor names, the cell's menu |
 | `test/browser/elevators.mjs` | The Elevator tool and connect mode for an elevator: by pointer, by keys alone, and at 390 px with a finger |
+| `test/browser/stairwells.mjs` | Stairwells in the planner: Make one stairwell (the sentence naming every letter that changes, the Letter field), a stairwell's properties (Which way for the whole well, the Letter field, a row a stop with Remove from stairwell, Disconnect on two stops, Split), Connect another floor… by pointer and keys, Stairwell through floors… (a row a floor, the button naming what it does) by pointer, keys and a finger at 390 px, the Floor tab's one row for a stairwell, one letter on every badge with the one-way rule, the elevator's and the stairs' pill the same at three zooms, and both dialogs' footers pinned at 844 by 390 |
 | `test/browser/inspector.mjs` | The building inspector's five tabs |
 | `test/browser/search.mjs` | Finding rooms, teachers and groups from the top bar |
 | `test/browser/storage.mjs` | Saving on the device, with a real IndexedDB |

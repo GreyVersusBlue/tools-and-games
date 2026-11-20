@@ -658,7 +658,7 @@ export const section = {
       const none = summary.snapshot ? await noSnapshotBecause(ctx) : null;
       if (gone) return;
       const readOnly = Boolean(ctx.storage && ctx.storage.state.readOnly);
-      const snapshotLine = snapshotWords(summary, periodWords(project.settings).one, none, readOnly);
+      const snapshotLine = snapshotWords(summary, periodWords(project.settings).one, none, readOnly, periodWords(project.settings).many);
       // with closures alone nothing is written: no Apply, and no line about its undo
       const nothingToWrite = !summary.canApply && summary.total > 0;
       const sentences = summary.changes.concat(summary.levers);

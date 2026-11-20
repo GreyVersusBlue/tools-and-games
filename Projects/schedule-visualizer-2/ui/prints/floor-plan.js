@@ -16,7 +16,7 @@
 //                       it, as does one whose image is hidden or missing.
 //   and what every output takes (document.js)
 
-import { ELEVATOR_KIND } from '../../engine/schema.js';
+import { ELEVATOR_KIND, stairsLetter } from '../../engine/schema.js';
 import { count, list } from '../components/words.js';
 import { esc, escXml, frame, mm, paperOf, printableBox, printDate, schoolName } from './document.js';
 import { planSvg, planStyleText, textEms, PLAN_INK, PLAN_PAPER } from './plan-svg.js';
@@ -44,16 +44,36 @@ function waysOf(project, floor, plan) {
     const found = project.building.floors.find((each) => each.id === id);
     return found ? found.level : 0;
   };
-  const said = [];
+  const floors = new Map(project.building.floors.map((each) => [each.id, each]));
+  // the flights that land on this floor, by the letter they show: one badge a letter
+  const byLetter = new Map();
   for (const connection of project.building.connections) {
-    if (connection.direction !== 'ab' && connection.direction !== 'ba') continue;
     if (connection.kind === ELEVATOR_KIND) continue;
-    if (!plan.letters.includes(connection.label) || said.some((each) => each.label === connection.label)) continue;
     if (connection.a.floorId !== floor.id && connection.b.floorId !== floor.id) continue;
-    const rise = connection.direction === 'ab' ? level(connection.b.floorId) - level(connection.a.floorId) : level(connection.a.floorId) - level(connection.b.floorId);
-    said.push({ label: connection.label, way: rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only' });
+    const letter = stairsLetter(connection);
+    if (!plan.letters.includes(letter)) continue;
+    if (!byLetter.has(letter)) byLetter.set(letter, []);
+    byLetter.get(letter).push(connection);
   }
-  return said.sort((a, b) => (a.label < b.label ? -1 : 1)).map((each) => ' Stairs ' + each.label + ' is ' + each.way + '.').join('');
+  const wayOf = (connection) => {
+    if (connection.direction !== 'ab' && connection.direction !== 'ba') return null;
+    const rise = connection.direction === 'ab' ? level(connection.b.floorId) - level(connection.a.floorId) : level(connection.a.floorId) - level(connection.b.floorId);
+    return rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only';
+  };
+  const said = [];
+  for (const [letter, flights] of byLetter) {
+    const ways = flights.map(wayOf);
+    if (ways.every((way) => way === null)) continue;
+    // every flight one way the same way: the one sentence, as for plain stairs
+    if (ways.every((way) => way === ways[0])) {
+      said.push({ label: letter, text: ' Stairs ' + letter + ' is ' + ways[0] + '.' });
+      continue;
+    }
+    // the badge carries no mark where the flights differ, so each flight's way is said
+    const names = (connection) => [connection.a, connection.b].map((end) => (floors.get(end.floorId) || { name: 'a floor that is gone' }).name).join(' to ');
+    said.push({ label: letter, text: ' Stairs ' + letter + ': ' + flights.map((connection, i) => names(connection) + ' is ' + (ways[i] === null ? 'both ways' : ways[i])).join('; ') + '.' });
+  }
+  return said.sort((a, b) => (a.label < b.label ? -1 : 1)).map((each) => each.text).join('');
 }
 
 function sentence(floor, plan, project) {

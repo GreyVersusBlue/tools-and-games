@@ -7,7 +7,7 @@
 import { baseDayType, isOwnCopy } from '../../engine/day-types.js';
 import { periodName, offPeriods, bellsFor, parseTime, formatTime } from '../../engine/bells.js';
 import { walkTarget } from '../../engine/routing.js';
-import { resolveSlotRoom, nameOfRoom, bellSchedulesOf, CELL_CORRIDOR, ELEVATOR_KIND, isLiftCell } from '../../engine/schema.js';
+import { resolveSlotRoom, nameOfRoom, bellSchedulesOf, CELL_CORRIDOR, ELEVATOR_KIND, isLiftCell, stairsLetter } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { reconcile, reconcileLevers, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers, SCENARIOS_MOST } from '../../engine/scenario.js';
 import { releaseDelay } from '../../engine/release.js';
@@ -412,9 +412,9 @@ export function applyButtonWords(summary) {
 // The snapshot line of the Apply question: what it changes (the groups' days,
 // and the levers it writes), then the snapshot that is kept, or the reason
 // none will be. `none` is null where one will be kept.
-export function snapshotWords(summary, periodWord, none, readOnly) {
+export function snapshotWords(summary, periodWord, none, readOnly, periodMany) {
   const parts = [];
-  if (summary.slots > 0) parts.push(count(summary.slots, periodWord) + ' of the groups\' days');
+  if (summary.slots > 0) parts.push(count(summary.slots, periodWord, periodMany) + ' of the groups\' days');
   // "1 other change" after some periods, "1 setting" where there are none: "It changes 1 other change" was the fault
   if (summary.leversWritten > 0) parts.push(count(summary.leversWritten, summary.slots > 0 ? 'other change' : 'setting'));
   const what = parts.length > 0 ? 'It changes ' + parts.join(' and ') : 'It changes the schedule';
@@ -579,7 +579,7 @@ export function connectionChoices(project) {
   return stairsOf(project).map((connection) => {
     const a = floors.find((floor) => floor.id === connection.a.floorId);
     const b = floors.find((floor) => floor.id === connection.b.floorId);
-    const label = 'Stairs ' + (typeof connection.label === 'string' ? connection.label : '');
+    const label = 'Stairs ' + stairsLetter(connection);
     let where = 'a floor no longer in the building';
     if (a && b) {
       const [low, high] = a.level <= b.level ? [a, b] : [b, a];

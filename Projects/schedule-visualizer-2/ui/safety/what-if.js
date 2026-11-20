@@ -27,7 +27,7 @@
 import { h, uid } from '../components/dom.js';
 import { count } from '../components/words.js';
 import { formatDuration } from '../../engine/findings.js';
-import { ELEVATOR_KIND } from '../../engine/schema.js';
+import { ELEVATOR_KIND, stairsLetter } from '../../engine/schema.js';
 import { EXIT_UNNAMED } from '../../engine/exit-load.js';
 import { blockedCount } from './model.js';
 
@@ -60,7 +60,7 @@ export function spoken(seconds) {
 
 // A stairs connection as the words say it: "Stairs B, Floor 1 to Floor 2" with the typed names set apart.
 function stairsWords(project, connection) {
-  const label = typeof connection.label === 'string' ? connection.label : '';
+  const label = stairsLetter(connection);
   const floors = new Map(project.building.floors.map((floor) => [floor.id, floor]));
   const a = floors.get(connection.a && connection.a.floorId);
   const b = floors.get(connection.b && connection.b.floorId);
