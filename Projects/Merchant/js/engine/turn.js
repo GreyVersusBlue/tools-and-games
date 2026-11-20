@@ -71,13 +71,20 @@ function cardTarget(s, content) {
   return s.expeditions.length >= 3 || i + 1 > of / 2 ? 3 : 2;
 }
 
+/** The agents a card can dismiss (a choice whose `now` has a `dismiss`), and the agent a card's trip leaf binds it to. */
+const dismisses = c => new Set((c.choices ?? []).flatMap(ch => (ch.now ?? []).filter(e => e && typeof e === 'object' && 'dismiss' in e).map(e => e.dismiss)));
+const boundTo = c => tripLeaf(c.when)?.agent ?? null;
+/** Two cards on one desk that cannot both be answered: one dismisses the agent whose trip the other tells of, so whichever is answered
+    second has every choice refused ("Samir is not free to be sent out") and the season cannot end. The draw never deals the pair. */
+const clash = (a, b) => (boundTo(a) !== null && dismisses(b).has(boundTo(a))) || (boundTo(b) !== null && dismisses(a).has(boundTo(b)));
+
 /** A trip is live this season: an expedition is on the road, or a return or loss paper is on the desk. */
 const tripLive = s => s.expeditions.length > 0 || s.desk.some(p => p.kind === 'return' || p.kind === 'lost');
 
 /** Draws the season's cards (DESIGN 2.1). The papers of the house's own trips are already on the desk (returns, losses,
     letters). From the pool: a card that tells of a trip (a `trip` leaf) is drawn before any other; at most POOL_WITH_TRIP pool
-    cards while a trip is live; at most one `favour` card on the desk, a follow-up's included; and no two pool cards of one
-    kind. A draw that no card fits is not spent: the desk holds fewer cards. */
+    cards while a trip is live; at most one `favour` card on the desk, a follow-up's included; no two pool cards of one
+    kind; and no card beside one that it clashes with (above). A draw that no card fits is not spent: the desk holds fewer cards. */
 function drawCards(s, content) {
   const idx = seasonIndex(s, content);
   const city = cityOf(content, 'drawing cards');
@@ -100,11 +107,12 @@ function drawCards(s, content) {
     const favours = cardsOnDesk(s).filter(p => find(content.cards, p.ref, 'card').kind === 'favour').length;
     const recent = new Set(s.log.filter(e => e.kind === 'card' && idx - e.at < RECENT).map(e => e.ref));
     const onDesk = new Set(s.desk.map(p => p.ref));
+    const beside = cardsOnDesk(s).map(p => find(content.cards, p.ref, 'card'));
     const pool = (content.cards ?? []).filter(c =>
       c.group !== 'followups' && c.weight !== 0 &&
       !onDesk.has(c.id) && !groups.has(c.group) && !recent.has(c.id) &&
       !(c.repeat === false && s.seen[c.id]) &&
-      !(c.kind === 'favour' && favours >= 1) && !(c.kind && kindsDrawn.has(c.kind)) &&
+      !(c.kind === 'favour' && favours >= 1) && !(c.kind && kindsDrawn.has(c.kind)) && !beside.some(d => clash(c, d)) &&
       holds(c.when, s, content));
     if (!pool.length || deskFull(s)) break; // no draw is spent on a paper that has no room
     const trips = pool.filter(c => tripLeaf(c.when));

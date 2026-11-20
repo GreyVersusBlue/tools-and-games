@@ -339,7 +339,7 @@
   {
     "id": "shared-stay",
     "group": "orders",
-    "kind": "favour",
+    "kind": "trade",
     "from": {
       "name": "Khalid, a spice merchant",
       "role": "Cairo",

@@ -769,6 +769,17 @@ test('draw: no two pool cards of one kind in a season', () => {
   eq(drawn.length, 2, 'one people card and the world card');
   eq(new Set(drawn.map(r => cards.find(c => c.id === r).kind)).size, 2, `${drawn}`);
 });
+test('draw: a card that tells of an agent\'s trip is not dealt beside a card that can dismiss that agent, nor the other way round', () => {
+  // bots seed 1061 (random, cloth): "Let him go" on a follow-up dismissed Samir, and the trip card dealt beside it refused both its choices
+  const follow = pooled('follow', 'followups', 'people', { weight: 0, choices: [choice([{ dismiss: 'mira' }])] });
+  const trip = pooled('trip', 'loans', 'people', { weight: 1000, when: { trip: { agent: 'mira', is: 'out' } } });
+  const plain = pooled('plain', 'orders', 'trade', { weight: 1 });
+  const onDesk = [{ id: null, state: 'open', kind: 'card', ref: 'follow' }];
+  eq(dealt([follow, trip, plain], { out: true, desk: onDesk }), ['plain'], 'the trip card waits');
+  const sacks = pooled('sacks', 'gifts', 'world', { weight: 1000, choices: [choice([{ dismiss: 'mira' }])] });
+  eq(dealt([trip, sacks, plain], { out: true }), ['trip', 'plain'], 'the card that dismisses Mira is not dealt after the trip card either');
+  eq(dealt([trip, plain], { out: true }), ['trip', 'plain'], 'with no dismissing card the trip card is dealt');
+});
 test('draw: every card of both cities has a kind, and the kinds are the four of DESIGN 2.1', async () => {
   const cairo = await loadContent('cairo', { fs });
   for (const c of [...content.cards, ...cairo.cards]) ok(['favour', 'trade', 'people', 'world'].includes(c.kind), `${c.id}: ${c.kind}`);
