@@ -1834,6 +1834,221 @@ try {
       });
       await page.close();
     }
+
+    // ---- MER-71: keyboard, focus and phone fixes from the M3 play (findings 8, 9, 10, 13)
+    {
+      const mer71 = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href).catch(() => null);
+      const playSeason = st => {
+        for (const p of st.desk) {
+          if (p.state !== 'open') continue;
+          const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
+          st = eng.choose(st, nodeContent, p.id, c.id);
+          if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
+        }
+        return eng.endSeason(st, nodeContent);
+      };
+      const openCount = st => st.desk.filter(p => p.state === 'open').length;
+      /** The state of the first season at or after the second in which `want` finds an open paper, with only that paper left on the desk. */
+      const only = kind => {
+        let st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 40; i++) {
+          st = st.phase === 'interlude' ? eng.openSeason(st, nodeContent) : playSeason(st);
+          const p = st.desk?.find(x => x.kind === kind && x.state === 'open');
+          if (p) { st.desk = [p]; return st; }
+        }
+        throw new Error(`MER-71: no season in the first forty had an open ${kind} paper`);
+      };
+      const fullDesk = (() => {
+        let best = null, st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 10 && st.phase === 'desk'; i++) { if (!best || openCount(st) > openCount(best)) best = st; st = playSeason(st); }
+        return best;
+      })();
+      const focusId = page => page.evaluate(() => document.activeElement.id || document.activeElement.tagName.toLowerCase());
+      const doneIds = page => page.evaluate(() => window.__merchant.state.desk.filter(p => p.state !== 'open').map(p => p.id));
+
+      // finding 8: a paper whose only control is Noted or Into the ledger is set aside by Enter on its heading
+      {
+        const { page, consoleErrors } = await open(FRAMES[0]);
+        for (const kind of ['news', 'accounts', 'return']) {
+          const st = only(kind), id = st.desk[0].id;
+          await loadSave(page, st);
+          await page.waitForSelector(`.sheet[data-kind="${kind}"] .sheet-title`);
+          await test(`Enter on a ${kind} paper's heading sets it aside once, as on every other paper`, async () => {
+            eq(await focusId(page), `paper-${id}-title`, 'focus starts on the heading');
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(i => window.__merchant.state.desk.some(p => p.id === i && p.state !== 'open'), {}, id);
+            eq(await page.$(`.sheet[data-paper="${id}"]`), null, 'the paper is gone from the desk');
+            eq((await doneIds(page)).filter(x => x === id).length, 1);
+            eq(await focusId(page), 'btn-end', 'with nothing left, focus goes to End the season');
+          });
+        }
+        // Enter on the button itself must press it once, not twice (the heading's handler leaves a button alone)
+        await loadSave(page, only('news'));
+        await test('Enter on the Noted button itself still sets the paper aside once', async () => {
+          await page.focus('#btn-next');
+          await page.keyboard.press('Enter');
+          await page.waitForFunction(() => window.__merchant.state.desk.every(p => p.state !== 'open'));
+          eq((await doneIds(page)).length, 1);
+        });
+        // the account's own summary keeps Enter for opening and shutting it
+        await loadSave(page, only('return'));
+        await test('Enter on "Show the account" opens the account and does not set the paper aside', async () => {
+          const open0 = await page.$eval('details.account', d => d.open);
+          await page.focus('details.account summary');
+          await page.keyboard.press('Enter');
+          eq(await page.$eval('details.account', d => d.open), !open0);
+          eq((await doneIds(page)).length, 0);
+        });
+        await test('keyboard, finding 8: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+        await page.close();
+      }
+
+      // finding 9, the map: a stop clicked on the picture leaves focus on the stop's details, and Tab wraps
+      for (const frame of [FRAMES[0], FRAMES[3]]) {
+        const { page } = await open(frame);
+        await loadSave(page, afterFirst(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        const upright = frame.name === 'phone-upright';
+        await test(`${frame.name}: a stop clicked on the map puts focus on the stop's details, never the body`, async () => {
+          const at = await page.$eval('.dot[data-stop="aden"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+          await page.mouse.click(at[0], at[1]);
+          await page.waitForFunction(() => document.querySelector('#stop-aden')?.getAttribute('aria-selected') === 'true');
+          eq(await focusId(page), upright ? 'stoplist' : 'board-title');
+        });
+        await test(`${frame.name}: Tab past Back to the desk wraps to the first control and Shift+Tab back, inside the map table`, async () => {
+          const ids = await page.evaluate(() => [...document.querySelectorAll('#screen-map button, #screen-map [tabindex="0"]')].filter(n => n.checkVisibility()).map(n => n.id));
+          const first = ids[0], last = ids[ids.length - 1];
+          eq([first, last], ['map-desk-top', 'map-desk']);
+          await page.focus('#map-desk');
+          await page.keyboard.press('Tab');
+          eq(await focusId(page), first, 'forward from the last');
+          await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+          eq(await focusId(page), last, 'back from the first');
+        });
+        await page.close();
+      }
+      // a cluster pressed on a small screen zooms in and "Show the whole map" hands focus on rather than hiding under it
+      {
+        const { page } = await open(FRAMES[4]);
+        await loadSave(page, afterFirst(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await test('phone-small: zooming in on a cluster and out again never drops focus to the body', async () => {
+          const at = await page.$eval('.dot.cluster', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+          await page.mouse.click(at[0], at[1]);
+          await page.waitForSelector('#map-unzoom:not([hidden])');
+          ok((await focusId(page)) !== 'body', 'after zooming in');
+          await page.focus('#map-unzoom'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#map-unzoom', { hidden: true });
+          ok((await focusId(page)) !== 'body', 'after "Show the whole map" hid its own button');
+        });
+        await page.close();
+      }
+
+      // finding 10, phones: the set-out toast takes no taps and goes; End the season never covers or crowds the paper
+      for (const frame of [FRAMES[3], FRAMES[5]]) {
+        const { page } = await open(frame);
+        let unsent = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (const p of unsent.desk) if (p.state === 'open') unsent = eng.choose(unsent, nodeContent, p.id, FIRSTC[p.ref]);
+        await loadSave(page, unsent, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForSelector('#outfit-send');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        await test(`${frame.name}: the set-out toast takes no taps, so Outfit and Back to the desk are what a finger lands on`, async () => {
+          eq(await page.$eval('#map-toast', t => getComputedStyle(t).pointerEvents), 'none');
+          for (const id of ['btn-outfit', 'map-desk', 'map-desk-top']) {
+            const hit = await page.$eval(`#${id}`, b => { const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === b || b.contains(e); });
+            ok(hit, `${id}: its centre is the button's own`);
+          }
+        });
+        await test(`${frame.name}: the set-out toast goes by itself`, async () => {
+          await page.waitForSelector('#map-toast', { hidden: true, timeout: 15000 });
+        });
+        await page.close();
+      }
+      {
+        const frame = FRAMES[3];
+        const { page } = await open(frame);
+        // padding under the sheet: scrolled to the end, the last answer and the last edge lie above the bar, which is the page's last box
+        for (const [name, st, last] of [['a report with three answers', report, '.sheet .choices .choice:last-child'], ['a full desk', fullDesk, '.edges .edge:last-child, .sheet .choices .choice:last-child']]) {
+          await loadSave(page, st);
+          await page.waitForSelector('#screen-desk .sheet-title');
+          await test(`${frame.name}: ${name}: scrolled to the end, End the season covers nothing and the stack stops above its line`, async () => {
+            await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+            await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+            const m = await page.evaluate(sel => {
+              const top = document.querySelector('.end-reason:not([hidden])')?.getBoundingClientRect().top ?? document.querySelector('.end-row').getBoundingClientRect().top;
+              const rows = [...document.querySelectorAll(sel)].map(e => e.getBoundingClientRect().bottom);
+              const bar = document.querySelector('.end-row').getBoundingClientRect();
+              const stack = document.querySelector('.stack-papers').getBoundingClientRect();
+              return { top, lastBottom: Math.max(...rows), stackBottom: stack.bottom, barBottom: bar.bottom, ih: innerHeight, barTop: bar.top };
+            }, last);
+            ok(m.lastBottom <= m.top - 1, `the last answer ends at ${m.lastBottom}, the bar's line starts at ${m.top}`);
+            ok(m.stackBottom <= m.barTop + 0.5, `the papers end at ${m.stackBottom}, the bar starts at ${m.barTop}`);
+            ok(Math.abs(m.barBottom - m.ih) <= 1.5, `the bar sits on the foot of the screen (${m.barBottom} of ${m.ih})`);
+          });
+        }
+        await page.close();
+      }
+
+      // finding 13: End the season looks disabled while a result shows; a closed choice says why in words
+      {
+        const { page } = await open(FRAMES[1]);
+        await loadSave(page, only('news'));
+        await page.waitForSelector('#btn-next');
+        // a card's result: answer the first choice of a one-paper desk, so only Next stands between the player and End
+        const card = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        card.desk = [card.desk.find(p => p.ref === 'opening-letter')];
+        await loadSave(page, card);
+        await page.waitForSelector('#screen-desk .choice');
+        await page.click(`#choice-${card.desk[0].id}-begin`);
+        await page.waitForSelector(BACK);
+        await test('End the season looks disabled while a result shows, and says to press Next', async () => {
+          const m = await page.$eval('#btn-end', b => { const c = getComputedStyle(b); return { aria: b.getAttribute('aria-disabled'), border: c.borderTopStyle, shadow: c.boxShadow }; });
+          eq(m, { aria: 'true', border: 'dashed', shadow: 'none' });
+          eq(await page.$eval('#end-reason', e => e.textContent), 'Press Next first.');
+          await page.click('#btn-next');
+          await page.waitForFunction(() => document.getElementById('btn-end').getAttribute('aria-disabled') === 'false');
+          eq(await page.$eval('#btn-end', b => getComputedStyle(b).borderTopStyle), 'solid', 'live again once the result is set aside');
+        });
+        await test('a choice the house cannot afford says what it needs and what the house has', async () => {
+          const poor = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+          const first = poor.desk.find(p => p.ref === 'first-expedition');
+          poor.money = 5;
+          poor.desk = [first];
+          await loadSave(page, poor);
+          await page.waitForSelector(`#choice-${first.id}-go`);
+          eq(await page.$eval(`#choice-${first.id}-go .why`, e => e.textContent), 'You need 20 dinars for this and you have 5 dinars.');
+        });
+        await test('a choice that needs goods says how many loads of what the warehouse lacks', async () => {
+          const lin = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+          const p = lin.desk.find(x => x.ref === 'linen-neighbour');
+          lin.stock.linen = 3;
+          lin.desk = [p];
+          await loadSave(page, lin);
+          await page.waitForSelector(`#choice-${p.id}-sell`);
+          eq(await page.$eval(`#choice-${p.id}-sell .why`, e => e.textContent), 'You need 10 loads of linen in the warehouse and you have 3 loads.');
+        });
+        await page.close();
+      }
+
+      // the words themselves, for every condition a choice of the cairo cards asks: a sentence, never the generic line or a stray token
+      await test('whyNot words every `requires` of the cairo cards for a bare house', async () => {
+        ok(mer71, 'ui/screens/paper.js loads in Node');
+        const bare = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        bare.money = 0; bare.stock = {}; bare.flags = {}; bare.notebook = []; bare.expeditions = [];
+        let n = 0;
+        for (const card of nodeContent.cards) for (const c of card.choices ?? []) {
+          if (!c.requires) continue;
+          const w = mer71.whyNot(c.requires, bare, nodeContent);
+          if (w === null) continue;
+          n++;
+          ok(/^[A-Z].*\.$/.test(w) && !/undefined|\[object|NaN|null/.test(w), `${card.id}/${c.id}: "${w}"`);
+        }
+        ok(n > 10, `only ${n} requires were worded`);
+      });
+    }
   }
 
 } finally {

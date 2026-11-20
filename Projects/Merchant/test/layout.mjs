@@ -65,6 +65,7 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
 ];
 const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
+const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'between-acts', 'ending-stub']);
 
 // ---- the same game the engine plays in Node (the policy of journey.mjs: first open choice,
 // first expedition sent on the engine's plan, every other paper set aside)
@@ -428,6 +429,21 @@ try {
             .map(l => `${l.tag} "${l.text}" ${l.ratio.toFixed(2)}:1 (${l.color} on rgb(${l.bg?.join(', ')}))`);
           const b = unknown(screen.name, 'contrast', bad); ok(!b.length, brief(b));
         });
+        // MER-71 (finding 14): the title and the desk are no taller than the frame. The upright phone's desk is a page
+        // that scrolls by design (one column under the band), and Large text may outgrow a short frame by its size.
+        if (FITS.has(screen.name) && !frame.large && !(screen.name !== 'title' && screen.name !== 'title-continue' && frame.height > frame.width)) {
+          await test(`${tag}: the page is no taller than the frame`, async () => {
+            const m = await page.evaluate(() => ({ doc: document.documentElement.scrollHeight, body: document.body.scrollHeight, ih: innerHeight }));
+            ok(m.doc <= m.ih && m.body <= m.ih, `the page is ${m.doc} px (body ${m.body}) in a frame ${m.ih} px tall`);
+          });
+        }
+        // MER-71 (finding 14): between the acts and at the end there is no End the season, and no empty bar where it was
+        if (screen.name === 'between-acts' || screen.name === 'ending-stub') {
+          await test(`${tag}: no stray bar where End the season was`, async () => {
+            const m = await page.evaluate(() => ({ row: document.querySelector('.end-row')?.checkVisibility() ?? false, reason: document.querySelector('.end-reason')?.checkVisibility() ?? false }));
+            eq(m, { row: false, reason: false });
+          });
+        }
         await test(`${tag}: no console error, nothing offsite`, async () => { eq(errors, []); eq(page.__blocked, []); });
       }
       await page.close();

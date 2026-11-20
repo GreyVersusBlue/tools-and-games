@@ -10,6 +10,7 @@ import { createOutfit, firstLegState, freeAgents, stopOf, stopName, cap } from '
 
 const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 const NEAR = 48;                 // a press goes to the closest stop within this many px (DESIGN 4.7)
+const TOAST_MS = 5000;           // how long the set-out toast stays
 const CLUSTER_BELOW = 700;       // px of screen width under which close stops show as one label
 const geoUrl = new URL('../../../assets/art/map-cairo-geo.json', import.meta.url);
 let geoPromise = null;
@@ -78,12 +79,15 @@ export function createMap(app, nav) {
 
   const asset = app.art.get('map-cairo');
   const img = h('img', { class: 'map-img', src: `assets/art/${asset?.file ?? 'map-cairo.webp'}`, alt: asset?.alt ?? 'A map of the lands around Cairo.', decoding: 'async', fetchpriority: 'high' });
+  // The picture is 16:9 and the stage is not, so bands are left above and below (or beside) it. The same
+  // file, blurred and dimmed, fills them: the table reads as full height and no stop moves (MER-71, finding 11).
+  const fill = h('img', { class: 'map-fill', src: img.getAttribute('src'), alt: '', 'aria-hidden': 'true', decoding: 'async' });
   const roads = h('svg', { class: 'map-roads', 'aria-hidden': 'true', viewBox: '0 0 1920 1080', preserveAspectRatio: 'none' });
   roads.setAttribute('focusable', 'false');
   const layer = h('div', { class: 'map-layer' });
   const frame = h('div', { class: 'map-frame', id: 'map-frame' }, img, roads, layer);
-  const unzoom = h('button', { class: 'button map-unzoom', type: 'button', id: 'map-unzoom', hidden: true, onclick: () => setZoom(null) }, 'Show the whole map');
-  const stage = h('div', { class: 'map-stage' }, frame, unzoom);
+  const unzoom = h('button', { class: 'button map-unzoom', type: 'button', id: 'map-unzoom', hidden: true, onclick: () => { setZoom(null); focusDetails(); } }, 'Show the whole map');
+  const stage = h('div', { class: 'map-stage' }, fill, frame, unzoom);
   const toast = h('p', { class: 'map-toast', id: 'map-toast', hidden: true });
 
   const date = h('p', { class: 'date', id: 'map-date' });
@@ -270,8 +274,30 @@ export function createMap(app, nav) {
       if (dd < bestD) { best = d; bestD = dd; }
     }
     if (!best) return;
-    if (best.dataset.cluster) { setZoom(best.dataset.cluster); return; }
+    if (best.dataset.cluster) { setZoom(best.dataset.cluster); focusDetails(); return; }
     select(best.dataset.stop);
+    focusDetails();
+  });
+
+  /** A press on the picture lands on nothing focusable, and the button that was pressed may have just
+      been hidden, so focus would drop to the body (DESIGN 6: it never does). It goes to the stop's
+      details: the board's heading where the board is on screen, else the stop list, which holds the selection. */
+  function focusDetails() {
+    const shown = boardTitle.checkVisibility?.() ?? boardTitle.offsetParent !== null;
+    (shown ? boardTitle : list).focus();
+  }
+
+  // ---- Tab stays on the map table: past the last control it comes round to the first, and back
+  const tabbables = root => qsa('button, [href], [tabindex]', root).filter(n =>
+    !n.disabled && !n.hidden && n.tabIndex >= 0 && (n.checkVisibility?.() ?? n.offsetParent !== null));
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Tab' || e.defaultPrevented) return;
+    const root = pricesBox.classList.contains('open') ? pricesBox : el;
+    const stops = tabbables(root);
+    if (!stops.length) return;
+    const first = stops[0], last = stops[stops.length - 1], here = document.activeElement;
+    if (!e.shiftKey && here === last) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && (here === first || here === boardTitle || here === qs('#prices-head', pricesBox))) { e.preventDefault(); last.focus(); }
   });
 
   // ---- the stop list is a listbox: arrows move, typeahead jumps, Enter selects
@@ -384,8 +410,13 @@ export function createMap(app, nav) {
   }
   function draw() { drawBar(); drawMap(); drawList(); drawBoard(); }
 
+  // The toast takes no taps (css) and goes after TOAST_MS, so on a phone it never stands between a
+  // finger and Outfit or Back to the desk (MER-71, finding 10). A screen reader has it from the live region.
+  let toastTimer = 0;
   function showToast(text) {
     toast.textContent = text; toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.hidden = true; }, TOAST_MS);
     app.say(text);
   }
 
@@ -468,6 +499,6 @@ export function createMap(app, nav) {
     prepareOutfit: stopId => { pendingStop = stopId; },
     showOutfit, hideOutfit,
     focusFirst: () => boardTitle.focus(),
-    destroy() { gone = true; removeEventListener('resize', onResize); hideOutfit(); },
+    destroy() { gone = true; clearTimeout(toastTimer); removeEventListener('resize', onResize); hideOutfit(); },
   };
 }

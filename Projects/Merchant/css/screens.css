@@ -49,6 +49,11 @@ body { background: var(--night); }
 }
 .title-what { padding: var(--s2) var(--s3) var(--s3); border-bottom: 1px solid var(--paper-shade); }
 
+/* Short laptops (1366 x 768 and under) and a phone on its side: the page was 5 and 3 px taller than the
+   frame, so it scrolled for nothing (MER-71, finding 14). Tighter padding and gap give the room back. */
+@media (max-height: 800px) { .title-screen { padding-top: var(--s3); padding-bottom: var(--s3); gap: var(--s3); } }
+@media (max-height: 500px) { .title-screen { padding-top: var(--s2); padding-bottom: var(--s2); gap: var(--s3); } }
+
 /* Wide frames: the menu sits under the tagline on the left; keep it from stretching. */
 @media (min-width: 1600px) { .title-menu { max-width: 24em; } }
 
@@ -77,6 +82,11 @@ html.large-text .title-what { display: none; }
 .desk-screen { position: relative; min-height: 100svh; min-height: 100dvh; color: var(--ink); }
 .desk-stills, .desk-still { position: fixed; inset: 0; width: 100%; height: 100%; }
 .desk-still { object-fit: cover; object-position: center; }
+/* A picture that has not come (or a placeholder) paints its alt text where the picture would be: that
+   was "desk-day" behind the date. The alt text is for a screen reader; sighted players never read it here. */
+.desk-still, .map-img, .map-fill { color: transparent; font-size: 0; }
+/* The polite live region sits at the end of <body>, where its 1 px made every page 1 px taller than the frame. */
+#live { position: fixed; top: 0; left: 0; }
 .desk-still.fading { animation: still-in var(--season-fade-time) ease-in-out both; }
 @keyframes still-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -170,7 +180,9 @@ html.large-text .title-what { display: none; }
   font-family: var(--font-chrome); font-size: var(--step-0); }
 .end-season { min-height: var(--hit); padding: var(--s2) var(--s4); background: var(--paper); color: var(--brass-dark);
   border: 2px solid var(--brass); border-radius: var(--radius); font-family: var(--font-chrome); font-weight: 600; box-shadow: var(--shadow); text-align: center; }
-.end-season[aria-disabled="true"] { background: var(--paper-shade); color: var(--ink-soft); cursor: not-allowed; }
+.end-season[aria-disabled="true"] { background: var(--paper-shade); color: var(--ink-soft); border: 2px dashed var(--ink-soft); box-shadow: none; opacity: .8; cursor: not-allowed; }
+.end-row:has(> .end-season[hidden]) { display: none; }   /* between acts there is nothing to end: no empty bar */
+.end-reason:empty { display: none; }
 .end-season[hidden] { display: none; }
 .end-season.pulse { animation: pulse 1.2s ease-in-out 1; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 .5rem rgba(168, 121, 44, .55); } }
@@ -182,13 +194,17 @@ html.large-text .title-what { display: none; }
   .topbar { flex-wrap: wrap; background: rgba(20, 17, 13, .78); }
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
-  .stack { position: static; width: auto; padding: var(--s2) .5rem 9rem; overflow: visible; }
-  .stack-papers { overflow: visible; flex: none; padding: 0; }
+  /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
+     page always ends below the last answer and the stack never runs under the "papers still need an
+     answer" line (MER-71, finding 10; it was fixed over the page with 9rem guessed under the sheet). */
+  .stack { position: static; width: auto; padding: var(--s2) .5rem 0; overflow: visible; min-height: calc(100dvh - 30svh); }
+  html { scroll-padding-bottom: 8rem; }
+  .stack-papers { overflow: visible; flex: none; padding: 0 0 var(--s3); }
   .edges { order: 0; }
   .sheet { padding: var(--s3); }
   .choices .choice { min-height: 56px; }
-  .end-row { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
-    background: rgba(20, 17, 13, .9); flex-direction: column; align-items: stretch; margin: 0; }
+  .end-row { position: sticky; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
+    background: rgba(20, 17, 13, .9); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }
   .end-reason { text-align: center; }
 }
 
@@ -241,7 +257,9 @@ html.large-text .title-what { display: none; }
 .dot.home { width: 1.2rem; height: 1.2rem; background: var(--brass-dark); }
 .dot.on { box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--night); }
 .dot.cluster { width: 1.1rem; height: 1.1rem; border-radius: 3px; }
-.stop-label { position: absolute; padding: 0 .35rem; white-space: nowrap; pointer-events: none; background: var(--paper); color: var(--ink);
+.map-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.1); filter: blur(16px) brightness(.55); pointer-events: none; }
+.map-frame { z-index: 1; }
+.stop-label { z-index: 2; position: absolute; padding: 0 .35rem; white-space: nowrap; pointer-events: none; background: var(--paper); color: var(--ink);
   font-family: var(--font-paper); font-size: var(--step-0); line-height: 1.35; border-radius: var(--radius); transform-origin: 0 0;
   transform: scale(calc(1 / var(--k, 1))) translate(calc(var(--dx, 12) * 1px + var(--ax, 0%)), calc(var(--dy, 0) * 1px + var(--ay, -50%))); }
 .stop-label[hidden] { display: none; }
@@ -258,9 +276,14 @@ html.large-text .title-what { display: none; }
 .token-seal { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
 .map-unzoom { position: absolute; left: var(--s3); top: var(--s3); z-index: 2; }
 .map-unzoom[hidden] { display: none; }
-.map-toast { position: fixed; left: 50%; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3); max-width: 92%;
+.map-toast { pointer-events: none; position: fixed; left: 50%; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3); max-width: 92%;
   background: var(--paper); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); font-family: var(--font-chrome); }
 .map-toast[hidden] { display: none; }
+/* A phone's controls are at the foot (upright) or the right (on its side): the toast goes under the bar instead */
+@media (max-width: 700px), (max-height: 500px) {
+  .map-toast { top: calc(3.4rem + env(safe-area-inset-top)); bottom: auto; max-width: 70%; }
+}
+@media (max-height: 500px) { .map-toast { top: 50px; left: 35%; } }
 
 .board { grid-row: 2; grid-column: 2; background: var(--paper); color: var(--ink); overflow-y: auto; overscroll-behavior: contain;
   padding: var(--s3) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
