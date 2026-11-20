@@ -31,10 +31,26 @@ export function seenEffects(content, effects) {
   return out;
 }
 
-/** Sentences for "what happened now", or the plain line when nothing changed. */
-export function happened(content, effects) {
-  const seen = seenEffects(content, effects);
-  return seen.length ? seen.map(s => s.said).join(' ') : 'Nothing changed at once.';
+const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'the court', foreign: 'foreign merchants' };
+
+/** Sentences for "what happened now": money and goods first, then whose trust or standing moved
+    (`app` is optional; with it a reputation also says where it stands now, in the engine's words from
+    view()), else the plain line when nothing a player can see changed. */
+export function happened(content, effects, app = null) {
+  const parts = seenEffects(content, effects).map(s => s.said);
+  const view = app?.view?.();
+  for (const e of effects ?? []) {
+    if (typeof e.by !== 'number' || e.by === 0) continue;
+    const up = e.by > 0;
+    if (typeof e.trust === 'string') {
+      const name = (content.agents ?? []).find(a => a.id === e.trust)?.name ?? e.trust;
+      parts.push(`${name} trusts the house ${up ? 'more' : 'less'}.`);
+    } else if (typeof e.rep === 'string') {
+      const who = cap(REP_WORDS[e.rep] ?? e.rep), now = view?.rep?.[e.rep]?.words;
+      parts.push(`${who} think ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
+    }
+  }
+  return parts.length ? parts.join(' ') : 'Nothing changed at once.';
 }
 
 /** "Cairo pays 25 a load. Damascus paid 38, two seasons ago." from what the house knows
@@ -57,7 +73,6 @@ export function priceLine(app) {
   return parts.length ? parts.join(' ') : null;
 }
 
-const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'the court', foreign: 'foreign merchants' };
 const listOf = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
 
 /** The first thing a condition asks for that the house does not have, in words; null when the

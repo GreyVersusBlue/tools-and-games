@@ -232,7 +232,7 @@ export function createDesk(app) {
     if (RECORD_KINDS.includes(paper.kind)) { busy = false; raised = null; draw({ focus: 'next' }); return; }
     const fresh = app.state.notebook.filter(id => !before.has(id)).map(id => (content.notebook ?? []).find(n => n.id === id)?.title ?? id);
     const answered = app.state.desk.find(p => p.id === paper.id);
-    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now);
+    const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app);
     const done = () => {
       backOf = { paper: answered, now, fresh, outfit: outfitOf(choice, tripTo) };
       busy = false;

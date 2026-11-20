@@ -2247,7 +2247,10 @@ try {
       title: 'Send {agent} to {to}', body: '{agent} could take {good} to {to}, {seasons} out.',
       when: { trip: { agent: 'ali', is: 'ready' } }, weight: 0, repeat: false,
       choices: [{ id: 'go', label: 'Send {agent} to {to}', hint: 'About {seasons} on the road.', now: [{ outfit: 'ali', contract }], later: [] }], note: 'A test card.' });
-    const extra = [mk('mer77-own', 'own'), mk('mer77-qirad', 'qirad')];
+    const moved = { id: 'mer77-trust', group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null }, title: 'A word with Ali', body: 'Ali waits for an answer.',
+      when: { agent: 'ali', hired: true }, weight: 0, repeat: false,
+      choices: [{ id: 'thank', label: 'Thank him', hint: 'He will remember it.', now: [{ trust: 'ali', by: 1 }, { rep: 'agents', by: 1 }], later: [] }], note: 'A test card.' };
+    const extra = [mk('mer77-own', 'own'), mk('mer77-qirad', 'qirad'), moved];
     const raw = JSON.parse(await fs.promises.readFile(path.join(MER, '..', 'data', 'cairo', 'cards', 'followups.json'), 'utf8'));
     const swapped = JSON.stringify([...raw, ...extra]);
     const c77 = structuredClone(await loadContent('cairo', { fs: await import('node:fs/promises') }));
@@ -2333,6 +2336,15 @@ try {
         eq(at.section, section, `focus is inside the ${key} section after Change`);
         ok(at.tag !== 'BODY', 'focus is not on the body');
       }
+    });
+    await test('a choice that moves trust and standing says so on its back, not "Nothing changed at once"', async () => {
+      const st = seeded('mer77-trust');
+      await load77(st);
+      await page.click('#choice-p9-0-thank');
+      await page.waitForSelector(BACK);
+      const after = eng.choose(st, content77, 'p9-0', 'thank');
+      const standing = eng.view(after, content77).rep.agents.words;
+      eq(await page.$eval('.sheet-title', e => e.textContent), `Ali trusts the house more. Your agents think better of the house. ${standing}.`);
     });
     await test('the MER-77 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.close();
