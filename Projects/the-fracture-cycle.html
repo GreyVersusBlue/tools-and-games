@@ -83,6 +83,14 @@
     padding:8px 0 18px;
     border-bottom:1px solid var(--rule);
   }
+  /* TG-97: the way back to the board, in the page's own parchment. */
+  header.game-header .home-link{
+    display:inline-block; padding:12px 14px; margin-bottom:4px;
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.2em; text-transform:uppercase;
+    color:var(--parchment); text-decoration:underline; text-underline-offset:4px;
+  }
+  header.game-header .home-link:hover{ color:var(--radiant); }
+  header.game-header .home-link:focus-visible{ outline:2px solid var(--radiant); outline-offset:2px; border-radius:3px; }
   header.game-header .eyebrow{
     font-family:'JetBrains Mono', monospace;
     font-size:11px;
@@ -337,6 +345,7 @@
 <div class="app">
 
   <header class="game-header">
+    <a class="home-link" href="/">All games</a>
     <div class="eyebrow">a lore-inspired interactive fiction</div>
     <h1>THE FRACTURE CYCLE</h1>
     <div class="sub">Two Ancients. One Aegis. A soul with no name yet.</div>

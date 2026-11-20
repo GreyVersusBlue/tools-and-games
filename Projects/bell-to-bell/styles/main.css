@@ -297,6 +297,11 @@
 
 /* ---------- Phase 3: the semester ---------- */
 .card .startover{margin-left:12px;opacity:.7}
+/* TG-97: the way back to the board; ink on manila, 44px tall, below the buttons so nothing moves. */
+.card .homelink{display:inline-flex;align-items:center;min-height:44px;margin-left:12px;padding:0 6px;color:var(--ink);
+  font:700 11px/1 "Arial Narrow",Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;text-decoration:underline;text-underline-offset:3px}
+.card .homelink:hover{color:var(--rule)}
+.card .homelink:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .card .startover:hover{opacity:1}
 .rubricline.weekhead{border-bottom:1px solid var(--ink);opacity:.7}
 

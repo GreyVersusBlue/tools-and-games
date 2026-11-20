@@ -194,6 +194,24 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
   box-shadow: 0 10px 24px -14px #000;
 }
 
+.home-link {
+  /* TG-97: the way back to the board. Brass on the HUD's dark, at least 24px tall. */
+  align-self: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0.35rem 0.2rem;
+  min-height: 24px;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--brass);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.home-link:hover { color: var(--lantern); }
+.home-link:focus-visible { outline: 2px solid var(--lantern); outline-offset: 2px; border-radius: 2px; }
+
 .wordmark {
   display: flex;
   flex-direction: column;
@@ -1182,6 +1200,9 @@ select {
   .wordmark { border-right: none; border-bottom: 1px solid var(--bark-line); padding: 0 0 0.35rem; }
   .wordmark h1 { font-size: 1.2rem; }
   .wordmark .subtitle { display: none; }
+  /* the link rides in the wordmark row's corner, so the measured HUD height does not change */
+  #hud { position: sticky; }
+  .home-link { position: absolute; top: 0.45rem; right: 1rem; margin-left: 0; padding: 0.25rem 0.2rem; }
   #ledger { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.35rem 0.6rem; }
   .ledger-label { font-size: 1rem; }
   .ledger-label.text { font-size: 0.9rem; }

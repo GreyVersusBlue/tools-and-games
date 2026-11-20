@@ -215,8 +215,9 @@
 .mn-card { padding: 22px; display: flex; flex-direction: column; gap: 20px; }
 .mn-label { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim); margin-bottom: 7px; font-weight: 700; }
 .mn-diff-desc { margin-top: 8px; font-size: 13px; color: #9a927e; min-height: 18px; }
-.mn-links { display: flex; gap: 10px; }
+.mn-links { display: flex; flex-wrap: wrap; gap: 10px; }
 .mn-links .btn-game { flex: 1; }
+.mn-links a.btn-game { flex-basis: 100%; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; min-height: 32px; } /* TG-97: the way back to the board */
 .mn-foot { position: absolute; right: 24px; bottom: 16px; color: #5d584e; font-size: 12px; letter-spacing: 0.15em; text-transform: uppercase; }
 
 /* ---------- Modals ---------- */

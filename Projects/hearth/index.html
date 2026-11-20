@@ -51,6 +51,7 @@
   <button id="b-new">new island</button>
   <button id="b-help" aria-label="what the watcher can do">?</button>
   <a class="live-link" href="live.html" title="the island that stays up on this site, the same one for everybody" hidden>the public island</a>
+  <a class="home-link" href="/" hidden>All games</a>
 </div>
 <div id="log"></div>
 <div id="hint">click an islander to meet them, or at night for a dream · a sleeping child gets a lullaby · grass: a sapling, hold for a spring<br>water: skip a stone, drag for a gust · a cloud's shadow: rain, there · the fire: a story · the sound is worth turning on<br>scroll, pinch, or + and − to lean closer · drag the land, or the arrow keys, to look around</div>
@@ -67,7 +68,7 @@
   <div class="roll" id="chron-roll" tabindex="0"></div>
   <div class="foot"><button id="chron-saga" title="the whole record as one page you can send somebody">save the saga</button><button id="chron-dl" title="the plain-text version">.txt</button><span id="chron-n"></span></div>
 </aside>
-<script>/* C5: the link to the public island is for a page served over http or https; from a disk it would point at nothing */if(/^https?:$/.test(location.protocol))document.querySelector('.live-link').hidden=false</script>
+<script>/* C5 (and TG-97's All games link): the link to the public island is for a page served over http or https; from a disk it would point at nothing */if(/^https?:$/.test(location.protocol))document.querySelector('.live-link').hidden=document.querySelector('.home-link').hidden=false</script>
 <script src="js/core.js"></script>
 <script src="js/flavor.js"></script>
 <script src="js/life.js"></script>
