@@ -49,6 +49,11 @@ body { background: var(--night); }
 }
 .title-what { padding: var(--s2) var(--s3) var(--s3); border-bottom: 1px solid var(--paper-shade); }
 
+/* Short laptops (1366 x 768 and under) and a phone on its side: the page was 5 and 3 px taller than the
+   frame, so it scrolled for nothing (MER-71, finding 14). Tighter padding and gap give the room back. */
+@media (max-height: 800px) { .title-screen { padding-top: var(--s3); padding-bottom: var(--s3); gap: var(--s3); } }
+@media (max-height: 500px) { .title-screen { padding-top: var(--s2); padding-bottom: var(--s2); gap: var(--s3); } }
+
 /* Wide frames: the menu sits under the tagline on the left; keep it from stretching. */
 @media (min-width: 1600px) { .title-menu { max-width: 24em; } }
 
@@ -77,6 +82,11 @@ html.large-text .title-what { display: none; }
 .desk-screen { position: relative; min-height: 100svh; min-height: 100dvh; color: var(--ink); }
 .desk-stills, .desk-still { position: fixed; inset: 0; width: 100%; height: 100%; }
 .desk-still { object-fit: cover; object-position: center; }
+/* A picture that has not come (or a placeholder) paints its alt text where the picture would be: that
+   was "desk-day" behind the date. The alt text is for a screen reader; sighted players never read it here. */
+.desk-still, .map-img, .map-fill { color: transparent; font-size: 0; }
+/* The polite live region sits at the end of <body>, where its 1 px made every page 1 px taller than the frame. */
+#live { position: fixed; top: 0; left: 0; }
 .desk-still.fading { animation: still-in var(--season-fade-time) ease-in-out both; }
 @keyframes still-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -128,6 +138,9 @@ html.large-text .title-what { display: none; }
 .sheet-title { font-size: var(--step-2); margin-bottom: var(--s2); }
 .sheet-title:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
 .sheet-body { margin-bottom: var(--s3); }
+/* a letter's own lines (DESIGN 4.5): where and when it was written, and under the choices how long the answer takes */
+.letter-line { margin: 0 0 var(--s2); font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
+.letter-answer { margin: var(--s2) 0 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
 .choices { display: grid; gap: var(--s2); }
 .choices .choice { display: grid; grid-template-columns: 1.6rem 1fr; column-gap: var(--s2); align-items: baseline; }
 .choice .key { grid-row: 1 / span 2; font-family: var(--font-chrome); font-weight: 600; color: var(--brass-dark);
@@ -167,7 +180,9 @@ html.large-text .title-what { display: none; }
   font-family: var(--font-chrome); font-size: var(--step-0); }
 .end-season { min-height: var(--hit); padding: var(--s2) var(--s4); background: var(--paper); color: var(--brass-dark);
   border: 2px solid var(--brass); border-radius: var(--radius); font-family: var(--font-chrome); font-weight: 600; box-shadow: var(--shadow); text-align: center; }
-.end-season[aria-disabled="true"] { background: var(--paper-shade); color: var(--ink-soft); cursor: not-allowed; }
+.end-season[aria-disabled="true"] { background: var(--paper-shade); color: var(--ink-soft); border: 2px dashed var(--ink-soft); box-shadow: none; opacity: .8; cursor: not-allowed; }
+.end-row:has(> .end-season[hidden]) { display: none; }   /* between acts there is nothing to end: no empty bar */
+.end-reason:empty { display: none; }
 .end-season[hidden] { display: none; }
 .end-season.pulse { animation: pulse 1.2s ease-in-out 1; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 .5rem rgba(168, 121, 44, .55); } }
@@ -179,13 +194,17 @@ html.large-text .title-what { display: none; }
   .topbar { flex-wrap: wrap; background: rgba(20, 17, 13, .78); }
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
-  .stack { position: static; width: auto; padding: var(--s2) .5rem 9rem; overflow: visible; }
-  .stack-papers { overflow: visible; flex: none; padding: 0; }
+  /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
+     page always ends below the last answer and the stack never runs under the "papers still need an
+     answer" line (MER-71, finding 10; it was fixed over the page with 9rem guessed under the sheet). */
+  .stack { position: static; width: auto; padding: var(--s2) .5rem 0; overflow: visible; min-height: calc(100dvh - 30svh); }
+  html { scroll-padding-bottom: 8rem; }
+  .stack-papers { overflow: visible; flex: none; padding: 0 0 var(--s3); }
   .edges { order: 0; }
   .sheet { padding: var(--s3); }
   .choices .choice { min-height: 56px; }
-  .end-row { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
-    background: rgba(20, 17, 13, .9); flex-direction: column; align-items: stretch; margin: 0; }
+  .end-row { position: sticky; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
+    background: rgba(20, 17, 13, .9); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }
   .end-reason { text-align: center; }
 }
 
@@ -197,12 +216,18 @@ html.large-text .title-what { display: none; }
   .stack { left: max(var(--s2), env(safe-area-inset-left)); right: max(var(--s2), env(safe-area-inset-right)); width: auto; top: 48px; bottom: var(--s2); }
   .stack-papers { flex-direction: row; align-items: stretch; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
   .sheet-box { flex: 0 0 70%; max-height: 100%; }
-  .sheet { display: flex; flex-direction: column; max-height: 100%; padding: var(--s2) var(--s3); }
+  /* A paper whose head, line, title and three choices fill the frame (a report) leaves the body 3 lines at least
+     and the sheet scrolls; with fewer choices the body is the only part that scrolls, as DESIGN 5.2 says. */
+  .sheet { display: flex; flex-direction: column; max-height: 100%; padding: var(--s2) var(--s3); overflow-y: auto; }
   .sheet-title { font-size: var(--step-1); }
-  .sheet-body { overflow-y: auto; flex: 1 1 auto; min-height: 0; margin-bottom: var(--s2); }
+  .sheet-body { overflow-y: auto; flex: 1 1 auto; min-height: 4.6em; margin-bottom: var(--s2); }
+  .sheet-head { margin-bottom: var(--s1); }
+  .letter-line { margin-bottom: var(--s1); }
   .choices { flex: none; }
-  .edges { order: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; }
-  .end-row { position: static; }
+  .edges { order: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; padding-bottom: 5.5rem; }
+  /* End the season sits under the edges, at the right, so the raised paper keeps the full height */
+  .end-row { position: absolute; right: 0; bottom: 0; width: calc(30% - var(--s2)); margin: 0; flex-direction: column; align-items: stretch; }
+  .end-reason { text-align: center; }
 }
 
 /* ---- The map table (DESIGN 4.7, 5.1 to 5.3) ---- */
@@ -232,7 +257,9 @@ html.large-text .title-what { display: none; }
 .dot.home { width: 1.2rem; height: 1.2rem; background: var(--brass-dark); }
 .dot.on { box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--night); }
 .dot.cluster { width: 1.1rem; height: 1.1rem; border-radius: 3px; }
-.stop-label { position: absolute; padding: 0 .35rem; white-space: nowrap; pointer-events: none; background: var(--paper); color: var(--ink);
+.map-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.1); filter: blur(16px) brightness(.55); pointer-events: none; }
+.map-frame { z-index: 1; }
+.stop-label { z-index: 2; position: absolute; padding: 0 .35rem; white-space: nowrap; pointer-events: none; background: var(--paper); color: var(--ink);
   font-family: var(--font-paper); font-size: var(--step-0); line-height: 1.35; border-radius: var(--radius); transform-origin: 0 0;
   transform: scale(calc(1 / var(--k, 1))) translate(calc(var(--dx, 12) * 1px + var(--ax, 0%)), calc(var(--dy, 0) * 1px + var(--ay, -50%))); }
 .stop-label[hidden] { display: none; }
@@ -249,9 +276,14 @@ html.large-text .title-what { display: none; }
 .token-seal { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
 .map-unzoom { position: absolute; left: var(--s3); top: var(--s3); z-index: 2; }
 .map-unzoom[hidden] { display: none; }
-.map-toast { position: fixed; left: 50%; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3); max-width: 92%;
+.map-toast { pointer-events: none; position: fixed; left: 50%; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3); max-width: 92%;
   background: var(--paper); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); font-family: var(--font-chrome); }
 .map-toast[hidden] { display: none; }
+/* A phone's controls are at the foot (upright) or the right (on its side): the toast goes under the bar instead */
+@media (max-width: 700px), (max-height: 500px) {
+  .map-toast { top: calc(3.4rem + env(safe-area-inset-top)); bottom: auto; max-width: 70%; }
+}
+@media (max-height: 500px) { .map-toast { top: 50px; left: 35%; } }
 
 .board { grid-row: 2; grid-column: 2; background: var(--paper); color: var(--ink); overflow-y: auto; overscroll-behavior: contain;
   padding: var(--s3) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
@@ -322,7 +354,10 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 .outfit .lead { font-family: var(--font-chrome); margin: 0 0 var(--s2); }
 .outfit .step { padding: var(--s2) 0 var(--s3); border-top: 1px solid var(--paper-shade); }
 .outfit .step h3 { margin: 0 0 var(--s2); font-size: var(--step-1); }
-.outfit .summary { margin: 0; display: flex; gap: var(--s3); align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: var(--step-1); }
+.outfit .summary { margin: 0; display: flex; gap: var(--s3); align-items: center; justify-content: space-between; flex-wrap: nowrap; font-size: var(--step-1); }
+/* the line takes the room it can and wraps inside itself; the Change link keeps its own column, on the row's line (MER-63) */
+.outfit .summary > span { flex: 1 1 0; min-width: 0; }
+.outfit .summary .change { flex: none; }
 .outfit .change { min-height: var(--hit); min-width: var(--hit); padding: 0 var(--s2); background: none; color: var(--lapis); text-decoration: underline;
   font-family: var(--font-chrome); font-weight: 600; font-size: var(--step-0); }
 .outfit .none, .outfit .total { font-family: var(--font-chrome); margin: var(--s2) 0 0; }

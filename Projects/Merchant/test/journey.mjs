@@ -41,6 +41,11 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
   { name: 'phone-side', width: 844, height: 390, mobile: true },
 ];
+// A back is settled when it lies flat: desk.js keeps `data-flip` on it from its first frame until the
+// turn ends. Pressing Next on a sheet that is edge-on clicks on nothing (the CI flake of PR #603: a
+// slow runner kept the sheet edge-on at the click, and answerFirst then waited 30 s for a paper to
+// leave a back it had never pressed).
+const BACK = '.sheet[data-face="back"]:not([data-flip])';
 const BUTTONS = ['New game', 'About this game', 'Settings'];
 
 const server = await serve(PORT);
@@ -84,7 +89,11 @@ const hashOf = page => page.evaluate(() => location.hash);
 const sendFromMap = async page => {
   if (!['#map', '#outfit'].includes(await hashOf(page))) return false;
   await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
-  if (await page.$('#outfit-send')) { await page.click('#outfit-send'); await page.waitForSelector('#map-toast:not([hidden])'); }
+  if (await page.$('#outfit-send')) {
+    // the walkers send only the one-press first expedition, which their Node model sends too; a card's outfit effect (MER-77) opens a sheet they leave by Back to the map
+    if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) await page.click('#outfit-cancel');
+    else { await page.click('#outfit-send'); await page.waitForSelector('#map-toast:not([hidden])'); }
+  }
   await page.click('#map-desk-top');
   await page.waitForSelector('#screen-desk');
   return true;
@@ -538,7 +547,8 @@ try {
       const t = await page.$$eval('.sheet .choice', cs => cs.map(c => ({ label: c.querySelector('.label').textContent, cost: c.querySelector('.cost')?.textContent ?? null,
         key: c.querySelector('.key').textContent, disabled: c.getAttribute('aria-disabled') })));
       eq(t[0].label, 'Send Yusuf with ten loads of linen');
-      eq(t[0].cost, '−20 dinars now');
+      // MER-72: the first card's choice takes no money; the trip's costs are charged at Send on the sheet that follows
+      eq(t[0].cost, null);
       eq(t[0].key, '1'); eq(t[1].key, '2');
       eq(t[1].cost, null);
       eq(t[0].disabled, null);
@@ -552,7 +562,7 @@ try {
 
     await test('answering by pointer: front goes inert, the back says what happened, the note and the source, focus on its heading', async () => {
       await page.click('#choice-p0-0-begin');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       const b = await page.evaluate(() => {
         const sheet = document.querySelector('.sheet');
         return { heading: document.activeElement.textContent, tag: document.activeElement.tagName,
@@ -583,9 +593,10 @@ try {
 
       // the expedition card: first choice, outfit-first
       await page.click('#choice-p0-1-go');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       const m1 = eng.choose(m0, nodeContent, 'p0-1', 'go');
-      eq(await page.$eval('.sheet-title', e => e.textContent), 'You paid 20 dinars.');
+      eq(await page.$eval('.sheet-title', e => e.textContent), 'Yusuf trusts the house more.', 'the choice names the trust it moves and takes no money');
+      eq(await page.$eval('#bar-money', e => e.textContent.trim()), '1,500 dinars', 'the house still has all its money before Send');
       await page.click('#btn-next');
       // the one-press first expedition (DESIGN 7): the sheet over the map table, filled in for Damascus
       await page.waitForSelector('#outfit-send');
@@ -602,11 +613,11 @@ try {
       await sameScreen(page, m1b, 'after the expedition is sent');
       eq(await hashOf(page), '#desk');
       eq(await page.$eval('#end-reason', e => e.textContent), eng.canEndSeason(m1b).reason, 'the desk says why it cannot end the season yet');
-      eq(await page.$eval('#bar-money', e => e.textContent.trim()), '1,480 dinars');
+      eq(await page.$eval('#bar-money', e => e.textContent.trim()), `${withCommas(m1b.money)} dinars`, 'the money after Send is the engine\'s (the plan carries stock and costs nothing here)');
 
       // the neighbour, second choice ("Keep them")
       await page.click('#choice-p0-2-keep');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       const m2 = eng.choose(m1b, nodeContent, 'p0-2', 'keep');
       await page.click('#btn-next');
       await page.waitForFunction(() => document.activeElement.id === 'btn-end');
@@ -706,13 +717,13 @@ try {
     let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
     await test('keyboard: 1 answers, Enter presses Next, 1 on the expedition, Enter on Send in the sheet, Esc back to the desk, 1 on the neighbour, E ends the season', async () => {
       await page.keyboard.press('1');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       model = eng.choose(model, nodeContent, 'p0-0', 'begin');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.face === 'front' && document.querySelector('.sheet-title').textContent === 'Yusuf is ready to go');
       await sameScreen(page, model, 'keyboard after letter');
       await page.keyboard.press('1');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       model = eng.choose(model, nodeContent, 'p0-1', 'go');
       await page.keyboard.press('Enter');
       await page.waitForSelector('#outfit-send');
@@ -723,7 +734,7 @@ try {
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.kind === 'card');
       await page.keyboard.press('1');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       model = eng.choose(model, nodeContent, 'p0-2', 'sell');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.activeElement.id === 'btn-end');
@@ -835,7 +846,7 @@ try {
         if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
         if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
         await page.click('.sheet .choice:not([aria-disabled="true"])');
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
       }
       await page.click('#btn-end');
     };
@@ -903,7 +914,7 @@ try {
         const p = id === 'begin' ? 'p0-0' : id === 'go' ? 'p0-1' : 'p0-2';
         await page.$eval(`#choice-${p}-${id}`, b => b.scrollIntoView({ block: 'center' }));
         await page.click(`#choice-${p}-${id}`);
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
         await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' }));
         await page.click('#btn-next');
         if (id === 'go') { await page.waitForSelector('#outfit-send'); await sendFromMap(page); }
@@ -928,7 +939,7 @@ try {
     for (const [p, id, n] of picks) {
       if (how === 'pointer') { await page.$eval(`#choice-${p}-${id}`, b => b.scrollIntoView({ block: 'center' })); await page.click(`#choice-${p}-${id}`); }
       else { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press(String(n)); }
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
       if (how === 'pointer') { await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' })); await page.click('#btn-next'); } else await page.keyboard.press('Enter');
       await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"][data-face="back"]`), {}, p);
     }
@@ -952,7 +963,7 @@ try {
       if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
       if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
       await page.click('.sheet .choice:not([aria-disabled="true"])');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      await page.waitForSelector(BACK);
     }
     if (how === 'keyboard') { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press('e'); } else await page.click('#btn-end');
   };
@@ -1132,11 +1143,11 @@ try {
         eq(await page.$eval('#contract-qirad', e => e.getAttribute('aria-checked')), 'true', 'the qirad is the chosen contract');
         eq(await page.$eval('#step-partners', e => e.getAttribute('role')), 'spinbutton');
         await page.focus('#step-purse'); await page.keyboard.press('PageUp');
-        eq(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow')), '50');
+        eq(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow')), '250', 'PageUp moves the purse by 250 (MER-72)');
         await page.click('#outfit-send');
         await page.waitForFunction(() => !document.getElementById('panel-outfit'));
         const x = await page.evaluate(() => window.__merchant.state.expeditions.at(-1));
-        eq([x.contract.kind, x.contract.agentShare, x.contract.of, x.purse], ['qirad', 1, 3, 50]);
+        eq([x.contract.kind, x.contract.agentShare, x.contract.of, x.purse], ['qirad', 1, 3, 250]);
         ok(x.staked.partners > 0, 'partners put money in');
       });
       // Cairo's legs are all one season, so no seeded game ever stands a token part way along one.
@@ -1163,6 +1174,132 @@ try {
       });
     }
     await page.close();
+  }
+
+  // ---- MER-72: the outfit sheet's money. Starts apart from the games above: this one chooses "Send Yusuf"
+  // at the first expedition card, which the cases above never do.
+  {
+    const M72 = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
+    const moneyOf = page => page.evaluate(() => window.__merchant.state.money);
+    const numOf = t => Number(t.match(/[\d,]+(?= dinars?)/)[0].replace(/,/g, ''));
+    const { page, consoleErrors } = await open(FRAME);
+    await start(page, 'pointer');
+    // the first card's choice is the one on `go`; the opening letter first
+    let before = null;
+    for (const [p, id] of [['p0-0', 'begin'], ['p0-1', 'go']]) {
+      if (id === 'go') before = await moneyOf(page);
+      await page.$eval(`#choice-${p}-${id}`, b => b.scrollIntoView({ block: 'center' }));
+      await page.click(`#choice-${p}-${id}`);
+      await page.waitForSelector(BACK);
+      await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' }));
+      await page.click('#btn-next');
+      if (id === 'begin') await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"][data-face="back"]`), {}, p);
+    }
+    await page.waitForSelector('#outfit-send');
+
+    await test('MER-72: the first card\'s choice takes no money; Back, and a reload, before Send leave the house as it was', async () => {
+      eq(await moneyOf(page), before, 'choosing "Send Yusuf" took nothing');
+      const state0 = await engineState(page);
+      eq(state0.expeditions, [], 'nobody has left');
+      ok((await page.$eval('#outfit-cost-total', e => e.textContent)).startsWith('Send takes 0 dinars.'), await page.$eval('#outfit-cost-total', e => e.textContent));
+      await page.click('#outfit-cancel');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      eq(await moneyOf(page), before, 'Back to the map: money as it was');
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('#screen-map[data-ready], #screen-desk');
+      eq(await moneyOf(page), before, 'reload: money as it was');
+      eq((await engineState(page)).expeditions, [], 'reload: Yusuf is still at home');
+      eq((await engineState(page)).agents.yusuf.where, 'cairo');
+    });
+
+    await test('MER-72: the purse moves by 50 a press, 10 with Shift, and a typed amount is taken, commas and all', async () => {
+      await goMap(page);
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await page.click('#change-carry');
+      await page.waitForSelector('#step-purse');
+      const val = () => page.$eval('#step-purse', e => e.getAttribute('aria-valuenow'));
+      eq(await val(), '0');
+      await page.click('#step-purse-plus'); eq(await val(), '50', 'one press, 50');
+      await page.click('#step-purse-plus'); eq(await val(), '100');
+      await page.keyboard.down('Shift'); await page.click('#step-purse-plus'); await page.keyboard.up('Shift');
+      eq(await val(), '110', 'Shift, 10');
+      await page.keyboard.down('Shift'); await page.click('#step-purse-minus'); await page.keyboard.up('Shift');
+      eq(await val(), '100');
+      await page.focus('#step-purse'); await page.keyboard.press('ArrowUp'); eq(await val(), '150', 'the arrow key is 50 as well');
+      await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); eq(await val(), '140');
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('1,250'); await page.keyboard.press('Enter');
+      await page.waitForSelector('#step-purse');
+      eq(await val(), '1250', 'a typed amount is taken');
+      eq(await page.$eval('#typed-purse', e => e.value), '1250');
+      eq(await page.evaluate(() => document.activeElement.id), 'typed-purse', 'focus stays in the box');
+      // an amount the house does not have is taken as typed and refused in words, with commas
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('99999'); await page.keyboard.press('Enter');
+      await page.waitForFunction(() => /99,999 dinars/.test(document.getElementById('outfit-reasons').textContent));
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+      ok((await page.$eval('#outfit-reasons', e => e.textContent)).includes('costs 99,999 dinars'), await page.$eval('#outfit-reasons', e => e.textContent));
+    });
+
+    await test('MER-72: the sheet lists what makes the cost up, and the number it shows is the number Send takes', async () => {
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('100'); await page.keyboard.press('Enter');
+      await page.waitForSelector('#step-purse');
+      // more linen than the warehouse holds, so some is bought in Cairo at a price that rises with each load
+      await page.focus('#step-cargo-linen');
+      for (let i = 0; i < 14; i++) await page.keyboard.press('ArrowUp');
+      const rows = await page.$$eval('#outfit-costs li', ls => ls.map(l => l.textContent));
+      ok(rows.length >= 2, JSON.stringify(rows));
+      ok(rows.some(r => /linen/.test(r) && /from the warehouse/.test(r) && /bought in Cairo/.test(r)), JSON.stringify(rows));
+      ok(rows.some(r => /Money to buy with on the way/.test(r) && /100 dinars/.test(r)), JSON.stringify(rows));
+      const shown = numOf(await page.$eval('#outfit-cost-total', e => e.textContent));
+      const money0 = await moneyOf(page);
+      ok(shown > 100, `the bought linen is in the number: ${shown}`);
+      const later = await page.$$eval('#outfit-costs .cost-later', ps => ps.map(p => p.textContent));
+      ok(later.some(t => /wage, about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
+      await page.click('#outfit-send');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      eq(money0 - await moneyOf(page), shown, 'the number shown is the number taken, to the dinar');
+    });
+    await test('MER-72: no console error, nothing offsite', async () => { eq(consoleErrors, []); eq(page.__blocked, []); });
+    await page.close();
+
+    // the far end: what the house last heard, its date, and a guess from the engine's own function
+    const q = await open(FRAME);
+    await start(q.page, 'pointer');
+    await answerFirst(q.page, 'pointer');
+    await goMap(q.page);
+    await test('MER-72: with no news, a good says so plainly and offers no guess; after a letter, the last price, its date and the engine\'s guess', async () => {
+      await q.page.click('#btn-outfit');
+      await q.page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await q.page.click('#change-carry');
+      await q.page.waitForSelector('#step-cargo-linen');
+      const far0 = await q.page.$eval('#step-cargo-linen', e => e.closest('li').querySelector('.far').textContent);
+      ok(/^No news of what linen fetches in Damascus\.$/.test(far0), far0);
+      eq(await q.page.$eval('#step-cargo-linen', e => e.closest('li').querySelector('.might')), null, 'no news, no guess');
+      await q.page.click('#outfit-cancel');
+      await q.page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      await goDesk(q.page);
+      await uiSeason(q.page, 'pointer');
+      await q.page.waitForFunction(() => window.__merchant.state.t === 1);
+      await goMap(q.page);
+      await q.page.click('#btn-outfit');
+      await q.page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await q.page.click('#change-carry');
+      await q.page.waitForSelector('#step-cargo-linen');
+      const li = await q.page.$eval('#step-cargo-linen', e => ({ far: e.closest('li').querySelector('.far').textContent, might: e.closest('li').querySelector('.might')?.textContent }));
+      const st = await engineState(q.page);
+      const k = st.known.damascus.linen, want = M72.expectedPrice(st, nodeContent, 'damascus', 'linen');
+      ok(k && want, 'a letter from Damascus has come');
+      ok(li.far.includes(`Damascus paid ${withCommas(k.p)}`) && li.far.includes(want.written), li.far);
+      eq(li.might, `Linen might sell for about ${withCommas(want.p)} there.`);
+    });
+    await test('MER-72: the first season\'s one-line price letter names the linen the house holds, not only the pepper', async () => {
+      const v = await q.page.evaluate(() => window.__merchant.state.desk.filter(p => p.kind === 'news').map(p => p.line));
+      ok(v.length === 1 && /for linen/.test(v[0]) && /for pepper/.test(v[0]), JSON.stringify(v));
+    });
+    await q.page.close();
   }
 
   // the board needs no horizontal scroll and the map table can be used at every frame
@@ -1295,7 +1432,10 @@ try {
     const faceOf = () => page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
     const sendByKeys = async () => {
       await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
-      if (await page.$('#outfit-send')) { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
+      if (await page.$('#outfit-send')) {
+        if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) { await page.focus('#outfit-cancel'); await page.keyboard.press('Enter'); }
+        else { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
+      }
       await page.keyboard.press('Escape');
       await page.waitForSelector('#screen-desk');
     };
@@ -1306,7 +1446,7 @@ try {
         if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
         if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
         await page.click('.sheet .choice:not([aria-disabled="true"])');
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
       }
       await page.click('#btn-end');
     };
@@ -1329,7 +1469,7 @@ try {
         }
         const n = await page.$$eval('.sheet .choice', cs => cs.findIndex(c => c.getAttribute('aria-disabled') !== 'true'));
         await page.keyboard.press(String(n + 1));
-        await page.waitForSelector('.sheet[data-face="back"]');
+        await page.waitForSelector(BACK);
       }
       await page.keyboard.press('e');
     };
@@ -1587,6 +1727,636 @@ try {
       await test(`${frame.name}: ledger and notebook, no offsite request, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
+  }
+
+  // ---- MER-63: letters from the road on the desk, an agent's leave notice, the outfit sheet's refusal
+  // and the flip that a click has to wait out. The engine runs the same seed in Node. A letter is put
+  // in `state.post` (its written season, lag and arrival) and the engine's own endSeason delivers it,
+  // so the paper, view().letters and choose() are the engine's; only the draw (every cairo letter has
+  // weight 0 until MER-66 lands its ten) is placed by hand.
+  {
+    const FIRSTC = { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' };
+    const afterFirst = () => {
+      let s = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') {
+        s = eng.choose(s, nodeContent, p.id, FIRSTC[p.ref]);
+        if (p.ref === 'first-expedition') s = eng.outfit(s, nodeContent, eng.suggestPlan(s, nodeContent, 'damascus'));
+      }
+      return s;
+    };
+    const withLetter = (id, kind, stop, lag, standing) => {
+      const s = afterFirst(), x = s.expeditions[0];
+      s.post.push({ id, kind, expedition: x.id, agent: x.agent, stop, standing, written: s.t, lag, arrive: s.t + 1 });
+      return eng.endSeason(s, nodeContent);
+    };
+    const question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
+    const report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
+    const letterOf = s => s.desk.find(p => p.kind === 'letter' && p.state === 'open');
+    const loadSave = async (page, st, hash = '#desk') => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+      await page.waitForSelector('#screen-desk .sheet-title, #screen-map');
+    };
+    // the parts of a letter in the order a screen reader meets them
+    const partsOf = page => page.evaluate(() => {
+      const sheet = document.querySelector('.sheet[data-kind="letter"]');
+      const q = s => sheet.querySelector(s);
+      const parts = ['.sheet-head', '.letter-line', '.sheet-title', '.sheet-body', '.choices', '.letter-answer'].map(s => q(s));
+      const order = parts.map((e, i) => e ? i : -1).filter(i => i >= 0);
+      const inOrder = parts.filter(Boolean).every((e, i, a) => !i || (a[i - 1].compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING));
+      return {
+        inOrder, order, id: sheet.dataset.paper, seal: !!q('.sheet-head .seal'), sender: q('.sender')?.textContent,
+        line: q('.letter-line')?.textContent, answer: q('.letter-answer')?.textContent, title: q('.sheet-title').textContent,
+        body: q('.sheet-body').textContent, labels: [...sheet.querySelectorAll('.choice .label')].map(l => l.textContent),
+        described: q('.choices').getAttribute('aria-describedby'), answerId: q('.letter-answer')?.id ?? null,
+      };
+    });
+
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const p = letterOf(question), v = eng.view(question, nodeContent), def = nodeContent.letters.find(l => l.id === p.ref);
+      await loadSave(page, question);
+      await test('a question on the desk: seal, where and when it was written, when it came, the choices, then how long the answer takes, in that order', async () => {
+        const got = await partsOf(page);
+        eq(got.id, p.id);
+        eq(got.order, [0, 1, 2, 3, 4, 5], 'all six parts are there');
+        ok(got.inOrder, 'the parts follow each other in the document');
+        ok(got.seal, 'the agent\'s seal is at the head');
+        eq(got.line, v.letters[p.id].line, 'the line is the engine\'s');
+        eq(got.line, 'From Yusuf, on the road to Damascus. Written in Spring 1324. It reached you in Summer 1324.');
+        eq(got.answer, v.letters[p.id].answer, 'the answer line is the engine\'s');
+        eq(got.answer, 'Your answer will reach Yusuf in two seasons.');
+        eq([got.title, got.body, got.labels], [def.title, def.body, def.choices.map(c => c.label)]);
+        eq(got.described, got.answerId, 'the choices are described by the answer line');
+      });
+      await test('a question answered by keyboard: the engine\'s order reaches the expedition and the back says what changed', async () => {
+        await page.evaluate(() => document.activeElement.blur());
+        await page.keyboard.press('2');                       // "Take the quicker road"
+        await page.waitForSelector(BACK);
+        const model = eng.choose(question, nodeContent, p.id, 'go-on');
+        const got = await engineState(page);
+        eq(got.expeditions, JSON.parse(JSON.stringify(model.expeditions)), 'orders on the expedition');
+        eq(got.expeditions[0].orders.map(o => o.go), ['on']);
+        eq(got.desk, JSON.parse(JSON.stringify(model.desk)), 'the desk');
+        eq(await page.$eval('.sheet-title', e => e.textContent), 'Nothing changed at once.');
+        eq(await page.$eval('.sheet .note p', e => e.textContent), def.note);
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"]`) || document.querySelector(`[data-paper="${pp}"][data-face="front"]`) === null, {}, p.id);
+        await sameScreen(page, model, 'after the question', { raisedFirst: false });
+      });
+      await test('letters: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const p = letterOf(report), v = eng.view(report, nodeContent), def = nodeContent.letters.find(l => l.id === p.ref);
+      await loadSave(page, report);
+      await test('a report on the desk: its line, no answer line, and the three responses', async () => {
+        const got = await partsOf(page);
+        eq(got.order, [0, 1, 2, 3, 4], 'five parts, no answer line');
+        ok(got.inOrder);
+        eq(got.line, v.letters[p.id].line);
+        eq(got.line, 'From Yusuf, at Aydhab. Written in Spring 1324. It reached you in Summer 1324.');
+        eq(got.answer, undefined);
+        eq(got.labels, ['You did right', 'You should have waited', 'Complain to the court in Cairo']);
+        eq(got.labels, def.choices.map(c => c.label));
+        eq(got.described, null);
+      });
+      await test('a report answered by pointer: trust and money are the engine\'s, after the report\'s own cost was taken on arrival', async () => {
+        await page.click(`#choice-${p.id}-waited`);
+        await page.waitForSelector(BACK);
+        const model = eng.choose(report, nodeContent, p.id, 'waited');
+        const got = await engineState(page);
+        eq([got.money, got.agents.yusuf.trust], [model.money, model.agents.yusuf.trust]);
+        eq([got.money, got.agents.yusuf.trust], [report.money, -1], 'a lesser reply costs nothing and costs one trust');
+        await page.click('#btn-next');
+        await page.waitForFunction(pp => !document.querySelector(`[data-paper="${pp}"][data-face="back"]`), {}, p.id);
+        eq((await engineState(page)).desk, JSON.parse(JSON.stringify(model.desk)));
+      });
+      await test('report: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    // a notice whose words are in paper.data (MER-61b's leave notice): the engine writes it at the opening
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      let s = afterFirst(); s.agents.ali.trust = -3; s = eng.endSeason(s, nodeContent);
+      const n = s.desk.find(x => x.kind === 'notice' && x.ref === 'agent-left' && x.state === 'open');
+      await test('the engine writes the leave notice when an agent at home has lost faith (setup for the page case)', async () => { ok(n, 'no agent-left notice on the desk'); eq(n.data.title, 'Ali has left'); });
+      await loadSave(page, s);
+      await page.click(`.edge[data-paper="${n.id}"]`).catch(() => {});
+      await test('the leave notice shows its own title and words, not "A paper"', async () => {
+        await page.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, n.id);
+        eq(await page.$eval('.sheet-title', e => e.textContent), n.data.title);
+        eq(await page.$eval('.sheet .sheet-body', e => e.textContent), n.data.body);
+        ok(!(await page.$$eval('.edge', es => es.map(e => e.textContent))).includes('A paper'), 'an edge still says "A paper"');
+      });
+      await test('leave notice: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    // the outfit sheet says the engine's refusal for an agent who has lost faith (MER-61b)
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      let s = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, nodeContent, p.id, FIRSTC[p.ref]);
+      s.agents.yusuf.trust = -2;
+      const reason = eng.checkPlan(s, nodeContent, { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 10 }, purse: 0, contract: 'own' }).reasons;
+      await test('the engine refuses a trip for an agent at trust -2, in words (setup for the page case)', async () => { eq(reason, ['Yusuf has lost faith in the house and will not go out again.']); });
+      await loadSave(page, s, '#map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await test('the outfit sheet shows the refusal in the reasons, beside a Send that is disabled, and the agents\' trust words are the engine\'s', async () => {
+        await page.click('#change-who');
+        await page.waitForSelector('#agent-yusuf');
+        const trust = eng.view(s, nodeContent).trust;
+        eq(await page.$eval('#agent-ali .trust', e => e.textContent), `Ali ${trust.ali.words}.`);
+        eq(await page.$eval('#agent-yusuf .trust', e => e.textContent), `Yusuf ${trust.yusuf.words}.`);
+        await page.click('#agent-yusuf');
+        await page.waitForFunction(() => document.getElementById('agent-yusuf')?.getAttribute('aria-checked') === 'true');
+        eq(await page.$$eval('#outfit-reasons p', ps => ps.map(p => p.textContent)), reason);
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+      });
+      await test('outfit refusal: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    // the way back (MER-61d): in a city with no qirad, an agent who will not go for a wage again goes if the house pays first
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      // Cairo has a qirad, so this case serves the page and the engine the same Cairo with the qirad taken out
+      const noQ = structuredClone(nodeContent); noQ.city.contracts = {};
+      await page.evaluateOnNewDocument(() => {
+        const real = window.fetch.bind(window);
+        window.fetch = async (u, ...rest) => {
+          const res = await real(u, ...rest);
+          if (!String(u).endsWith('data/cairo/city.json')) return res;
+          const city = await res.json();
+          city.contracts = {};
+          return new Response(JSON.stringify(city), { status: 200, headers: { 'content-type': 'application/json' } });
+        };
+      });
+      let s = eng.newGame(noQ, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, noQ, p.id, FIRSTC[p.ref]);
+      s.log.push({ at: 0, kind: 'outfit', ref: 'x0', choice: 'cairo-damascus' });      // not the first expedition, so the contract is on the sheet
+      s.agents.yusuf.memory.push({ at: 0, kind: 'unfair' }, { at: 1, kind: 'unfair' });
+      s.money = 5000;
+      const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 10 }, purse: 0, contract: 'own' };
+      const wage = eng.prepayCost(s, noQ, 'cairo-damascus', 'yusuf');
+      await loadSave(page, s, '#map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await test('prepay: the sheet offers the wage first in words for an agent who refuses a wage, and sending it charges the engine\'s sum', async () => {
+        ok(wage > 0, 'the engine names a wage');
+        await page.click('#agent-yusuf');
+        await page.waitForFunction(() => document.getElementById('agent-yusuf')?.getAttribute('aria-checked') === 'true');
+        ok((await page.$$eval('#outfit-reasons p', ps => ps.map(p => p.textContent))).includes(eng.checkPlan(s, noQ, plan).reasons[0]), 'the engine\'s refusal is among the reasons while the own contract stands');
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+        await page.$eval('#contract-prepay', b => b.scrollIntoView({ block: 'center' }));
+        const words = await page.$eval('#contract-prepay', e => e.textContent);
+        ok(words.includes('Pay the wage first') && words.includes('did not pay what it promised before'), words);
+        ok(words.includes(String(wage)), `the words name the wage, ${wage}: ${words}`);
+        eq(await page.$$eval('#contract-qirad', e => e.length), 0, 'no qirad is offered');
+        await page.click('#contract-prepay');
+        await page.waitForFunction(() => document.getElementById('contract-prepay')?.getAttribute('aria-checked') === 'true');
+        await page.focus('#step-cargo-linen');
+        await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
+        const linen = Number(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')));
+        ok(linen > 0, 'some linen is carried');
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false', 'with the wage paid first, Send is open');
+        await page.click('#outfit-send');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+        const model = eng.outfit(s, noQ, { ...plan, cargo: { linen }, prepay: true });
+        const got = await engineState(page);
+        eq([got.money, got.expeditions[0].contract], [model.money, { kind: 'own', prepaid: true }]);
+      });
+      await test('prepay: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    // a click on Next cannot land on a sheet that is edge-on: the back says `data-flip` until it lies flat
+    {
+      const { page } = await open(FRAMES[0]);
+      await loadSave(page, question);
+      await test('the back of an answered paper carries data-flip while it turns and loses it when it lies flat', async () => {
+        await page.evaluate(() => document.documentElement.style.setProperty('--flip-time', '1600ms'));
+        await page.click('#choice-' + letterOf(question).id + '-go-on');
+        await page.waitForSelector('.sheet[data-face="back"][data-flip="in"]', { timeout: 5000 });
+        await page.waitForSelector(BACK, { timeout: 5000 });
+        eq(await page.$eval('.sheet[data-face="back"]', e => e.getAnimations().filter(a => a.constructor.name === 'Animation').length), 0, 'the turn itself is over once the attribute is gone');
+      });
+      await page.close();
+    }
+
+    // the one-press outfit sheet's Change links sit on their own row's line at 360 and 390 wide (LOG 10:22)
+    for (const frame of [FRAMES[3], FRAMES[4]]) {
+      const { page } = await open(frame);
+      let s = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, nodeContent, p.id, FIRSTC[p.ref]);
+      await loadSave(page, s, '#map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await test(`${frame.name} ${frame.width} wide: each Change link is beside its row's words, on the same line, with none under them`, async () => {
+        const rows = await page.$$eval('#panel-outfit .summary', ps => ps.map(p => {
+          const t = p.firstElementChild.getBoundingClientRect(), c = p.querySelector('.change').getBoundingClientRect();
+          return { id: p.firstElementChild.id, textRight: t.right, linkLeft: c.left, textTop: t.top, textBottom: t.bottom, linkTop: c.top, linkBottom: c.bottom, line: parseFloat(getComputedStyle(p.firstElementChild).lineHeight) };
+        }));
+        eq(rows.map(r => r.id), ['summary-who', 'summary-where', 'summary-carry']);
+        for (const r of rows) {
+          ok(r.linkLeft >= r.textRight - 1, `${r.id}: the link starts at ${r.linkLeft}, the words end at ${r.textRight}`);
+          ok(r.linkTop < r.textBottom && r.linkBottom > r.textTop, `${r.id}: the link (${r.linkTop} to ${r.linkBottom}) is not on the words' lines (${r.textTop} to ${r.textBottom})`);
+        }
+      });
+      await page.close();
+    }
+
+    // ---- MER-71: keyboard, focus and phone fixes from the M3 play (findings 8, 9, 10, 13)
+    {
+      const mer71 = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href).catch(() => null);
+      const playSeason = st => {
+        for (const p of st.desk) {
+          if (p.state !== 'open') continue;
+          const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
+          st = eng.choose(st, nodeContent, p.id, c.id);
+          if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
+        }
+        return eng.endSeason(st, nodeContent);
+      };
+      const openCount = st => st.desk.filter(p => p.state === 'open').length;
+      /** The state of the first season at or after the second in which `want` finds an open paper, with only that paper left on the desk. */
+      const only = kind => {
+        let st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 40; i++) {
+          st = st.phase === 'interlude' ? eng.openSeason(st, nodeContent) : playSeason(st);
+          const p = st.desk?.find(x => x.kind === kind && x.state === 'open');
+          if (p) { st.desk = [p]; return st; }
+        }
+        throw new Error(`MER-71: no season in the first forty had an open ${kind} paper`);
+      };
+      const fullDesk = (() => {
+        let best = null, st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 10 && st.phase === 'desk'; i++) { if (!best || openCount(st) > openCount(best)) best = st; st = playSeason(st); }
+        // cards first: after MER-75 the fullest desk opens on a record paper, which has no choices to focus
+        return { ...best, desk: [...best.desk.filter(p => p.kind === 'card'), ...best.desk.filter(p => p.kind !== 'card')] };
+      })();
+      const focusId = page => page.evaluate(() => document.activeElement.id || document.activeElement.tagName.toLowerCase());
+      const doneIds = page => page.evaluate(() => window.__merchant.state.desk.filter(p => p.state !== 'open').map(p => p.id));
+
+      // finding 8: a paper whose only control is Noted or Into the ledger is set aside by Enter on its heading
+      {
+        const { page, consoleErrors } = await open(FRAMES[0]);
+        for (const kind of ['news', 'accounts', 'return']) {
+          const st = only(kind), id = st.desk[0].id;
+          await loadSave(page, st);
+          await page.waitForSelector(`.sheet[data-kind="${kind}"] .sheet-title`);
+          await test(`Enter on a ${kind} paper's heading sets it aside once, as on every other paper`, async () => {
+            eq(await focusId(page), `paper-${id}-title`, 'focus starts on the heading');
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(i => window.__merchant.state.desk.some(p => p.id === i && p.state !== 'open'), {}, id);
+            eq(await page.$(`.sheet[data-paper="${id}"]`), null, 'the paper is gone from the desk');
+            eq((await doneIds(page)).filter(x => x === id).length, 1);
+            eq(await focusId(page), 'btn-end', 'with nothing left, focus goes to End the season');
+          });
+        }
+        // Enter on the button itself must press it once, not twice (the heading's handler leaves a button alone)
+        await loadSave(page, only('news'));
+        await test('Enter on the Noted button itself still sets the paper aside once', async () => {
+          await page.focus('#btn-next');
+          await page.keyboard.press('Enter');
+          await page.waitForFunction(() => window.__merchant.state.desk.every(p => p.state !== 'open'));
+          eq((await doneIds(page)).length, 1);
+        });
+        // the account's own summary keeps Enter for opening and shutting it
+        await loadSave(page, only('return'));
+        await test('Enter on "Show the account" opens the account and does not set the paper aside', async () => {
+          const open0 = await page.$eval('details.account', d => d.open);
+          await page.focus('details.account summary');
+          await page.keyboard.press('Enter');
+          eq(await page.$eval('details.account', d => d.open), !open0);
+          eq((await doneIds(page)).length, 0);
+        });
+        await test('keyboard, finding 8: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+        await page.close();
+      }
+
+      // finding 9, the map: a stop clicked on the picture leaves focus on the stop's details, and Tab wraps
+      for (const frame of [FRAMES[0], FRAMES[3]]) {
+        const { page } = await open(frame);
+        await loadSave(page, afterFirst(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        const upright = frame.name === 'phone-upright';
+        await test(`${frame.name}: a stop clicked on the map puts focus on the stop's details, never the body`, async () => {
+          const at = await page.$eval('.dot[data-stop="aden"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+          await page.mouse.click(at[0], at[1]);
+          await page.waitForFunction(() => document.querySelector('#stop-aden')?.getAttribute('aria-selected') === 'true');
+          eq(await focusId(page), upright ? 'stoplist' : 'board-title');
+        });
+        await test(`${frame.name}: Tab past Back to the desk wraps to the first control and Shift+Tab back, inside the map table`, async () => {
+          const ids = await page.evaluate(() => [...document.querySelectorAll('#screen-map button, #screen-map [tabindex="0"]')].filter(n => n.checkVisibility()).map(n => n.id));
+          const first = ids[0], last = ids[ids.length - 1];
+          eq([first, last], ['map-desk-top', 'map-desk']);
+          await page.focus('#map-desk');
+          await page.keyboard.press('Tab');
+          eq(await focusId(page), first, 'forward from the last');
+          await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+          eq(await focusId(page), last, 'back from the first');
+        });
+        await page.close();
+      }
+      // a cluster pressed on a small screen zooms in and "Show the whole map" hands focus on rather than hiding under it
+      {
+        const { page } = await open(FRAMES[4]);
+        await loadSave(page, afterFirst(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await test('phone-small: zooming in on a cluster and out again never drops focus to the body', async () => {
+          const at = await page.$eval('.dot.cluster', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+          await page.mouse.click(at[0], at[1]);
+          await page.waitForSelector('#map-unzoom:not([hidden])');
+          ok((await focusId(page)) !== 'body', 'after zooming in');
+          await page.focus('#map-unzoom'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#map-unzoom', { hidden: true });
+          ok((await focusId(page)) !== 'body', 'after "Show the whole map" hid its own button');
+        });
+        await page.close();
+      }
+
+      // finding 10, phones: the set-out toast takes no taps and goes; End the season never covers or crowds the paper
+      for (const frame of [FRAMES[3], FRAMES[5]]) {
+        const { page } = await open(frame);
+        let unsent = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (const p of unsent.desk) if (p.state === 'open') unsent = eng.choose(unsent, nodeContent, p.id, FIRSTC[p.ref]);
+        await loadSave(page, unsent, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForSelector('#outfit-send');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        await test(`${frame.name}: the set-out toast takes no taps, so Outfit and Back to the desk are what a finger lands on`, async () => {
+          eq(await page.$eval('#map-toast', t => getComputedStyle(t).pointerEvents), 'none');
+          for (const id of ['btn-outfit', 'map-desk', 'map-desk-top']) {
+            const hit = await page.$eval(`#${id}`, b => { const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === b || b.contains(e); });
+            ok(hit, `${id}: its centre is the button's own`);
+          }
+        });
+        await test(`${frame.name}: the set-out toast goes by itself`, async () => {
+          await page.waitForSelector('#map-toast', { hidden: true, timeout: 15000 });
+        });
+        await page.close();
+      }
+      {
+        const frame = FRAMES[3];
+        const { page } = await open(frame);
+        // padding under the sheet: scrolled to the end, the last answer and the last edge lie above the bar, which is the page's last box
+        for (const [name, st, last] of [['a report with three answers', report, '.sheet .choices .choice:last-child'], ['a full desk', fullDesk, '.edges .edge:last-child, .sheet .choices .choice:last-child']]) {
+          await loadSave(page, st);
+          await page.waitForSelector('#screen-desk .sheet-title');
+          await test(`${frame.name}: ${name}: scrolled to the end, End the season covers nothing and the stack stops above its line`, async () => {
+            await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+            await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+            const m = await page.evaluate(sel => {
+              const top = document.querySelector('.end-reason:not([hidden])')?.getBoundingClientRect().top ?? document.querySelector('.end-row').getBoundingClientRect().top;
+              const rows = [...document.querySelectorAll(sel)].map(e => e.getBoundingClientRect().bottom);
+              const bar = document.querySelector('.end-row').getBoundingClientRect();
+              const stack = document.querySelector('.stack-papers').getBoundingClientRect();
+              return { top, lastBottom: Math.max(...rows), stackBottom: stack.bottom, barBottom: bar.bottom, ih: innerHeight, barTop: bar.top };
+            }, last);
+            ok(m.lastBottom <= m.top - 1, `the last answer ends at ${m.lastBottom}, the bar's line starts at ${m.top}`);
+            ok(m.stackBottom <= m.barTop + 0.5, `the papers end at ${m.stackBottom}, the bar starts at ${m.barTop}`);
+            ok(Math.abs(m.barBottom - m.ih) <= 1.5, `the bar sits on the foot of the screen (${m.barBottom} of ${m.ih})`);
+          });
+        }
+        await page.close();
+      }
+
+      // the same bar over a keyboard's focus: Tab to the last answer scrolls it into view, and it has to land above the bar,
+      // not beneath it (the 9rem the bar used to leave was under the page's end; focus never went there)
+      for (const frame of [FRAMES[3], FRAMES[4]]) for (const large of [false, true]) {
+        const { page } = await open(frame);
+        for (const [name, st] of [['a report with three answers', report], ['a full desk', fullDesk]]) {
+          await loadSave(page, st);
+          await page.waitForSelector('#screen-desk .sheet-title');
+          await page.evaluate(l => document.documentElement.classList.toggle('large-text', l), large);
+          await test(`${frame.name}${large ? ' at Large text' : ''}: ${name}: focus on the last answer scrolls it clear of the End the season bar`, async () => {
+            await page.evaluate(() => scrollTo(0, 0));
+            await page.focus('.sheet .choices .choice:last-child');
+            await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+            const m = await page.evaluate(() => ({ bottom: document.activeElement.getBoundingClientRect().bottom, barTop: document.querySelector('.end-row').getBoundingClientRect().top }));
+            ok(m.bottom <= m.barTop, `the answer ends at ${m.bottom}, the bar starts at ${m.barTop}`);
+          });
+        }
+        await page.close();
+      }
+
+      // finding 13: End the season looks disabled while a result shows; a closed choice says why in words
+      {
+        const { page } = await open(FRAMES[1]);
+        await loadSave(page, only('news'));
+        await page.waitForSelector('#btn-next');
+        // a card's result: answer the first choice of a one-paper desk, so only Next stands between the player and End
+        const card = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        card.desk = [card.desk.find(p => p.ref === 'opening-letter')];
+        await loadSave(page, card);
+        await page.waitForSelector('#screen-desk .choice');
+        await page.click(`#choice-${card.desk[0].id}-begin`);
+        await page.waitForSelector(BACK);
+        await test('End the season looks disabled while a result shows, and says to press Next', async () => {
+          const m = await page.$eval('#btn-end', b => { const c = getComputedStyle(b); return { aria: b.getAttribute('aria-disabled'), border: c.borderTopStyle, shadow: c.boxShadow }; });
+          eq(m, { aria: 'true', border: 'dashed', shadow: 'none' });
+          eq(await page.$eval('#end-reason', e => e.textContent), 'Press Next first.');
+          await page.click('#btn-next');
+          await page.waitForFunction(() => document.getElementById('btn-end').getAttribute('aria-disabled') === 'false');
+          eq(await page.$eval('#btn-end', b => getComputedStyle(b).borderTopStyle), 'solid', 'live again once the result is set aside');
+        });
+        await test('a choice the house cannot afford says what it needs and what the house has', async () => {
+          const poor = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+          const first = poor.desk.find(p => p.ref === 'first-expedition');
+          poor.money = 5;
+          poor.desk = [first];
+          await loadSave(page, poor);
+          await page.waitForSelector(`#choice-${first.id}-go`);
+          eq(await page.$eval(`#choice-${first.id}-go .why`, e => e.textContent), 'You need 20 dinars for this and you have 5 dinars.');
+        });
+        await test('a choice that needs goods says how many loads of what the warehouse lacks', async () => {
+          const lin = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+          const p = lin.desk.find(x => x.ref === 'linen-neighbour');
+          lin.stock.linen = 3;
+          lin.desk = [p];
+          await loadSave(page, lin);
+          await page.waitForSelector(`#choice-${p.id}-sell`);
+          eq(await page.$eval(`#choice-${p.id}-sell .why`, e => e.textContent), 'You need 10 loads of linen in the warehouse and you have 3 loads.');
+        });
+        await page.close();
+      }
+
+      // the words themselves, for every condition a choice of the cairo cards asks: a sentence, never the generic line or a stray token
+      await test('whyNot words every `requires` of the cairo cards for a bare house', async () => {
+        ok(mer71, 'ui/screens/paper.js loads in Node');
+        const bare = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        bare.money = 0; bare.stock = {}; bare.flags = {}; bare.notebook = []; bare.expeditions = [];
+        let n = 0;
+        for (const card of nodeContent.cards) for (const c of card.choices ?? []) {
+          if (!c.requires) continue;
+          const w = mer71.whyNot(c.requires, bare, nodeContent);
+          if (w === null) continue;
+          n++;
+          ok(/^[A-Z].*\.$/.test(w) && !/undefined|\[object|NaN|null/.test(w), `${card.id}/${c.id}: "${w}"`);
+        }
+        ok(n > 10, `only ${n} requires were worded`);
+      });
+    }
+  }
+
+
+  // ---- MER-73: the page between acts says what your people did. Seed 1324 played in Node to the last season
+  // of act one with one more trip sent in it, so the jump has an expedition to settle and an agent who retires.
+  // Each line on the page is checked against the jump's own log entry, and the order is trips, the money line,
+  // who left, then the history.
+  {
+    // seed 1, not 1324: after MER-75's card rewrites the first-choice play on 1324 loses nobody in act one; seed 1 loses one
+    let g = eng.newGame(nodeContent, { seed: 1, length: 'acts', house: 'spice' });
+    for (let guard = 0; guard < 20 && g.phase !== 'interlude'; guard++) {
+      for (const p of g.desk) {
+        if (p.state !== 'open') continue;
+        const c = eng.paperChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        g = eng.choose(g, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
+      }
+      if (g.t === 7) g = eng.outfit(g, nodeContent, eng.suggestPlan(g, nodeContent, 'damascus'));
+      g = eng.endSeason(g, nodeContent);
+    }
+    const entry = g.log.find(e => e.kind === 'jump');
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    await test('the page between acts lists each settled trip, the money from trips, who left and why, before the history', async () => {
+      ok(entry.settled.length > 0 && entry.agents.length > 0, 'the seeded jump settles a trip and loses an agent, or this case checks nothing');
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((st, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...st, __v: v })); }, JSON.parse(JSON.stringify(g)), SAVE_VERSION);
+      await page.goto(GAME + '#desk', { waitUntil: 'load' });
+      await page.waitForSelector('#btn-open-house');
+      const lines = await page.$$eval('.kind-phase .sheet-body', ps => ps.map(p => ({ text: p.textContent.replace(/\s+/g, ' ').trim(), settled: p.dataset.settled ?? null, left: p.dataset.left ?? null, id: p.id })));
+      const settledOnPage = lines.filter(l => l.settled !== null).map(l => l.text);
+      eq(settledOnPage, entry.settled.map(x => x.text), 'each settled trip, in the jump\'s words');
+      const net = entry.settled.reduce((n, x) => n + x.houseNet, 0);
+      eq(lines.find(l => l.id === 'interlude-trips').text, `Your people's trips brought ${net.toLocaleString('en-US')} ${net === 1 ? 'dinar' : 'dinars'}.`, 'the money line from the trips');
+      const leftOnPage = lines.filter(l => l.left);
+      eq(leftOnPage.map(l => l.left), entry.agents.map(a => (a.left === 'retired' ? 'retired' : 'house')), 'each agent who left, with the reason');
+      eq(leftOnPage.map(l => l.text), entry.agents.map(a => `${nodeContent.agents.find(x => x.id === a.id).name} ${a.left === 'retired' ? 'has retired' : 'has gone to work for another house'}.`), 'the reason in words');
+      const hist = lines.findIndex(l => !l.settled && !l.left && !l.id);
+      ok(hist > lines.findIndex(l => l.left) && hist > lines.findIndex(l => l.id === 'interlude-trips') && lines.findIndex(l => l.id === 'interlude-trips') > lines.findIndex(l => l.settled !== null), `order: trips, money, who left, then history (${JSON.stringify(lines.map(l => l.id || l.settled || l.left || 'h'))})`);
+    });
+    await test('the page between acts: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.close();
+  }
+
+  // ---- MER-77: the desk reads a card's filled words (view().cards) and opens the outfit sheet from an
+  // `outfit` effect. No cairo card carries slots or the effect yet (MER-75 is writing them), so two
+  // cards of the test's own go into the page's `followups.json` request and into the Node content, and
+  // the paper is put on a seeded desk by hand. Everything else is the engine's.
+  {
+    const mk = (id, contract) => ({ id, group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null },
+      title: 'Send {agent} to {to}', body: '{agent} could take {good} to {to}, {seasons} out.',
+      when: { trip: { agent: 'ali', is: 'ready' } }, weight: 0, repeat: false,
+      choices: [{ id: 'go', label: 'Send {agent} to {to}', hint: 'About {seasons} on the road.', now: [{ outfit: 'ali', contract }], later: [] }], note: 'A test card.' });
+    const moved = { id: 'mer77-trust', group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null }, title: 'A word with Ali', body: 'Ali waits for an answer.',
+      when: { agent: 'ali', hired: true }, weight: 0, repeat: false,
+      choices: [{ id: 'thank', label: 'Thank him', hint: 'He will remember it.', now: [{ trust: 'ali', by: 1 }, { rep: 'agents', by: 1 }], later: [] }], note: 'A test card.' };
+    const extra = [mk('mer77-own', 'own'), mk('mer77-qirad', 'qirad'), moved];
+    const raw = JSON.parse(await fs.promises.readFile(path.join(MER, '..', 'data', 'cairo', 'cards', 'followups.json'), 'utf8'));
+    const swapped = JSON.stringify([...raw, ...extra]);
+    const c77 = structuredClone(await loadContent('cairo', { fs: await import('node:fs/promises') }));
+    c77.cards.push(...extra);
+    const content77 = eng.validateContent(c77);
+    // a game where Ali is hired and one card lies on the desk; `after` plays the first expedition out first
+    const seeded = (ref, { sent = false } = {}) => {
+      let s = eng.newGame(content77, { seed: SEED, length: 'acts', house: 'spice' });
+      if (sent) s = eng.outfit(s, content77, eng.suggestPlan(s, content77, 'damascus'));
+      s.agents.ali.hired = true;
+      s.desk = [{ id: 'p9-0', state: 'open', kind: 'card', ref }];
+      return s;
+    };
+    // The page's own fetch answers for followups.json: a request interceptor would fight the harness's
+    // (Puppeteer lets one handler answer a request), and an init script works the same in both engines.
+    const serveCards = page => {
+      const src = `(() => { const real = window.fetch.bind(window); window.fetch = (u, ...a) => String(u?.url ?? u).endsWith('/data/cairo/cards/followups.json')
+        ? Promise.resolve(new Response(${JSON.stringify(swapped)}, { status: 200, headers: { 'content-type': 'application/json' } })) : real(u, ...a); })();`;
+      return page.addInitScript ? page.addInitScript(src) : page.evaluateOnNewDocument(src);
+    };
+    const engineState = page => page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    await serveCards(page);
+    const load77 = async st => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + '#desk', { waitUntil: 'load' });
+      await page.waitForSelector('#screen-desk .choice');
+    };
+    const money = () => page.$eval('#bar-money', e => e.textContent.trim());
+
+    await test('a card that tells of a trip shows its filled title, body, label and hint, and no {slot}', async () => {
+      const st = seeded('mer77-own');
+      const v = eng.view(st, content77).cards['p9-0'];
+      ok(v && /Alexandria/.test(v.title) && !/[{}]/.test(v.title + v.body), 'the engine fills the card, or this case checks nothing');
+      await load77(st);
+      eq(await page.$eval('.sheet-title', e => e.textContent), v.title);
+      eq(await page.$eval('.sheet-body', e => e.textContent), v.body);
+      eq(await page.$eval('#choice-p9-0-go .label', e => e.textContent), v.choices.go.label);
+      eq(await page.$eval('#choice-p9-0-go .hint', e => e.textContent), v.choices.go.hint);
+      eq(await page.$eval('#screen-desk', e => /[{}]/.test(e.textContent)), false, 'no raw slot anywhere on the desk');
+    });
+
+    await test('the outfit effect: Next opens the sheet with Ali chosen for the card\'s stop, and no money moves until Send', async () => {
+      const st = seeded('mer77-own');
+      await load77(st);
+      const dinars0 = await money();
+      await page.click('#choice-p9-0-go');
+      await page.waitForSelector(BACK);
+      eq(await money(), dinars0, 'the choice itself takes no money');
+      await page.click('#btn-next');
+      await page.waitForSelector('#outfit-send');
+      eq(await hashOf(page), '#outfit');
+      const label = await page.$eval('#outfit-send', b => b.textContent);
+      eq(label, 'Send Ali to Alexandria', 'the agent and the stop are the card\'s');
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(st, content77, 'p9-0', 'go'))), 'nothing is sent, and nothing is paid, before Send');
+      await page.click('#outfit-send');
+      await page.waitForSelector('#map-toast:not([hidden])');
+      const sent = JSON.parse(await page.evaluate(() => localStorage.getItem('merchant-save')));
+      eq(sent.expeditions.map(x => x.agent), ['ali'], 'Send is what sends him');
+    });
+
+    await test('the outfit effect with a qirad: the contract on the sheet is the one the card named', async () => {
+      const st = seeded('mer77-qirad', { sent: true });
+      await load77(st);
+      await page.click('#choice-p9-0-go');
+      await page.waitForSelector(BACK);
+      await page.click('#btn-next');
+      await page.waitForSelector('#contract-qirad');
+      eq(await page.$eval('#contract-qirad', b => b.getAttribute('aria-checked')), 'true');
+      eq(await page.$eval('#contract-own', b => b.getAttribute('aria-checked')), 'false');
+      eq(await page.$eval('#outfit-send', b => b.textContent), 'Send Ali to Alexandria');
+    });
+
+    await test('after a Change line on the one-press sheet, focus lands on the section it opened, never the body', async () => {
+      const st = seeded('mer77-own');
+      await load77(st);
+      await page.click('#choice-p9-0-go'); await page.waitForSelector(BACK); await page.click('#btn-next');
+      await page.waitForSelector('#change-who');
+      for (const [key, section] of [['who', 'outfit-who'], ['carry', 'outfit-carry']]) {
+        await page.click(`#change-${key}`);
+        const at = await page.evaluate(() => ({ tag: document.activeElement.tagName, section: document.activeElement.closest('section')?.id ?? null }));
+        eq(at.section, section, `focus is inside the ${key} section after Change`);
+        ok(at.tag !== 'BODY', 'focus is not on the body');
+      }
+    });
+    await test('a choice that moves trust and standing says so on its back, not "Nothing changed at once"', async () => {
+      const st = seeded('mer77-trust');
+      await load77(st);
+      await page.click('#choice-p9-0-thank');
+      await page.waitForSelector(BACK);
+      const after = eng.choose(st, content77, 'p9-0', 'thank');
+      const standing = eng.view(after, content77).rep.agents.words;
+      eq(await page.$eval('.sheet-title', e => e.textContent), `Ali trusts the house more. Your agents think better of the house. ${standing}.`);
+    });
+    await test('the MER-77 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.close();
   }
 
 } finally {

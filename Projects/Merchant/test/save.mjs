@@ -105,8 +105,45 @@ test('repair: a repaired fresh state is the fresh state', () => {
 });
 test('repair: missing fields come back from a fresh state', () => {
   const s = copy(fresh());
-  for (const k of ['loans', 'stock', 'market', 'known', 'expeditions', 'agents', 'rep', 'desk', 'done', 'queue', 'flags', 'seen', 'notebook', 'log', 'score', 'money', 'rng']) delete s[k];
+  for (const k of ['loans', 'stock', 'market', 'known', 'expeditions', 'post', 'agents', 'rep', 'desk', 'done', 'queue', 'flags', 'seen', 'notebook', 'log', 'score', 'money', 'rng']) delete s[k];
   eq(repair(s, content), fresh());
+});
+// a game with one expedition on the road and one letter in the house's post, as the engine writes them
+const withPost = () => {
+  const s = fresh();
+  s.expeditions.push({ id: 'x1', agent: 'tobin', route: 'harbour-hilltown', leg: 0, left: 1, waiting: 0, status: 'out', cargo: {}, purse: 0, sent: 0, orders: [] });
+  s.agents.tobin.where = 'road';
+  s.post.push({ id: 'rain-on-the-pass', kind: 'question', expedition: 'x1', agent: 'tobin', stop: 'hilltown', standing: false, written: 1, lag: 2, arrive: 3 });
+  return s;
+};
+test('repair: the house\'s post keeps a sound entry and drops every malformed one (MER-60b rule 9)', () => {
+  const good = withPost().post[0];
+  const bad = copy(withPost());
+  bad.post = [null, 7, 'x', [], {}, { id: 'rain-on-the-pass' }, { ...good, id: 'no-such-letter' }, { ...good, kind: 'rumour' }, { ...good, stop: 'atlantis' }, { ...good, agent: 'nobody' },
+    { ...good, expedition: '' }, { ...good, lag: 0 }, { ...good, lag: 1.5 }, { ...good, arrive: 'soon' }, { ...good, written: -1 }, good];
+  eq(repair(bad, content).post, [good]);
+  bad.post = 'junk';
+  eq(repair(bad, content).post, []);
+  delete bad.post;
+  eq(repair(bad, content).post, [], 'a save from before the post has none');
+  const s = withPost();
+  eq(repair(s, content).post, s.post, 'a sound post comes through unchanged');
+});
+test('repair: an expedition keeps only orders with a go of wait, on or home, a letter and a season (MER-60b rule 9)', () => {
+  const s = withPost();
+  s.expeditions[0].orders = [null, 'wait', { go: 'press', letter: 'a', at: 4 }, { go: 'wait', letter: 'a' }, { go: 'wait', letter: 'a', at: -2 }, { go: 'on', letter: 7, at: 4 }, { go: 'on', letter: 'a', at: 4.5 },
+    { go: 'wait', letter: 'a', at: 4 }, { go: 'on', letter: 'b', at: 5, used: true }, { go: 'home', letter: 'c', at: 6, used: 'yes', extra: 1 }];
+  eq(repair(s, content).expeditions[0].orders, [{ go: 'wait', letter: 'a', at: 4 }, { go: 'on', letter: 'b', at: 5, used: true }, { go: 'home', letter: 'c', at: 6 }]);
+  delete s.expeditions[0].orders;
+  eq(repair(s, content).expeditions[0].orders, [], 'an expedition from before orders has none');
+});
+test('repair: letters an earlier build kept on the expedition move into the post, delivered ones are dropped', () => {
+  const s = withPost(), entry = s.post.pop();
+  s.expeditions[0].post = [{ id: entry.id, kind: entry.kind, stop: entry.stop, leg: 0, written: 1, lag: 2, arrive: 3, def: 'hold', delivered: false },
+    { id: 'salt-toll', kind: 'report', stop: 'saltmarsh', leg: 1, written: 0, lag: 1, arrive: 1, delivered: true }];
+  const r = repair(s, content);
+  eq(r.post, [{ ...entry, standing: true }]);
+  eq('post' in r.expeditions[0], false);
 });
 test('repair: a missing agent record or market entry is rebuilt', () => {
   const s = copy(fresh());
@@ -156,6 +193,50 @@ test('repair: papers for a card or event the content lacks leave the desk; the l
   const r = repair(s, content);
   eq(r.desk, game().desk);
   eq(r.log.length, s.log.length);
+});
+test('repair: the agent-left notice, whose words are in its own data, stays; a notice with neither an event nor words goes', () => {
+  const s = game();
+  const left = { id: null, kind: 'notice', ref: 'agent-left', agent: 'tobin', state: 'open', data: { headline: 'Tobin has gone to work for the Karimi house.', title: 'Tobin has left', body: 'Tobin has gone to work for the Karimi house.' } };
+  s.desk.push(copy(left));
+  s.desk.push({ id: null, kind: 'notice', ref: 'agent-left', state: 'open' });
+  s.desk.push({ id: null, kind: 'notice', ref: 'agent-left', state: 'open', data: { headline: '  ', body: 7 } });
+  const r = repair(s, content);
+  eq(r.desk.filter(p => p.ref === 'agent-left'), [left]);
+  eq(r.desk.length, game().desk.length + 1);
+});
+test('repair: the leave notice an opening really puts on the desk survives a reload', () => {
+  let s = game();
+  s.agents.tobin.trust = -2;
+  for (const p of copy(s.desk)) s = choose(s, content, p.id, paperChoices(s, content, p.id)[0].id);
+  s = endSeason(s, content);
+  ok(s.desk.some(p => p.ref === 'agent-left'), 'the notice is on the desk');
+  const r = repair(JSON.parse(JSON.stringify(s)), content);
+  eq(r.desk.map(p => p.ref), s.desk.map(p => p.ref), 'the same papers after repair');
+  const t = repair(JSON.parse(JSON.stringify(s)), content);
+  ok(t.log.some(e => e.kind === 'trust'), 'and the trust note, whole, stays');
+});
+test('repair: a trust log entry with a string or null value, or no table, is dropped; a good one stays', () => {
+  const entry = (trust, extra = {}) => ({ at: 2, kind: 'trust', trust, ...extra });
+  const logOf = e => { const s = game(); s.log = [e, { at: 2, kind: 'season', change: 0, money: 100 }]; return repair(s, content).log; };
+  eq(logOf(entry({ mira: 'high', tobin: 0 })).map(e => e.kind), ['season'], 'a string');
+  eq(logOf(entry({ mira: null })).map(e => e.kind), ['season'], 'null');
+  eq(logOf(entry(null)).map(e => e.kind), ['season'], 'no table');
+  eq(logOf(entry('x')).map(e => e.kind), ['season'], 'a string for the table');
+  eq(logOf(entry({ mira: 1, tobin: -1 }, { rep: 1 })).map(e => e.kind), ['trust', 'season'], 'a good one stays');
+  eq(logOf(entry({ mira: 1 }, { rep: 'two' }))[0].rep, 0, 'a malformed rep is replaced by the rep the save holds, and the entry stays');
+  eq(logOf(entry({ mira: 1 }))[0].rep, 0, 'so is a missing one (a save from before the note carried rep)');
+});
+test('repair: an old trust note with no rep does not let a card\'s direct rep.agents move count twice (MER-61c)', () => {
+  const direct = () => {
+    let s = game();
+    for (const e of s.log) if (e.kind === 'trust') delete e.rep;                // a note from before it carried rep
+    s = repair(JSON.parse(JSON.stringify(s)), content);
+    s.agents.mira.trust = 2;                                                     // up two over the season, and
+    s.rep.agents = 1;                                                            // the card that did it moved rep.agents by hand
+    for (const p of copy(s.desk)) s = choose(s, content, p.id, paperChoices(s, content, p.id)[0].id);
+    return endSeason(s, content).rep.agents;
+  };
+  eq(direct(), 1, 'one step, not two');
 });
 test('repair: a desk over five papers is cut to five', () => {
   const s = game();

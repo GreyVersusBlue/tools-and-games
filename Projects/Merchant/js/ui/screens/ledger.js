@@ -3,6 +3,7 @@
 // finds in words; it computes no price and no outcome.
 import { h } from '../dom.js';
 import { writeSeason } from '../../engine/market.js';
+import { leftHow } from '../../engine/agents.js';
 import { num, dinars, seal } from './paper.js';
 import { stopName, traitWords, cap } from './outfit.js';
 
@@ -11,19 +12,8 @@ const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 const MINUS = '−';
 const VESSEL = { caravan: 'caravan', galley: 'galley', dhow: 'dhow', nileboat: 'river boat', mules: 'mule train' };
 
-// The five-step scale of DESIGN 4.9. Trust and reputation both run from -3 to 3, and seven numbers
-// go into five steps with the middle three wider at the ends: -3, then -2 and -1, 0, 1 and 2, then 3.
-// ARCHITECTURE 4.11 puts this table in the engine (MER-61 moves it and replaces this function).
-const STEPS = {
-  group: ['They will not deal with you', 'They deal with you warily', 'They deal with you as with anyone',
-    'They speak well of you', 'They come to you first'],
-  agent: ['has lost faith in the house', 'is uneasy with the house', 'has no strong feeling about the house',
-    'trusts the house', 'would follow the house anywhere'],
-};
-export function scaleWords(n, who = 'group') {
-  const step = n <= -3 ? 0 : n < 0 ? 1 : n === 0 ? 2 : n < 3 ? 3 : 4;
-  return STEPS[who][step];
-}
+// Trust and reputation are written in words by the engine (agents.js `standing`, read here as
+// view().trust and view().rep); this file keeps no table of its own.
 const GROUPS = { partners: 'Partners', agents: 'Agents', court: 'The court', foreign: 'Foreign merchants' };
 
 const signed = n => (n > 0 ? `+${num(n)}` : n < 0 ? `${MINUS}${num(-n)}` : '0');
@@ -59,7 +49,7 @@ function whereIsAgent(app, a, r) {
   const { content, state } = app;
   const out = state.expeditions.find(x => x.agent === a.id);
   if (r.where === 'dead') return 'Did not come home.';
-  if (r.where === 'gone') return 'Has left the house.';
+  if (r.where === 'gone') return leftHow(app.state, a.id) === 'retired' ? 'Has retired.' : 'Has gone to work for another house.';
   if (out) return `On the road to ${stopName(content, content.routes.find(x => x.id === out.route)?.to ?? '')}.`;
   return `At home in ${stopName(content, content.city.home)}.`;
 }
@@ -124,6 +114,7 @@ function road(app) {
 
 function people(app) {
   const { state } = app;
+  const { trust, rep } = app.view();
   const list = knownAgents(app);
   const rows = list.map(a => {
     const r = state.agents[a.id];
@@ -132,11 +123,11 @@ function people(app) {
       h('div', null,
         h('strong', null, a.name), ' ',
         h('span', null, `${traitWords(app, a)}`), ' ',
-        h('span', null, `${a.name} ${scaleWords(r.trust, 'agent')}.`), ' ',
+        h('span', null, `${a.name} ${trust[a.id]?.words ?? ''}.`), ' ',
         h('span', null, whereIsAgent(app, a, r))));
   });
   const reps = Object.keys(GROUPS).map(g => h('li', { dataset: { rep: g } },
-    h('strong', null, GROUPS[g]), ' ', h('span', null, scaleWords(state.rep[g] ?? 0)), ' ', h('span', { class: 'num' }, signed(state.rep[g] ?? 0))));
+    h('strong', null, GROUPS[g]), ' ', h('span', null, rep[g]?.words ?? ''), ' ', h('span', { class: 'num' }, signed(state.rep[g] ?? 0))));
   return section('people', 'People',
     rows.length ? h('ul', { class: 'ledger-list ledger-people', id: 'ledger-agents' }, rows) : h('p', { class: 'ledger-line', id: 'ledger-agents' }, 'No one is in the house\'s service yet.'),
     h('h4', null, 'How the world speaks of the house'),

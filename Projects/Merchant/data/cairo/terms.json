@@ -16,5 +16,6 @@
  {"word":"pilgrimage","forms":["pilgrimages","hajj"],"entry":"term-pilgrimage"},
  {"word":"ramadan","forms":[],"entry":"term-ramadan"},
  {"word":"dhow","forms":["dhows"],"entry":"term-ships"},
- {"word":"galley","forms":["galleys"],"entry":"term-ships"}
+ {"word":"galley","forms":["galleys"],"entry":"term-ships"},
+ {"word":"orders","forms":[],"entry":"term-orders"}
 ]

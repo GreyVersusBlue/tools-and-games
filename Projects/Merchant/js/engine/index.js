@@ -9,5 +9,5 @@ export function newGame(content, { seed, length, house }) {
 }
 
 export { validateContent } from './content.js';
-export { outfit, suggestPlan, checkPlan, routeFor, destinations } from './routes.js';
+export { outfit, suggestPlan, checkPlan, routeFor, destinations, prepayCost } from './routes.js';
 export { openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices };

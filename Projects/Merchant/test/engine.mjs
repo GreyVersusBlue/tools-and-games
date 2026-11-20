@@ -100,12 +100,12 @@ test('state: freshState has every field of ARCHITECTURE 3 with the right type', 
   const s = fresh();
   const want = { v: 'number', city: 'string', length: 'string', house: 'string', seed: 'number', rng: 'number', t: 'number', phase: 'string', money: 'number' };
   for (const [k, t] of Object.entries(want)) eq(typeof s[k], t, k);
-  for (const k of ['loans', 'expeditions', 'desk', 'done', 'queue', 'notebook', 'log']) ok(Array.isArray(s[k]), k);
+  for (const k of ['loans', 'expeditions', 'post', 'desk', 'done', 'queue', 'notebook', 'log']) ok(Array.isArray(s[k]), k);
   for (const k of ['stock', 'market', 'known', 'agents', 'rep', 'flags', 'seen']) ok(s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]), k);
   eq(s.score, null);
   eq(s.phase, 'desk');
   eq(Object.keys(s).sort(), ['agents', 'city', 'desk', 'done', 'expeditions', 'flags', 'house', 'known', 'length', 'loans', 'log', 'market',
-    'money', 'notebook', 'phase', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
+    'money', 'notebook', 'phase', 'post', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
 });
 test('state: the house sets money, stock, hired agents and reputation; the market starts level', () => {
   const s = fresh();
@@ -283,7 +283,8 @@ test('turn: choose applies now-effects, queues later-effects with at, unlocks an
   const s = choose(game(), content, 'p0-1', 'buy');
   eq([s.money, s.stock.wool], [460, 14]);
   eq(s.queue, [{ at: 2, do: [], card: 'wool-due', from: 'wool-offer/buy' }]);
-  eq(s.log, [{ at: 0, kind: 'card', ref: 'wool-offer', choice: 'buy' }]);
+  // MER-61: the opening writes one `trust` entry (the agents' trust, for the season's change to reputation).
+  eq(s.log.filter(e => e.kind !== 'trust'), [{ at: 0, kind: 'card', ref: 'wool-offer', choice: 'buy' }]);
   eq(s.desk[1].state, 'done');
   const w = choose(game(), content, 'p0-0', 'begin');
   eq([w.notebook, w.queue[0].at], [['testport', 'harbour-town'], 1]);
@@ -376,10 +377,10 @@ test('turn: season order is pinned (ARCHITECTURE 4.1), with the jump between adv
   try {
     let s = game(); calls.length = 0;
     s = endSeason(answer(s, content), content);
-    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'advance', 'end', 'returns', 'letters', 'news', 'events', 'drawCards']);
+    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'settle', 'advance', 'end', 'agents', 'returns', 'letters', 'news', 'events', 'drawCards']);
     s = endSeason(answer(s, content), content); calls.length = 0;
     s = endSeason(answer(s, content), content);                 // season index 2 to 8: a gap
-    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'advance', 'jump', 'end']);
+    eq(calls, ['move', 'risk', 'tolls', 'drift', 'fireDue', 'settle', 'advance', 'jump', 'end']);
     eq(s.phase, 'interlude');
   } finally { Object.assign(steps, saved); }
 });
@@ -414,7 +415,9 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
   // MER-41: 406 and 16 became 416 and 24. The jump rolls each hired agent's retirement from state.rng, which moves the
   // second act's draws, and the log gains one entry for the jump and one for each Accounts paper.
   eq(s.money, 416, 'final money');
-  eq(s.log.length, 24, 'log length');
+  // MER-60: 24 became 30. The closing step writes one `season` entry for each of the six seasons played.
+  // MER-61: 30 became 31. The opening keeps one `trust` entry, replaced each season, not one a season.
+  eq(s.log.length, 31, 'log length');
   eq(JSON.stringify(s), JSON.stringify((() => {
     let t = game();
     while (t.phase !== 'recall') { t = t.phase === 'interlude' ? openSeason(t, content) : endSeason(answer(t, content), content); }
@@ -599,15 +602,22 @@ test('acts numbering: "past the act\'s first half" reads the same position in bo
 test('pinned game: the papers of each season of seed 7 (full) are pinned, and a different seed deals different ones', () => {
   const { seq, s } = play(content, { seed: 7 });
   // MER-41: the papers other than the Accounts paper are exactly what they were; the money is too. The log grew by the
-  // accounts entries (23 to 39).
+  // accounts entries (23 to 39). MER-60: 39 became 50, one `season` entry for each of the eleven seasons closed.
   eq(seq.map(x => x.filter(r => r !== 'accounts').join('+')), [
     'welcome-note+wool-offer', 'lamp-order', 'wool-due+salt-order+court-summons', 'quay-toll+lamp-quarrel', 'salt-dispute+bridge-toll',
     'rope-dispute+harvest-gift', 'wool-offer', 'lamp-order', 'wool-due+salt-order', 'quay-toll+lamp-quarrel+court-summons', 'fair-closes+salt-dispute+bridge-toll',
   ]);
   eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, false, true, true], 'the seasons that open with an Accounts paper');
-  eq([s.money, s.log.length], [396, 39]);
+  eq([s.money, s.log.length], [396, 51]);   // MER-61: 50 became 51, the one `trust` entry
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
+});
+test('season log: one { at, kind: season, change } entry for each closed season, change the net dinars of that season (MER-60, for the ledger)', () => {
+  const { s } = play(content, { seed: 7 });
+  const seasons = s.log.filter(e => e.kind === 'season');
+  eq(seasons.map(e => [e.at, e.change]), [[0, -40], [1, -30], [2, 59], [3, -10], [4, -25], [5, -12], [6, -40], [7, -30], [8, 84], [9, -35], [10, -25]]);
+  eq(seasons.map(e => Object.keys(e).sort().join()).every(k => k === 'at,change,kind,money'), true, 'the ledger reads at and change; money is where the next change starts');
+  eq(500 + seasons.reduce((n, e) => n + e.change, 0), s.money, 'the plain house starts with 500 and the changes add up to what it ends with');
 });
 test('pinned game: one extra state.rng step in openSeason changes the papers, so the pin above is a guard', () => {
   const saved = steps.news, pinned = JSON.stringify(play(content, { seed: 7 }).seq);
