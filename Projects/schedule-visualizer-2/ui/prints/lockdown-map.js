@@ -30,7 +30,7 @@
 // out here that an engine module can say: the numbers and door names are
 // exit-load.js's, the stairs words blocked.js's.
 
-import { ELEVATOR_KIND, elevatorCars, nameOfRoom } from '../../engine/schema.js';
+import { ELEVATOR_KIND, elevatorCars, nameOfRoom, stairsLetter } from '../../engine/schema.js';
 import { exitNumbers, exitName } from '../../engine/exit-load.js';
 import { stairsName } from '../../engine/blocked.js';
 import { count, list } from '../components/words.js';
@@ -122,7 +122,7 @@ function liftRows(project, floor) {
   const touches = (connection) => (connection.a && connection.a.floorId === floor.id) || (connection.b && connection.b.floorId === floor.id);
   const stairs = project.building.connections
     .filter((connection) => connection.kind !== ELEVATOR_KIND && touches(connection))
-    .map((connection) => ({ sort: connection.label || '', text: stairsName(project, connection) }));
+    .map((connection) => ({ sort: stairsLetter(connection) || '', text: stairsName(project, connection) }));
   stairs.sort((a, b) => collator.compare(a.sort, b.sort));
   const floorName = new Map(project.building.floors.map((each) => [each.id, each.name]));
   const cars = elevatorCars(project.building)

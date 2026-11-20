@@ -147,7 +147,7 @@
 //   PRINT_EXIT_COLOURS, printExitColour(index)
 
 import { mix, labelOn, parse, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
-import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, elevatorCars, spaceOwners } from '../../engine/schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, elevatorCars, spaceOwners, stairsLetter } from '../../engine/schema.js';
 import { pendingElevatorLetter } from '../components/words.js';
 import { esc, escXml } from './document.js';
 import { tracePlacement } from '../building/trace.js';
@@ -821,7 +821,6 @@ export function planSvg(project, floor, options) {
       if (end.floorId !== floor.id) return;
       if (!lettersAt.has(end.cell)) lettersAt.set(end.cell, []);
       const here = lettersAt.get(end.cell);
-      if (here.some((entry) => entry.label === connection.label)) return;
       let way = null;
       if (showWays && (connection.direction === 'ab' || connection.direction === 'ba')) {
         const from = connection.direction === 'ab' ? connection.a : connection.b;
@@ -829,9 +828,15 @@ export function planSvg(project, floor, options) {
         const rise = levelOf(to.floorId) - levelOf(from.floorId);
         way = rise > 0 ? 'up' : rise < 0 ? 'down' : (index === 0) === (connection.direction === 'ab') ? 'down' : 'up';
       }
-      here.push({ label: connection.label, way });
+      // one badge for a letter: a stairwell's flights meeting at a stop are one letter (22.17)
+      const letter = stairsLetter(connection);
+      const same = here.find((entry) => entry.label === letter);
+      if (same) same.ways.push(way);
+      else here.push({ label: letter, ways: [way], way: null });
     });
   }
+  // the one-way mark stands only where every flight at the stop goes the same way
+  for (const entries of lettersAt.values()) for (const entry of entries) entry.way = entry.ways.every((way) => way !== null && way === entry.ways[0]) ? entry.ways[0] : null;
   const letters = [];
   for (const cell of shownStairs) {
     const x = (cell % width) * U;

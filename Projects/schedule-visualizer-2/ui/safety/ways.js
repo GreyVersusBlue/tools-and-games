@@ -33,6 +33,7 @@
 
 import { directions } from '../../engine/directions.js';
 import { cardSteps } from '../../engine/evacuation.js';
+import { stairsLetter } from '../../engine/schema.js';
 
 export const BLOCK_HEAD = 'Step-free way out';
 // The line over the door cards, and over the Prints tab, while a trial is on (DESIGN 14.7 item 4):
@@ -79,7 +80,7 @@ export function refugeBy(building, refuge) {
       const away = Math.abs((end.cell % floor.width) - x) + Math.abs(Math.floor(end.cell / floor.width) - y);
       if (away > 1 || (best !== null && away >= best.away)) continue;
       const lift = connection.kind === 'elevator';
-      const letter = lift ? (connection.car || connection.label) : connection.label;
+      const letter = lift ? (connection.car || connection.label) : stairsLetter(connection);
       best = { away, text: (lift ? 'Elevator ' : 'Stairs ') + (typeof letter === 'string' ? letter : ''), lift, letter: typeof letter === 'string' ? letter : '' };
     }
   }
