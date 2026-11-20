@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { holds } from '../js/engine/conditions.js';
-import { BOTS, EXTRA_BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf, venturePlan } from '../tools/bots.mjs';
+import { BOTS, EXTRA_BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf, standingOf, venturePlan, dice, priceDraw, STANDING_PRICE } from '../tools/bots.mjs';
 
 const content = await loadContent('cairo', { fs });
 const PER_BOT = 50;
@@ -222,18 +222,27 @@ test('policy: a follow-up card counts at its best answer for greedy, scaled by h
 test('policy: standing breaks a money tie for careful and is bought with cash by greedy', () => {
   const list = [choice('cold', [{ rep: 'partners', by: -1 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
   eq(pick('careful', list)[0], 'warm');
-  eq(pick('greedy', list, { money: 1000, stock: {} }, { partners: 0.1 })[0], 'warm');
+  eq(pick('greedy', list, { money: 1000, stock: {} }, { partners: 10 })[0], 'warm');
   const paid = [choice('cash', [{ money: 50 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
-  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 0.01 })[0], 'cash');
-  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 0.1 })[0], 'warm', 'a house that values standing flips the same card');
+  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 1 })[0], 'cash');
+  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 100 })[0], 'warm', 'a house that values standing flips the same card');
 });
 
-test('policy: greedy prices standing against the money the house started with, so a richer house is no more pious (MER-101)', () => {
+test('policy: greedy prices standing in dinars a point, so the price does not move with the money the house holds (MER-101b)', () => {
   const paid = [choice('cash', [{ money: 50 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
-  const temper = { partners: 0.05, start: 1000 };   // standing is worth 1000 * 0.05 = 50 dinars: a tie, and list order keeps cash first
-  eq(pick('greedy', paid, { money: 1000, stock: {} }, temper)[0], 'cash');
-  eq(pick('greedy', paid, { money: 9000, stock: {} }, temper)[0], 'cash', 'nine times the money now values +1 standing no more than at the start');
-  eq(pick('greedy', paid, { money: 9000, stock: {} }, { partners: 0.05 })[0], 'warm', 'with no start recorded it falls back to the money now');
+  const temper = { partners: 50 };   // a point is worth 50 dinars: a tie, and list order keeps cash first
+  for (const money of [100, 1000, 9000]) eq(pick('greedy', paid, { money, stock: {} }, temper)[0], 'cash', `${money} dinars held`);
+  for (const money of [0, 1000, 90000]) eq(standingOf(worthOf({ money, stock: {} }, content, paid[1]), { money }, { partners: 12 }), 12, `${money} dinars held`);
+});
+
+test('policy: the price draw spans both sides of a 5-dinar choice across seeds, and stays inside its range (MER-101b)', () => {
+  const prices = [];
+  for (let seed = 1; seed <= 200; seed++) { const tdice = dice(seed + 77); tdice(); tdice(); prices.push(priceDraw(tdice())); }
+  ok(prices.every(p => p >= STANDING_PRICE[0] && p <= STANDING_PRICE[1]), 'inside the range');
+  const below = prices.filter(p => p < 5).length, above = prices.filter(p => p > 5).length;
+  ok(below >= 40 && above >= 40, `${below} below 5 and ${above} above in 200 games`);
+  eq(priceDraw(0), STANDING_PRICE[0]);
+  ok(Math.abs(priceDraw(1) - STANDING_PRICE[1]) < 1e-9);
 });
 
 test('games: each game record keeps the house\'s money at the first season, and it is not the money at the end (MER-101)', () => {

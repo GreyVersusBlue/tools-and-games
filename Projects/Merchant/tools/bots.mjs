@@ -80,7 +80,7 @@ export const BOTS = ['careful', 'greedy', 'random', 'qirad'];
 export const EXTRA_BOTS = ['first'];
 
 // ---- a bot's own dice: a separate stream so the bot never shifts the engine's draws
-const dice = seed => { const st = { rng: (seed * 2654435761 + 12345) >>> 0 }; return () => next(st); };
+export const dice = seed => { const st = { rng: (seed * 2654435761 + 12345) >>> 0 }; return () => next(st); };
 
 // ---- what a bot knows of a price: the last letter, else the base it would guess
 function priceOf(state, content, stop, good) {
@@ -154,7 +154,7 @@ const freeAgents = (state, content) => content.agents.filter(a => {
     Roads are priced unchecked (`check: false`), and the chosen plan is sent through `outfit`, which checks it. */
 const FLOOR = 0.08;
 const STAKE_SHARE = { careful: 0.5, greedy: 0.2 };   // the part of its money a bot puts into one venture (the sheet's default is a half). Greedy runs several small ones at once; at 300 games a share from a tenth to four fifths each left one or two of greedy's card choices just over nine in ten (MER-92: the cards' rescale, MER-96, moves those), and a fifth left the fewest
-const RISK_WEIGHT = { careful: 1, greedy: 0.5 };   // how much of the road's chance of loss a bot counts against a venture: the estimate ignores it (the sheet warns in a word), a bot has to price it
+const RISK_WEIGHT = { careful: 1, greedy: 0.75 };   // how much of the road's chance of loss a bot counts against a venture: the estimate ignores it (the sheet warns in a word), a bot has to price it
 export function venturePlan(bot, state, content, agent, roll = () => 0.5) {
   if (bot === 'careful' && state.expeditions.length >= 1) return null;   // one venture at a time (DESIGN 2.2 rule 4 says one or two; measured: a second put careful's median score two points lower, losing a whole venture costs more than the second earns)
   const busy = new Set(state.expeditions.map(x => content.routes.find(r => r.id === x.route)?.to));
@@ -253,12 +253,17 @@ function plan(bot, state, content, agent, roll) {
 //   outlay   the money and stock value it pays out, now and later, counted from the negative effects only
 //   standing the reputation and trust it adds (a tie-break: money first, then who thinks well of the house)
 // careful and qirad take the choice with the least outlay (the least money at risk), then the most net, then standing.
-// greedy takes the most net (money now plus later) with each point of standing counted as a share of the house's
-// cash in money: standing pays back later, and a house with more to spare buys more of it. How much a greedy house
-// values standing is its temperament, drawn once per game between 0 and STANDING_MAX (its own dice), so no card
-// has one answer for every greedy game that merely differs in money. It also draws how much of a follow-up card's pay it counts on (0 to all of it). The draw is per group (partners, court, foreign,
+// greedy takes the most net (money now plus later) with each point of standing counted at a price in dinars: standing
+// pays back later. The price is its temperament, drawn once per game and group (its own dice), so no card has one
+// answer for every greedy game. It is a flat price and does not scale with any money the house holds (DECISIONS 2026-11-20 17:2x). It also draws how much of a follow-up card's pay it counts on (0 to all of it). The draw is per group (partners, court, foreign,
 // agents, trust), so one greedy house cares for the court's good opinion and not its partners', and the next the reverse. List order breaks a full tie. random shuffles.
-export const STANDING_MAX = 0.15;
+// The range of that price, in dinars a point, drawn log-uniform. Card money runs about 2 to 10 dinars a choice, so a price from a quarter to 30
+// straddles it: in some games a card's money outweighs a point of standing and in others the point outweighs the money. A price that shrank
+// with the house's money or sat in the tens for every game (MER-101) left greedy taking the standing side of most cards. The floor is a
+// quarter, not 1, because several cards set a point of standing against 1 to 4 dinars (kamil-boat-arrived, tamer-title, muhtasib-fine):
+// from a floor of 1 the money side of those won in 0 to 15 percent of games and the card went over 90 (300 games, MER-101b).
+export const STANDING_PRICE = [0.25, 30];
+export const priceDraw = u => STANDING_PRICE[0] * (STANDING_PRICE[1] / STANDING_PRICE[0]) ** u;
 export function worthOf(state, content, choice, follow = 1, depth = 0) {
   const home = cityOf(content, 'bots').home;
   let net = 0, outlay = 0, standing = 0;
@@ -283,8 +288,8 @@ export function worthOf(state, content, choice, follow = 1, depth = 0) {
   return { net, outlay, standing, regard };
 }
 /** The choices a bot would take, best first. `open` are the ones whose requirements hold. */
-// Standing is priced against the house's money at the game's first season (`temper.start`, kept on the game record as `startMoney`), not its money now: a richer house does not grow more pious (DECISIONS 2026-11-20 16:3x, MER-101).
-export const standingOf = (w, state, temper) => Object.entries(w.regard).reduce((n, [g, by]) => n + by * (temper.start ?? state.money) * (temper[g] ?? 0), 0);
+// Standing is priced in dinars a point from the game's temper, whatever the house holds now (DECISIONS 2026-11-20 17:2x, MER-101b).
+export const standingOf = (w, state, temper) => Object.entries(w.regard).reduce((n, [g, by]) => n + by * (temper[g] ?? 0), 0);
 export function ranked(bot, state, content, open, roll, temper = {}) {
   if (bot === 'random') return shuffle(open, roll);
   if (bot === 'first') return open;
@@ -341,9 +346,8 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   if (!BOTS.includes(bot) && !EXTRA_BOTS.includes(bot)) throw new Error(`bots: no bot called "${bot}"`);
   const roll = dice(seed);
   const tdice = dice(seed + 77); tdice(); tdice();   // the first draws of a nearby seed are alike, so two are spent
-  const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, tdice() * STANDING_MAX]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
+  const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, priceDraw(tdice())]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
   let s = newGame(content, { seed, length, house });
-  temper.start = s.money;   // the house's money at the first season: what greedy prices standing against
   const out = { bot, seed, house, startMoney: s.money, trips: [], profits: [], cardMoney: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
   const routeOfX = {};   // expedition id to its route, so a return or a settlement can be told by where it went
   for (let guard = 0; guard < 500; guard++) {
