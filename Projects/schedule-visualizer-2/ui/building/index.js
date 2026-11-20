@@ -533,7 +533,11 @@ function commitPlain(action, payload, options) {
 
     // The options row follows the tool, the switch and the floor.
     function showOptions() {
+      const was = options.hidden;
       options.hidden = !tool || tool.id !== 'room';
+      // the row takes room from the plan: it is measured at once, so a press
+      // that follows the key finds the plan where the screen shows it
+      if (was !== options.hidden && styled) measure();
       const on = autoSwitch.checked;
       nextField.hidden = !on;
       nextHint.hidden = !on;

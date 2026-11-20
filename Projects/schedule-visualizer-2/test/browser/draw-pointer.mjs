@@ -496,7 +496,10 @@ if (MAIN) {
   test('the plan keeps its size whatever the status line says: every tool, the pointer on a cell and off', async () => {
     const size = () => page.evaluate(() => {
       const stage = document.querySelector('.bld-stage').getBoundingClientRect();
-      return stage.width + ' by ' + stage.height;
+      // SV2-134: the Room tool's options row (Auto-number) is its own row above the plan;
+      // the plan and that row together keep their size, which is what the status line must not change
+      const row = document.getElementById('plan-options');
+      return stage.width + ' by ' + (stage.height + (row && !row.hidden ? row.getBoundingClientRect().height : 0));
     });
     const first = await size();
     const at = await point(page, 6, 8);
