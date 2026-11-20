@@ -317,6 +317,9 @@
   }
   @media (max-width:600px){
     .tome{ margin:0; border-width:6px; }
+    /* the corners sit on the border's outer edge: 6px here, not the 10px they are set to above */
+    .corner.tl{ top:-6px; left:-6px; } .corner.tr{ top:-6px; right:-6px; }
+    .corner.bl{ bottom:-6px; left:-6px; } .corner.br{ bottom:-6px; right:-6px; }
     main{ padding:2rem 1.1rem 3rem; }
   }
 </style>

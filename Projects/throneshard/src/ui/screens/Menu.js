@@ -37,7 +37,7 @@ export class MainMenu {
           </div>
         </div>
       </div>
-      <div class="mn-foot">A three.js MOBA · Local build</div>`);
+      <div class="mn-foot">A three.js MOBA</div>`);
     this.node.querySelector('[data-act=play]').onclick = () => { ui.sfx('confirm'); ui.showHeroSelect(); };
     this.node.querySelector('[data-act=settings]').onclick = () => { ui.sfx('click'); openSettings(ui); };
     this.node.querySelector('[data-act=controls]').onclick = () => { ui.sfx('click'); openControls(ui); };
