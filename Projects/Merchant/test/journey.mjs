@@ -2617,7 +2617,10 @@ try {
     });
     // ---- MER-87: what a result says. A loss return's docked pay says the agent's name, never the token the card is written with.
     await test('MER-87: "Take 20 dinars from Ali\'s next pay" on a loss return says "Ali trusts the house less", never a raw $agent', async () => {
-      const st = lossSave();
+      // the entry that holds the dock choice is `return-loss-forgive`; its choices on a loss paper of Ali's, as routes.js fills them
+      const st = lossSave(), forgive = content80.returns.find(e => e.id === 'return-loss-forgive');
+      st.desk[0].data.choices = forgive.choices.map(c => ({ ...structuredClone(c), label: c.label.replaceAll('{agent}', 'Ali'), ...(c.hint !== undefined ? { hint: c.hint.replaceAll('{agent}', 'Ali') } : {}) }));
+      st.desk[0].data.entry = forgive.id;
       await load(st);
       await page.click('#choice-p80-0-dock');
       await page.waitForSelector(BACK);

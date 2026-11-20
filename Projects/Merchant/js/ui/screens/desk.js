@@ -39,7 +39,6 @@ export function createDesk(app) {
   let seasonKey = null;
   let wasLive = false;
   let stillId = null;
-  let drawn = 0;           // counts draws, so a late font measure belongs to the latest one
   const shown = new Set(); // "id:face" already on screen, so an arrival does not replay
 
   const still = h('div', { class: 'desk-stills' });
@@ -176,17 +175,22 @@ export function createDesk(app) {
   /** DESIGN 5: a raised paper's first choice is in view when it opens. The stack scrolls (screens.css), and edges and
       a long body can push the choices below its foot; the stack is then scrolled until the choice shows (the paper's
       head and its edges scroll up out of sight, and scrolling back brings them). */
-  function revealChoice() {
+  function revealChoice(late = null) {
     const box = qs('.stack-papers', el);
-    box.scrollTop = 0;
+    // a late measure (the arrival animation ended, a font came) only finishes the first one: if the stack has been
+    // scrolled since, by a hand or a script, it is left where it is
+    if (late !== null && box.scrollTop !== late) return;
+    if (late === null) box.scrollTop = 0;
     const sheet = qs('.sheet', sheetBox);
     if (!sheet || getComputedStyle(box).overflowY !== 'auto') return;
     const target = qs('.choice, #btn-next', sheet);
     if (!target) return;
     const need = target.getBoundingClientRect().bottom + 6 - box.getBoundingClientRect().bottom;
     if (need > 0) box.scrollTop += need;   // the head may scroll off: the choice is the part a player cannot do without
-    // the sheet rises into place for 220 ms: measure once more when it lies still
-    sheet.addEventListener('animationend', () => { const n2 = target.getBoundingClientRect().bottom + 6 - box.getBoundingClientRect().bottom; if (n2 > 0) box.scrollTop += n2; }, { once: true });
+    const at = box.scrollTop;
+    // the sheet rises into place for 220 ms, and a font may arrive: measure once more when it lies still
+    sheet.addEventListener('animationend', () => revealChoice(at), { once: true });
+    if (late === null && document.fonts?.status === 'loading') document.fonts.ready.then(() => { if (sheet.isConnected) revealChoice(at); });
   }
 
   // what the settled trips came to for the house, from the jump's own lines (`houseNet` of each)
@@ -342,9 +346,6 @@ export function createDesk(app) {
       }
     }
     revealChoice();   // after focus, which scrolls the heading into view and would undo it
-    // a font that arrives after the first draw changes every line's height: measure again once, for this draw only
-    const mine = ++drawn;
-    if (document.fonts?.status === 'loading') document.fonts.ready.then(() => { if (mine === drawn) revealChoice(); });
   }
 
   // ---- the keyboard (DESIGN 6)
