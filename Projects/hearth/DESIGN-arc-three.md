@@ -645,8 +645,12 @@ Sound uses `Math.random`, never `R()`.
   beat while it sounds.
 - **Seen.** The notes over the singers move in time with what you hear.
 - **Save.** None. **Stream.** None.
-- **Checks.** The gate; `twelve`: the tune's peak stays within 0.09 to 0.12
-  (it is 0.103); a lost song is still measured silent; two runs still give the
+- **Checks.** The gate; `twelve`: the tune alone on the sfx bus, after a 4 s
+  settle of `wayTune`, stays within 0.04 to 0.06 (it is 0.049, 0.0485 to 0.049
+  in fifteen runs) and at least 0.35 of the room floor (0.53 to 0.63 in the same
+  runs); the master-bus reading (0.099 to 0.123 over a random wind and sea bed,
+  which failed the old 0.09 to 0.12 band about one night in ten) is printed
+  only (TG-99, #1086). A lost song is still measured silent; two runs still give the
   same degrees. `look.mjs`: with `singNow` set by a forced `songTune`, the
   note pixels over a singer differ between `animT` at a beat and half a beat
   later. Break: let a lost song schedule its notes; the measured-silence row
