@@ -357,6 +357,19 @@ test('7. the Rooms tab: a Features column that sorts by count, and a popover wit
   await page.keyboard.press('Escape');
   await shows(() => !document.querySelector('#rooms-features-pop').matches(':popover-open'));
   assert.equal(await activeKey(), rooms[0] + ':features', 'the focus returns to the cell');
+  // the popover names its room
+  const roomWords = await page.evaluate((id) => {
+    return document.querySelector('[data-key="' + id + ':features"]').getAttribute('aria-label').replace(/^Features of (.*?): .*$/, '$1');
+  }, rooms[1]);
+  await page.click(key(rooms[1] + ':features'));
+  await shows(() => document.querySelector('#rooms-features-pop')?.matches(':popover-open'));
+  assert.equal(await page.$eval('#rooms-features-pop', (el) => el.getAttribute('aria-label')), 'Features of ' + roomWords);
+  // the list dialog from the popover hides it; on close the focus goes back to that room's cell
+  await page.click('#rooms-features ' + key('feature-edit'));
+  await page.waitForSelector('#features-dialog[open]');
+  assert.equal(await page.$eval('#rooms-features-pop', (el) => el.matches(':popover-open')), false, 'the modal closed the popover');
+  await closeDialog();
+  assert.equal(await activeKey(), rooms[1] + ':features', 'the focus returns to the cell that opened the popover');
   await page.click('#inspector [data-tab="properties"]');
 });
 

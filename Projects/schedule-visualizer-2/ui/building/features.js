@@ -6,8 +6,11 @@
 //   featuresField(env, { room(), state(), id }) -> { element, input, sync() }
 //     The chips, the combobox and the "Edit the features list…" button of one
 //     room. `room()` is the room it is for (null when there is none), `state()`
-//     the inspector's state ({ project }). `sync()` draws it again.
-//   openFeaturesDialog(env, opener) -> { element, close, closed }
+//     the inspector's state ({ project }). `sync()` draws it again. When the
+//     field sits in something the dialog hides (the Rooms tab's popover),
+//     `back()` gives what the dialog returns the focus to, and `backFallback()`
+//     what takes it when that has gone.
+//   openFeaturesDialog(env, opener, { fallbackFocus }) -> { element, close, closed }
 //     The list as rows (a name field, Move up, Move down, Delete…), Add a
 //     feature, and Add common ones on an empty list.
 //
@@ -106,7 +109,10 @@ export function featuresField(env, source) {
     data: { key: 'feature-add' },
   });
   const list = h('ul', { class: 'picker__list bi-feature-list', role: 'listbox', id: listId, 'aria-label': 'Features to add', hidden: true });
-  const edit = h('button', { type: 'button', class: 'btn btn--quiet bi-linkbutton', data: { key: 'feature-edit' }, on: { click: () => openFeaturesDialog(env, edit) } }, 'Edit the features list…');
+  const edit = h('button', { type: 'button', class: 'btn btn--quiet bi-linkbutton', data: { key: 'feature-edit' }, on: { click: () => {
+    const back = typeof source.back === 'function' ? source.back() : null;
+    openFeaturesDialog(env, back || edit, back ? { fallbackFocus: source.backFallback } : undefined);
+  } } }, 'Edit the features list…');
   const element = h('div', { class: 'bi-features', id, data: { part: 'features' } },
     heading,
     chips,
@@ -330,7 +336,7 @@ export function featuresField(env, source) {
 
 // ---------------------------------------------------------------- the list dialog
 
-export function openFeaturesDialog(env, opener) {
+export function openFeaturesDialog(env, opener, options) {
   const { store, ctx } = env;
   const body = h('div', { class: 'features-dialog__content' });
   const note = h('p', { class: 'features-dialog__note', id: 'features-note' });
@@ -358,7 +364,7 @@ export function openFeaturesDialog(env, opener) {
     opener,
     id: 'features-dialog',
     class: 'features-dialog',
-    fallbackFocus: () => document.getElementById('inspector-title') && document.getElementById('inspector-title').focus(),
+    fallbackFocus: (options && options.fallbackFocus) || (() => document.getElementById('inspector-title') && document.getElementById('inspector-title').focus()),
     buttons: [{ label: 'Done', value: true, kind: 'primary' }],
   });
 
