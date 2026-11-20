@@ -153,18 +153,43 @@ export function news(s, content) {
   addPaper(s, paper);
 }
 
-/** "<Stop> pays 38 for <good>. <Home> pays 25." One sentence pair a letter, on the good the
-    house holds that the stop sells, else the first good both trade. */
+/** The first year's one line (DESIGN 4.7): "<Stop> pays 164 for pepper and 98 for linen." a stop, on
+    every good the house holds in its warehouse that the stop sells (else the first good both trade),
+    then one sentence for home: "Cairo pays 128 for pepper and 71 for linen." The goods the house holds
+    lead, so a house that carries linen reads the linen price whatever else the letter holds. */
 function firstYearLine(s, content, letters, home) {
   const name = id => (content.goods ?? []).find(g => g.id === id)?.name.toLowerCase() ?? id;
   const homeName = stopOf(content, home).name;
-  return letters.map(l => {
+  const join = parts => parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  const named = [];
+  const lines = letters.map(l => {
     const both = Object.keys(l.prices).filter(g => s.market[home]?.[g]);
-    const goodId = both.find(g => s.stock[g] > 0) ?? both[0] ?? Object.keys(l.prices)[0];
-    const at = stopOf(content, l.stop).name;
-    const here = s.market[home]?.[goodId] ? ` ${homeName} pays ${truePrice(s, content, home, goodId)}.` : '';
-    return `${at} pays ${l.prices[goodId]} for ${name(goodId)}.${here}`;
-  }).join(' ');
+    const held = Object.keys(l.prices).filter(g => s.stock[g] > 0 && s.market[home]?.[g]);
+    const goods = held.length ? held : [both[0] ?? Object.keys(l.prices)[0]];
+    for (const g of goods) if (s.market[home]?.[g] && !named.includes(g)) named.push(g);
+    return `${stopOf(content, l.stop).name} pays ${join(goods.map(g => `${l.prices[g]} for ${name(g)}`))}.`;
+  });
+  const here = named.length ? ` ${homeName} pays ${join(named.map(g => `${truePrice(s, content, home, g)} for ${name(g)}`))}.` : '';
+  return lines.join(' ') + here;
+}
+
+/** What the house expects a good to fetch at `stopId` now, from what it knows and nothing it should
+    not: the last known price, aged toward the city's base by the seasons since. Drift pulls the
+    factor f (price over base) to f^(1 - revert) each season (drift above, without its noise), so a
+    price known `age` seasons ago has f^((1 - revert)^age) left of its distance from the base.
+    Returns { p, at, age, written } or null when the house has no news of it ("no news"). A whole
+    number of dinars; reads state.known, never the true market. */
+export function expectedPrice(state, content, stopId, goodId) {
+  const k = state.known[stopId]?.[goodId];
+  if (!k) return null;
+  const idx = seasonIndex(state, content);
+  const good = (content.goods ?? []).find(g => g.id === goodId);
+  const then = baseOf(state, content, stopId, goodId, k.at), now = baseOf(state, content, stopId, goodId, idx);
+  if (!good || !then || !now) return null;
+  const age = Math.max(0, idx - k.at);
+  const f = k.p / then;
+  const aged = Math.pow(f, Math.pow(1 - (good.revert ?? 0), age));
+  return { p: Math.max(1, Math.round(now * aged)), at: k.at, age, written: writeSeason(content, k.at) };
 }
 
 /** What the house knows, for view(): prices[stop][good] = { p, at, written, age, ageWords }.

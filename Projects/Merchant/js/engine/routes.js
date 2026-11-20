@@ -65,9 +65,10 @@ const cargoText = (content, cargo) => {
   const parts = Object.entries(cargo).filter(([, n]) => n > 0).map(([g, n]) => qty(content, g, n));
   return parts.length ? parts.join(', ') : 'no goods';
 };
+const commas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');   // 2663 reads "2,663", on every machine
 function coins(content, n) {
   const cur = cityOf(content, 'expeditions').currency ?? 'coins';
-  return `${n} ${Math.abs(n) === 1 && cur.endsWith('s') ? cur.slice(0, -1) : cur}`;
+  return `${commas(n)} ${Math.abs(n) === 1 && cur.endsWith('s') ? cur.slice(0, -1) : cur}`;
 }
 const addStock = (s, good, n) => { const v = (s.stock[good] ?? 0) + n; if (v > 0) s.stock[good] = v; else delete s.stock[good]; };
 
@@ -307,7 +308,7 @@ function build(s, content, plan) {
   const no = msg => { problems.push(msg); };
 
   if (s.phase !== 'desk') no('You can send people out only while the desk is open.');
-  if (!plan || typeof plan !== 'object') return { problems: ['There is no plan to send.'], warnings };
+  if (!plan || typeof plan !== 'object') return { problems: ['There is no plan to send.'], warnings, cost: null };
 
   // who goes
   const agent = plan.agent ? agentOf(content, plan.agent) : null;
@@ -344,17 +345,20 @@ function build(s, content, plan) {
   // the part bought now, at the home price, and what it costs
   const sim = { ...s, market: structuredClone(s.market) };
   let buyCost = 0, stockValue = 0;
-  const taken = {};
+  const taken = {}, goodsCost = [];
   for (const [g, n] of Object.entries(cargo)) {
     const have = s.stock[g] ?? 0;
     const fromStock = Math.min(have, n);
     const need = n - fromStock;
     taken[g] = fromStock;
     stockValue += fromStock * (M.truePrice(s, content, home, g) ?? 0);
+    let spent = 0;
     if (need > 0) {
       if (!s.market[home]?.[g]) { no(`The house has ${have ? `only ${have}` : 'none'} in the warehouse and ${homeName} does not sell ${goodName(content, g)}.`); continue; }
-      for (let i = 0; i < need; i++) { buyCost += M.buyPrice(sim, content, home, g); M.notePurchase(sim, content, home, g, 1); }
+      for (let i = 0; i < need; i++) { spent += M.buyPrice(sim, content, home, g); M.notePurchase(sim, content, home, g, 1); }
     }
+    buyCost += spent;
+    goodsCost.push({ good: g, loads: n, fromWarehouse: fromStock, bought: need, cost: spent });
   }
 
   // the contract
@@ -391,10 +395,20 @@ function build(s, content, plan) {
     }
   }
 
-  // money
+  // money: the one sum the sheet shows and the apply below takes (MER-72). `now` is charged at Send;
+  // `later` is what the road will cost, from the purse and the cargo (tolls) and at the return (wage),
+  // as far as the plan can know it.
   const houseMoney = buyCost + purse - partners + wagePaid;
+  const cost = {
+    goods: goodsCost, bought: buyCost, purse: isCount(purse) ? purse : 0, partners, wagePaid, total: houseMoney,
+    later: route && proj?.ok ? {
+      tolls: route.legs.reduce((n, l) => n + (l.toll ?? 0), 0),
+      wage: kind === 'own' && !prepay && agent ? Math.max(1, proj.seasons - 1) * (agent.wage ?? 0) : 0,
+      wagePerSeason: agent?.wage ?? 0,
+    } : null,
+  };
   if (!problems.length && s.money < houseMoney) no(`The house has ${coins(content, s.money)} and this costs ${coins(content, houseMoney)}${wagePaid ? `, with ${coins(content, wagePaid)} of it ${agent.name}'s wage paid first` : ''}.`);
-  if (problems.length) return { problems, warnings };
+  if (problems.length) return { problems, warnings, cost };
 
   // apply
   for (const [g, n] of Object.entries(taken)) addStock(s, g, -n);
@@ -416,13 +430,18 @@ function build(s, content, plan) {
   s.expeditions.push(x);
   rec.where = 'road';
   s.log.push({ at: idx, kind: 'outfit', ref: x.id, choice: route.id });
-  return { problems, warnings };
+  return { problems, warnings, cost };
 }
 
-/** The same check `outfit` makes, without sending: { ok, reasons, warnings }. */
+/** The same check `outfit` makes, without sending: { ok, reasons, warnings, cost }. `cost.total` is
+    the dinars `outfit` takes from the house, from the same pass (MER-72); `cost.goods` lists each
+    good ({ good, loads, fromWarehouse, bought, cost }), `cost.purse`, `cost.partners` (what the
+    partners put in, which the house does not pay) and `cost.wagePaid` make up the rest; `cost.later`
+    is { tolls, wage, wagePerSeason } the road will take afterwards, or null when the road does not
+    project. `cost` is null when the plan is too broken to price (no plan at all). */
 export function checkPlan(state, content, plan) {
-  const { problems, warnings } = build(structuredClone(state), content, plan);
-  return { ok: problems.length === 0, reasons: problems, warnings };
+  const { problems, warnings, cost } = build(structuredClone(state), content, plan);
+  return { ok: problems.length === 0, reasons: problems, warnings, cost };
 }
 
 /** Sends an expedition, or throws with every reason the plan was refused, in words. */
