@@ -69,7 +69,7 @@ const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
 // frames the milestone play found it cut off at (the board and a small laptop) and the 1366 laptop between them.
 // The target is the paper's first choice, or Open the house on the page between the acts.
 const OPENS_WITH = { 'desk-letter': '.sheet .choice', 'desk-question': '.sheet .choice', 'desk-report': '.sheet .choice', 'desk-papers': '.sheet .choice',
-  'desk-return': '.sheet .choice', 'desk-loss': '.sheet .choice', 'between-acts': '#btn-open-house' };
+  'desk-return': '.sheet .choice', 'desk-loss': '.sheet .choice', 'between-acts': '#btn-open-house', 'between-acts-long': '#btn-open-house' };
 const OPEN_FRAMES = new Set(['board', 'laptop', 'laptop-small']);
 // MERCHANT_LAYOUT_ONLY=desk-loss,desk-return runs just those screens (a development shortcut; the suite must run whole to count)
 const ONLY = (process.env.MERCHANT_LAYOUT_ONLY || '').split(',').filter(Boolean);
@@ -124,6 +124,18 @@ const withLetter = (id, kind, stop, lag, standing) => {
   sent.post.push({ id, kind, expedition: x.id, agent: x.agent, stop, standing, written: sent.t, lag, arrive: sent.t + 1 });
   return eng.endSeason(sent, content);
 };
+// MER-87 (finding 7): the page between acts as the milestone play found it, two settled trips and three paragraphs of the
+// years, long enough that its one button is below any frame's fold. The jump entry is the engine's; the lines are added to it.
+states.interludeLong = (() => {
+  const s = structuredClone(states.interlude), jump = [...s.log].reverse().find(e => e.kind === 'jump');
+  const line = (id, text) => ({ expedition: id, result: 'return', text, cargo: { linen: 3 }, houseNet: -13 });
+  jump.settled = [line('x91', 'Yusuf came home from Damascus. The house lost 13 dinars.'), line('x92', 'Samir came home from Damascus. The house lost 8 dinars.')];
+  const para = t => ({ id: 'p' + t.length, interlude: t });
+  jump.events = ['In April 1326 a young scholar from Tangier landed at Alexandria and went on to Cairo. His name was Ibn Battuta. He would travel for about thirty years, and long afterward he told the story of what he saw.',
+    'In the summer of 1326 Ibn Battuta crossed the desert toward Aydhab on the Red Sea. He found the crossing shut. The king of the Beja was at war with the sultan\'s soldiers and had sunk the ships. Ibn Battuta turned back to the Nile.',
+    'In the summer of 1332 the sultan, al-Nasir Muhammad, set out for Mecca on the pilgrimage. He took his wife and his son Anuk with him. Every Muslim who can make the journey is asked to go once.'].map(para);
+  return s;
+})();
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
 states.report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
 const plain = s => JSON.parse(JSON.stringify(s));
@@ -248,6 +260,8 @@ const SCREENS = [
     } },
   { name: 'between-acts',
     go: async (p, f) => { await load(p, '#desk', { state: states.interlude, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
+  { name: 'between-acts-long',
+    go: async (p, f) => { await load(p, '#desk', { state: states.interludeLong, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
   ...[['notice', 'road', 'ending-next'], ['recall', 'road', 'ending-send'], ['recall-empty', 'recall', 'ending-send'], ['home', 'ended', 'ending-next'], ['score', 'ended', 'ending-next'], ['after', 'ended', 'ending-again']].map(([page, st, ready]) => ({
     name: `ending-${page}`,
     go: async (p, f) => { const at = page.replace('-empty', ''); await load(p, `#ending/${at}`, { state: states[st], large: f.large }); await p.waitForSelector(`#${ready}`); await p.waitForSelector(`[data-page="${at}"]`); } })),
