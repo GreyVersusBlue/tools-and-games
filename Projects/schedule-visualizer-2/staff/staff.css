@@ -599,6 +599,13 @@ h1:focus {
   display: none;
 }
 
+/* Free right now's count line stays on the page while empty, so it is still
+   a live region when a chip is chosen; empty, it takes back its gap in the stack */
+.stack > [data-out="features-count"]:empty {
+  align-self: start;
+  margin-top: calc(-1 * var(--s-4));
+}
+
 .toggle {
   min-height: var(--tap);
   padding: var(--s-2) var(--s-3);

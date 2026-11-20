@@ -551,7 +551,8 @@ export function floorPanel(env) {
         wellsSeen.add(key);
         const facts = stairwellFacts(state.project, connection.well);
         if (facts) {
-          entries.push({ well: true, id: 'well:' + key, letter: facts.letter, facts });
+          // keyed by its first flight, not its letter: renaming the well keeps the row, and the focus in it
+          entries.push({ well: true, id: 'well:' + facts.flightIds[0], letter: facts.letter, facts });
           continue;
         }
       }
@@ -627,7 +628,7 @@ export function floorPanel(env) {
     // one row for a stairwell: its letter, its floors and way, the way for every flight, Split
     const buildWell = (entry) => {
       const letter = field({ label: 'Letter or name', value: entry.letter, commit: (value) => {
-        store.apply(setStairwellLetter, { well: entry.letter, letter: value });
+        store.apply(setStairwellLetter, { well: current.letter, letter: value });
         ctx.announce((store.undoOutcome || {}).text || 'Renamed the stairwell.');
       } });
       letter.input.dataset.key = 'well:' + entry.id;
@@ -641,7 +642,8 @@ export function floorPanel(env) {
         input.addEventListener('change', () => {
           if (!input.checked) return;
           const outcome = ed().commit(setStairwellDirection, { well: current.letter, direction: option.value }, { done: (made) => made.text, toast: (made) => made.text });
-          if (outcome === null) input.checked = false;
+          // refused: the choice there was before is ticked again (none where the flights differ)
+          if (outcome === null) for (const each of wayHost.querySelectorAll('.bi-way__input')) each.checked = each.value === current.facts.way;
         });
         wayHost.append(h('label', { class: 'bi-way__chip' }, input, h('span', { class: 'bi-way__text' }, option.label)));
       }
@@ -651,7 +653,15 @@ export function floorPanel(env) {
           env.show({ floorId: stop.floorId, cells: [stop.cell] });
         }),
         small('Split into separate stairs', 'split:' + entry.id, '', () => {
-          ed().commit(splitStairwell, { well: current.letter }, { done: (made) => made.text, toast: (made) => made.text });
+          // the row goes: the focus goes to the first of its flights' own rows, else the next row, else the floor's name
+          const flights = current.facts.flightIds;
+          commitKeepingFocus(element, ['floor-name'], () => {
+            const made = ed().commit(splitStairwell, { well: current.letter }, { done: (outcome) => outcome.text, toast: (outcome) => outcome.text });
+            if (made === null) return made;
+            const heir = flights.map((id) => element.querySelector('[data-key="show-connection:' + id + '"]')).find(Boolean);
+            if (heir) heir.focus({ preventScroll: false });
+            return made;
+          });
         }),
       ];
       return {
