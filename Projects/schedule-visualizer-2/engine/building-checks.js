@@ -497,7 +497,11 @@ export function buildingChecks(project, graph) {
     const first = stopsOf[0][0];
     const onFirst = stopsOf[0].filter((stop) => stop.floorId === first.floorId).map((stop) => stop.cell).sort((a, b) => a - b);
     const where = { floorId: first.floorId, cells: onFirst, well: well.letter, connectionIds: well.connectionIds.slice(), floors: stopsOf.map((stops) => ({ floorId: stops[0].floorId, cells: stops.filter((stop) => stop.floorId === stops[0].floorId).map((stop) => stop.cell).sort((a, b) => a - b) })) };
-    const finding = { id: findingId('stairwell-split', first.floorId, first.cell), kind: 'stairwell-split', severity: 'warning', text: 'Stairwell ' + well.letter + ' is in ' + well.parts + ' parts: ' + (words.length > 2 ? words.slice(0, -1).join(', ') + ', and ' + words[words.length - 1] : words.join(', and ')) + '. Join the parts, or split the stairwell.', where, fixable: true };
+    // parts that both stop on one floor cannot be joined (a stairwell stops
+    // once on each floor, and joinStairwell refuses): the fix is not offered
+    const twice = building.floors.find((floor) => well.stops.filter((stop) => stop.floorId === floor.id).length > 1);
+    const fix = twice ? ' Its parts both stop on ' + twice.name + ', at different stairs, so they cannot be joined; split the stairwell.' : ' Join the parts, or split the stairwell.';
+    const finding = { id: findingId('stairwell-split', first.floorId, first.cell), kind: 'stairwell-split', severity: 'warning', text: 'Stairwell ' + well.letter + ' is in ' + well.parts + ' parts: ' + (words.length > 2 ? words.slice(0, -1).join(', ') + ', and ' + words[words.length - 1] : words.join(', and ')) + '.' + fix, where, fixable: !twice };
     found['stairwell-split'].push(finding);
   }
 

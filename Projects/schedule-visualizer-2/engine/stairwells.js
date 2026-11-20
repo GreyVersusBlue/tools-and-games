@@ -515,12 +515,23 @@ export const setStairwellLetter = action(
 // payload: { well }. The fix of the building check `stairwell-split`: a
 // stairwell in parts gets one flight between the closest stops of consecutive
 // parts by level, carrying the well and its way. A whole stairwell is refused.
+// So is one that stops twice on a floor (two parts that both reach Floor 2 at
+// different stairs, as a torn A and B that share a floor): a stairwell stops
+// once on each floor (22.4), so no flight could make it one, and a flight
+// between two cells of one floor is not stairs (SV2-135b).
 export const joinStairwell = action(
   { label: (before, payload) => 'Join the parts of Stairwell ' + (typeof payload.well === 'string' ? payload.well.trim() : ''), bumps: [GEOMETRY, BUILDING], focus: focusOn },
   (project, payload, ctx) => {
     const building = project.building;
     const well = needWell(building, payload.well);
     if (well.parts < 2) refuse('Stairwell ' + well.letter + ' is in one piece already; there is nothing to join.', 'nothing-to-do');
+    for (const stop of well.stops) {
+      const same = well.stops.filter((other) => other.floorId === stop.floorId);
+      if (same.length < 2) continue;
+      const floor = floorById(building, stop.floorId);
+      const where = same.map((other) => cellWords(floor, other.cell));
+      refuse('Stairwell ' + well.letter + ' stops twice on ' + floor.name + ': at ' + where.slice(0, -1).join(', ') + ' and ' + where[where.length - 1] + '. A stairwell stops once on each floor, so its parts cannot be joined; split the stairwell, or remove one of those connections.', 'floor-twice');
+    }
     const flights = flightsOfWell(building, well);
     // the parts: flights that share a stop
     const parent = new Map();

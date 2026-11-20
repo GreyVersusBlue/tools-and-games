@@ -215,7 +215,9 @@ test('a well in three parts lists all three, the name as typed', () => {
   project.building.connections[0].b = { floorId: floorId(2), cell: 0 };
   project.building.floors[1].name = 'Ground <i>';
   const [finding] = only(project, 'stairwell-split');
-  assert.equal(finding.text, 'Stairwell A is in 3 parts: Floor 1 to Ground <i>, Ground <i> to Floor 3, and Floor 4 to Floor 5. Join the parts, or split the stairwell.');
+  // SV2-135b: the first two parts both stop on Ground <i> (cells 0 and 14), so they cannot be joined and no Join is offered
+  assert.equal(finding.text, 'Stairwell A is in 3 parts: Floor 1 to Ground <i>, Ground <i> to Floor 3, and Floor 4 to Floor 5. Its parts both stop on Ground <i>, at different stairs, so they cannot be joined; split the stairwell.');
+  assert.equal(finding.fixable, false);
 });
 
 test('Join the parts: the action puts one flight between the closest stops, and the finding goes', () => {
