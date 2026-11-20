@@ -1106,4 +1106,42 @@ test('a loss paper carries the trip and a choices list likewise: a lost agent an
   ok(safe, 'a partial loss turned up');
 });
 
+// ---- MER-82: a loss paper names what struck, and the robbers entry is only for robbers
+const cairoRet = JSON.parse(await fs.readFile(new URL('../data/cairo/returns.json', import.meta.url), 'utf8'));
+test('causeOf: a vessel lost is the sea, the river or the desert; a part of a load taken on a road or the river is robbers; at sea it is the sea', () => {
+  const by = (b, whole) => R.causeOf({ by: b }, { whole });
+  eq(['galley', 'dhow'].flatMap(b => [by(b, true), by(b, false)]), ['sea', 'sea', 'sea', 'sea']);
+  eq([by('nileboat', true), by('caravan', true), by('mules', true)], ['river', 'desert', 'desert']);
+  eq([by('nileboat', false), by('caravan', false), by('mules', false)], ['robbers', 'robbers', 'robbers']);
+});
+test('a loss paper carries its cause, from the leg that struck, on the desk', () => {
+  const c = risk(T, 1);
+  const lose = (jump, seed) => {
+    const x = variant(c, y => { y.city.jump = jump; });
+    const s = outfit(game(x), x, { ...WOOL, purse: 30 });
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, x);
+    return [s.desk.find(p => p.kind === 'lost')];
+  };
+  let seen = 0;
+  for (const [jump, want] of [[{ wholeLoss: 1, survivesWhole: 0 }, 'whole'], [{ wholeLoss: 0, partial: [0.5, 0.5] }, 'part']]) {
+    for (let seed = 1; seed <= 60; seed++) {
+      const [paper] = lose(jump, seed);
+      if (!paper) continue;
+      seen++;
+      const by = paper.data.route && T.routes.find(r => r.id === paper.data.route).legs[0].by;
+      eq(paper.data.cause, R.causeOf({ by }, { whole: want === 'whole' }), `${want} loss on ${by}`);
+      break;
+    }
+  }
+  eq(seen, 2, 'a whole and a part loss turned up');
+});
+test('loss-robbers fires only for robbers: a part lost at sea, or a whole vessel, takes another entry', () => {
+  const cc = variant(T, y => { y.returns = structuredClone(cairoRet); });
+  const pick = facts => R.pickEntry(game(cc), cc, 'loss', facts)?.id;
+  eq(pick({ by: 'caravan', cause: 'robbers', whole: false, survived: true }), 'loss-robbers');
+  eq(pick({ by: 'galley', cause: 'sea', whole: false, survived: true }), 'loss-survivor', 'a part lost at sea is not robbers');
+  eq(pick({ by: 'caravan', cause: 'desert', whole: true, survived: false }), 'loss-desert-gone');
+});
+
 done();

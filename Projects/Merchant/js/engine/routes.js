@@ -211,6 +211,15 @@ export function jumpChances(content) {
   return { ...DEFAULT_JUMP, ...(content.city?.jump ?? {}) };
 }
 
+/** What struck, from the leg and the loss (returns.json's `cause` fact): a ship, a boat or a caravan that goes down is the
+    sea, the river or the desert; a part of a load that goes on a road or a river is taken by robbers; a part that goes
+    at sea is the sea's. No draw is spent, so a seed's stream does not move. */
+export function causeOf(leg, loss) {
+  if (leg.by === 'galley' || leg.by === 'dhow') return 'sea';
+  if (loss.whole) return leg.by === 'nileboat' ? 'river' : 'desert';
+  return 'robbers';
+}
+
 /** A loss happened to `x`. Draws: whole or partial; a whole loss then draws whether the agent
     lives, a partial loss how much goes. Returns what was lost; changes `x` on a partial loss. */
 function loseSome(s, content, x) {
@@ -259,8 +268,8 @@ function lostPaper(s, content, x, loss, leg) {
   }
   const idx = seasonIndex(s, content);
   const trip = tripFacts(content, x.agent, route, leg.to, mainGoodOf(x.book?.cargo ?? x.cargo), idx + 1 - x.sent, x.id);
-  const entry = pickEntry(s, content, 'loss', { by: leg.by, whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
-  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, route: route.id, whole: loss.whole, survived: loss.survived, lines, costs, trip, ...askOf(content, entry, trip) } };
+  const entry = pickEntry(s, content, 'loss', { by: leg.by, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
+  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, route: route.id, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, lines, costs, trip, ...askOf(content, entry, trip) } };
 }
 
 // ---------------------------------------------------------------------------------------------
