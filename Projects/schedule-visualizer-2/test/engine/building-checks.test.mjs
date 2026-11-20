@@ -28,7 +28,8 @@ function otherThanDeadEnds(findings) {
 
 test('the sample school passes every building check but the dead ends its halls make: its two deliberate problems are in the schedule', () => {
   // SV2-135 moved this line: three notes (halls that end in a wall past 6 cells, rooms along them) and two warnings (5-cell stubs east of the stairs on Floors 2 and 3)
-  assert.deepEqual(buildingChecks(school()).map((finding) => finding.severity + ' ' + finding.id), ['note dead-end:fsample001:291', 'note dead-end:fsample002:291', 'warning dead-end:fsample002:314', 'note dead-end:fsample003:312', 'warning dead-end:fsample003:314']);
+  // SV2-135b moved this line: the Floor 3 stub east of the stairs serves the doorless Plant Room (DECISIONS 2026-11-20) and is 5 cells, so it says nothing
+  assert.deepEqual(buildingChecks(school()).map((finding) => finding.severity + ' ' + finding.id), ['note dead-end:fsample001:291', 'note dead-end:fsample002:291', 'warning dead-end:fsample002:314', 'note dead-end:fsample003:312']);
   assert.deepEqual(otherThanDeadEnds(buildingChecks(school())), []);
 });
 

@@ -674,6 +674,8 @@ function digest(project) {
 // checks or the routes on purpose, it records the file again, and says so.
 // SV2-135's dead-end check moved the `whole` digest of `sample`, `sampleBeforeStairsC` and `plain`
 // (the sample's halls end in dead ends it now finds); crowd, walks, findings, loads and routes did not move.
+// SV2-135b moved the same three `whole` digests again: Floor 3's east stub serves the doorless Plant Room
+// (DECISIONS 2026-11-20), so its warning went; nothing else moved.
 test('a project with no release gives byte-identical pipeline results to sv2 before this unit', () => {
   const baseline = JSON.parse(readFileSync(path.join(HERE, '..', 'fixtures', 'release-baseline.json'), 'utf8'));
   // `sampleBeforeStairsC` is the sample as it was at 180edab7, so the old digests still prove the promise on a school with a calendar, bell schedules and marks
