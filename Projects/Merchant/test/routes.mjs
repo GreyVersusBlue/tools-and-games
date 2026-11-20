@@ -531,16 +531,15 @@ test('returns put a return paper on the desk: the headline sentence first, then 
   eq([paper.agent, paper.expedition, paper.state], ['mira', 'x1', 'open']);
   ok(/^Mira came home from Hilltown\. The house made \d+ coins\.$/.test(d.headline), d.headline);
   eq(d.route, 'Harbour to Hilltown and back, six seasons');
-  eq(d.account.map(r => r.label), ['Sent out', 'Sold', 'Waiting', 'Back home', 'Profit', "Mira's wage"]);
+  eq(d.account.map(r => r.label), ['Sent out', 'Sold', 'Waiting', 'Back home', "Mira's wage", 'Profit']);
   eq(d.account[2].text, 'one season at a stop, kept at 4 coins a season');
   eq(d.account[0].text, '6 loads of wool');
-  ok(/^6 loads of wool in Hilltown$/.test(d.account[1].text));
+  ok(/^6 loads of wool in Hilltown, for \d+ coins$/.test(d.account[1].text), d.account[1].text);
   ok(paperChoices(s, c, paper.id).length > 0, 'a return paper offers its returns.json choices (MER-81); the screens still answer it ok until MER-80');
   eq(s.agents.mira.where, 'harbour');
-  const profit = d.account.find(r => r.label === 'Profit').amount;
-  eq(d.houseNet, profit - 10, 'the headline is the account\'s profit less the wage, which the account also shows');
-  eq(d.account.find(r => r.label === "Mira's wage").amount, -10, 'five seasons on the road (the season it was sent in is not one) at 2 a season');
-  eq(d.account.find(r => r.label === "Mira's wage").text, '2 coins a season for five seasons');
+  eq(d.account.find(r => r.label === 'Profit').amount, d.houseNet, 'the Profit row is the headline\'s number (MER-88)');
+  eq(d.account.find(r => r.label === "Mira's wage").amount, -12, 'six seasons away, as the route line says, at 2 a season (MER-88: the season it left in counts)');
+  eq(d.account.find(r => r.label === "Mira's wage").text, '2 coins a season for six seasons');
   ok(d.houseNet > 0, `six loads sent at 20 and sold at 30 falling by a fifteenth a load: ${d.houseNet}`);
   void sent;
   eq(s.log.at(-1).kind === 'return' || s.log.some(e => e.kind === 'return' && e.ref === 'x1'), true);
@@ -610,8 +609,8 @@ test('a qirad end to end: the partners are paid their stake and share out of wha
   eq(agent + partners + house, cash + 0, 'with every load sold, what came home is cash, and the three shares are all of it');
   eq(s.money - before.money, cash - agent - partners, 'the house\'s money rose by the cash less what it paid out');
   ok(agent > 0 && partners >= 100, `agent ${agent}, partners ${partners}`);
-  eq(d.account.map(r => r.label).slice(-2), ["Mira's share", "The partners' share"]);
-  ok(/keeps one third of a profit and bears none of a loss/.test(d.account.at(-2).text), d.account.at(-2).text);
+  eq(d.account.map(r => r.label).slice(-4), ["The partners put in", "Mira's share", "The partners' share", 'Profit']);
+  ok(/keeps one third of a profit and bears none of a loss/.test(d.account.at(-3).text), d.account.at(-3).text);
   void money0;
 });
 
@@ -944,7 +943,7 @@ test('gold is traded by the chest: the goods file says so, and the account says 
   const paper = home.desk.find(p => p.kind === 'return');
   ok(paper, 'the expedition came home');
   eq(paper.data.account[0].text, '2 chests of gold');
-  ok(/^2 chests of gold in Damascus$/.test(paper.data.account[1].text), paper.data.account[1].text);
+  ok(/^2 chests of gold in Damascus, for \d+ dinars$/.test(paper.data.account[1].text), paper.data.account[1].text);
 });
 
 // ---- whole games, scripted
@@ -1000,8 +999,9 @@ test('a seeded testport game with a scripted plan runs to the end in both length
 test('a seeded cairo three-act game with a scripted plan runs to the end in Node, jumps twice, and ends with the recall', () => {
   // an expedition is sent in the final season, so it is on the road when the game ends whatever the cards drew
   // MER-78: seed 10 became 13. The draw's one-favour and no-two-of-a-kind rules deal other cards, so no agent was home to face the plague in seed 10's game.
+  // MER-88: seed 15 became 13 (the wage now counts the season an agent leaves in, which moves the money every later card is drawn against).
   // MER-79: seed 13 became 15 for the same reason: four new trade cards change the pool, so no agent was home to face the plague in seed 13's game.
-  const plan = { seed: 15, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  const plan = { seed: 13, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
   const a = run(C, plan);
   const b = run(C, plan);
   ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');

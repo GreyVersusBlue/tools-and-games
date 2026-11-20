@@ -13,7 +13,7 @@
 // risk (each season ridden is rolled), tolls (arrivals: toll, trade, start the next leg).
 // Trade is after risk, so a vessel lost on the way does not first sell its cargo.
 import { seasonIndex, seasonName, playedSeasons, actOfSeason, year } from './calendar.js';
-import { holds, fillTrip, tripFacts, mainGoodOf } from './conditions.js';
+import { holds, fillTrip, tripFacts, mainGoodOf, placeOf } from './conditions.js';
 import { applyAll } from './effects.js';
 import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
@@ -98,16 +98,15 @@ function legOpen(s, content, leg, k) {
 const listWords = list => (list.length <= 1 ? list.join('') : `${list.slice(0, -1).join(', ')} or ${list[list.length - 1]}`);
 const legName = (content, leg) => `${stopName(content, leg.from)} to ${stopName(content, leg.to)}`;
 
-/** Where a plan along `route` would be, season by season, if sent now. Legs start at the first
-    season they are open; the first may wait one season, a later one up to MAX_WAIT.
-    { ok, legs: [{ i, startK, startIdx, waits }], seasons, waits, warnings, why } */
-export function project(s, content, route, agent) {
+/** Walks the legs of `route` from leg `i0`, the first of which would start `k0` seasons ahead (`limit0` waits allowed
+    for it), and says where the road ends up: one rule for the outfit's estimate and for an expedition already out. */
+function walk(s, content, route, agent, i0, k0, limit0) {
   const warnings = [];
-  let k = 1, waits = 0;
+  let k = k0, waits = 0;
   const legs = [];
-  for (let i = 0; i < route.legs.length; i++) {
+  for (let i = i0; i < route.legs.length; i++) {
     const leg = route.legs[i];
-    const limit = i === 0 ? 1 : MAX_WAIT;
+    const limit = i === i0 ? limit0 : MAX_WAIT;
     let w = 0, o = legOpen(s, content, leg, k);
     while (!o.open && w < limit) { w++; k++; o = legOpen(s, content, leg, k); }
     if (!o.open) {
@@ -125,6 +124,29 @@ export function project(s, content, route, agent) {
   // k - 1 seasons from the season after sending to the last arrival, so the return opens k seasons ahead
   return { ok: true, legs, seasons: k, waits, warnings };
 }
+
+/** Where a plan along `route` would be, season by season, if sent now. Legs start at the first
+    season they are open; the first may wait one season, a later one up to MAX_WAIT.
+    { ok, legs: [{ i, startK, startIdx, waits }], seasons, waits, warnings, why } */
+export function project(s, content, route, agent) { return walk(s, content, route, agent, 0, 1, 1); }
+
+/** Seasons from the opening of the season being played until `x`'s return paper opens, by the rule `project` uses for the
+    outfit's estimate (MER-88): so the map's "home about" and the sheet's "about three seasons" are one number, and both
+    are the season the paper arrives in when nothing but the road changes it (an order, a hold, a loss). 0 for one that
+    is home. Just sent: the whole road; riding: what is left of the leg and then the rest; waiting at a stop: that leg
+    from next season. The first leg of an expedition sent this season does not move until the next closing. */
+export function returnsIn(s, content, x) {
+  if (x.status === 'home') return 0;
+  const route = routeOf(content, x.route), agent = agentOf(content, x.agent);
+  if (!route) return 0;
+  const idx = seasonIndex(s, content);
+  const fromStart = x.sent === idx;
+  const hit = fromStart ? walk(s, content, route, agent, 0, 1, 1)
+    : x.status === 'out' ? (x.leg + 1 >= route.legs.length ? { ok: true, seasons: x.left } : walk(s, content, route, agent, x.leg + 1, x.left, MAX_WAIT))
+    : walk(s, content, route, agent, x.leg, 1, MAX_WAIT);
+  return hit.ok ? hit.seasons : seasonsLeft(content, x);
+}
+
 const by = leg => ({ caravan: 'the caravan', galley: 'the galley', dhow: 'the dhow', nileboat: 'the boat', mules: 'the mules' }[leg.by] ?? 'the boat');
 
 /** The open route to `stopId` that gets there and back soonest, or null. Ties go to the one
@@ -267,9 +289,12 @@ function lostPaper(s, content, x, loss, leg) {
     lines.push({ label: 'The partners', text: `${coins(content, costs.partners)} of theirs` });
   }
   const idx = seasonIndex(s, content);
+  // an order the loss overtook says what became of it, in one sentence (MER-88)
+  const line = orderLine(content, x, seasonIndex(s, content));
+  if (line) lines.push({ label: 'Your order', text: line });
   const trip = tripFacts(content, x.agent, route, leg.to, mainGoodOf(x.book?.cargo ?? x.cargo), idx + 1 - x.sent, x.id);
   const entry = pickEntry(s, content, 'loss', { by: leg.by, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
-  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, route: route.id, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, lines, costs, trip, ...askOf(content, entry, trip) } };
+  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, orderLine: line, route: route.id, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, lines, costs, trip, ...askOf(content, entry, trip) } };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -304,25 +329,42 @@ function askOf(content, entry, trip) {
   return {
     entry: entry.id,
     ask: { title: fill(entry.title) ?? null, body: fill(entry.body) ?? null },
-    choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })),
+    choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}), ...(c.result !== undefined ? { result: fill(c.result) } : {}) })),
   };
 }
 
-/** One sentence for a return whose orders changed what the expedition did (DESIGN 2.1 rule 5), or null. It is the last
-    order that acted: `decide` (letters.js) wrote what the agent did and whether the agent would have done it unasked. */
-export function orderLine(content, x) {
+/** Where an order's answer found the agent, in words: "at Aden" or "on the road to Jeddah". */
+const placeText = (content, p) => `${p.standing === false ? 'on the road to' : 'at'} ${stopName(content, p.stop)}`;
+
+/** One sentence for a return or a loss whose orders changed what the expedition did, or whose answer could not (DESIGN 2.1
+    rule 5), or null. The last order that acted is told first (`decide`, letters.js, wrote what the agent did and whether the
+    agent would have done it unasked); failing that, the last answer that did not act: one that had not reached the agent
+    when the trip ended, or reached it between decision points after the last one, "too late", and where (MER-88). A turn-back
+    answer is never lost without a word: it turns the agent back or this line says why it did not. */
+export function orderLine(content, x, idx) {
   const o = (x.book?.orders ?? []).filter(e => e.changed).at(-1);
-  if (!o) return null;
-  const name = agentOf(content, x.agent)?.name ?? x.agent, at = stopName(content, o.stop);
-  const by = routeOf(content, x.route)?.legs?.find(l => l.from === o.stop && l.by)?.by;
-  const party = `the ${VESSEL[by] ?? 'party'}`;
-  if (o.did === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited a season there before going on.`;
-  if (o.did === HOME) {
-    if (x.book.turned === o.stop) return `Because you told ${name} to turn back at ${at}, ${party} came home from there.`;
-    return `Because you told ${name} to turn back at ${at}, ${party} would have, but no road leads home from there, so it went on.`;
+  const name = agentOf(content, x.agent)?.name ?? x.agent;
+  const route = routeOf(content, x.route);
+  if (o) {
+    const at = stopName(content, o.stop);
+    const by = route?.legs?.find(l => l.from === o.stop && l.by)?.by;
+    const party = `the ${VESSEL[by] ?? 'party'}`;
+    if (o.did === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited a season there before going on.`;
+    if (o.did === HOME) {
+      if (x.book.turned === o.stop) return `Because you told ${name} to turn back at ${at}, ${party} came home from there.`;
+      return `Because you told ${name} to turn back at ${at}, ${party} would have, but no road leads home from there, so it went on.`;
+    }
+    if (o.go === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited as long as a trip may, then went on.`;
+    return `Because you told ${name} to go on from ${at}, ${party} did not wait there.`;
   }
-  if (o.go === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited as long as a trip may, then went on.`;
-  return `Because you told ${name} to go on from ${at}, ${party} did not wait there.`;
+  // an order used where the agent was already on the way home, or that could not turn it back
+  const home = (x.book?.orders ?? []).filter(e => e.go === HOME && e.did === HOME && x.book.turned !== e.stop).at(-1);
+  if (home) return `You told ${name} to turn back at ${stopName(content, home.stop)}, but ${home.beyond ? `${name} was already on the road home` : 'no road leads home from there'}, so ${name} went on.`;
+  const late = (x.orders ?? []).filter(e => !e.used && e.go === HOME).at(-1);
+  if (!late) return null;
+  const what = `You told ${name} to turn back`;
+  if (late.at === undefined || (idx !== undefined && late.at > idx)) return `${what}, but the answer had not reached ${name} when the trip ended.`;
+  return `${what}, but the answer arrived too late: ${name} was ${late.place ? placeText(content, late.place) : 'on the road'} by then and had passed the last place to turn.`;
 }
 
 /** What a loss costs each party under the contract: the capital bears it in proportion to stake. */
@@ -344,6 +386,16 @@ function put(s, paper) {
   return shown;
 }
 
+/** For view(): when each expedition on the road is due home, by `returnsIn`, as { [expedition id]: { in, season } }: `in`
+    seasons from now and the season's name ("Winter 1324"). The map and the ledger say this, so they never count it themselves. */
+export function homeBy(s, content) {
+  const idx = seasonIndex(s, content);
+  return Object.fromEntries(s.expeditions.filter(x => routeOf(content, x.route)).map(x => {
+    const n = returnsIn(s, content, x);
+    return [x.id, { in: n, season: M.writeSeason(content, idx + n) }];
+  }));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Outfitting (ARCHITECTURE 4.5)
 
@@ -352,9 +404,9 @@ const isCount = n => Number.isInteger(n) && n >= 0;
 /** The way back is open only where there is no qirad to offer instead. */
 const canPrepay = city => !city.contracts?.qirad?.agentShare;
 
-/** The wage for the whole trip, paid up front: the return opens `seasons` ahead, so the agent is
-    out `seasons - 1` of them, at the agent's wage. */
-const tripWage = (agent, proj) => Math.max(1, proj.seasons - 1) * (agent.wage ?? 0);
+/** The wage for the whole trip, paid up front: the return opens `seasons` ahead and the paper counts the trip as that
+    many seasons (MER-88), so the agent is paid for `seasons` of them, at the agent's wage. */
+const tripWage = (agent, proj) => proj.seasons * (agent.wage ?? 0);
 
 /** What the house would pay up front for `agentId` on `routeId`, in coins, or 0 when the road does not project. */
 export function prepayCost(state, content, routeId, agentId) {
@@ -468,7 +520,7 @@ function build(s, content, plan) {
     goods: goodsCost, bought: buyCost, purse: isCount(purse) ? purse : 0, partners, wagePaid, total: houseMoney,
     later: route && proj?.ok ? {
       tolls: route.legs.reduce((n, l) => n + (l.toll ?? 0), 0),
-      wage: kind === 'own' && !prepay && agent ? Math.max(1, proj.seasons - 1) * (agent.wage ?? 0) : 0,
+      wage: kind === 'own' && !prepay && agent ? proj.seasons * (agent.wage ?? 0) : 0,
       wagePerSeason: agent?.wage ?? 0,
     } : null,
   };
@@ -487,7 +539,7 @@ function build(s, content, plan) {
     cargo, purse,
     contract: kind === 'qirad' ? { kind, agentShare: share[0], of: share[1] } : prepay ? { kind, prepaid: true } : { kind },
     staked: { house: stockValue + buyCost + purse - partners, partners },
-    orders: [], sent: idx, out: 0, start: first.startIdx,
+    orders: [], sent: idx, out: 1, start: first.startIdx,   // `out`: seasons the agent is away, the one it leaves in counted (MER-88), so the wage is the paper's season count
     plan: { sell: [...sell], buy: [...buy] },
     quote: Object.fromEntries(Object.keys(dest.sells ?? {}).map(g => [g, M.truePrice(s, content, route.to, g)])),
     book: { cargo: { ...cargo }, purse, capital: stockValue + buyCost + purse, ...(wagePaid ? { wagePaid } : {}), sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] },
@@ -569,7 +621,7 @@ const seasonsHome = seasonsLeft;
 /** Fills in what an expedition written before these fields existed (or by hand, in a test) lacks. */
 function norm(x) {
   x.status ??= 'out';
-  x.out ??= 0;
+  x.out ??= 1;
   x.plan ??= { sell: [], buy: [] };
   x.quote ??= {};
   x.book ??= { cargo: { ...x.cargo }, purse: x.purse ?? 0, capital: (x.staked?.house ?? 0) + (x.staked?.partners ?? 0), sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] };
@@ -586,6 +638,8 @@ export function move(s, content) {
     norm(x);
     delete x.rode;
     if (!routeOf(content, x.route) || x.status === 'home' || x.sent === idx) continue;
+    // an answer reaching the agent this season finds it here: kept for the paper that says so if the answer comes too late to act
+    for (const o of x.orders ?? []) if (o.at !== undefined && o.at <= idx && !o.used && !o.place) o.place = placeOf(content, x);
     x.out += 1;
     if (x.status === 'out') {
       x.left -= 1;
@@ -614,8 +668,8 @@ export function move(s, content) {
     here, the rest are carried home. */
 function proceed(s, content, x, go, idx) {
   const route = routeOf(content, x.route);
-  if (go === HOME && x.leg <= outEnd(route)) {
-    const stop = route.legs[x.leg].from;
+  const stop = route.legs[x.leg].from, outbound = x.leg <= outEnd(route);
+  if (go === HOME && outbound) {
     const back = route.legs.findIndex((l, i) => i > outEnd(route) && l.from === stop);
     if (back > 0) {
       tradeAt(s, content, x, stop, { sell: Object.keys(x.cargo), buy: [] }, idx);
@@ -623,6 +677,8 @@ function proceed(s, content, x, go, idx) {
       x.book.turned = stop;
     }
   }
+  // an answer that turns back an agent past the far end, or at a stop with no road home, did not act: the paper says which
+  if (go === HOME && x.book.turned !== stop) { const o = (x.book.orders ?? []).at(-1); if (o?.go === HOME && o.stop === stop) o.beyond = !outbound; }
   startLeg(s, content, x, 1);
 }
 
@@ -774,32 +830,39 @@ function returnPaper(s, content, r) {
   const headline = `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`;
   const book = x.book;
   const rows = [];
+  // The account adds up (MER-88): every row with an `amount` and no `detail` is a sum the house took in or paid out, and
+  // together they come to `houseNet`, the same number the headline and the Profit row give. `detail` rows say what
+  // happened on the road; their money is inside the row that follows.
   rows.push({ label: 'Sent out', text: `${cargoText(content, book.cargo)}${book.purse ? `, ${coins(content, book.purse)} to spend` : ''}`, amount: -book.capital });
-  for (const e of book.sold) rows.push({ label: 'Sold', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}`, amount: e.got });
-  for (const e of book.bought) rows.push({ label: 'Bought', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}`, amount: -e.cost });
-  if (book.tolls) rows.push({ label: 'Tolls', text: 'paid on the road', amount: -book.tolls });
-  if (book.upkeep) rows.push({ label: 'Waiting', text: `${words(x.waiting)} ${plural(x.waiting, 'season', 'seasons')} at a stop, kept at ${coins(content, UPKEEP)} a season`, amount: -book.upkeep });
+  for (const e of book.sold) rows.push({ label: 'Sold', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}, for ${coins(content, e.got)}`, amount: e.got, detail: true });
+  for (const e of book.bought) rows.push({ label: 'Bought', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}, for ${coins(content, e.cost)}`, amount: -e.cost, detail: true });
+  if (book.tolls) rows.push({ label: 'Tolls', text: `${coins(content, book.tolls)} paid on the road`, amount: -book.tolls, detail: true });
+  if (book.upkeep) rows.push({ label: 'Waiting', text: `${words(x.waiting)} ${plural(x.waiting, 'season', 'seasons')} at a stop, kept at ${coins(content, UPKEEP)} a season`, amount: -book.upkeep, detail: true });
   if (book.lost && Object.keys(book.lost).length) rows.push({ label: 'Lost', text: cargoText(content, book.lost) });
   const back = [];
   if (Object.keys(r.goodsBack).length) back.push(`${cargoText(content, r.goodsBack)} (worth ${coins(content, r.cargoValue)} in ${homeName} now)`);
   if (r.moneyBack) back.push(coins(content, r.moneyBack));
-  rows.push({ label: 'Back home', text: back.length ? back.join(' and ') : 'nothing' });
-  const profit = r.value - book.capital;
-  rows.push({ label: 'Profit', text: `${profit >= 0 ? 'about' : 'a loss of about'} ${coins(content, Math.abs(profit))}`, amount: profit });
+  rows.push({ label: 'Back home', text: back.length ? `${back.join(' and ')}, ${coins(content, r.value)} in all` : 'nothing', amount: r.value });
   if (x.contract.kind === 'qirad') {
     const word = { 1: 'one third', 2: 'two thirds' }[x.contract.agentShare] ?? `${x.contract.agentShare} of ${x.contract.of}`;
-    rows.push({ label: `${agent.name}'s share`, text: `a qirad: ${agent.name} keeps ${x.contract.of === 3 ? word : `${x.contract.agentShare} in ${x.contract.of}`} of a profit and bears none of a loss`, amount: -r.shares.agent });
+    if (x.staked.partners) rows.push({ label: 'The partners put in', text: coins(content, x.staked.partners), amount: x.staked.partners });
+    rows.push({ label: `${agent.name}'s share`, text: `a qirad: ${agent.name} keeps ${x.contract.of === 3 ? word : `${x.contract.agentShare} in ${x.contract.of}`} of a profit and bears none of a loss, ${coins(content, r.shares.agent)} this time`, amount: -r.shares.agent });
     rows.push({ label: "The partners' share", text: r.shares.partners ? `${coins(content, r.shares.partners)} of the ${coins(content, x.staked.partners)} they put in, with their part of the profit` : 'nothing', amount: -r.shares.partners });
   } else if (r.wage) {
-    rows.push({ label: `${agent.name}'s wage`, text: `${coins(content, agent.wage)} a season for ${words(x.out)} ${plural(x.out, 'season', 'seasons')}`, amount: -r.wage });
+    // the seasons the wage was paid for: what the trip was away (a prepaid wage was fixed at sending)
+    const paid = agent.wage ? Math.round(r.wage / agent.wage) : x.out;
+    rows.push({ label: `${agent.name}'s wage`, text: `${coins(content, agent.wage)} a season for ${words(paid)} ${plural(paid, 'season', 'seasons')}${x.contract.prepaid ? ', paid before the trip' : ''}`, amount: -r.wage });
   }
   if (r.short) rows.push({ label: 'Not paid', text: `the house could not pay ${coins(content, r.short)} of what it owed, and its good name suffers` });
+  rows.push({ label: n < 0 ? 'Loss' : 'Profit', text: n === 0 ? 'none, the house came out even' : `${Object.keys(r.goodsBack).length ? 'about ' : ''}${coins(content, Math.abs(n))}`, amount: n });
   const seasons = r.elapsed;
   const trip = { ...tripFacts(content, x.agent, route, x.book.turned ?? route.to, mainGoodOf(book.cargo), seasons, x.id), orders: (book.orders ?? []).map(o => ({ ...o })) };
-  const line = orderLine(content, x);
+  const line = orderLine(content, x, seasonIndex(s, content));
   const entry = pickEntry(s, content, 'return', {
     outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even', agent: x.agent, to: trip.to, good: trip.good, seasons, orders: !!line,
     contract: x.contract.kind, lost: Object.keys(book.lost ?? {}).length > 0,
+    // the trip's main good came home in the cargo: "Sell the linen now?" is asked only of a trip that brought some (MER-88)
+    brought: (r.goodsBack[trip.good] ?? 0) > 0,
   });
   return {
     kind: 'return', ref: 'return', agent: x.agent, expedition: x.id,
@@ -822,7 +885,7 @@ export function returns(s, content) {
   for (const x of s.expeditions) {
     if (x.status !== 'home') continue;
     if (deskFull(s)) break;
-    const r = bringHome(s, content, x, { elapsed: idx - x.sent });
+    const r = bringHome(s, content, x, { elapsed: x.out });   // the seasons it was away: the paper and the wage count the same ones (MER-88)
     put(s, returnPaper(s, content, r));
     close(s, content, x, idx);
     back.push(x.id);
@@ -996,13 +1059,16 @@ function changesOf(content, q, s) {
 
 /** One item for the accounts paper from a later effect that fired with no follow-up card. */
 export function accountItem(s, content, q) {
-  const [cardId, choiceId] = String(q.from ?? '').split('/');
-  const card = (content.cards ?? []).find(c => c.id === cardId);
-  const choice = card?.choices?.find(c => c.id === choiceId);
   const changes = changesOf(content, q, s);
   if (!changes.length) return null;
-  const from = card ? `${card.title}${choice ? `, "${choice.label}"` : ''}` : (q.from ?? 'an earlier choice');
-  return { from: q.from ?? null, card: card?.title ?? null, choice: choice?.label ?? null, changes, text: `From ${from}: ${changes.join(', ')}` };
+  // the card and the choice that set this effect: the words the player saw when choosing (turn.js `choose` records them in
+  // the queue item), else looked up from the ids, else, for an item queued before they were recorded, a plain "earlier choice"
+  const [cardId, choiceId] = String(q.from ?? '').split('/');
+  const card = (content.cards ?? []).find(c => c.id === cardId) ?? (content.letters ?? []).find(l => l.id === cardId) ?? (content.returns ?? []).find(e => e.id === cardId);
+  const choice = card?.choices?.find(c => c.id === choiceId);
+  const title = q.viaCard ?? card?.title ?? null, label = q.viaChoice ?? choice?.label ?? null;
+  const from = title ? `${title}${label ? `, "${label}"` : ''}` : (q.from ?? 'an earlier choice');
+  return { from: q.from ?? null, card: title, choice: label, changes, text: `From ${from}: ${changes.join(', ')}` };
 }
 
 /** Puts one folded Accounts paper on the desk naming every item (a count, not a paper each). */

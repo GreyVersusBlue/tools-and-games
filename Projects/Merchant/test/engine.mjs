@@ -297,7 +297,7 @@ test('turn: newGame changes neither the content nor a second game made from it',
 test('turn: choose applies now-effects, queues later-effects with at, unlocks and logs', () => {
   const s = choose(game(), content, 'p0-1', 'buy');
   eq([s.money, s.stock.wool], [460, 14]);
-  eq(s.queue, [{ at: 2, do: [], card: 'wool-due', from: 'wool-offer/buy' }]);
+  eq(s.queue, [{ at: 2, do: [], card: 'wool-due', from: 'wool-offer/buy', viaCard: 'Four loads of wool', viaChoice: 'Buy the wool' }], 'the item names the card and the choice that set it, in the words the player saw (MER-88)');
   // MER-61: the opening writes one `trust` entry (the agents' trust, for the season's change to reputation).
   eq(s.log.filter(e => e.kind !== 'trust'), [{ at: 0, kind: 'card', ref: 'wool-offer', choice: 'buy' }]);
   eq(s.desk[1].state, 'done');

@@ -255,6 +255,9 @@ export function choose(state, content, paperId, choiceId) {
     const card = info ? { id: paper.ref } : definition(content, paper);
     const choice = list.find(c => c.id === choiceId);
     if (!choice) throw new Error(`choose: card "${card.id}" has no choice "${choiceId}"`);
+    // what a later effect of this choice is called when it fires: the card (or letter, or the return or loss entry) and the
+    // choice, in the words the player saw (MER-88), so the Accounts paper can name the choice that set it
+    const via = { from: `${paper.kind === 'return' || paper.kind === 'lost' ? (paper.data?.entry ?? paper.ref) : card.id}/${choice.id}`, card: (paper.kind === 'return' || paper.kind === 'lost' ? paper.data?.ask?.title : card.title) ?? null, choice: choice.label ?? null };
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
     const ctx = { agent: paper.agent, expedition: paper.expedition };
     const refuse = e => new Error(`choose: "${choice.label}" on card "${card.id}" is refused: ${e.message}`);
@@ -279,7 +282,7 @@ export function choose(state, content, paperId, choiceId) {
     for (const l of later) {
       s.queue.push({
         at: idx + l.in, do: structuredClone(l.do ?? []), ...(l.card ? { card: l.card } : {}),
-        from: `${card.id}/${choice.id}`,
+        from: via.from, ...(via.card ? { viaCard: via.card } : {}), ...(via.choice ? { viaChoice: via.choice } : {}),
         ...(paper.agent ? { agent: paper.agent } : {}), ...(paper.expedition ? { expedition: paper.expedition } : {}),
       });
     }
@@ -357,6 +360,7 @@ export function view(state, content) {
     phase: state.phase,
     prices: market.knownPrices(state, content),
     letters: letters.describe(state, content),
+    homeBy: routes.homeBy(state, content),   // by expedition id: { in, season }, the one answer the map, the ledger and the outfit give (MER-88)
     cards: describeTrips(state, content),   // filled words of the cards that tell of a trip, by paper id
     ...agents.standing(state, content),
     interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,

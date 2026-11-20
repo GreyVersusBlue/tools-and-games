@@ -27,7 +27,7 @@ export const CARD_KINDS = ['favour', 'trade', 'people', 'world'];
 // each key are a list the trip's fact must be in, except `seasons` (a { gte, lte } range) and the
 // true-or-false keys. routes.js `pickEntry` takes the entry that names the most facts.
 export const RETURN_FACTS = {
-  return: ['outcome', 'agent', 'to', 'good', 'seasons', 'orders', 'contract', 'lost'],
+  return: ['outcome', 'agent', 'to', 'good', 'seasons', 'orders', 'contract', 'lost', 'brought'],
   loss: ['by', 'cause', 'whole', 'survived', 'agent', 'to', 'good', 'seasons', 'contract'],
 };
 export const OUTCOMES = ['profit', 'loss', 'even'];
@@ -211,7 +211,7 @@ export function validateContent(raw, { art } = {}) {
 
   // ---- cards and letters
   const choice = (isLetter) => (c, p) => obj(c, p, {
-    id: idv, label: str, hint: str, requires: (x, q) => condition(x, q, isLetter),
+    id: idv, label: str, hint: str, result: str, requires: (x, q) => condition(x, q, isLetter),
     now: effects(isLetter ? 'letter-now' : 'now'), later,
     ui: (x, q) => oneOf(['outfit-first'], x, q),
   }, ['id', 'label']);
@@ -230,7 +230,14 @@ export function validateContent(raw, { art } = {}) {
       obj(c, p, { ...common(false), group: (x, q) => oneOf(CARD_GROUPS, x, q), kind: (x, q) => oneOf(CARD_KINDS, x, q) }, ['id', 'group', 'kind', 'from', 'title', 'body', 'choices', 'note']);
       // `kind` is required of every card (DESIGN 2.1 rule 2); test/mix.mjs also fails a card of either city without one.
       if (isObj(c)) tripRules(c, p);
+      resultRules(c, p);
     });
+  }
+  // A choice's own `result` (MER-88) is printed as it stands on a card or a letter, so it may not carry a slot. A return
+  // or a loss entry fills its own from the trip (routes.js `askOf`), and is checked as an entry, not here.
+  function resultRules(c, p) {
+    if (!isObj(c) || !Array.isArray(c.choices)) return;
+    c.choices.forEach((ch, i) => { if (isObj(ch) && typeof ch.result === 'string' && hasSlots(ch.result)) schema(`${p}.choices[${i}].result`, 'is shown as written and may not use {agent}, {to}, {good}, {route} or {seasons}'); });
   }
   // A card's trip leaf must be where `view()` can find it, and its slots need one to fill them (ARCHITECTURE 4.12).
   function tripRules(c, p) {
@@ -244,6 +251,7 @@ export function validateContent(raw, { art } = {}) {
     items.forEach((c, i) => {
       const p = `letters[${i}]${isObj(c) && typeof c.id === 'string' ? ` (${c.id})` : ''}`;
       obj(c, p, { ...common(true), kind: (x, q) => oneOf(['question', 'report'], x, q), happened: effects('do'), default: str }, ['id', 'kind', 'title', 'body', 'choices', 'note']);
+      resultRules(c, p);
       if (isObj(c) && c.kind === 'question' && 'happened' in c) schema(p, 'only a report has "happened"');
       if (isObj(c) && 'default' in c) {
         if (c.kind !== 'question') schema(p, 'only a question has a "default"');
@@ -264,7 +272,7 @@ export function validateContent(raw, { art } = {}) {
         outcome: (x, q) => arr(x, q, (o, r) => oneOf(OUTCOMES, o, r), 1),
         agent: (x, q) => arr(x, q, refOf('agents'), 1), to: (x, q) => arr(x, q, refOf('stops'), 1), good: (x, q) => arr(x, q, refOf('goods'), 1),
         by: (x, q) => arr(x, q, (o, r) => oneOf(BY, o, r), 1), cause: (x, q) => arr(x, q, (o, r) => oneOf(CAUSES, o, r), 1), contract: (x, q) => arr(x, q, (o, r) => oneOf(['own', 'qirad'], o, r), 1),
-        seasons: numbers, orders: bool, lost: bool, whole: bool, survived: bool,
+        seasons: numbers, orders: bool, lost: bool, brought: bool, whole: bool, survived: bool,
       };
       if (!isObj(v)) { schema(p, 'needs an object'); return; }
       for (const k of Object.keys(v)) if (!allowed.includes(k)) bad('unknown-key', `${p}.${k}`, `a ${paper} entry has no fact "${k}" (it has ${allowed.join(', ')})`);
