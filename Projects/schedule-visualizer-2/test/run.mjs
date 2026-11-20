@@ -176,6 +176,7 @@ export const GROUPS = {
     'browser/marks-duties.mjs', // SV2-85
     'browser/period-names.mjs', // SV2-129
     'browser/features.mjs', // SV2-130
+    'browser/part-time.mjs', // SV2-132
     'browser/release.mjs', // SV2-93
     'browser/one-way.mjs', // SV2-91
     'browser/step-marks.mjs', // SV2-101b
@@ -321,6 +322,7 @@ export const BROWSER_SECONDS = {
   'browser/marks-duties.mjs': 11,
   'browser/period-names.mjs': 12,
   'browser/features.mjs': 12,
+  'browser/part-time.mjs': 12,
   'browser/grid-pass.mjs': 10,
   'browser/movement-bells.mjs': 10,
   'browser/draw-keyboard.mjs': 9,
