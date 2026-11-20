@@ -395,6 +395,66 @@ test('12. Undo with an entry open closes it without saving: the draft was for th
   await fresh();
 });
 
+test('13. a refusal is said once: a later drawing shows it without role="alert", and a change to the draft takes it away', async () => {
+  await fresh();
+  await open();
+  for (const day of [0, 1, 2, 3]) await press(key('day:' + day));
+  await awayIs([{ dayTypeIds: [], weekdays: [0, 1, 2, 3], periods: [] }]);
+  await press(key('day:4'));
+  await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+  assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.getAttribute('role')), 'alert', 'said when it first appears');
+  // a drawing for something else: the words stay, the alert is not made again
+  await page.$eval('[data-refusal="part"]', (el) => { el.__old = true; });
+  await page.evaluate((id) => {
+    const other = globalThis.sv2.store.project.teachers.find((teacher) => teacher.id !== id);
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions.editTeacher, { id: other.id, notes: 'Coaches the chess club' });
+  }, T);
+  await shows(() => document.querySelector('[data-refusal="part"]')?.__old !== true);
+  await settled();
+  assert.match(await refusal(), /never in school/);
+  assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.getAttribute('role')), null, 'not announced again');
+  await press(key('day:3'));
+  await awayIs([{ dayTypeIds: [], weekdays: [0, 1, 2], periods: [] }]);
+  assert.equal(await refusal(), null);
+  // under Not in school: a change to the draft clears it before Done
+  await fresh();
+  await open();
+  await press(key('radio:not'));
+  await page.waitForSelector('[data-entry="0"] fieldset');
+  await press(key('e0:done'));
+  await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+  assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.getAttribute('role')), 'alert');
+  await press(key('e0:period:2'));
+  assert.equal(await refusal(), null, 'the change answered it');
+  await fresh();
+});
+
+test('14. a Remove refused with no entry open is shown in the editor', async () => {
+  await fresh();
+  const before = await page.evaluate(() => JSON.stringify(globalThis.sv2.store.project));
+  try {
+    // a stored entry naming a day type that has gone (as a file from elsewhere might)
+    await page.evaluate((id) => {
+      const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+      project.teachers.find((teacher) => teacher.id === id).away = [{ dayTypeIds: ['dgone0001'], weekdays: [], periods: [0] }, { dayTypeIds: [], weekdays: [], periods: [1] }];
+      globalThis.sv2.store.replace(project);
+    }, T);
+    await settled();
+    await open();
+    assert.equal(await page.$eval(key('radio:not'), (el) => el.checked), true);
+    assert.deepEqual(await formAt(), []);
+    await press(key('remove:1'));
+    await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+    assert.match(await refusal(), /no longer in the project/);
+    assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.closest('.sch-part') !== null), true, 'inside the editor');
+    assert.equal((await away()).length, 2, 'nothing was stored');
+  } finally {
+    await page.evaluate((json) => globalThis.sv2.store.replace(JSON.parse(json)), before);
+    await settled();
+  }
+  await fresh();
+});
+
 test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, and every control is 44 px', async () => {
   await fresh();
   await page.evaluate(() => globalThis.sv2.storage.flush());

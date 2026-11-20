@@ -131,6 +131,20 @@ export function mount(env) {
     const fresh = ctx.store.project.teachers.find((each) => each.id === teacher.id);
     return JSON.stringify(fresh ? awayList(fresh) : []);
   };
+  // A refusal is said once: the drawing it first appears in carries
+  // role="alert", and the drawings after it show the same words without, so a
+  // later redraw does not announce it again. A new refusal is said again.
+  function refuse(st, text) {
+    st.refusal = text;
+    st.refusalSaid = false;
+  }
+  function refusalLine(st) {
+    if (!st.refusal) return null;
+    const first = !st.refusalSaid;
+    st.refusalSaid = true;
+    return h('p', { class: 'field__refusal', role: first ? 'alert' : null, data: { refusal: 'part' } }, st.refusal);
+  }
+
   // An entry put on the form: its draft, and the list it was drawn from.
   function openEntry(teacher, st, index, draft) {
     st.editing = index;
@@ -190,7 +204,8 @@ export function mount(env) {
         env.focusAfter(partKey(teacher, 'day:' + day));
         // nobody is in school on no day: the engine's own refusal says so
         const refused = tryAway(teacher, next.length === 0 ? [{ dayTypeIds: [], weekdays: ALL_DAYS, periods: [] }] : away.length === 0 ? [] : [{ dayTypeIds: [], weekdays: away, periods: [] }]);
-        st.refusal = refused || '';
+        if (refused) refuse(st, refused);
+        else st.refusal = '';
         if (refused) env.render(partKey(teacher, 'day:' + day));
       } } }, SHORT_DAYS[day], h('span', { class: 'vh' }, WEEKDAY_NAMES[day].slice(3))), partKey(teacher, 'day:' + day));
     });
@@ -208,26 +223,31 @@ export function mount(env) {
     const draft = st.draft;
     const key = (part) => partKey(teacher, 'e' + index + ':' + part);
     const redraw = (focus) => env.render(focus);
+    // a change to the draft answers the refusal: it goes until Done is pressed again
+    const change = (focus) => {
+      st.refusal = '';
+      redraw(focus);
+    };
     const radios = 'part-types-' + teacher.id + '-' + index;
     const every = keyed(h('input', { type: 'radio', name: radios, value: 'all' }), key('types:all'));
     every.checked = !draft.onlyTypes;
     every.addEventListener('change', () => {
       draft.onlyTypes = false;
       draft.dayTypeIds = [];
-      redraw(key('types:all'));
+      change(key('types:all'));
     });
     const only = keyed(h('input', { type: 'radio', name: radios, value: 'some' }), key('types:some'));
     only.checked = draft.onlyTypes;
     only.addEventListener('change', () => {
       draft.onlyTypes = true;
-      redraw(key('types:some'));
+      change(key('types:some'));
     });
     const ticks = draft.onlyTypes ? h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Day types' }, project.dayTypes.map((dayType) => {
       const box = keyed(h('input', { type: 'checkbox' }), key('type:' + dayType.id));
       box.checked = draft.dayTypeIds.includes(dayType.id);
       box.addEventListener('change', () => {
         draft.dayTypeIds = box.checked ? draft.dayTypeIds.concat([dayType.id]) : draft.dayTypeIds.filter((other) => other !== dayType.id);
-        redraw(key('type:' + dayType.id));
+        change(key('type:' + dayType.id));
       });
       return h('label', { class: 'sch-radio' }, box, h('span', null, dayType.name));
     })) : null;
@@ -236,17 +256,17 @@ export function mount(env) {
       const on = draft.weekdays.includes(day);
       return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), on: { click: () => {
         draft.weekdays = on ? draft.weekdays.filter((other) => other !== day) : draft.weekdays.concat([day]);
-        redraw(key('day:' + day));
+        change(key('day:' + day));
       } } }, SHORT_DAYS[day], h('span', { class: 'vh' }, WEEKDAY_NAMES[day].slice(3))), key('day:' + day));
     }), days === ALL_DAYS ? null : keyed(h('button', { type: 'button', class: 'sch-show__chip', on: { click: () => {
       draft.more = true;
-      redraw(key('day:5'));
+      change(key('day:5'));
     } } }, 'More'), key('more')));
     const periodChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Periods' }, Array.from({ length: project.settings.periods }, (_, period) => {
       const on = draft.periods.includes(period);
       return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), on: { click: () => {
         draft.periods = on ? draft.periods.filter((other) => other !== period) : draft.periods.concat([period]);
-        redraw(key('period:' + period));
+        change(key('period:' + period));
       } } }, periodName(project.settings, period)), key('period:' + period));
     }));
     const list = awayList(teacher);
@@ -256,7 +276,7 @@ export function mount(env) {
       next[index] = entry;
       const refused = tryAway(teacher, next);
       if (refused) {
-        st.refusal = refused;
+        refuse(st, refused);
         redraw(key('done'));
         return;
       }
@@ -280,7 +300,7 @@ export function mount(env) {
         draft.onlyTypes && draft.dayTypeIds.length === 0 ? h('p', { class: 'sch-hint' }, 'Tick a day type. Until one is ticked, this holds on every day type.') : null),
       h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Days of the week (none is every day)'), dayChips),
       h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Periods (none is the whole day)'), periodChips),
-      st.refusal ? h('p', { class: 'field__refusal', role: 'alert', data: { refusal: 'part' } }, st.refusal) : null,
+      refusalLine(st),
       h('div', { class: 'sch-part__actions' },
         button('Done', done, { primary: true, small: true, key: key('done'), action: 'part-done' }),
         button('Cancel', cancel, { small: true, key: key('cancel'), action: 'part-cancel' })));
@@ -315,7 +335,7 @@ export function mount(env) {
           const next = list.filter((_, at) => at !== index);
           const refused = tryAway(teacher, next);
           if (refused) {
-            st.refusal = refused;
+            refuse(st, refused);
             env.render(partKey(teacher, 'remove:' + index));
             return;
           }
@@ -361,7 +381,8 @@ export function mount(env) {
       h('fieldset', { class: 'sch-fieldset' }, h('legend', null, 'When is ', h('bdi', null, teacher.name), ' in school?'),
         radio('only', 'Only in school on…'), radio('not', 'Not in school…')),
       st.mode === 'only' ? onlyEditor(project, teacher, st) : notEditor(project, teacher, st),
-      st.mode === 'only' && st.refusal ? h('p', { class: 'field__refusal', role: 'alert', data: { refusal: 'part' } }, st.refusal) : null,
+      // under Not in school with an entry open, the refusal is in the entry
+      st.mode === 'only' || st.editing === null ? refusalLine(st) : null,
       h('p', { class: 'sch-part__says', data: { says: 'part' } }, consequence(teacher, list)),
       h('p', { class: 'sch-hint' }, 'Shown in the staff browser.'),
       h('div', { class: 'sch-part__actions' }, button('Close', () => closePart(teacher), { small: true, key: partKey(teacher, 'close'), action: 'part-close' })));
