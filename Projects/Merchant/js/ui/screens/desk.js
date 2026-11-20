@@ -209,8 +209,9 @@ export function createDesk(app) {
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
           `Open the house in ${cap(v.season)} ${v.year}`));
     }
-    return wrap('The last season is over', h('p', { class: 'sheet-body' }, 'The ending of the game is still being built. Your house is saved as it stands.'),
-      h('button', { class: 'button next', type: 'button', id: 'btn-to-title', onclick: () => app.toTitle() }, 'Back to the title'));
+    // phase recall or ended: the router sends the player to the ending, so this page shows only for a moment
+    return wrap('The last season is over',
+      h('button', { class: 'button next', type: 'button', id: 'btn-to-ending', onclick: () => app.toEnding() }, 'Go to the ending'));
   }
 
   // ---- answering
@@ -279,6 +280,8 @@ export function createDesk(app) {
     if (!can.ok) { app.say(can.reason); return; }
     app.act(s => engine.endSeason(s, content));
     raised = null; backOf = null;
+    // the last season was played: the game is the ending now (DESIGN 4.12), and its first page takes the screen
+    if (app.state.phase === 'recall') { app.toEnding(); return; }
     draw({ focus: 'season' });
   }
 
