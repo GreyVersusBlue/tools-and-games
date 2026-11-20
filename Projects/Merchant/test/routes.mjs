@@ -63,7 +63,7 @@ test('outfit refuses each bad plan with its reason in words, and checkPlan says 
     ['half a load', { ...WOOL, cargo: { wool: 1.5 } }, /1.5 is not a number of loads/],
     ['nothing carried at all', { ...WOOL, cargo: {}, purse: 0 }, /Send some goods or some coins/],
     ['a good the house lacks and home does not sell', { ...WOOL, cargo: { lamps: 3 }, sell: [] }, /none in the warehouse and Harbour does not sell lamps/],
-    ['more money than the house has', { ...WOOL, purse: 9999 }, /The house has 500 coins and this costs 9999 coins/],
+    ['more money than the house has', { ...WOOL, purse: 9999 }, /The house has 500 coins and this costs 9,999 coins/],
     ['selling what is not carried', { ...WOOL, sell: ['salt'] }, /Mira is not carrying any salt to sell/],
     ['selling where the stop does not trade the good', { ...WOOL, cargo: { wool: 1, salt: 1 }, sell: ['salt'] }, /Hilltown does not trade in salt/],
     ['buying what the stop does not have', { ...WOOL, buy: ['lamps'] }, /Hilltown has no lamps to buy/],
@@ -85,6 +85,50 @@ test('outfit refuses each bad plan with its reason in words, and checkPlan says 
   ok(reasons(sent, calm, WOOL).some(m => /Mira is already on the road/.test(m)), 'an agent already out');
   ok(reasons({ ...s, agents: { ...s.agents, mira: { ...s.agents.mira, where: 'dead' } } }, calm, WOOL).some(m => /Mira is not in Harbour/.test(m)), 'an agent who is not at home');
   eq(s.expeditions.length, 0, 'checkPlan and a refused outfit leave the state alone');
+});
+
+// ---- MER-72: the number on the sheet is the number taken
+test('estimate: checkPlan\'s cost.total is exactly what outfit takes from the house, for an own plan, a qirad and a bought-in cargo', () => {
+  const c = variant(calm, x => { x.city.contracts = { qirad: { agentShare: [1, 3] } }; });
+  const s = game(c);
+  const plans = [
+    ['stock only', { ...WOOL, cargo: { wool: 10 } }],
+    ['bought in, price rising with each load', { ...WOOL, cargo: { wool: 28 }, purse: 10 }],
+    ['a qirad: the partners\' share is not the house\'s', { ...WOOL, cargo: { wool: 20 }, purse: 100, contract: 'qirad', partners: 60 }],
+    ['money only', { ...WOOL, cargo: {}, purse: 75, sell: [] }],
+  ];
+  for (const [what, plan] of plans) {
+    const chk = checkPlan(s, c, plan);
+    ok(chk.ok, `${what}: ${JSON.stringify(chk.reasons)}`);
+    const t = outfit(s, c, plan);
+    eq(chk.cost.total, s.money - t.money, `${what}: the estimate is the amount taken, to the coin`);
+    const parts = chk.cost.bought + chk.cost.purse - chk.cost.partners + chk.cost.wagePaid;
+    eq(parts, chk.cost.total, `${what}: the listed parts add up to the total`);
+    eq(chk.cost.goods.reduce((n, g) => n + g.cost, 0), chk.cost.bought, `${what}: the goods lines add up to what was bought`);
+  }
+  // the bought-in line prices each load as the market will, not at the flat home price
+  const dear = checkPlan(s, c, { ...WOOL, cargo: { wool: 28 } }).cost;
+  const flat = (dear.goods[0].bought) * M.truePrice(s, c, 'harbour', 'wool');
+  ok(dear.goods[0].bought === 18 && dear.goods[0].cost > flat, `twenty loads bought cost ${dear.goods[0].cost}, more than ${flat} at the flat price`);
+  eq(dear.goods[0].fromWarehouse, 10);
+});
+
+test('estimate: what the road takes later is listed apart from what is taken now, and a prepaid wage moves into the total', () => {
+  const s = game();
+  const k = checkPlan(s, calm, WOOL).cost;
+  eq(k.later.wagePerSeason, 10, 'Mira\'s wage');
+  ok(k.later.wage > 0 && k.later.tolls >= 0, JSON.stringify(k.later));
+  eq(k.total, 0, 'a cargo from the warehouse and no purse costs nothing at Send');
+  eq(checkPlan(s, calm, { ...WOOL, cargo: {} , purse: 0 }).cost.later, k.later, 'the road costs the same whatever is on it');
+  ok(checkPlan(s, calm, { ...WOOL, route: undefined }).cost.later === null, 'no road, nothing known of it');
+  eq(checkPlan(s, calm, undefined).cost, null, 'no plan, no cost');
+});
+
+test('refusals write numbers with commas, on any machine', () => {
+  const rich = game(calm, { house: 'rich' });
+  const r = reasons(rich, calm, { ...WOOL, purse: 1234567 });
+  ok(r.some(m => /costs 1,234,567 coins/.test(m)), JSON.stringify(r));
+  ok(reasons(game(), calm, { ...WOOL, purse: 999 }).some(m => /costs 999 coins/.test(m)), 'three digits carry no comma');
 });
 
 test('outfit: a qirad needs partners, and partners cannot put in more than goes out', () => {

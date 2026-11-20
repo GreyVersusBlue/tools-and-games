@@ -7,7 +7,7 @@
 //   close: move, risk, tolls, drift, fireDue, advance, (jump), end, then open
 // Expeditions and the jump are routes.js, letters from the road letters.js, markets market.js.
 import { playedSeasons, seasonIndex, seasonName, year, actOf, actPosition, isLastSeason } from './calendar.js';
-import { holds } from './conditions.js';
+import { holds, describeTrips } from './conditions.js';
 import { apply, applyAll, check } from './effects.js';
 import { find, addPaper, deskFull, cityOf, MAX_PAPERS } from './state.js';
 import { weighted } from './rng.js';
@@ -293,6 +293,7 @@ export function view(state, content) {
     phase: state.phase,
     prices: market.knownPrices(state, content),
     letters: letters.describe(state, content),
+    cards: describeTrips(state, content),   // filled words of the cards that tell of a trip, by paper id
     ...agents.standing(state, content),
     interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,
   };

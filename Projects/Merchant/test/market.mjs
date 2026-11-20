@@ -215,6 +215,49 @@ for (const [name, C] of Object.entries(CITIES)) {
     eq(s.desk.find(p => p.kind === 'news').state, 'done');
   });
 
+  // ---- MER-72: what the house expects a good to fetch, and what the first letter names
+  test(T('first year line: it names every good the house holds that the stop sells, then home\'s price for each, once'), () => {
+    let s = game({ length: 'full' });
+    const held = Object.keys(s.stock).filter(g => s.stock[g] > 0 && s.market[home]?.[g]);
+    s = play(s, content, C.foldAt);
+    const paper = s.desk.find(p => p.kind === 'news');
+    const stopName = id => content.stops.find(x => x.id === id).name;
+    const gname = id => content.goods.find(x => x.id === id).name.toLowerCase();
+    for (const l of paper.letters) {
+      const goods = held.filter(g => l.prices[g] !== undefined);
+      if (!goods.length) continue;
+      for (const g of goods) ok(paper.line.includes(`${l.prices[g]} for ${gname(g)}`), `${stopName(l.stop)} letter names ${g}: ${paper.line}`);
+    }
+    ok(held.length >= 1, 'the house holds goods to name');
+    eq(paper.line.split(`${content.stops.find(x => x.id === home).name} pays`).length, 2, `home's sentence once: ${paper.line}`);
+  });
+
+  test(T('expectedPrice: no news is null; a price known this season is itself; an old one is pulled toward the base; it reads only what the house knows'), () => {
+    let s = game({ length: 'full' });
+    const good = Object.keys(content.stops.find(x => x.id === nearStop).sells)[0];
+    eq(M.expectedPrice(s, content, nearStop, good), null, 'no news at the start');
+    const idx = idxOf(s, content), base = M.baseOf(s, content, nearStop, good);
+    const rev = content.goods.find(g => g.id === good).revert;
+    s.known[nearStop] = { [good]: { p: Math.round(base * 1.6), at: idx } };
+    eq(M.expectedPrice(s, content, nearStop, good).p, Math.round(base * 1.6), 'age 0 is the known price');
+    const ages = [1, 2, 4, 8].map(a => { const t = structuredClone(s); t.known[nearStop][good].at = idx - a; return M.expectedPrice(t, content, nearStop, good); });
+    for (const e of ages) ok(e && e.p >= base && e.p <= Math.round(base * 1.6), `between base ${base} and 1.6 x base: ${e && e.p}`);
+    // aged by the same factor drift pulls with: f^(1-revert) a season, no noise
+    const one = structuredClone(s); one.known[nearStop][good].at = idx - 1;
+    eq(M.expectedPrice(one, content, nearStop, good).p, Math.round(base * Math.pow(Math.round(base * 1.6) / base, 1 - rev)), 'one season old');
+    const old = structuredClone(s); old.known[nearStop][good].at = idx - 12;
+    ok(Math.abs(M.expectedPrice(old, content, nearStop, good).p - base) < Math.abs(Math.round(base * 1.6) - base) / 2, 'twelve seasons old is nearer the base than the price was');
+    // a below-base price is pulled up, not down
+    const low = structuredClone(s); low.known[nearStop][good] = { p: Math.round(base * 0.6), at: idx - 3 };
+    const lowE = M.expectedPrice(low, content, nearStop, good);
+    ok(lowE.p > Math.round(base * 0.6) && lowE.p <= base, `a low price rises toward the base: ${lowE.p}`);
+    // the true market is not read: change it and nothing moves
+    const a = M.expectedPrice(one, content, nearStop, good).p;
+    one.market[nearStop][good].f = 2; one.market[nearStop][good].glut = 0.5; one.market[nearStop][good].h = [];
+    eq(M.expectedPrice(one, content, nearStop, good).p, a, 'the true factor is not an input');
+    eq(M.expectedPrice(s, content, nearStop, 'nothing'), null, 'a good nobody trades');
+  });
+
   test(T('priceNews alone governs the price letters: a city with no letters file still gets them, one that says false gets none'), () => {
     const sent = c => play(newGame(c, { seed: 7, length: 'full', house: C.house }), c, 3).desk.some(p => p.kind === 'news');
     eq(sent({ ...content, letters: [] }), true, 'no letters file, priceNews true');
