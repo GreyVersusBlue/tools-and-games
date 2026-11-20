@@ -136,7 +136,7 @@
   {
     "id": "elders-no-claim",
     "group": "court",
-    "kind": "world",
+    "kind": "people",
     "from": {
       "name": "Isaac, a trader",
       "role": "Cairo",

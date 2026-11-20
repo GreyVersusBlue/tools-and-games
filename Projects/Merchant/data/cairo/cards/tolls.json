@@ -2,7 +2,7 @@
   {
     "id": "aydhab-toll",
     "group": "tolls",
-    "kind": "favour",
+    "kind": "trade",
     "from": {
       "name": "Hamza, a carter",
       "role": "Cairo",
@@ -65,7 +65,11 @@
     "sources": [
       {
         "src": "peacock-2008",
-        "at": "pp. 33 and 35; Quseir nearer Qus, and the split of Aydhab's revenue (sometimes in half)" }, { "src": "ibn-battuta-1958", "at": "vol. 1, p. 68; one third of the city the sultan's, two thirds the Beja king's, in 1326"
+        "at": "pp. 33 and 35; Quseir nearer Qus, and the split of Aydhab's revenue (sometimes in half)"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 68; one third of the city the sultan's, two thirds the Beja king's, in 1326"
       }
     ]
   },
