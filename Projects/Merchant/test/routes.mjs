@@ -535,7 +535,7 @@ test('returns put a return paper on the desk: the headline sentence first, then 
   eq(d.account[2].text, 'one season at a stop, kept at 4 coins a season');
   eq(d.account[0].text, '6 loads of wool');
   ok(/^6 loads of wool in Hilltown$/.test(d.account[1].text));
-  eq(paperChoices(s, c, paper.id), [{ id: 'ok', label: 'Into the ledger' }]);
+  ok(paperChoices(s, c, paper.id).length > 0, 'a return paper offers its returns.json choices (MER-81); the screens still answer it ok until MER-80');
   eq(s.agents.mira.where, 'harbour');
   const profit = d.account.find(r => r.label === 'Profit').amount;
   eq(d.houseNet, profit - 10, 'the headline is the account\'s profit less the wage, which the account also shows');
@@ -1018,8 +1018,8 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   eq(end.results.every(r => typeof r.text === 'string' && r.text.length > 0), true);
 });
 
-// ---- MER-78: what a return and a loss ask (returns.json, DESIGN 2.1 rules 3 and 4). data.js does not load returns.json yet, so
-// the cases put the file into the content by hand.
+// ---- MER-78: what a return and a loss ask (returns.json, DESIGN 2.1 rules 3 and 4). data.js loads returns.json since MER-81;
+// the cases still put the file into the content by hand, so each can add or remove entries.
 const RET = JSON.parse(await fs.readFile(new URL('../data/testport/returns.json', import.meta.url), 'utf8'));
 const withReturns = (c, extra = []) => variant(c, y => { y.returns = [...structuredClone(RET), ...structuredClone(extra)]; });
 const entry = (id, paper, facts, over = {}) => ({ id, paper, ...(facts ? { facts } : {}), title: 'T', body: 'B', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], note: 'n', sources: [{ src: 'testport-fiction' }], ...over });
@@ -1056,7 +1056,7 @@ test('a return paper carries the trip in data (route, to, good, seasons, orders)
   eq(d.choices[0].now.length > 0, true, 'the entry\'s own effects ride on the choice');
 });
 test('a return paper of a city with no returns.json has an empty choices list and no entry, and still plays', () => {
-  const s = homeWith(calm), d = s.desk.find(q => q.kind === 'return').data;
+  const s = homeWith(variant(calm, c => { c.returns = []; })), d = s.desk.find(q => q.kind === 'return').data;
   eq([d.entry, d.choices, d.ask], [null, [], null]);
 });
 test('returns.json: the entry that names the most facts wins, and an entry whose fact does not fit is shut out', () => {
