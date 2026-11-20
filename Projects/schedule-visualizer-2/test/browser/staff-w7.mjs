@@ -395,6 +395,7 @@ for (const size of SIZES) {
       const { page } = session;
       await goto(page, files.w7, '#/teacher/tsample002');
       assert.equal(await one(page, '[data-part="part-time"]'), 'Part-time: not in school in Lessons 7 to 8 when it is B Day');
+      assert.equal(await page.evaluate(() => document.querySelector('h1.page__title').nextElementSibling?.dataset.part), 'part-time', 'the line is directly under the name, before the summary');
       await goto(page, files.w7, '#/teacher/tsample001');
       assert.equal(await one(page, '[data-part="part-time"]'), 'Part-time: not in school on Fridays');
       // a Friday-only entry is listed beside the periods, not taking them

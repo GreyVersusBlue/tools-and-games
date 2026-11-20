@@ -467,11 +467,18 @@ export function teacherPageOf(ctx, teacher, heading) {
   ];
   const notes = isMe(ctx, teacher.id) ? noteFields(ctx, days) : null;
   const summary = partsToNodes(teacherSummaryOf(school, teacher.id));
-  // a part-time teacher's line, under the name: where they are not in school
+  const page = pageOf(heading || typed(teacher.name), heading ? [typed(teacher.name), '. ', summary] : summary,
+    map ? besideMap([header, days, notes], map, after) : [header, days, notes, after]);
+  // a part-time teacher's line, directly under the name, in the engine's
+  // words: under the title, or where the title is another (My schedule) under the
+  // line that starts with the name
   const partTime = school.awayLine(teacher.id);
-  const away = partTime === '' ? null : h('p', { class: 'muted', dataset: { part: 'part-time' } }, partTime);
-  return pageOf(heading || typed(teacher.name), heading ? [typed(teacher.name), '. ', summary] : summary,
-    away, map ? besideMap([header, days, notes], map, after) : [header, days, notes, after]);
+  if (partTime !== '') {
+    const title = page.querySelector('.page__title');
+    const named = heading ? title.nextElementSibling : title;
+    named.after(h('p', { class: 'muted', dataset: { part: 'part-time' } }, partTime));
+  }
+  return page;
 }
 
 export const teacherView = {
