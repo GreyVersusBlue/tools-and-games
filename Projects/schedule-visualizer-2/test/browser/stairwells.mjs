@@ -455,7 +455,9 @@ test('one letter on every badge: the cell\'s words, the printed plan, and a one-
   // the cell's words
   await showFloor('Floor 2');
   await hover(14, 10);
-  await page.waitForFunction(() => / · Stairs A$/.test(document.getElementById('plan-cell').textContent));
+  // the badge has no mark, so the words name each flight's way (ARCHITECTURE 22.17)
+  const flightWords = 'Stairs A (Floor 1 to Floor 2 up only; Floor 2 to Floor 3 both ways)';
+  await page.waitForFunction((wanted) => document.getElementById('plan-cell').textContent.endsWith(' · ' + wanted), {}, flightWords);
   assert.doesNotMatch((await state(page)).cell, /Stairs A, A/);
   const words = await page.evaluate(async () => {
     const { stairwellFacts } = await import('./ui/building/stairwell.js');
@@ -465,7 +467,7 @@ test('one letter on every badge: the cell\'s words, the printed plan, and a one-
     return { facts: stairwellFacts(store.project, 'A').wayWords, words: stairsWords(store.project, at) };
   });
   assert.equal(words.facts, 'the flights differ');
-  assert.equal(words.words, 'Stairs A', 'one letter, no way where the flights differ');
+  assert.equal(words.words, flightWords, 'one letter, and each flight\'s way where the flights differ');
 });
 
 // ---------------------------------------------------------------- the pills

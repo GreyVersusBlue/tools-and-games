@@ -83,19 +83,29 @@ const KEYS = 'Arrow keys move the cursor one cell. Enter does what a click would
 // The words for the stairs on a cell: "Stairs B", and for a one-way stair its
 // way beside the letter, "Stairs B (up only)" (SV2-90b, DESIGN 12.6), as the
 // planner's cursor line and status read it. Two connections on one cell are
-// joined by ", ".
+// joined by ", ". The flights of a stairwell that meet here are one letter;
+// where they go different ways the drawn badge has no mark, so the words name
+// each flight's way (ARCHITECTURE 22.17): "Stairs A (Floor 1 to Floor 2 up
+// only; Floor 2 to Floor 3 both ways)".
 export function stairsWords(project, connections) {
-  // one letter for the flights of a stairwell that meet here, and its way only where every one of them agrees
   const byLetter = new Map();
   for (const connection of connections) {
     const letter = stairsLetter(connection);
     if (!byLetter.has(letter)) byLetter.set(letter, []);
     byLetter.get(letter).push(connection);
   }
+  const floors = project.building.floors;
+  const floorOf = (id) => floors.find((each) => each.id === id) || { name: 'a floor that is gone', level: 0 };
+  // a flight's floors, the lower first
+  const span = (connection) => {
+    const ends = [floorOf(connection.a.floorId), floorOf(connection.b.floorId)];
+    if (ends[1].level < ends[0].level) ends.reverse();
+    return ends[0].name + ' to ' + ends[1].name;
+  };
   return 'Stairs ' + Array.from(byLetter, ([letter, flights]) => {
     const ways = flights.map((connection) => (connection.direction === 'both' || connection.direction === undefined ? '' : wayLine(project, connection).replace(/, towards .*$/, '')));
-    const way = ways.every((each) => each === ways[0]) ? ways[0] : '';
-    return letter + (way === '' ? '' : ' (' + way + ')');
+    if (ways.every((each) => each === ways[0])) return letter + (ways[0] === '' ? '' : ' (' + ways[0] + ')');
+    return letter + ' (' + flights.map((connection, i) => span(connection) + ' ' + (ways[i] === '' ? 'both ways' : ways[i])).join('; ') + ')';
   }).join(', ');
 }
 
