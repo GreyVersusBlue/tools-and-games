@@ -363,9 +363,13 @@ export function openFeaturesDialog(env, opener) {
   });
 
   const project = () => store.project;
-  // the feature rows' name fields, by feature id, kept while only their values change
-  const fields = new Map();
-  let builtKey = null;
+  // feature id -> a row's renew(feature), which writes a new name into the row in place
+  const renewals = new Map();
+  // the rows are built again only when the list's order or its rooms change, never for a
+  // name alone: a rename kept on blur would otherwise replace the control the focus or a
+  // click is going to
+  let builtShape = null;
+  let builtNames = null;
   let after = null;
 
   function say(text) {
@@ -398,6 +402,8 @@ export function openFeaturesDialog(env, opener) {
     }
     return false;
   }
+
+  const nameOf = (feature) => (listOf(project()).find((each) => each.id === feature.id) || feature).name;
 
   function rowFor(feature, index, features) {
     const used = describeFeatureDelete(project(), feature.id);
@@ -435,16 +441,21 @@ export function openFeaturesDialog(env, opener) {
         made.removeAttribute('aria-invalid');
       }
     });
-    fields.set(feature.id, { input: made, set: (name) => {
-      committed = name;
-      if (document.activeElement !== made) made.value = name;
-    } });
+    const named = [bdi(feature.name), bdi(feature.name), bdi(feature.name)];
+    renewals.set(feature.id, (now) => {
+      committed = now.name;
+      made.setAttribute('aria-label', 'Name of ' + now.name);
+      if (document.activeElement !== made) made.value = now.name;
+      named.forEach((each) => {
+        each.textContent = now.name;
+      });
+    });
     return h('li', { class: 'features-row', data: { feature: feature.id } },
       h('div', { class: 'features-row__name' }, made, refusal),
       h('div', { class: 'features-row__buttons' },
-        h('button', { type: 'button', class: 'btn', disabled: index === 0, data: { key: 'up:' + feature.id }, on: { click: () => move(feature, index - 1, 'up') } }, 'Move ', bdi(feature.name), ' up'),
-        h('button', { type: 'button', class: 'btn', disabled: index === features.length - 1, data: { key: 'down:' + feature.id }, on: { click: () => move(feature, index + 1, 'down') } }, 'Move ', bdi(feature.name), ' down'),
-        h('button', { type: 'button', class: 'btn btn--danger', data: { key: 'delete:' + feature.id }, on: { click: (event) => remove(feature, event.currentTarget) } }, 'Delete ', bdi(feature.name), '…'),
+        h('button', { type: 'button', class: 'btn', disabled: index === 0, data: { key: 'up:' + feature.id }, on: { click: () => move(feature, index - 1, 'up') } }, 'Move ', named[0], ' up'),
+        h('button', { type: 'button', class: 'btn', disabled: index === features.length - 1, data: { key: 'down:' + feature.id }, on: { click: () => move(feature, index + 1, 'down') } }, 'Move ', named[1], ' down'),
+        h('button', { type: 'button', class: 'btn btn--danger', data: { key: 'delete:' + feature.id }, on: { click: (event) => remove(feature, event.currentTarget) } }, 'Delete ', named[2], '…'),
       ),
       used && used.rooms > 0 ? h('p', { class: 'features-row__used' }, 'On ' + count(used.rooms, 'room') + '.') : null,
     );
@@ -458,12 +469,13 @@ export function openFeaturesDialog(env, opener) {
   }
 
   function move(feature, to, way) {
-    if (commit(moveFeature, { id: feature.id, toIndex: to }, 'Moved ' + feature.name + ' ' + way + '.') === null) return;
+    if (commit(moveFeature, { id: feature.id, toIndex: to }, 'Moved ' + nameOf(feature) + ' ' + way + '.') === null) return;
     // the button just used may be a disabled one now (the top or the bottom): the other one takes the focus
     if (!focusKey(way + ':' + feature.id)) focusKey((way === 'up' ? 'down:' : 'up:') + feature.id);
   }
 
-  async function remove(feature, button) {
+  async function remove(row, button) {
+    const feature = { id: row.id, name: nameOf(row) };
     const info = describeFeatureDelete(project(), feature.id);
     if (!info) return;
     const features = listOf(project());
@@ -520,12 +532,20 @@ export function openFeaturesDialog(env, opener) {
       undone.hidden = true;
       undone.replaceChildren();
     }
-    const key = features.map((feature) => feature.id + ':' + feature.name).join('|') + '#' + features.map((feature) => (describeFeatureDelete(project(), feature.id) || { rooms: 0 }).rooms).join(',');
-    if (key === builtKey) return;
-    builtKey = key;
+    const shape = features.map((feature) => feature.id).join('|') + '#' + features.map((feature) => (describeFeatureDelete(project(), feature.id) || { rooms: 0 }).rooms).join(',');
+    const names = features.map((feature) => feature.name).join('|');
+    if (shape === builtShape) {
+      if (names !== builtNames) {
+        builtNames = names;
+        features.forEach((feature) => renewals.get(feature.id)(feature));
+      }
+      return;
+    }
+    builtShape = shape;
+    builtNames = names;
     const active = document.activeElement;
     const had = active && rows.contains(active) ? active.dataset.key : null;
-    fields.clear();
+    renewals.clear();
     rows.replaceChildren(...features.map((feature, index) => rowFor(feature, index, features)));
     if (had && !focusKey(had)) addInput.focus();
   }

@@ -255,6 +255,23 @@ test('5. the list dialog: rows, moves, rename and its refusal, delete with and w
   await page.click('#features-undo button');
   await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sinks'));
   assert.ok((await roomHas()).includes('Sinks'), 'Undo gave the feature back to the room');
+  // a rename kept on leaving the field does not take the focus or the click with it
+  const lap = await idOf('Lap');
+  const lapAt = (await names()).indexOf('Lap');
+  assert.ok(lapAt > 0 && lapAt < (await names()).length - 1, 'Lap has a row above and below it');
+  await page.click(key('name:' + lap), { clickCount: 3 });
+  await page.keyboard.type('Laps');
+  await page.keyboard.press('Tab');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Laps'));
+  assert.equal(await activeKey(), 'up:' + lap, 'Tab after a rename goes on to Move up');
+  assert.match(await text(key('down:' + lap)), /^Move Laps down$/, 'the row says the new name');
+  assert.equal(await page.$eval(key('name:' + lap), (el) => el.getAttribute('aria-label')), 'Name of Laps');
+  await page.click(key('name:' + lap), { clickCount: 3 });
+  await page.keyboard.type('Lapse');
+  await page.click(key('down:' + lap));
+  await shows((at) => (globalThis.sv2.store.project.building.features || [])[at + 1]?.name === 'Lapse', lapAt);
+  assert.ok(!(await names()).includes('Laps'), 'the click both renamed and moved');
+  assert.equal(await activeKey(), 'down:' + lap);
   // Escape closes, and the focus returns to the button that opened it
   await closeDialog();
   assert.equal(await activeKey(), 'feature-edit');
