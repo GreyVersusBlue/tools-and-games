@@ -40,7 +40,7 @@
 import { findDayType, effectiveDayType, ownDayTypes } from '../../engine/day-types.js';
 import { bellsFor, periodName, periodLabel, formatTime, findBellSchedule, offPeriods, parseTime } from '../../engine/bells.js';
 import { transitionPlan } from '../../engine/crowd.js';
-import { resolveSlotRoom, bellSchedulesOf, ELEVATOR_KIND, stairsLetter } from '../../engine/schema.js';
+import { resolveSlotRoom, bellSchedulesOf, ELEVATOR_KIND, stairsLetter, spacelessKey } from '../../engine/schema.js';
 import { meetingSlots } from '../../engine/runs.js';
 import { runResults } from '../../engine/worker.js';
 import { periodWords, list } from '../components/words.js';
@@ -73,9 +73,18 @@ export function defaultChoice(project) {
   return { who: 'all', grade: '', groupIds: [], dayTypeId: project.dayTypes[0].id, bellsId: null, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
 }
 
+// Grades are one grade whatever their spaces and case (spacelessKey), as the
+// dismissal card and the crowd have them (ARCHITECTURE 22.13, 22.17): each
+// once, as first typed (trimmed), sorted; no grade is ''.
 export function gradesOf(project) {
   const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-  return Array.from(new Set(project.groups.map((group) => group.grade))).sort((a, b) => collator.compare(a, b));
+  const seen = new Map();
+  for (const group of project.groups) {
+    const typed = typeof group.grade === 'string' ? group.grade : '';
+    const key = spacelessKey(typed);
+    if (!seen.has(key)) seen.set(key, key === '' ? '' : typed.trim());
+  }
+  return Array.from(seen.values()).sort((a, b) => collator.compare(a, b));
 }
 
 export function settleChoice(project, choice) {
@@ -102,7 +111,7 @@ export function settleChoice(project, choice) {
 
 export function shownGroups(project, choice) {
   if (choice.who === 'all') return project.groups.slice();
-  if (choice.who === 'grade') return project.groups.filter((group) => group.grade === choice.grade);
+  if (choice.who === 'grade') return project.groups.filter((group) => spacelessKey(typeof group.grade === 'string' ? group.grade : '') === spacelessKey(choice.grade));
   return project.groups.filter((group) => choice.groupIds.includes(group.id));
 }
 
