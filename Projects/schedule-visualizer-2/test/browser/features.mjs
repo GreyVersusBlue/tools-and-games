@@ -237,6 +237,10 @@ test('5. the list dialog: rows, moves, rename and its refusal, delete with and w
   await shows(() => !(globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));
   assert.equal(await toastWords(), 'Deleted Sink');
   assert.equal(await text('#features-undo'), 'Deleted Sink · Undo');
+  // heard once: the toast is the live one; neither the announcer nor the dialog's line says it again
+  assert.equal(await page.$eval('#toasts', (el) => el.getAttribute('role')), 'status');
+  assert.doesNotMatch(await text('#announcer'), /Deleted/, 'the announcer does not repeat the toast');
+  assert.equal(await page.$eval('#features-undo', (el) => el.closest('[role="status"], [role="alert"], [aria-live]')), null, 'the way back in the dialog is not a live region');
   assert.match(await activeKey(), /^name:/, 'the focus goes to a name');
   await page.click('#features-undo button');
   await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));

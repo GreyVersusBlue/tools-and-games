@@ -355,8 +355,9 @@ export function openFeaturesDialog(env, opener, options) {
     h('div', { class: 'features-dialog__addrow' }, addInput, addButton),
     h('p', { class: 'bld-inspector__small', id: 'features-add-hint' }, 'At most ' + FEATURES_MOST + ' features, each ' + FEATURE_NAME_MOST + ' characters or fewer.'),
     addRefusal);
-  // a deleted feature's way back: the toast's Undo is behind the dialog, so the dialog says it too
-  const undone = h('p', { class: 'features-dialog__undo', id: 'features-undo', role: 'status', hidden: true });
+  // a deleted feature's way back: the toast's Undo is behind the dialog, so the dialog shows
+  // it too. Not a live region: the toast is the one that is heard.
+  const undone = h('p', { class: 'features-dialog__undo', id: 'features-undo', hidden: true });
   body.append(note, countLine, empty, rows, adder, undone);
 
   const dialog = openDialog({
@@ -506,7 +507,7 @@ export function openFeaturesDialog(env, opener, options) {
     }
     if (commit(deleteFeature, { id: feature.id }, null) === null) return;
     const words = info.rooms > 0 ? 'Deleted ' + feature.name + ' from ' + count(info.rooms, 'room') : 'Deleted ' + feature.name;
-    say(words + '.');
+    // said once, by the toast (a role="status" host)
     ctx.toast({ text: words, action: { label: 'Undo', run: ctx.undo } });
     showUndo(words);
     settle();
