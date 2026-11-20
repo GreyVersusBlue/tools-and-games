@@ -397,8 +397,9 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
     }
   }
   if (s.phase !== 'ended') throw new Error(`bots: game ${bot}/${seed} did not end (phase ${s.phase})`);
-  // A player who finds a notebook page opens it to read it (DESIGN 2.2 rule 6): every bot reads what it found.
-  for (const id of s.notebook ?? []) s = readEntry(s, content, id);
+  // A player who finds a notebook page may open it (DESIGN 2.2 rule 6; DECISIONS 2026-11-20 13:3x): careful, greedy and qirad open every
+  // page they find, random opens each with chance one half from the bot's own seeded dice, first opens none.
+  for (const id of s.notebook ?? []) if (bot === 'random' ? roll() < 0.5 : bot !== 'first') s = readEntry(s, content, id);
   out.worth = netWorth(s, content);
   const sc = score(s, content);   // the engine's own score of the finished game (ARCHITECTURE 4.10)
   out.score = sc.total;
@@ -408,7 +409,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   // what the four parts are made of, so a rate can be tried on a finished run without replaying it
   const homeAgents = content.agents.map(a => s.agents[a.id]).filter(r => r?.hired && r.where === cityOf(content, 'bots').home && (r.trips ?? 0) > 0);
   out.raw = { net: netWealth(s, content).net, rep: REP_GROUPS.reduce((n, g) => n + (s.rep[g] ?? 0), 0), home: homeAgents.length,
-    trusted: homeAgents.filter(r => r.trust >= TRUST_BONUS_AT).length, pages: (s.notebook ?? []).length, multiplier: content.houses.find(h => h.id === house).multiplier ?? 1 };
+    trusted: homeAgents.filter(r => r.trust >= TRUST_BONUS_AT).length, pages: (s.notebook ?? []).length, read: (s.notebookRead ?? []).length, multiplier: content.houses.find(h => h.id === house).multiplier ?? 1 };
   out.cards = Object.keys(out.offers);   // a follow-up reaches the desk by an effect, so `seen` does not count it
   out.repAgents = s.rep.agents;
   out.survivors = Object.values(s.agents).filter(a => a.hired && a.where !== 'dead').length;
