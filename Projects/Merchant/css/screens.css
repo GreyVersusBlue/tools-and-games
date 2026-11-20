@@ -87,6 +87,9 @@ html.large-text .title-what { display: none; }
 .desk-still, .map-img, .map-fill { color: transparent; font-size: 0; }
 /* The polite live region sits at the end of <body>, where its 1 px made every page 1 px taller than the frame. */
 #live { position: fixed; top: 0; left: 0; }
+/* A placeholder still (manifest `final: false`) carries its file name in its top-left corner, where the season line sits.
+   The top 8% is cut off, so the label never lies behind text; a final picture is never cropped (MER-87, finding 15). */
+.desk-still.placeholder { clip-path: inset(8% 0 0 0); }
 .desk-still.fading { animation: still-in var(--season-fade-time) ease-in-out both; }
 @keyframes still-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -128,7 +131,7 @@ html.large-text .title-what { display: none; }
 .stack-count { margin: 0; align-self: flex-start; padding: 0 var(--s2); background: rgba(20, 17, 13, .72); color: var(--paper);
   font-family: var(--font-chrome); font-size: var(--step--1); border-radius: var(--radius); }
 .stack-count:empty { display: none; }
-.stack-papers { display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .2rem .3rem .5rem; }
+.stack-papers { position: relative; display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .2rem .3rem .5rem; }
 .sheet-box { display: flex; justify-content: center; }
 .sheet { width: 100%; max-width: var(--measure); padding: var(--s3) var(--s4); background-image: none; backface-visibility: hidden; }
 .sheet.still { animation: none; }
@@ -166,14 +169,19 @@ html.large-text .title-what { display: none; }
 .account th { text-align: left; font-weight: 400; }
 .account td { text-align: right; }
 .account th, .account td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); }
-@media (max-width: 480px) { .account tr { display: block; } .account th, .account td { display: block; text-align: left; border: 0; } }
+/* a phone keeps each account row's label and its value on one line, the value at the right and wrapping under the label only when it must (MER-87, finding 12) */
+@media (max-width: 480px) { .accounts-table tr { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); border-bottom: 1px solid var(--paper-shade); }
+  .accounts-table th, .accounts-table td { border: 0; } .accounts-table td { flex: 0 1 auto; min-width: 0; } }
 
 /* a return's question and a loss's picture slot (DESIGN 2.1 rules 3 and 4) */
 .ask { margin-top: var(--s3); }
 .ask-title { font-size: var(--step-1); margin: 0 0 var(--s1); }
 .ask-title:focus-visible { outline: 2px solid var(--brass-dark); }
-.picture-slot { margin: 0 0 var(--s3); aspect-ratio: 16 / 5; width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
+.picture-slot { margin: 0 0 var(--s3); aspect-ratio: 16 / 5; max-height: clamp(4rem, 13vh, 11rem); width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
 .picture-slot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The page between the acts is long and its one button is last: the button stays at the foot of the visible
+   paper while the page scrolls under it (MER-87, finding 7), on a paper-coloured bar so no line shows through. */
+.kind-phase #btn-open-house { position: sticky; bottom: 0; box-shadow: 0 0 0 var(--s2) var(--paper); }
 /* the Accounts paper: each line under the sentence of the choice that caused it (DESIGN 2.1 rule 6) */
 .account-group { margin-bottom: var(--s3); }
 .account-group .cause { font-size: var(--step-0); font-family: var(--font-chrome); margin: 0 0 var(--s1); }
@@ -205,6 +213,10 @@ html.large-text .title-what { display: none; }
   .desk-stills, .desk-still { height: 30svh; bottom: auto; }
   .desk-screen { padding-top: 30svh; background: var(--night); }
   .topbar { flex-wrap: wrap; background: rgba(20, 17, 13, .78); }
+  /* a placeholder still is a flat colour with a file name in it: 143 px of nothing between the bar and the first paper
+     (MER-87, finding 15). Without it the papers start under the bar; a final picture keeps its band. */
+  .desk-screen:has(.desk-still.placeholder) { padding-top: 7.4rem; }
+  .desk-screen:has(.desk-still.placeholder) .desk-stills { display: none; }
   /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
   .sheet-title { scroll-margin-top: 9rem; }
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
@@ -213,6 +225,7 @@ html.large-text .title-what { display: none; }
      page always ends below the last answer and the stack never runs under the "papers still need an
      answer" line (MER-71, finding 10; it was fixed over the page with 9rem guessed under the sheet). */
   .stack { position: static; width: auto; padding: var(--s2) .5rem 0; overflow: visible; min-height: calc(100dvh - 30svh); }
+  .desk-screen:has(.desk-still.placeholder) .stack { min-height: calc(100dvh - 7.4rem); }
   html { scroll-padding-bottom: 8rem; }
   .stack-papers { overflow: visible; flex: none; padding: 0 0 var(--s3); }
   .edges { order: 0; }
@@ -291,12 +304,14 @@ html.large-text .title-what { display: none; }
 .token-seal { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
 .map-unzoom { position: absolute; left: var(--s3); top: var(--s3); z-index: 2; }
 .map-unzoom[hidden] { display: none; }
-.map-toast { pointer-events: none; position: fixed; left: 50%; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3); max-width: 92%;
+.map-toast { pointer-events: none; position: fixed; bottom: var(--s4); transform: translateX(-50%); z-index: 4; margin: 0; padding: var(--s2) var(--s3);
+  /* centred on the map's own column, never over the board's buttons (Back to the desk, MER-87, finding 14) */
+  left: calc((100% - max(20rem, 33%)) / 2); max-width: calc(100% - max(20rem, 33%) - var(--s4));
   background: var(--paper); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); font-family: var(--font-chrome); }
 .map-toast[hidden] { display: none; }
 /* A phone's controls are at the foot (upright) or the right (on its side): the toast goes under the bar instead */
 @media (max-width: 700px), (max-height: 500px) {
-  .map-toast { top: calc(3.4rem + env(safe-area-inset-top)); bottom: auto; max-width: 70%; }
+  .map-toast { top: calc(3.4rem + env(safe-area-inset-top)); bottom: auto; left: 50%; max-width: 70%; }
 }
 @media (max-height: 500px) { .map-toast { top: 50px; left: 35%; } }
 

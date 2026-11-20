@@ -65,6 +65,14 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
 ];
 const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
+// MER-87 (finding 7): what a paper asks is in view the moment it opens, with no scrolling by the player, at the two
+// frames the milestone play found it cut off at (the board and a small laptop) and the 1366 laptop between them.
+// The target is the paper's first choice, or Open the house on the page between the acts.
+const OPENS_WITH = { 'desk-letter': '.sheet .choice', 'desk-question': '.sheet .choice', 'desk-report': '.sheet .choice', 'desk-papers': '.sheet .choice',
+  'desk-return': '.sheet .choice', 'desk-loss': '.sheet .choice', 'between-acts': '#btn-open-house', 'between-acts-long': '#btn-open-house' };
+const OPEN_FRAMES = new Set(['board', 'laptop', 'laptop-small']);
+// MERCHANT_LAYOUT_ONLY=desk-loss,desk-return runs just those screens (a development shortcut; the suite must run whole to count)
+const ONLY = (process.env.MERCHANT_LAYOUT_ONLY || '').split(',').filter(Boolean);
 const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts']);
 
 // ---- the same game the engine plays in Node (the policy of journey.mjs: first open choice,
@@ -116,6 +124,18 @@ const withLetter = (id, kind, stop, lag, standing) => {
   sent.post.push({ id, kind, expedition: x.id, agent: x.agent, stop, standing, written: sent.t, lag, arrive: sent.t + 1 });
   return eng.endSeason(sent, content);
 };
+// MER-87 (finding 7): the page between acts as the milestone play found it, two settled trips and three paragraphs of the
+// years, long enough that its one button is below any frame's fold. The jump entry is the engine's; the lines are added to it.
+states.interludeLong = (() => {
+  const s = structuredClone(states.interlude), jump = [...s.log].reverse().find(e => e.kind === 'jump');
+  const line = (id, text) => ({ expedition: id, result: 'return', text, cargo: { linen: 3 }, houseNet: -13 });
+  jump.settled = [line('x91', 'Yusuf came home from Damascus. The house lost 13 dinars.'), line('x92', 'Samir came home from Damascus. The house lost 8 dinars.')];
+  const para = t => ({ id: 'p' + t.length, interlude: t });
+  jump.events = ['In April 1326 a young scholar from Tangier landed at Alexandria and went on to Cairo. His name was Ibn Battuta. He would travel for about thirty years, and long afterward he told the story of what he saw.',
+    'In the summer of 1326 Ibn Battuta crossed the desert toward Aydhab on the Red Sea. He found the crossing shut. The king of the Beja was at war with the sultan\'s soldiers and had sunk the ships. Ibn Battuta turned back to the Nile.',
+    'In the summer of 1332 the sultan, al-Nasir Muhammad, set out for Mecca on the pilgrimage. He took his wife and his son Anuk with him. Every Muslim who can make the journey is asked to go once.'].map(para);
+  return s;
+})();
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
 states.report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
 const plain = s => JSON.parse(JSON.stringify(s));
@@ -240,10 +260,31 @@ const SCREENS = [
     } },
   { name: 'between-acts',
     go: async (p, f) => { await load(p, '#desk', { state: states.interlude, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
+  { name: 'between-acts-long',
+    go: async (p, f) => { await load(p, '#desk', { state: states.interludeLong, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
   ...[['notice', 'road', 'ending-next'], ['recall', 'road', 'ending-send'], ['recall-empty', 'recall', 'ending-send'], ['home', 'ended', 'ending-next'], ['score', 'ended', 'ending-next'], ['after', 'ended', 'ending-again']].map(([page, st, ready]) => ({
     name: `ending-${page}`,
     go: async (p, f) => { const at = page.replace('-empty', ''); await load(p, `#ending/${at}`, { state: states[st], large: f.large }); await p.waitForSelector(`#${ready}`); await p.waitForSelector(`[data-page="${at}"]`); } })),
 ];
+
+/** Is the element wholly on screen, inside every box that clips it, and not under anything (the top bar, End the season)? */
+const wholeInView = sel => {
+  const el = document.querySelector(sel);
+  if (!el) return `${sel} is not on the page`;
+  const r = el.getBoundingClientRect();
+  let top = Math.max(0, r.top), bottom = Math.min(innerHeight, r.bottom);
+  for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+    if (getComputedStyle(a).overflowY !== 'visible') { const b = a.getBoundingClientRect(); top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); }
+  }
+  if (r.top < top - 0.5 || r.bottom > bottom + 0.5) return `${sel} spans ${Math.round(r.top)} to ${Math.round(r.bottom)} and only ${Math.round(top)} to ${Math.round(bottom)} is on screen`;
+  const bar = document.querySelector('.topbar')?.getBoundingClientRect();
+  if (bar && r.top < bar.bottom - 0.5) return `${sel} is under the top bar`;
+  for (const [x, y] of [[r.left + 4, r.top + 2], [r.left + 4, r.bottom - 2], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]) {
+    const on = document.elementFromPoint(x, y);
+    if (on && !(el.contains(on) || on.contains(el))) return `${sel} is covered by ${on.id ? '#' + on.id : on.className || on.tagName}`;
+  }
+  return null;
+};
 
 // ---- the measuring, in the page. `scopeSel` is what is measured (a dialog when one is open).
 const measureGeometry = (scopeSel, minTarget) => {
@@ -444,6 +485,7 @@ const brief = list => list.length ? `${list.length}: ${list.slice(0, 6).join('; 
 
 try {
   for (const screen of SCREENS) {
+    if (ONLY.length && !ONLY.includes(screen.name)) continue;
     for (const frame of FRAMES) {
       const tag = `${screen.name} at ${frame.name} ${frame.width}x${frame.height}`;
       const { page, errors } = await open(frame);
@@ -456,6 +498,13 @@ try {
       });
       if (ready) {
         await page.screenshot({ path: path.join(SHOTS, `${screen.name}-${frame.name}.png`) });
+        // measured first: the contrast pass below scrolls every scroller and puts it back at the top
+        if (OPENS_WITH[screen.name] && OPEN_FRAMES.has(frame.name) && !frame.large) {
+          await test(`${tag}: what the paper asks is in view when it opens, no scrolling`, async () => {
+            const bad = await page.evaluate(wholeInView, OPENS_WITH[screen.name]);
+            ok(!bad, bad ?? '');
+          });
+        }
         const geo = await page.evaluate(measureGeometry, scopeSel, MIN_TARGET);
         await test(`${tag}: no overflow, nothing outside the viewport without a way to scroll to it`, async () => { ok(!geo.overflow.length, brief(geo.overflow)); });
         await test(`${tag}: every hit target is ${MIN_TARGET} px`, async () => { { const t = unknown(screen.name, 'target', geo.target); ok(!t.length, brief(t)); }; });
@@ -490,7 +539,7 @@ try {
   await browser.close();
   server.close();
 }
-if (!BREAK) await test('every known finding still reproduces (a fixed screen has its entry deleted)', async () => {
+if (!BREAK && !ONLY.length) await test('every known finding still reproduces (a fixed screen has its entry deleted)', async () => {
   const stale = KNOWN.filter((k, i) => !knownHits[i]).map(k => `${k.screen} ${k.check} ${k.match}`);
   ok(!stale.length, stale.join('; '));
 });

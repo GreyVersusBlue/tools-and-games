@@ -102,7 +102,7 @@ export function createEnding(app, nav) {
     const rows = outList(app.state, content);
     const body = [
       h('p', { class: 'ending-body' }, rows.length
-        ? 'Each of your people still out is listed below, with where they are and whether word can reach them in time. A person called home comes with part of the cargo and will most likely live. A person who stays may finish the trip with all of it, or may not come back.'
+        ? 'Each of your people still out is listed below, with where they are and whether word can reach them in time. A person called home comes with part of the cargo, but the plague killed many in Cairo too, so no one is certain to live. A person who stays may finish the trip with all of it, or may not come back.'
         : 'Nobody from the house is on the road. Your people are all in Cairo, and the plague will come to them there.'),
     ];
     if (rows.length) {
@@ -173,7 +173,7 @@ export function createEnding(app, nav) {
     const home = people.filter(p => p.fate === 'home').length;
     const entries = content.text?.ending ?? [];
     return sheet('after', TITLES.after,
-      h('p', { class: 'ending-body', id: 'after-house' }, `The house closes its books as ${lower(sc.rank)}. ${home} of its ${people.length === 1 ? 'person' : `${people.length} people`} came home.`),
+      h('p', { class: 'ending-body', id: 'after-house' }, `The house closes its books as ${lower(sc.rank)}. ${home} of ${people.length === 1 ? 'its 1 person' : `its ${people.length} people`} came home.`),
       entries.map(e => h('section', { class: 'ending-entry', dataset: { entry: e.id } },
         h('h3', null, e.title), h('p', { class: 'ending-body' }, e.body), sourceLine(content, e.sources))),
       h('div', { class: 'ending-actions' },
