@@ -417,7 +417,7 @@ test('8. the room list print and the batch pages list features, and the batch he
 });
 
 for (const theme of ['light', 'dark']) {
-  test('9. axe finds nothing on the features dialog, in the ' + theme + ' theme', async () => {
+  test('9. axe finds nothing on the features dialog, the open combobox or the Rooms popover, in the ' + theme + ' theme', async () => {
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
     await selectRoom(roomId);
     await openDialog();
@@ -429,6 +429,30 @@ for (const theme of ['light', 'dark']) {
     await closeDialog();
     const inspector = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#room-features'), { runOnly: { type: 'tag', values: tags } }), TAGS);
     assert.deepEqual(inspector.violations.map((violation) => violation.id), [], 'the Features part of Properties, ' + theme);
+    const violations = (found) => found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', '));
+    // the combobox with its list open and an option highlighted
+    await page.focus('#room-features-add');
+    await page.keyboard.type('a');
+    await page.keyboard.press('ArrowDown');
+    const highlighted = await page.$eval('#room-features-add', (el) => ({ expanded: el.getAttribute('aria-expanded'), active: el.getAttribute('aria-activedescendant'), options: document.querySelectorAll('#room-features-list [role="option"]').length }));
+    assert.equal(highlighted.expanded, 'true');
+    assert.ok(highlighted.active && highlighted.options >= 1, 'an option is highlighted: ' + JSON.stringify(highlighted));
+    const open = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#room-features'), { runOnly: { type: 'tag', values: tags } }), TAGS);
+    assert.ok(open.passes.length > 5, 'axe ran very few rules');
+    assert.deepEqual(violations(open), [], 'the combobox with its list open, ' + theme);
+    await page.keyboard.press('Escape');
+    await page.$eval('#room-features-add', (el) => { el.value = ''; });
+    // the Rooms tab's popover, open over the table
+    await page.click('#inspector [data-tab="rooms"]');
+    await page.waitForSelector('#rooms-table .bi-features-cell');
+    await page.click('#rooms-table .bi-features-cell');
+    await shows(() => document.querySelector('#rooms-features-pop')?.matches(':popover-open'));
+    const pop = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#rooms-features-pop'), { runOnly: { type: 'tag', values: tags } }), TAGS);
+    assert.ok(pop.passes.length > 5, 'axe ran very few rules');
+    assert.deepEqual(violations(pop), [], 'the Rooms tab popover, ' + theme);
+    await page.keyboard.press('Escape');
+    await shows(() => !document.querySelector('#rooms-features-pop').matches(':popover-open'));
+    await page.click('#inspector [data-tab="properties"]');
   });
 }
 
@@ -462,6 +486,53 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   assert.ok(heights.length > 0 && heights.every((height) => height >= 43.9), 'options are 44 px: ' + heights.join(', '));
   await p.keyboard.press('Escape');
   await p.$eval('#room-features-add', (el) => { el.value = ''; });
+  const phoneChips = () => p.$$eval('#room-features-chips button', (all) => all.map((el) => el.querySelector('.bi-chip__name').textContent));
+  const phoneSays = (words) => p.waitForFunction((wanted) => document.querySelector('#announcer')?.textContent === wanted, { timeout: 8000 }, words);
+  // add by tap: type, then tap the option
+  await p.tap('#room-features-add');
+  await p.keyboard.type('Lab');
+  await p.waitForSelector('#room-features-list [role="option"]');
+  assert.equal(await p.$eval('#room-features-list [role="option"]', (el) => el.textContent), 'Lab');
+  await p.tap('#room-features-list [role="option"]');
+  await phoneSays('Lab added');
+  assert.deepEqual(await phoneChips(), ['Lab']);
+  // add by keyboard: an arrow, then Enter
+  await p.keyboard.type('Sink');
+  await p.keyboard.press('ArrowDown');
+  await p.keyboard.press('Enter');
+  await phoneSays('Sink added');
+  assert.deepEqual(await phoneChips(), ['Lab', 'Sink']);
+  const chipBoxes = await p.$$eval('#room-features-chips button', (all) => all.map((el) => {
+    const box = el.getBoundingClientRect();
+    return { width: box.width, height: box.height, right: box.right };
+  }));
+  assert.ok(chipBoxes.every((box) => box.height >= 43.9 && box.width >= 43.9 && box.right <= 390), 'the chips are 44 px and fit at 390: ' + JSON.stringify(chipBoxes));
+  // remove by tap, then by keyboard
+  await p.tap('#room-features-chips button');
+  await p.waitForFunction(() => document.querySelectorAll('#room-features-chips button').length === 1, { timeout: 8000 });
+  assert.deepEqual(await phoneChips(), ['Sink']);
+  assert.equal(await p.evaluate(() => document.activeElement?.querySelector?.('.bi-chip__name')?.textContent || null), 'Sink', 'the focus goes to the next chip');
+  await p.keyboard.press('Enter');
+  await p.waitForFunction(() => document.querySelectorAll('#room-features-chips button').length === 0, { timeout: 8000 });
+  assert.equal(await p.evaluate(() => document.activeElement?.id), 'room-features-add', 'no chip left: the focus goes to the field');
+  // the Rooms tab's popover at 390: on screen, with the field focused
+  await p.tap('#inspector [data-tab="rooms"]');
+  await p.waitForSelector('#rooms-table .bi-features-cell');
+  await p.evaluate(() => document.querySelector('#rooms-table .bi-features-cell').scrollIntoView({ block: 'center' }));
+  await p.tap('#rooms-table .bi-features-cell');
+  await p.waitForFunction(() => document.querySelector('#rooms-features-pop')?.matches(':popover-open'), { timeout: 8000 });
+  const popBox = await p.$eval('#rooms-features-pop', (el) => {
+    const box = el.getBoundingClientRect();
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, focus: document.activeElement?.id, field: document.querySelector('#rooms-features-add').getBoundingClientRect().height };
+  });
+  assert.ok(popBox.left >= 0 && popBox.right <= 390 && popBox.top >= 0 && popBox.bottom <= 844, 'the popover is on screen at 390: ' + JSON.stringify(popBox));
+  assert.equal(popBox.focus, 'rooms-features-add');
+  assert.ok(popBox.field >= 43.9, 'its field is 44 px');
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.querySelector('#rooms-features-pop').matches(':popover-open'), { timeout: 8000 });
+  await p.tap('#inspector [data-tab="properties"]');
+  await p.waitForSelector('#room-features-add');
+  await p.evaluate(() => document.querySelector('#room-features-add').scrollIntoView({ block: 'center' }));
   await p.tap(key('feature-edit'));
   await p.waitForSelector('#features-dialog[open]');
   const seen = await p.evaluate(() => ({ features: (globalThis.sv2.store.project.building.features || []).length, rows: document.querySelectorAll('#features-rows li').length, empty: document.querySelector('#features-empty')?.hidden, dialogs: document.querySelectorAll('dialog[open]').length }));
