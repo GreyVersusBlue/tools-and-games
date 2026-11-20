@@ -346,6 +346,15 @@ export function recall(state, content, decisions = {}) {
   return s;
 }
 
+/** The player opens a page of the notebook (DESIGN 2.2 rule 6). Adds the id to `notebookRead` once;
+    an entry not yet found, an unknown id, or one already read changes nothing. No phase gate: the book opens any time. */
+export function readEntry(state, content, id) {
+  if (!state.notebook.includes(id) || (state.notebookRead ?? []).includes(id)) return state;
+  const s = clone(state);
+  s.notebookRead = [...(s.notebookRead ?? []), id];
+  return s;
+}
+
 /** Values the screens need so they never compute a rule (ARCHITECTURE 2.1). */
 export function view(state, content) {
   const idx = seasonIndex(state, content);

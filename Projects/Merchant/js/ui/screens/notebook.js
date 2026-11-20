@@ -2,6 +2,8 @@
 // title, body and source line; one not yet met is a blank ruled line, and the count says how many
 // are found. Entries stand in the order they were met (state.notebook is that order).
 import { h } from '../dom.js';
+// index.js is MER-92's and does not export readEntry yet; it should, and this import then moves there.
+import { readEntry } from '../../engine/turn.js';
 
 export const TABS = [['terms', 'Terms'], ['places', 'Places'], ['people', 'People'], ['goods', 'Goods']];
 
@@ -33,9 +35,11 @@ function entry(app, e) {
   const parts = sourceText(app.content, e.sources);
   const src = parts.length ? h('p', { class: 'source' }, 'Source: ', parts.flatMap((p, i) => [
     i ? '; ' : '', p.author, ', ', h('i', null, p.title), `, ${p.year}`, p.page ? `, ${p.page}` : '']), '.') : null;
+  // The title is a summary; opening the entry is what counts as reading it (readEntry adds it once).
+  const open = ev => { if (ev.target.open) app.act(st => readEntry(st, app.content, e.id)); };
   return h('li', { class: 'nb-entry', dataset: { entry: e.id } },
     art ? h('img', { class: 'nb-art', src: `assets/art/${art.file}`, alt: art.alt ?? '', width: 96, height: 96, loading: 'lazy', decoding: 'async' }) : null,
-    h('div', null, h('h4', null, e.title), h('p', { class: 'nb-body' }, e.body), src));
+    h('details', { class: 'nb-open', ontoggle: open }, h('summary', null, h('h4', null, e.title)), h('p', { class: 'nb-body' }, e.body), src));
 }
 
 /** "14 of 60 found" for the whole book, or for a tab. */

@@ -6,16 +6,19 @@ import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { freshState } from '../js/engine/state.js';
 import { newGame, openSeason, choose, paperChoices, endSeason, recall, score, outfit } from '../js/engine/index.js';
+import { readEntry } from '../js/engine/turn.js';
 import { recallRisk, chanceWord } from '../js/engine/routes.js';
-import { scaled, netWealth, REP_POINTS, HOME_POINTS, HOME_TRUST_BONUS, NOTEBOOK_POINTS } from '../js/engine/score.js';
+import { scaled, netWealth, REP_GROUP_POINTS, HOME_POINTS, HOME_TRUST_BONUS, NOTEBOOK_POINTS } from '../js/engine/score.js';
 
 const testport = await loadContent('testport', { fs });
 const cairo = await loadContent('cairo', { fs });
 
-/** A plain-house state stripped to nothing: no money, stock, loans, rep, notebook, and no agent home. */
+/** A plain-house state stripped to nothing: no money, stock, loans, notebook, no agent home, and every
+    group of reputation at -3, which earns nothing (a group at 0 would earn half). */
 function bare(over = {}) {
   const s = freshState(testport, { seed: 1, length: 'acts', house: 'plain' });
-  s.money = 0; s.stock = {}; s.loans = []; s.notebook = [];
+  s.money = 0; s.stock = {}; s.loans = []; s.notebook = []; s.notebookRead = [];
+  for (const g of Object.keys(s.rep)) s.rep[g] = -3;
   for (const a of Object.values(s.agents)) a.where = 'dead';
   return Object.assign(s, over);
 }
@@ -62,14 +65,23 @@ test('score: wealth takes loans away', () => {
   eq(part(s, 'wealth').points, 0, 'a house in debt scores 0 here, never less');
 });
 
-test('score: reputation is the four groups summed, scaled, and never under 0', () => {
+test('score: reputation counts from the middle: a group at 0 earns half, -3 nothing, +3 all', () => {
   const s = bare();
-  s.rep = { partners: 1, agents: 2, court: 0, foreign: -1 };
-  eq(part(s, 'reputation').points, 2 * REP_POINTS);
-  s.rep = { partners: 3, agents: 3, court: 3, foreign: 3 };
-  eq(part(s, 'reputation').points, 12 * REP_POINTS);
-  s.rep = { partners: -3, agents: -3, court: -3, foreign: -3 };
-  eq(part(s, 'reputation').points, 0);
+  const rep = (...v) => { s.rep = { partners: v[0], agents: v[1], court: v[2], foreign: v[3] }; return part(s, 'reputation').points; };
+  eq(rep(-3, -3, -3, -3), 0);
+  eq(rep(0, 0, 0, 0), 4 * REP_GROUP_POINTS / 2, 'a house that never met anyone sits at half, not at the floor');
+  eq(rep(3, 3, 3, 3), 4 * REP_GROUP_POINTS);
+  eq(rep(0, 0, 0, 0) > rep(-3, 0, 0, 0), true, 'one group that was annoyed scores under a house that met no one');
+  eq(rep(3, -3, 0, 0), REP_GROUP_POINTS + 0 + REP_GROUP_POINTS / 2 * 2, 'each group is its own line: +3 all, -3 none, two at 0 half each');
+  eq(rep(1, 0, 0, 0), REP_GROUP_POINTS * (4 + 3 + 3 + 3) / 6);
+});
+
+test('score: the named case: an annoyed partner costs points a house that met no one keeps', () => {
+  const met = bare(); met.rep = { partners: 0, agents: 0, court: 0, foreign: 0 };
+  const annoyed = bare(); annoyed.rep = { partners: -2, agents: 0, court: 0, foreign: 0 };
+  const lost = part(met, 'reputation').points - part(annoyed, 'reputation').points;
+  ok(Math.abs(lost - REP_GROUP_POINTS / 6 * 2) < 1e-9, `lost ${lost}`);
+  ok(/below the middle/.test(part(annoyed, 'reputation').reason) && /at the middle/.test(part(met, 'reputation').reason), part(annoyed, 'reputation').reason);
 });
 
 test('score: people home counts the hired who made a trip and are alive in the home city, more at trust 2 or 3', () => {
@@ -169,16 +181,40 @@ test('recall: a return at the end writes the money it brought, and the score\'s 
   eq(e.agents.mira.trips, 1);
 });
 
-test('score: the notebook gives points per entry found', () => {
+test('score: the notebook gives points per entry opened and read, not per entry found', () => {
   const s = bare();
   s.notebook = ['a', 'b', 'c', 'd'];
+  eq(part(s, 'notebook').points, 0, 'found and never opened is worth nothing');
+  eq(part(s, 'notebook').reason, 'No page of the notebook was opened and read.');
+  s.notebookRead = ['a', 'b', 'b', 'zz'];   // a repeat counts once, and a page never found is not counted
+  eq(part(s, 'notebook').points, 2 * NOTEBOOK_POINTS);
+  eq(part(s, 'notebook').reason, '2 pages in the notebook opened and read.');
+  s.notebookRead = ['a', 'b', 'c', 'd'];
   eq(part(s, 'notebook').points, 4 * NOTEBOOK_POINTS);
-  eq(part(s, 'notebook').reason, '4 pages in the notebook.');
+});
+
+test('score: an old save with no read list reads as having read nothing', () => {
+  const s = bare(); s.notebook = ['a', 'b']; delete s.notebookRead;
+  eq(part(s, 'notebook').points, 0);
+  eq(score(s, testport).total, 0);
+});
+
+test('readEntry: adds a found entry once, ignores one not found, and leaves its input alone', () => {
+  let s = bare(); s.notebook = ['a', 'b'];
+  const before = structuredClone(s);
+  const one = readEntry(s, testport, 'a');
+  eq(one.notebookRead, ['a']); eq(s, before);
+  eq(readEntry(one, testport, 'a'), one, 'a second reading changes nothing');
+  eq(readEntry(one, testport, 'zz').notebookRead, ['a'], 'an entry not found is not read');
+  eq(readEntry(readEntry(one, testport, 'b'), testport, 'a').notebookRead, ['a', 'b']);
+  delete s.notebookRead;
+  eq(readEntry(s, testport, 'b').notebookRead, ['b'], 'a state with no list gets one');
+  eq(part(readEntry(readEntry(s, testport, 'a'), testport, 'b'), 'notebook').points, 2 * NOTEBOOK_POINTS);
 });
 
 test('score: the house multiplier is on the sum, and the rank follows the total', () => {
-  const plain = bare({ money: 1000 }); plain.notebook = ['a', 'b'];       // 20 + two pages
-  const rich = bare({ money: 1000, house: 'rich' }); rich.notebook = ['a', 'b'];
+  const plain = bare({ money: 1000 }); plain.notebook = plain.notebookRead = ['a', 'b'];       // 20 + two pages read
+  const rich = bare({ money: 1000, house: 'rich' }); rich.notebook = rich.notebookRead = ['a', 'b'];
   const sum = 20 + 2 * NOTEBOOK_POINTS;   // the testport scale gives 20 for 1000, the notebook is a rate
   const a = score(plain, testport), b = score(rich, testport);
   eq(a.sum, sum); eq(a.multiplier, 1); eq(a.total, Math.round(sum));
@@ -187,7 +223,7 @@ test('score: the house multiplier is on the sum, and the rank follows the total'
   eq(big.total, 72);
   eq(big.rank, 'A small but steady house');
   // reputation and four notebook pages lift the same house over the line (rates are the game's, so the pin follows them)
-  const lifted = score(bare({ money: 8000, house: 'rich', notebook: ['a', 'b', 'c', 'd'], rep: { partners: 3, agents: 3, court: 3, foreign: 3 } }), testport);
+  const lifted = score(bare({ money: 8000, house: 'rich', notebook: ['a', 'b', 'c', 'd'], notebookRead: ['a', 'b', 'c', 'd'], rep: { partners: 3, agents: 3, court: 3, foreign: 3 } }), testport);
   ok(lifted.total >= 80, `total ${lifted.total} is under the respected line`);
   eq(lifted.rank, 'A respected house');
 });

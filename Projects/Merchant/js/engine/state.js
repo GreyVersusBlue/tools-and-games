@@ -80,6 +80,7 @@ export function freshState(content, { seed, length, house }) {
     flags: {},
     seen: {},
     notebook: [],
+    notebookRead: [],   // ids of the entries the player opened, in order (readEntry); a subset of `notebook`
     log: [],
     score: null,
   };
