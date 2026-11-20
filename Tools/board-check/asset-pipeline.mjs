@@ -278,8 +278,35 @@ async function fourthQuarterJobs() {
   return { jobs, texts: [] };
 }
 
+// SkyWings 64. Twelve 1024 JPEGs, six terrain sets of a colour and a normal map,
+// that the game carried over from Poly Haven at qualities from about 85 to 98
+// (7.9 MB; the first load was 13.9 MB, TG-105). Both kinds re-encode in place at
+// their own size from the commit the files arrived in. Measured 2026-11-20 with
+// sharp 0.35.4 and mozjpeg against the originals, worst channel RMSE over the
+// twelve, total bytes (the original 7.92 MB):
+//
+//   colour 4:2:0 q82 2.49 MB (all twelve), RMSE up to 8.1    q85  2.81 MB, 7.7
+//   normal 4:2:0 q85 reads 10.4 to 12.7 on the grass and the leaves: the same
+//   reason every normal map in this file is 4:4:4, and q85/4:4:4 reads 3.5 to 7.4.
+//
+// So a colour map is q85 4:2:0 (it tiles across the terrain, the case this file
+// keeps 4:2:0 for) and a normal map is q85 4:4:4. 7.92 MiB becomes 3.64 MiB; two normals
+// (beach, leaves) come out bigger than their source gzipped and stay as they came.
+const SW = "Projects/skywings64/assets/tex";
+const SW_SETS = ["aerial_beach_01", "aerial_grass_rock", "coast_sand_rocks_02", "forest_leaves_02", "rocky_terrain_02", "snow_field_aerial"];
+
+async function skywingsJobs() {
+  const jobs = [];
+  for (const set of SW_SETS) {
+    jobs.push({ from: `${SW}/${set}_Diffuse.jpg`, to: `${SW}/${set}_Diffuse.jpg`, width: null, slot: "colour", enc: jpeg(85, "4:2:0") });
+    jobs.push({ from: `${SW}/${set}_nor_gl.jpg`, to: `${SW}/${set}_nor_gl.jpg`, width: null, slot: "normal", enc: jpeg(85, "4:4:4") });
+  }
+  return { jobs, texts: [] };
+}
+
 Object.assign(RECIPES, {
   "bell-to-bell-textures": { kind: "textures", rev: "24b6b99d0d14d772d8bf29a8977cd58279ce6ff9", jobs: bellToBellJobs, ceiling: 6 },
+  "skywings64-textures": { kind: "textures", rev: "06420fcd713b65c9d7860c8b6c006f6703655ea4", jobs: skywingsJobs, ceiling: 9 },
   "fourth-quarter-textures": { kind: "textures", rev: "24b6b99d0d14d772d8bf29a8977cd58279ce6ff9", jobs: fourthQuarterJobs, ceiling: 9 }
 });
 

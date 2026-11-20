@@ -65,6 +65,13 @@ try {
     const type = typeof m.type === 'function' ? m.type() : m.type;
     if (type === 'error' || type === 'warn' || type === 'warning') problems.push(`${type}: ${m.text()}`);
   });
+  // When did the menu first appear, on the page's own clock? The sound files must start after it (TG-105, #1092).
+  await page.evaluateOnNewDocument(() => {
+    const mo = new MutationObserver(() => {
+      if (document.querySelector('.btn-play')) { window.__menuAt = performance.now(); mo.disconnect(); }
+    });
+    mo.observe(document, { childList: true, subtree: true });
+  });
   await page.goto(BASE + PAGE_URL, { waitUntil: 'load', timeout: 60000 });
 
   console.log('\nboot');
@@ -76,6 +83,26 @@ try {
   const title = await page.title();
   ok(title === 'Throneshard', 'the page is titled Throneshard', JSON.stringify(title));
   await page.screenshot({ path: path.join(OUT, '1-menu.png') });
+
+  // Sounds load after the menu, not beside the loading screen, and every one of them still decodes (#1092).
+  if (booted) {
+    // (the resource-timing buffer holds 250 entries, so the count of requests is not read from it)
+    const fetched = await waitFor(page, () => { const a = window.game.audio; return a._allFiles().every((f) => a._raw.get(f) instanceof ArrayBuffer); },
+      { timeout: 120000 }).then(() => true).catch(() => false);
+    const total = await page.evaluate(() => window.game.audio._allFiles().length);
+    const oggStarts = await page.evaluate(() => performance.getEntriesByType('resource')
+      .filter((e) => /\.ogg(\?|$)/.test(e.name)).map((e) => e.startTime));
+    const menuAt = await page.evaluate(() => window.__menuAt);
+    ok(fetched, 'every sound file is fetched', `${total} files`);
+    ok(oggStarts.length > 0 && menuAt > 0 && Math.min(...oggStarts) >= menuAt - 100,
+      'no sound file is requested before the menu is up', `first at ${Math.round(Math.min(...oggStarts))} ms, menu at ${Math.round(menuAt)} ms`);
+    await page.evaluate(() => window.dispatchEvent(new Event('pointerdown'))); // the unlock gesture
+    const decoded = await waitFor(page, () => {
+      const a = window.game.audio;
+      return a._allFiles().every((f) => a.buffers.get(f) instanceof AudioBuffer);
+    }, { timeout: 120000 }).then(() => true).catch(() => false);
+    ok(decoded, 'every sound file decodes once the audio is unlocked', `${total} files`);
+  }
 
   // Piercing Gale's corkscrew and the rune auras' bands, as the effect modules build them (no match needed, and
   // nothing here is a picture: test what was chosen, where it sits and that it never outgrows the arrow).
