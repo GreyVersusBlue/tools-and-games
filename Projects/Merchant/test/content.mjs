@@ -310,7 +310,7 @@ test('rule 4: dominates needs better somewhere and no worse anywhere', () => {
   ok(!dominates({ money: 5 }, { money: 0, 'stock:wool': 1 }), 'a trade-off is not domination');
 });
 test('rule 4: only the opening letters named in the lint\'s head are exempt', () => {
-  eq(OPENING_LETTERS, { cairo: ['opening-letter', 'opening-letter-broker'], testport: ['welcome-note'] });
+  eq(OPENING_LETTERS, { cairo: ['opening-letter', 'opening-letter-broker', 'first-expedition'], testport: ['welcome-note'] });
   const dominated = id => variant(c => {
     c.cards.find(x => x.id === 'welcome-note').id = id;
     c.city.opening = { plain: [id, 'wool-offer'], rich: [id, 'salt-dispute'] };

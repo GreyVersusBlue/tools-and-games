@@ -27,8 +27,10 @@ const DATA = path.join(ROOT, 'data');
 
 // The only exceptions (rule 4): each city's opening letter. Its choices are a first handshake,
 // not a trade-off. Cairo has two because ARCHITECTURE 5.1 names one for each starting house.
+// first-expedition is the scripted card that teaches sending a trip; its go takes no money
+// because the trip's costs are charged at Send (MER-72), so it is not a trade-off either.
 export const OPENING_LETTERS = {
-  cairo: ['opening-letter', 'opening-letter-broker'],
+  cairo: ['opening-letter', 'opening-letter-broker', 'first-expedition'],
   testport: ['welcome-note'],
 };
 
