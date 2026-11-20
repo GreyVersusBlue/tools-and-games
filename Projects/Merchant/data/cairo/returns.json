@@ -9,7 +9,8 @@
       "outcome": [
         "profit",
         "even"
-      ]
+      ],
+      "brought": true
     },
     "title": "Sell the {good} now?",
     "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take two loads today for 200 dinars, a little under the market. Or you can hold it and wait for news of prices.",
@@ -56,7 +57,11 @@
         "src": "pegolotti-1936",
         "at": "the handbook as a whole; the Alexandria chapter, 1766 printing pp. 58 to 59, and freight, p. 61; the use of the lists to judge a far price is the writer's inference, not the book's words"
       }
-    ]
+    ],
+    "when": {
+      "stock": "pepper",
+      "gte": 2
+    }
   },
   {
     "id": "return-sell-silk",
@@ -68,7 +73,8 @@
       "outcome": [
         "profit",
         "even"
-      ]
+      ],
+      "brought": true
     },
     "title": "Sell the {good} now?",
     "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take one load today for 380 dinars, a little under the market. Or you can hold it and wait for news of prices.",
@@ -115,7 +121,11 @@
         "src": "pegolotti-1936",
         "at": "the handbook as a whole; the Alexandria chapter, 1766 printing pp. 58 to 59, and freight, p. 61; the use of the lists to judge a far price is the writer's inference, not the book's words"
       }
-    ]
+    ],
+    "when": {
+      "stock": "silk",
+      "gte": 1
+    }
   },
   {
     "id": "return-sell-sugar",
@@ -127,7 +137,8 @@
       "outcome": [
         "profit",
         "even"
-      ]
+      ],
+      "brought": true
     },
     "title": "Sell the {good} now?",
     "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars, a little under the market. Or you can hold it and wait for news of prices.",
@@ -174,7 +185,11 @@
         "src": "pegolotti-1936",
         "at": "the handbook as a whole; the Alexandria chapter, 1766 printing pp. 58 to 59, and freight, p. 61; the use of the lists to judge a far price is the writer's inference, not the book's words"
       }
-    ]
+    ],
+    "when": {
+      "stock": "sugar",
+      "gte": 3
+    }
   },
   {
     "id": "return-sell-linen",
@@ -186,7 +201,8 @@
       "outcome": [
         "profit",
         "even"
-      ]
+      ],
+      "brought": true
     },
     "title": "Sell the {good} now?",
     "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars, a little under the market. Or you can hold it and wait for news of prices.",
@@ -233,7 +249,11 @@
         "src": "pegolotti-1936",
         "at": "the handbook as a whole; the Alexandria chapter, 1766 printing pp. 58 to 59, and freight, p. 61; the use of the lists to judge a far price is the writer's inference, not the book's words"
       }
-    ]
+    ],
+    "when": {
+      "stock": "linen",
+      "gte": 3
+    }
   },
   {
     "id": "return-qirad-share",
