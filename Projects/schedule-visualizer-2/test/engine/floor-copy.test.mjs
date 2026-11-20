@@ -624,3 +624,12 @@ test('a copy of a copy goes on top again, and the second copy joins the first\'s
   assert.deepEqual(project.building.floors.map((floor) => floor.name), ['Floor 1', 'Floor 2', 'Floor 3', 'Floor 4']);
   assert.deepEqual(stairwells(project.building).map((well) => [well.letter, well.stops.length]), [['A', 4]]);
 });
+
+test('describe: a name typed in the dialog is the name the sentences use, as typed', () => {
+  const project = chain(2);
+  const info = describeFloorDuplicate(project, 'fsample002', { name: '  <b>Annex</b>  ' });
+  assert.equal(info.newName, '<b>Annex</b>');
+  assert.match(info.sentence, /as <b>Annex<\/b>,/);
+  assert.match(info.joinText, /to <b>Annex<\/b> as one stairwell/);
+  assert.equal(describeFloorDuplicate(project, 'fsample002', { name: '   ' }).newName, 'Floor 3', 'a blank name is no name: the default stands');
+});
