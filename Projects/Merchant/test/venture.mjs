@@ -23,6 +23,7 @@ const still = (edit = () => {}) => variant(T0, x => {
   for (const g of x.goods) { g.sigma = 0; g.revert = 0; }
   for (const r of x.routes) for (const l of r.legs) l.risk = 0;
   x.agents.find(a => a.id === 'mira').traits = ['honest'];
+  x.agents.find(a => a.id === 'mira').wage = 1;   // a wage that does not swallow a testport venture (MER-98: only a plan that pays is proposed)
   edit(x);
 });
 const game = (c, over = {}) => newGame(c, { seed: 7, length: 'full', house: 'plain', ...over });
@@ -158,8 +159,10 @@ test('the rule is on: money sent with no good to bring back is refused as shippe
   const no = checkPlan(s, c, bare);
   eq(no.ok, false);
   ok(/needs a good to bring back/.test(no.reasons.join(' ')), no.reasons.join(' '));
+  // news of a good Damascus sells for far less than Cairo pays: the plan has something worth bringing back (MER-98: a plan that does not pay is not proposed)
+  know(s, c, 'damascus', 'silk', 300);
   const offered = proposePlan(s, c, 'yusuf', 'cairo-damascus');
-  ok(offered && offered.buy.length > 0, 'the default names a good to bring back');
+  ok(offered && !offered.why && offered.buy.length > 0, `the default names a good to bring back: ${JSON.stringify(offered)}`);
   eq(checkPlan(s, c, offered).ok, true, 'the engine takes the default it offers');
 });
 
@@ -346,7 +349,7 @@ test('why: when two causes apply the larger one is named, and it is one sentence
 
 // ---- the three widest trades, and the view
 
-test('bestTrades: the three widest known margins, widest first, with the road, the news age and the risk word; unknown prices are left out', () => {
+test('bestTrades: the trades with their road, the news age and the risk word, best a season first; unknown prices and trades the house does not make are left out', () => {
   const c = still();
   const s = game(c);
   know(s, c, 'hilltown', 'wool', 30, 0);      // out: 30 over 20, +50%
@@ -354,10 +357,10 @@ test('bestTrades: the three widest known margins, widest first, with the road, t
   know(s, c, 'saltmarsh', 'salt', 5, 1);      // back: 10 over 5, +100%
   know(s, c, 'saltmarsh', 'lamps', 1, 0);     // the house does not trade lamps at home: never a trade
   const t = bestTrades(s, c);
-  eq(t.map(x => [x.stop, x.good, x.direction]), [['hilltown', 'salt', 'back'], ['saltmarsh', 'salt', 'back'], ['hilltown', 'wool', 'out']]);
-  eq(t.map(x => Math.round(x.margin * 100)), [233, 100, 50]);
-  eq([t[0].ageWords, t[1].ageWords, t[2].ageWords], ['three seasons old', 'one season old', 'this season']);
-  eq([t[0].riskWord, t[0].road, t[0].route], ['safe', 'Harbour to Hilltown', 'harbour-hilltown']);
+  eq(t.map(x => [x.stop, x.good, x.direction]), [['saltmarsh', 'salt', 'back'], ['hilltown', 'salt', 'back'], ['hilltown', 'wool', 'out']], 'a nearer road with less margin outranks the wider one on a longer road');
+  eq(t.map(x => Math.round(x.margin * 100)), [100, 233, 50]);
+  eq([t[0].ageWords, t[1].ageWords, t[2].ageWords], ['one season old', 'three seasons old', 'this season']);
+  eq([t[1].riskWord, t[1].road, t[1].route], ['safe', 'Harbour to Hilltown', 'harbour-hilltown']);
   eq(bestTrades(s, c, 2).length, 2);
   eq(bestTrades(game(c), c), [], 'no news, no trade to name');
   eq(t[2].text, 'Hilltown pays 30 for wool. Harbour pays 20.');
@@ -396,9 +399,9 @@ test('view().venture on the real game: a draft the engine takes, at a stop with 
     seen++;
     eq(checkPlan(s, C, v.venture.plan).ok, true, `season ${i}: ${checkPlan(s, C, v.venture.plan).reasons.join(' ')}`);
     ok(v.bestTrades.length <= 3 && v.bestTrades.every(t => t.ageWords && t.riskWord && t.road), JSON.stringify(v.bestTrades[0]));
-    const all = bestTrades(s, C, 100).map(t => t.margin);
-    eq(v.bestTrades.map(t => t.margin), all.slice(0, 3));
-    ok(all.every((m, k) => k === 0 || all[k - 1] >= m), 'widest first');
+    const all = bestTrades(s, C, 100).map(t => t.score);
+    eq(v.bestTrades.map(t => t.score), all.slice(0, 3));
+    ok(all.every((m, k) => k === 0 || all[k - 1] >= m), 'best a season first');
   }
   ok(seen > 3, `${seen} seasons had a draft`);
 });
