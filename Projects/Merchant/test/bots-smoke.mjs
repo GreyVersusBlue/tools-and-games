@@ -89,7 +89,7 @@ test('check: a careful player broke by season 5 in every game is a breach', () =
 });
 
 test('check: careful no better than random is a breach of the score spread', () => {
-  const c = doctored(r => { for (const g of r.results.careful) g.worth = 0; });
+  const c = doctored(r => { for (const g of r.results.careful) g.score = 0; });
   ok(failing(c).some(n => n.includes('75th percentile')), failing(c).join('; '));
 });
 
@@ -267,6 +267,56 @@ test('check: a run with no greedy bot has no greedy rows and does not throw', ()
   const only = { ...res, results: { careful: res.results.careful } };
   const c = check(only);
   ok(!c.rows.some(r => r.name.startsWith('greedy')));
+});
+
+// ---- the score (MER-85): rank targets, the top rank, and no single lever
+test('smoke: every game carries the engine\'s score, its four parts that add to the sum, and a rank word of the city', () => {
+  const words = content.city.score.ranks;
+  for (const g of all) {
+    ok(Number.isInteger(g.score) && g.score >= 0, `${g.bot}/${g.seed} score ${g.score}`);
+    eq(Object.keys(g.parts), ['wealth', 'reputation', 'people', 'notebook'], `${g.bot}/${g.seed}`);
+    ok(Math.abs(Object.values(g.parts).reduce((n, x) => n + x, 0) - g.sum) < 1e-9, `${g.bot}/${g.seed} parts ${JSON.stringify(g.parts)} against sum ${g.sum}`);
+    ok(words.some(r => r.name === g.rank), `${g.bot}/${g.seed} rank "${g.rank}"`);
+  }
+});
+
+test('smoke: the table prints the score quantiles, the parts and the ranks reached', () => {
+  const t = table(res, check(res));
+  for (const part of ['score (the engine', 'part quantiles', 'rank reached', 'wealth', 'notebook']) ok(t.includes(part), `no "${part}"`);
+});
+
+const withScore = (bot, scores) => doctored(r => { r.results[bot].forEach((g, i) => { g.score = scores[i % scores.length]; }); });
+const rowOf = (c, start) => c.rows.find(x => x.name.startsWith(start));
+
+test('score check: careful\'s median in "A respected house" passes, one point under 80 and 120 or over are breaches', () => {
+  ok(rowOf(withScore('careful', [80]), 'careful: median score ends in').ok);
+  ok(rowOf(withScore('careful', [119]), 'careful: median score ends in').ok);
+  ok(!rowOf(withScore('careful', [79]), 'careful: median score ends in').ok);
+  ok(!rowOf(withScore('careful', [120]), 'careful: median score ends in').ok);
+});
+
+test('score check: random\'s median under 80 passes and at 80 is a breach', () => {
+  ok(rowOf(withScore('random', [79]), 'random: median score').ok);
+  ok(!rowOf(withScore('random', [80]), 'random: median score').ok);
+});
+
+test('score check: no game in the top rank is a breach, and so is more than one game in a hundred', () => {
+  const top = content.city.score.ranks.at(-1).from;
+  const none = doctored(r => { for (const l of Object.values(r.results)) for (const g of l) g.score = Math.min(g.score, top - 1); });
+  ok(!rowOf(none, 'the top rank is reached by the best game').ok);
+  const one = doctored(r => { r.results.greedy[0].score = top; });
+  ok(rowOf(one, 'the top rank is reached by the best game').ok && rowOf(one, 'the top rank is reached by at most').ok);
+  const many = doctored(r => { for (const g of r.results.greedy.slice(0, 10)) g.score = top; });
+  ok(!rowOf(many, 'the top rank is reached by at most').ok, JSON.stringify(rowOf(many, 'the top rank is reached by at most')));
+});
+
+test('score check: one part over half of a sensible bot\'s median total is a breach, and the row names the part', () => {
+  const lever = (bot, wealth) => doctored(r => { for (const g of r.results[bot]) { g.parts = { wealth, reputation: 0, people: 100 - wealth, notebook: 0 }; g.sum = 100; } });
+  const row = c => rowOf(c, 'greedy: no one part');
+  ok(row(lever('greedy', 50)).ok, 'exactly half is allowed');
+  const c = lever('greedy', 51);
+  ok(!row(c).ok && row(c).note.startsWith('wealth 51%') && !c.ok, JSON.stringify(row(c)));
+  ok(rowOf(lever('random', 90), 'random: no one part') === undefined, 'random is not a sensible bot and is not judged');
 });
 
 await done();

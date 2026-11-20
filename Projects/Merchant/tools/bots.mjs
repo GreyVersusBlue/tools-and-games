@@ -1,4 +1,4 @@
-// Balance bots (ARCHITECTURE 7.3): node tools/bots.mjs [--games N] [--seed S] [--bots a,b] [--house id] [--workers 3]
+// Balance bots (ARCHITECTURE 7.3): node tools/bots.mjs [--games N] [--seed S] [--bots a,b] [--house id] [--workers 3] [--length acts|full|both]
 //
 // Plays N seeded three-act games per bot through the engine's public surface (index.js) and
 // prints a table. Exits 1 when a threshold below is breached. No browser, no clock, plain Node.
@@ -17,7 +17,7 @@
 // still on the road at the act jump is settled off stage and counts as a trip, tagged with its route, so the table
 // can give the median by direction. The four directions and their limits are DIRECTIONS and LIMITS below.
 //
-// Defaults: 2,000 games per bot (about 11 minutes on three threads), 20,000 by hand (--games 20000). Games rotate through the
+// Defaults: 2,000 games per bot, both lengths (the three-act length is about 22 minutes on three threads, the full years several times that; time --games 200 first), 20,000 by hand (--games 20000). Games rotate through the
 // houses (--house to fix one). Seed of game i is SEED0 + i, so a run is repeatable.
 // test/bots-smoke.mjs imports `playGame` and `run` and plays 200 games for CI.
 
@@ -25,11 +25,12 @@ import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { loadContent } from '../js/data.js';
-import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations } from '../js/engine/index.js';
+import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 import { outEnd, jumpChances } from '../js/engine/routes.js';
 import { truePrice, baseOf } from '../js/engine/market.js';
 import { cityOf, REP_GROUPS } from '../js/engine/state.js';
+import { netWealth, TRUST_BONUS_AT } from '../js/engine/score.js';
 import { next } from '../js/engine/rng.js';
 
 // ---- thresholds (the whole of the balance contract; change them here and nowhere else)
@@ -60,6 +61,10 @@ LIMITS.directionMin = 0.08;        // over the careful, greedy and qirad bots' t
 LIMITS.depthShare = 0.5;            // not a limit of the run: a sensible bot trades no more than this share of a market's depth in one good, which would move the price against it
 LIMITS.wageBillShare = 5;           // not a limit of the run: a bot sends a stake of at least this many times the wage bill of the whole road (seasons times the agent's wage)
 LIMITS.redseaMedianAtLeastMediterranean = true; // the long roads paid most (MER-51b); the rule is a comparison, so it has no number
+LIMITS.carefulRank = 'A respected house';   // the score (MER-85): careful's median game ends in this rank (the words are city.json's `score.ranks`)
+LIMITS.randomBelow = 2;             // ...random's median ends in one of this many lowest ranks
+LIMITS.topRankShare = 0.01;         // ...the top rank is reached by the best game of a long run but by no more than this share of all games
+LIMITS.partShare = 0.5;             // ...and for a sensible bot no one part of the score is more than this share of the median total before the house multiplier, so no single lever wins the game
 LIMITS.mediterraneanMax = 0.60;    // ...and the Mediterranean at most this share. An estimate of balance, not a recorded figure: the long roads were risky and paid the most, so a sensible bot uses them sometimes
 export const SENSIBLE = ['careful', 'greedy', 'qirad'];
 export const directionOf = dest => Object.keys(DIRECTIONS).find(d => DIRECTIONS[d].includes(dest)) ?? null;
@@ -337,6 +342,15 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   }
   if (s.phase !== 'ended') throw new Error(`bots: game ${bot}/${seed} did not end (phase ${s.phase})`);
   out.worth = netWorth(s, content);
+  const sc = score(s, content);   // the engine's own score of the finished game (ARCHITECTURE 4.10)
+  out.score = sc.total;
+  out.rank = sc.rank;
+  out.parts = Object.fromEntries(sc.parts.map(p => [p.id, p.points]));
+  out.sum = sc.sum;
+  // what the four parts are made of, so a rate can be tried on a finished run without replaying it
+  const homeAgents = content.agents.map(a => s.agents[a.id]).filter(r => r?.hired && r.where === cityOf(content, 'bots').home);
+  out.raw = { net: netWealth(s, content).net, rep: REP_GROUPS.reduce((n, g) => n + (s.rep[g] ?? 0), 0), home: homeAgents.length,
+    trusted: homeAgents.filter(r => r.trust >= TRUST_BONUS_AT).length, pages: (s.notebook ?? []).length, multiplier: content.houses.find(h => h.id === house).multiplier ?? 1 };
   out.cards = Object.keys(out.offers);   // a follow-up reaches the desk by an effect, so `seen` does not count it
   out.repAgents = s.rep.agents;
   out.survivors = Object.values(s.agents).filter(a => a.hired && a.where !== 'dead').length;
@@ -381,7 +395,7 @@ export async function run({ games = DEFAULTS.games, seed0 = DEFAULTS.seed0, bots
     for (const [k, n] of Object.entries(g.takes)) taken[`${g.bot}|${k}`] = (taken[`${g.bot}|${k}`] ?? 0) + n;
   }
   const startWorth = Object.fromEntries(houses.map(h => [h, netWorth(newGame(content, { seed: 1, length, house: h }), content)]));
-  return { content, results, offered, taken, games, houses, startWorth };
+  return { content, results, offered, taken, games, houses, startWorth, length };
 }
 
 // a worker thread: plays the games it is handed one by one
@@ -430,9 +444,30 @@ export function check({ content, results, offered, taken, games }) {
     const broke = results.careful.filter(g => g.brokeBy !== null && g.brokeBy <= LIMITS.brokeBySeason).length / results.careful.length;
     add(`careful: broke by season ${LIMITS.brokeBySeason} in at most`, broke, LIMITS.brokeShare, broke <= LIMITS.brokeShare);
     if (results.random) {
-      const med = quantile(results.careful.map(g => g.worth), 0.5), p75 = quantile(results.random.map(g => g.worth), 0.75);
-      add('careful median score above random 75th percentile', med, p75, med > p75, `random median ${num(quantile(results.random.map(g => g.worth), 0.5))}`, false, 'num');
+      const med = quantile(results.careful.map(g => g.score), 0.5), p75 = quantile(results.random.map(g => g.score), 0.75);
+      add('careful median score above random 75th percentile', med, p75, med > p75, `random median ${num(quantile(results.random.map(g => g.score), 0.5))}`, false, 'num');
     }
+  }
+  // the score's ranks (MER-85)
+  const ranks = [...(cityOf(content, 'bots').score?.ranks ?? [])].sort((a, b) => a.from - b.from);
+  const rankOf = total => ranks.reduce((r, k, i) => (total >= k.from ? i : r), 0);
+  if (ranks.length) {
+    if (results.careful) {
+      const med = quantile(results.careful.map(g => g.score), 0.5), at = ranks[rankOf(med)].name;
+      add(`careful: median score ends in "${LIMITS.carefulRank}"`, med, `${ranks.find(r => r.name === LIMITS.carefulRank)?.from}+`, at === LIMITS.carefulRank, at, false, 'num');
+    }
+    if (results.random) {
+      const med = quantile(results.random.map(g => g.score), 0.5);
+      add(`random: median score in one of the lowest ${LIMITS.randomBelow} ranks`, med, `under ${ranks[LIMITS.randomBelow]?.from}`, rankOf(med) < LIMITS.randomBelow, ranks[rankOf(med)].name, false, 'num');
+    }
+    const every = Object.values(results).flat(), top = ranks.at(-1).from, reached = every.filter(g => g.score >= top).length;
+    add('the top rank is reached by the best game', Math.max(...every.map(g => g.score)), `${top}+`, reached >= 1, `${reached} of ${every.length} games`, false, 'num');
+    add(`the top rank is reached by at most ${pct(LIMITS.topRankShare, 0)} of games`, reached / every.length, LIMITS.topRankShare, reached / every.length <= LIMITS.topRankShare);
+  }
+  for (const bot of SENSIBLE.filter(b => results[b])) {
+    const med = k => quantile(results[bot].map(g => g.parts[k]), 0.5), sum = quantile(results[bot].map(g => g.sum), 0.5);
+    const shares = Object.keys(results[bot][0].parts).map(k => [k, med(k) / sum]).sort((a, b) => b[1] - a[1]);
+    add(`${bot}: no one part of the score is over ${pct(LIMITS.partShare, 0)} of the median total`, shares[0][1], LIMITS.partShare, shares[0][1] <= LIMITS.partShare, shares.map(([k, x]) => `${k} ${pct(x, 0)}`).join(', '));
   }
   // the balance target: what the house keeps from a sensible round trip, after the agent's wage (qirad bots share the profit, random is not sensible)
   for (const bot of ['careful', 'greedy']) {
@@ -489,9 +524,9 @@ export function check({ content, results, offered, taken, games }) {
   return { rows, ok: rows.every(r => r.ok) };
 }
 
-export function table({ content, results, houses, games, startWorth }, checked) {
+export function table({ content, results, houses, games, startWorth, length = DEFAULTS.length }, checked) {
   const lines = [];
-  lines.push(`${games} games per bot, three acts, houses: ${houses.join(', ')}`);
+  lines.push(`${games} games per bot, length "${length}", houses: ${houses.join(', ')}`);
   lines.push('');
   lines.push(['bot', 'worth p25', 'median', 'p75', 'trips', 'net median', 'net p25', 'net p75', 'before wage', 'stake med', 'lost/game', 'alive', 'broke by 5'].map((h, i) => (i ? h.padStart(11) : h.padEnd(9))).join(' '));
   for (const [bot, list] of Object.entries(results)) {
@@ -501,6 +536,24 @@ export function table({ content, results, houses, games, startWorth }, checked) 
       (list.reduce((n, g) => n + g.lost, 0) / list.length).toFixed(2), (list.reduce((n, g) => n + g.survivors, 0) / list.length).toFixed(2),
       pct(list.filter(g => g.brokeBy !== null && g.brokeBy <= LIMITS.brokeBySeason).length / list.length)];
     lines.push(cells.map((c, i) => (i ? String(c).padStart(11) : c)).join(' '));
+  }
+  lines.push('');
+  lines.push('score (the engine\'s, with the house multiplier): quantiles per bot, then the median points of each part');
+  lines.push(['bot', 'p5', 'p25', 'median', 'p75', 'p95', 'best', 'wealth', 'reputation', 'people', 'notebook', 'sum'].map((h, i) => (i ? h.padStart(10) : h.padEnd(9))).join(' '));
+  for (const [bot, list] of Object.entries(results)) {
+    const sc = list.map(g => g.score), part = k => num(quantile(list.map(g => g.parts[k]), 0.5));
+    lines.push([bot.padEnd(9), ...[0.05, 0.25, 0.5, 0.75, 0.95, 1].map(p => num(quantile(sc, p))), part('wealth'), part('reputation'), part('people'), part('notebook'), num(quantile(list.map(g => g.sum), 0.5))].map((c, i) => (i ? String(c).padStart(10) : c)).join(' '));
+  }
+  lines.push('');
+  lines.push('part quantiles (p25 / median / p75 of the points, before the multiplier):');
+  for (const [bot, list] of Object.entries(results)) {
+    lines.push(`  ${bot.padEnd(9)}${Object.keys(list[0].parts).map(k => `${k} ${[0.25, 0.5, 0.75].map(p => num(quantile(list.map(g => g.parts[k]), p))).join('/')}`).join('   ')}`);
+  }
+  lines.push('');
+  lines.push('rank reached (share of games):');
+  const rankNames = [...(cityOf(content, 'bots').score?.ranks ?? [])].sort((a, b) => a.from - b.from).map(r => r.name);
+  for (const [bot, list] of Object.entries(results)) {
+    lines.push(`  ${bot.padEnd(9)}${rankNames.map((n, i) => `${i}: ${pct(list.filter(g => g.rank === n).length / list.length, 1)}`).join('   ')}`);
   }
   lines.push('');
   lines.push('worth by house (median; start is the house before its first season):');
@@ -545,22 +598,29 @@ export function table({ content, results, houses, games, startWorth }, checked) 
 }
 
 // ---- command line
-const args = (argv => {
+const parseArgs = argv => {
   const o = {};
   for (let i = 0; i < argv.length; i++) {
     if (!argv[i].startsWith('--')) throw new Error(`bots: unknown argument "${argv[i]}"`);
     o[argv[i].slice(2)] = argv[++i];
   }
   return o;
-})(process.argv.slice(2));
+};
 
 if (isMainThread && import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  const args = parseArgs(process.argv.slice(2));   // only when run, never when imported
   const bots = args.bots ? args.bots.split(',') : BOTS;
   for (const b of bots) if (!BOTS.includes(b)) { console.error(`bots: no bot called "${b}"`); process.exit(2); }
+  const lengthArg = args.length ?? 'both';
+  const lengths = lengthArg === 'both' ? ['acts', 'full'] : [lengthArg];
   const started = Date.now();
-  const res = await run({ games: Number(args.games ?? DEFAULTS.games), seed0: Number(args.seed ?? DEFAULTS.seed0), bots, house: args.house ?? null, workers: Number(args.workers ?? 3) });
-  const checked = check(res);
-  console.log(table(res, checked));
-  console.log(`\n${checked.ok ? 'balance checks passed' : 'balance checks FAILED'} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
-  process.exitCode = checked.ok ? 0 : 1;
+  let allOk = true;
+  for (const length of lengths) {
+    const res = await run({ games: Number(args.games ?? DEFAULTS.games), seed0: Number(args.seed ?? DEFAULTS.seed0), bots, house: args.house ?? null, length, workers: Number(args.workers ?? 3) });
+    const checked = check(res);
+    console.log(table({ ...res, length }, checked));
+    console.log(`\n${length}: ${checked.ok ? 'balance checks passed' : 'balance checks FAILED'} (${((Date.now() - started) / 1000).toFixed(1)} s so far)\n`);
+    allOk = allOk && checked.ok;
+  }
+  process.exitCode = allOk ? 0 : 1;
 }

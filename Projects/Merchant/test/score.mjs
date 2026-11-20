@@ -99,11 +99,12 @@ test('score: the notebook gives points per entry found', () => {
 });
 
 test('score: the house multiplier is on the sum, and the rank follows the total', () => {
-  const plain = bare({ money: 1000 }); plain.notebook = ['a', 'b'];       // 20 + 1
+  const plain = bare({ money: 1000 }); plain.notebook = ['a', 'b'];       // 20 + two pages
   const rich = bare({ money: 1000, house: 'rich' }); rich.notebook = ['a', 'b'];
+  const sum = 20 + 2 * NOTEBOOK_POINTS;   // the testport scale gives 20 for 1000, the notebook is a rate
   const a = score(plain, testport), b = score(rich, testport);
-  eq(a.sum, 21); eq(a.multiplier, 1); eq(a.total, 21);
-  eq(b.sum, 21); eq(b.multiplier, 1.2); eq(b.total, Math.round(21 * 1.2));
+  eq(a.sum, sum); eq(a.multiplier, 1); eq(a.total, Math.round(sum));
+  eq(b.sum, sum); eq(b.multiplier, 1.2); eq(b.total, Math.round(sum * 1.2));
   const big = score(bare({ money: 8000, house: 'rich' }), testport);
   eq(big.total, 72);
   eq(big.rank, 'A small but steady house');
