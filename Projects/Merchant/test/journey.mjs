@@ -27,6 +27,20 @@ const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'st
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
+/** The plan the outfit sheet opens on for `stop` (outfit.js): the engine's proposal for the free agent who knows the stop first
+    (then the others) on the road the sheet picks, else the plain suggestion. The page's Send is checked against this one. */
+const sheetPlan = (s, content, stop) => {
+  const home = content.city.home;
+  const free = content.agents.filter(a => s.agents[a.id]?.hired && s.agents[a.id].where === home && !s.expeditions.some(x => x.agent === a.id));
+  const knows = a => a.traits?.includes(`knows-${stop}`);
+  const route = eng.routeFor(s, content, stop)?.route.id;
+  for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
+    const p = route && eng.proposePlan(s, content, a.id, route);
+    if (p) return p;
+  }
+  return eng.suggestPlan(s, content, stop);
+};
+
 const PORT = 8190;
 const BASE = `http://127.0.0.1:${PORT}`;
 const URL_ = `${BASE}/Projects/Merchant/`;
@@ -606,7 +620,7 @@ try {
       eq(await hashOf(page), '#outfit');
       eq(await page.$eval('#outfit-send', b => [b.textContent, b.getAttribute('aria-disabled')]), ['Send Yusuf to Damascus', 'false']);
       eq(await engineState(page), JSON.parse(JSON.stringify(m1)), 'nothing is sent until the button is pressed');
-      const plan = eng.suggestPlan(m1, nodeContent, 'damascus');
+      const plan = sheetPlan(m1, nodeContent, 'damascus');
       await page.click('#outfit-send');
       const m1b = eng.outfit(m1, nodeContent, plan);
       await page.waitForSelector('#map-toast:not([hidden])');
@@ -730,7 +744,7 @@ try {
       model = eng.choose(model, nodeContent, 'p0-1', 'go');
       await page.keyboard.press('Enter');
       await page.waitForSelector('#outfit-send');
-      model = eng.outfit(model, nodeContent, eng.suggestPlan(model, nodeContent, 'damascus'));
+      model = eng.outfit(model, nodeContent, sheetPlan(model, nodeContent, 'damascus'));
       await page.focus('#outfit-send');
       await page.keyboard.press('Enter');
       await page.waitForSelector('#map-toast:not([hidden])');
@@ -838,7 +852,7 @@ try {
         const cs = nodeChoices(s, nodeContent, p.id);
         const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
-        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+        if (c.ui === 'outfit-first') { const plan = sheetPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
       }
       return eng.endSeason(s, nodeContent);
     };
@@ -959,7 +973,7 @@ try {
       const cs = nodeChoices(s, nodeContent, p.id);
       const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
       s = eng.choose(s, nodeContent, p.id, c.id);
-      if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+      if (c.ui === 'outfit-first') { const plan = sheetPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
     }
     return eng.endSeason(s, nodeContent);
   };
@@ -1033,6 +1047,21 @@ try {
       });
     }
 
+    await test(`${how}: the price panel opens on Best known trades, the engine's three, and the full table is one press away (MER-93)`, async () => {
+      const best = await page.evaluate(() => window.__merchant.view.bestTrades);
+      ok(best.length >= 1 && best.length <= 3, `the engine has ${best.length} best trades`);
+      eq(await page.$eval('#prices-head', e => e.textContent), 'Best known trades');
+      eq(await page.$$eval('#best-trades li', ls => ls.map(l => l.querySelector('strong').textContent)), best.map(t => t.text), 'the page says the engine\'s own lines, in the engine\'s order');
+      const first = await page.$eval('#best-trades li', l => l.textContent);
+      ok(first.includes(best[0].road) && first.includes(best[0].riskWord) && first.includes(best[0].ageWords === 'this season' ? 'from this season' : best[0].ageWords), first);
+      eq(await page.$('#prices'), null, 'the full table is not on the panel until it is asked for');
+      eq(await page.$eval('#btn-all-prices', b => [b.getAttribute('aria-expanded'), b.textContent]), ['false', 'Every price in Damascus']);
+      await page.click('#btn-all-prices');
+      await page.waitForSelector('#prices');
+      eq(await page.$eval('#btn-all-prices', b => [b.getAttribute('aria-expanded'), b.textContent]), ['true', 'Hide the prices in Damascus']);
+      eq(await page.evaluate(() => document.activeElement.id), 'btn-all-prices', 'focus stays on the button that was pressed');
+    });
+
     await test(`${how}: the price board says each price with the season it was written and its age, from the engine's view`, async () => {
       const v = await page.evaluate(() => window.__merchant.view.prices);
       const rows = await page.$$eval('#prices tbody tr', trs => trs.map(t => ({ good: t.querySelector('th').textContent, here: t.querySelector('td.here').textContent, there: t.querySelector('td.there')?.textContent })));
@@ -1053,7 +1082,7 @@ try {
       eq(await page.evaluate(() => document.activeElement.id), 'panel-outfit-title');
       eq(await page.$eval('#panel-outfit-title', e => e.textContent), 'Outfit an expedition to Damascus');
       eq(await page.$eval('#panel-outfit', d => d.getAttribute('aria-labelledby')), 'panel-outfit-title');
-      const plan = eng.suggestPlan(model, nodeContent, 'damascus');
+      const plan = sheetPlan(model, nodeContent, 'damascus');
       eq(await page.$eval('#summary-who', e => e.textContent), 'Yusuf (careful, knows Damascus).');
       ok((await page.$eval('#summary-carry', e => e.textContent)).startsWith(`${plan.cargo.linen} loads of linen`), 'cargo is the engine plan');
       eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry'], 'three sections: the contract is met at the second expedition');
@@ -1083,7 +1112,7 @@ try {
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
       eq(await hashOf(page), '#map');
       eq(await page.evaluate(() => document.activeElement.id), 'btn-outfit', 'focus returns to the button that opened the sheet');
-      model = eng.outfit(model, nodeContent, eng.suggestPlan(model, nodeContent, 'damascus'));
+      model = eng.outfit(model, nodeContent, sheetPlan(model, nodeContent, 'damascus'));
       eq(await engineState(page), JSON.parse(JSON.stringify(model)), 'the page sent what the engine would');
       const ts = await tokens(page);
       eq(ts.length, 1);
@@ -1189,6 +1218,7 @@ try {
     const M72 = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
     const moneyOf = page => page.evaluate(() => window.__merchant.state.money);
     const numOf = t => Number(t.match(/[\d,]+(?= dinars?)/)[0].replace(/,/g, ''));
+    const numOfWords = t => Number(t.match(/costs ([\d,]+) dinars?/)[1].replace(/,/g, ''));
     const { page, consoleErrors } = await open(FRAME);
     await start(page, 'pointer');
     // the first card's choice is the one on `go`; the opening letter first
@@ -1208,7 +1238,10 @@ try {
       eq(await moneyOf(page), before, 'choosing "Send Yusuf" took nothing');
       const state0 = await engineState(page);
       eq(state0.expeditions, [], 'nobody has left');
-      ok((await page.$eval('#outfit-cost-total', e => e.textContent)).startsWith('Send takes 0 dinars.'), await page.$eval('#outfit-cost-total', e => e.textContent));
+      // the sheet opens on the engine's proposal, which spends money now: the line says what the engine's own check says it takes, and Send has taken none of it yet
+      const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+      const takes = eng.checkPlan(s0, nodeContent, sheetPlan(s0, nodeContent, 'damascus')).cost.total;
+      ok((await page.$eval('#outfit-cost-total', e => e.textContent)).startsWith(`Send takes ${withCommas(takes)} ${takes === 1 ? 'dinar' : 'dinars'}.`), await page.$eval('#outfit-cost-total', e => e.textContent));
       await page.click('#outfit-cancel');
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
       eq(await moneyOf(page), before, 'Back to the map: money as it was');
@@ -1226,15 +1259,20 @@ try {
       await page.click('#change-carry');
       await page.waitForSelector('#step-purse');
       const val = () => page.$eval('#step-purse', e => e.getAttribute('aria-valuenow'));
-      eq(await val(), '0');
-      await page.click('#step-purse-plus'); eq(await val(), '50', 'one press, 50');
-      await page.click('#step-purse-plus'); eq(await val(), '100');
+      // the sheet opens on the engine's proposal, so the purse starts where the proposal put it, not at nothing
+      const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+      const p0 = sheetPlan(s0, nodeContent, 'damascus').purse;
+      eq(await val(), String(p0), 'the purse is the proposal\'s');
+      await page.click('#step-purse-plus'); eq(await val(), String(p0 + 50), 'one press, 50');
+      await page.click('#step-purse-plus'); eq(await val(), String(p0 + 100));
       await page.keyboard.down('Shift'); await page.click('#step-purse-plus'); await page.keyboard.up('Shift');
-      eq(await val(), '110', 'Shift, 10');
+      eq(await val(), String(p0 + 110), 'Shift, 10');
       await page.keyboard.down('Shift'); await page.click('#step-purse-minus'); await page.keyboard.up('Shift');
-      eq(await val(), '100');
-      await page.focus('#step-purse'); await page.keyboard.press('ArrowUp'); eq(await val(), '150', 'the arrow key is 50 as well');
-      await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); eq(await val(), '140');
+      eq(await val(), String(p0 + 100));
+      await page.focus('#step-purse'); await page.keyboard.press('ArrowUp'); eq(await val(), String(p0 + 150), 'the arrow key is 50 as well');
+      await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); eq(await val(), String(p0 + 140));
+      await page.focus('#step-purse'); await page.keyboard.press('PageUp'); eq(await val(), String(p0 + 390), 'PageUp is 250');
+      await page.keyboard.press('PageDown'); eq(await val(), String(p0 + 140), 'PageDown is 250 back');
       await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
       await page.keyboard.type('1,250'); await page.keyboard.press('Enter');
       await page.waitForSelector('#step-purse');
@@ -1244,9 +1282,11 @@ try {
       // an amount the house does not have is taken as typed and refused in words, with commas
       await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
       await page.keyboard.type('99999'); await page.keyboard.press('Enter');
-      await page.waitForFunction(() => /99,999 dinars/.test(document.getElementById('outfit-reasons').textContent));
+      await page.waitForFunction(() => /costs [\d,]+ dinars/.test(document.getElementById('outfit-reasons').textContent));
       eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
-      ok((await page.$eval('#outfit-reasons', e => e.textContent)).includes('costs 99,999 dinars'), await page.$eval('#outfit-reasons', e => e.textContent));
+      // the cost is the 99,999 sent as money and the goods the proposal buys in Cairo besides
+      const shownCost = numOfWords(await page.$eval('#outfit-reasons', e => e.textContent));
+      ok(shownCost >= 99999, await page.$eval('#outfit-reasons', e => e.textContent));
     });
 
     await test('MER-72: the sheet lists what makes the cost up, and the number it shows is the number Send takes', async () => {
@@ -1302,9 +1342,19 @@ try {
       ok(li.far.includes(`Damascus paid ${withCommas(k.p)}`) && li.far.includes(want.written), li.far);
       eq(li.might, `Linen might sell for about ${withCommas(want.p)} there.`);
     });
-    await test('MER-72: the first season\'s one-line price letter names the linen the house holds, not only the pepper', async () => {
-      const v = await q.page.evaluate(() => window.__merchant.state.desk.filter(p => p.kind === 'news').map(p => p.line));
-      ok(v.length === 1 && /for linen/.test(v[0]) && /for pepper/.test(v[0]), JSON.stringify(v));
+    await test('MER-72, MER-94: the first season\'s price letter is at most two leads, widest first, each about a road the house can send on now and read from what the house knows', async () => {
+      const [paper] = await q.page.evaluate(() => window.__merchant.state.desk.filter(p => p.kind === 'news').map(p => ({ line: p.line, leads: p.leads })));
+      const st = await engineState(q.page), prices = await q.page.evaluate(() => window.__merchant.view.prices);
+      ok(paper.leads.length >= 1 && paper.leads.length <= 2, `${paper.leads.length} leads: ${paper.line}`);
+      eq((paper.line.match(/News of /g) ?? []).length, paper.leads.length, 'each lead ends with the season its news was written: ' + paper.line);
+      for (const l of paper.leads) {
+        const stop = nodeContent.stops.find(z => z.id === l.stop).name, good = nodeContent.goods.find(g => g.id === l.good).name.toLowerCase();
+        ok(paper.line.includes(`${stop} pays ${l.p} for ${good}. Cairo pays ${l.home}. News of ${l.writtenIn}.`), `${stop} ${good}: ${paper.line}`);
+        eq([prices[l.stop][l.good].p, prices.cairo[l.good].p], [l.p, l.home], 'the numbers in the lead are the ones the house knows');
+        ok(eng.routeFor(st, nodeContent, l.stop), `${stop} can be reached now`);
+        ok(l.p > l.home, 'a lead is a good that pays more there');
+      }
+      if (paper.leads.length === 2) ok(paper.leads[0].p - paper.leads[0].home >= paper.leads[1].p - paper.leads[1].home, 'the wider margin comes first');
     });
     await q.page.close();
   }
@@ -1432,7 +1482,7 @@ try {
         const cs = nodeChoices(s, nodeContent, p.id);
         const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
-        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+        if (c.ui === 'outfit-first') { const plan = sheetPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
       }
       return eng.endSeason(s, nodeContent);
     };
@@ -1647,7 +1697,7 @@ try {
         if (p.state !== 'open') continue;
         const c = nodeChoices(s, nodeContent, p.id).find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
         s = eng.choose(s, nodeContent, p.id, c.id);
-        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+        if (c.ui === 'outfit-first') { const plan = sheetPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
       }
       return eng.endSeason(s, nodeContent);
     };
@@ -1847,7 +1897,7 @@ try {
       let s = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
       for (const p of s.desk) if (p.state === 'open') {
         s = eng.choose(s, nodeContent, p.id, FIRSTC[p.ref]);
-        if (p.ref === 'first-expedition') s = eng.outfit(s, nodeContent, eng.suggestPlan(s, nodeContent, 'damascus'));
+        if (p.ref === 'first-expedition') s = eng.outfit(s, nodeContent, sheetPlan(s, nodeContent, 'damascus'));
       }
       return s;
     };
@@ -2085,7 +2135,7 @@ try {
           if (p.state !== 'open') continue;
           const c = nodeChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
           st = eng.choose(st, nodeContent, p.id, c.id);
-          if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
+          if (c.ui === 'outfit-first') { const plan = sheetPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
         }
         return eng.endSeason(st, nodeContent);
       };
@@ -2328,9 +2378,9 @@ try {
         if (p.state !== 'open') continue;
         const c = nodeChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
         g = eng.choose(g, nodeContent, p.id, c.id);
-        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
+        if (c.ui === 'outfit-first') { const plan = sheetPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
       }
-      if (g.t === 7) g = eng.outfit(g, nodeContent, eng.suggestPlan(g, nodeContent, 'damascus'));
+      if (g.t === 7) g = eng.outfit(g, nodeContent, sheetPlan(g, nodeContent, 'damascus'));
       g = eng.endSeason(g, nodeContent);
     }
     const entry = g.log.find(e => e.kind === 'jump');
@@ -2377,7 +2427,7 @@ try {
     // a game where Ali is hired and one card lies on the desk; `after` plays the first expedition out first
     const seeded = (ref, { sent = false } = {}) => {
       let s = eng.newGame(content77, { seed: SEED, length: 'acts', house: 'spice' });
-      if (sent) s = eng.outfit(s, content77, eng.suggestPlan(s, content77, 'damascus'));
+      if (sent) s = eng.outfit(s, content77, sheetPlan(s, content77, 'damascus'));
       s.agents.ali.hired = true;
       s.desk = [{ id: 'p9-0', state: 'open', kind: 'card', ref }];
       return s;
@@ -2492,7 +2542,7 @@ try {
         if (p.state !== 'open') continue;
         const c = eng.paperChoices(st, content80, p.id).find(x => { try { eng.choose(st, content80, p.id, x.id); return true; } catch { return false; } });
         st = eng.choose(st, content80, p.id, c.id);
-        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, content80, 'damascus'); if (plan) st = eng.outfit(st, content80, plan); }
+        if (c.ui === 'outfit-first') { const plan = sheetPlan(st, content80, 'damascus'); if (plan) st = eng.outfit(st, content80, plan); }
       }
       return eng.endSeason(st, content80);
     };
@@ -2661,14 +2711,14 @@ try {
         if (p.state !== 'open') continue;
         const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
         st = eng.choose(st, nodeContent, p.id, c.id);
-        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
+        if (c.ui === 'outfit-first') { const plan = sheetPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
       }
       return st;
     };
     let st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
     for (let i = 0; i < 60 && !(st.phase === 'desk' && st.t === 23); i++) st = st.phase === 'interlude' ? eng.openSeason(st, nodeContent) : eng.endSeason(answerAll(st), nodeContent);
     st = answerAll(st);
-    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = eng.suggestPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
+    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = sheetPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
     const road = eng.endSeason(st, nodeContent);
     const clone = x => JSON.parse(JSON.stringify(x));
     const DECIDED = Object.fromEntries(road.expeditions.map((x, i) => [x.id, i % 2 === 0 ? 'recall' : 'stay']));

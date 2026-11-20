@@ -360,8 +360,7 @@ export function createMap(app, nav) {
     const best = trades.length
       ? h('ol', { class: 'trades', id: 'best-trades' }, trades.map(t => h('li', { class: 'trade', dataset: { stop: t.stop, good: t.good } },
         h('strong', null, t.text), ' ',
-        h('span', { class: 'when' }, `${t.road}, about ${t.seasons} ${t.seasons === 1 ? 'season' : 'seasons'}. News ${t.ageWords === 'this season' ? 'from this season' : t.ageWords}; the road is ${t.riskWord}.`),
-        t.stop === selected ? null : h('button', { class: 'button trade-look', type: 'button', onclick: () => select(t.stop, { keepFocus: true }) }, `Look at ${stopName(content, t.stop)}`))))
+        h('span', { class: 'when' }, `${t.road}, about ${t.seasons} ${t.seasons === 1 ? 'season' : 'seasons'}. News ${t.ageWords === 'this season' ? 'from this season' : t.ageWords}; the road is ${t.riskWord}.`))))
       : h('p', { class: 'none', id: 'best-trades' }, 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.');
     const table = h('table', { class: 'prices', id: 'prices' },
       h('caption', { class: 'visually-hidden' }, `Prices for each good ${s.name} trades, with the season the news was written and how old it is`),
