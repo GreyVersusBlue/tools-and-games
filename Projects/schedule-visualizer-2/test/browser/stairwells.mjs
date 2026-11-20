@@ -438,6 +438,21 @@ test('the Floor tab lists a stairwell as one row with its letter, floors and way
   await page.keyboard.press('Enter');
   await waitFor('#inspector-floor [data-part="well-summary"]', 'Stairwell East · Floor 1 to Floor 3 · up only');
   assert.deepEqual(await wells(), [['A', 'East'], ['B', 'East']]);
+  // the row is the same row after the rename: the focus stays in its Letter field
+  const focused = () => page.evaluate(() => {
+    const el = document.activeElement;
+    return { key: el && el.dataset ? el.dataset.key || null : null, row: el && el.closest('li') ? el.closest('li').dataset.well || el.closest('li').dataset.connection || null : null, body: el === document.body };
+  });
+  const firstFlight = (await building()).connections[0].id;
+  assert.deepEqual(await focused(), { key: 'well:well:' + firstFlight, row: 'well:' + firstFlight, body: false }, 'the rename lost the focus');
+  // and a second rename from the same row is of the well as it is named now
+  await retype('#inspector-floor [data-well] .field__input', 'Ea');
+  await page.keyboard.press('Enter');
+  await waitFor('#inspector-floor [data-part="well-summary"]', 'Stairwell Ea · Floor 1 to Floor 3 · up only');
+  assert.equal((await focused()).key, 'well:well:' + firstFlight);
+  await retype('#inspector-floor [data-well] .field__input', 'East');
+  await page.keyboard.press('Enter');
+  await waitFor('#inspector-floor [data-part="well-summary"]', 'Stairwell East · Floor 1 to Floor 3 · up only');
   // a floor with only one stop of it: the same row
   await showFloor('Floor 1');
   await page.waitForSelector('#inspector-floor [data-well]');
@@ -446,6 +461,15 @@ test('the Floor tab lists a stairwell as one row with its letter, floors and way
   await page.waitForFunction(() => !document.querySelector('#inspector-floor [data-well]'));
   assert.equal(await page.$$eval('#inspector-floor [data-connection]', (all) => all.length), 1, 'on Floor 1 the flight is its own row again');
   assert.equal(await toastText(), 'Stairs A and B are separate again.');
+  // the row that was pressed is gone: its flight's own row has the focus
+  assert.deepEqual(await focused(), { key: 'show-connection:' + firstFlight, row: firstFlight, body: false }, 'Split dropped the focus');
+  // on Floor 2, two flights' rows: the focus to the first of them
+  await undo();
+  await showFloor('Floor 2');
+  await page.waitForSelector('#inspector-floor [data-well]');
+  await page.click('#inspector-floor [data-well] button[data-action="split"]');
+  await page.waitForFunction(() => !document.querySelector('#inspector-floor [data-well]'));
+  assert.deepEqual(await focused(), { key: 'show-connection:' + firstFlight, row: firstFlight, body: false }, 'Split dropped the focus on Floor 2');
 });
 
 // ---------------------------------------------------------------- one letter on every badge
