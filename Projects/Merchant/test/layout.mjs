@@ -71,6 +71,9 @@ const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
 const OPENS_WITH = { 'desk-letter': '.sheet .choice', 'desk-question': '.sheet .choice', 'desk-report': '.sheet .choice', 'desk-papers': '.sheet .choice',
   'desk-return': '.sheet .choice', 'desk-loss': '.sheet .choice', 'between-acts': '#btn-open-house', 'between-acts-long': '#btn-open-house' };
 const OPEN_FRAMES = new Set(['board', 'laptop', 'laptop-small']);
+// MER-99: a return paper ends by asking, and its last choice is whole in view, clear of End the season, at the two frames a teacher plays on
+const LAST_CHOICE = { 'desk-return': '.sheet .choices .choice:last-of-type' };
+const LAST_FRAMES = new Set(['board', 'laptop']);
 // MERCHANT_LAYOUT_ONLY=desk-loss,desk-return runs just those screens (a development shortcut; the suite must run whole to count)
 const ONLY = (process.env.MERCHANT_LAYOUT_ONLY || '').split(',').filter(Boolean);
 const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts']);
@@ -259,6 +262,19 @@ const SCREENS = [
       await p.click('#btn-outfit');
       await p.waitForFunction(() => document.getElementById('panel-outfit')?.open);
       await p.waitForSelector('#outfit-estimate');
+    } },
+  // MER-99: every sheet opens as the summary (outfit-second above); this is the same sheet with every section opened by its Change link,
+  // so the steppers, the agent cards and the contract cards are still measured
+  { name: 'outfit-second-open', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      await p.click('#btn-outfit');
+      await p.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      // the phone's Send bar sticks over the foot of the sheet, and a press at a covered point lands on the bar: bring each link to the middle first
+      for (const id of ['who', 'carry', 'back', 'contract']) { await p.$eval(`#change-${id}`, e => e.scrollIntoView({ block: 'center' })); await p.click(`#change-${id}`); }
+      await p.waitForSelector('#step-purse');
+      await p.waitForSelector('#contract-own');
     } },
   { name: 'price-board-news',
     go: async (p, f) => {
@@ -528,6 +544,12 @@ try {
         if (OPENS_WITH[screen.name] && OPEN_FRAMES.has(frame.name) && !frame.large) {
           await test(`${tag}: what the paper asks is in view when it opens, no scrolling`, async () => {
             const bad = await page.evaluate(wholeInView, OPENS_WITH[screen.name]);
+            ok(!bad, bad ?? '');
+          });
+        }
+        if (LAST_CHOICE[screen.name] && LAST_FRAMES.has(frame.name) && !frame.large) {
+          await test(`${tag}: the last choice is in view above End the season, no scrolling`, async () => {
+            const bad = await page.evaluate(wholeInView, LAST_CHOICE[screen.name]);
             ok(!bad, bad ?? '');
           });
         }
