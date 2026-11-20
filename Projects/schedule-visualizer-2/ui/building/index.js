@@ -43,7 +43,7 @@ import { createFinder, parseBuildingRest } from './search.js';
 import { ActionError, addFloor, deleteSpaces, pasteSpaces, describeSpaceDelete } from '../../engine/actions.js';
 import { counts, describeCell, copySpaces, isLoss } from '../../engine/building.js';
 import { buildingChecks } from '../../engine/building-checks.js';
-import { spaceOwners } from '../../engine/schema.js';
+import { spaceOwners, stairsLetter } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
 import { SAMPLE_PROJECT_ID } from '../../data/sample-school.js';
 
@@ -85,9 +85,17 @@ const KEYS = 'Arrow keys move the cursor one cell. Enter does what a click would
 // planner's cursor line and status read it. Two connections on one cell are
 // joined by ", ".
 export function stairsWords(project, connections) {
-  return 'Stairs ' + connections.map((connection) => {
-    const way = connection.direction === 'both' || connection.direction === undefined ? '' : wayLine(project, connection).replace(/, towards .*$/, '');
-    return connection.label + (way === '' ? '' : ' (' + way + ')');
+  // one letter for the flights of a stairwell that meet here, and its way only where every one of them agrees
+  const byLetter = new Map();
+  for (const connection of connections) {
+    const letter = stairsLetter(connection);
+    if (!byLetter.has(letter)) byLetter.set(letter, []);
+    byLetter.get(letter).push(connection);
+  }
+  return 'Stairs ' + Array.from(byLetter, ([letter, flights]) => {
+    const ways = flights.map((connection) => (connection.direction === 'both' || connection.direction === undefined ? '' : wayLine(project, connection).replace(/, towards .*$/, '')));
+    const way = ways.every((each) => each === ways[0]) ? ways[0] : '';
+    return letter + (way === '' ? '' : ' (' + way + ')');
   }).join(', ');
 }
 

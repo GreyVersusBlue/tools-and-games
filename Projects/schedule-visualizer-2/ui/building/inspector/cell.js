@@ -16,11 +16,13 @@ import { h } from '../../components/dom.js';
 import { field } from '../../components/field.js';
 import { count, list, pendingElevatorLetter } from '../../components/words.js';
 import { describeCell } from '../../../engine/building.js';
-import { elevatorSettings, elevatorCars, CELL_CORRIDOR, neighbourCell } from '../../../engine/schema.js';
+import { elevatorSettings, elevatorCars, CELL_CORRIDOR, neighbourCell, stairsLetter } from '../../../engine/schema.js';
 import { setElevator, disconnectStairs, setStepCells, addRefuge, setRefuge, removeRefuge } from '../../../engine/actions.js';
+import { removeStairwellStop, splitStairwell, setStairwellDirection, setStairwellLetter } from '../../../engine/stairwells.js';
 import { checkField, keepFocus, commitKeepingFocus, heading, cellWords } from './controls.js';
 import { cellFocus } from './cell-focus.js';
-import { openCellMenu } from '../menu.js';
+import { openCellMenu, stairwellAt } from '../menu.js';
+import { stairwellFacts, offerOfRun, openMakeStairwell } from '../stairwell.js';
 import { stepFreeWaysOut } from '../../../engine/evacuation.js';
 
 const SIDES = ['n', 'e', 's', 'w'];
@@ -321,18 +323,104 @@ export function cellPanel(env) {
   function plainModel(state, focus, at) {
     const floor = state.floor;
     const cell = focus.cells[0];
+    const building = state.project.building;
+    // a stop of a stairwell is the stairwell's; a stair of plain flights may offer to become one
+    const wellHere = at.kind === 'stairs' ? stairwellAt(building, floor.id, cell, at.connections) : null;
+    const facts = wellHere ? stairwellFacts(state.project, wellHere.letter) : null;
+    const plain = at.connections.filter((connection) => !(facts && connection.well));
+    let offer = null;
+    if (!facts && plain.length > 0) {
+      const found = offerOfRun(state.project, plain[0].id);
+      if (found) offer = { connectionId: plain[0].id, sentence: 'Stairs ' + list(found.letters) + ' join ' + found.floors[0] + ' to ' + found.floors[found.floors.length - 1] + '. As one stairwell they show one letter, ' + found.letter + ', on every floor.' };
+    }
     return {
       kind: at.kind,
       cell,
       where: floor.name + ', ' + cellWords(floor, cell),
-      connections: at.connections.map((connection) => connection.label),
+      connections: plain.map((connection) => stairsLetter(connection)),
+      well: facts,
+      offer,
       refuge: at.refuge ? { id: at.refuge.id, name: at.refuge.name, used: refugeUse(state.project, at.refuge.id) } : null,
       cells: [cell],
       floorId: floor.id,
     };
   }
 
+  // ---------------------------------------------------------- a stairwell (DESIGN 16.7)
+
+  const WAYS = [{ value: 'both', label: 'Both ways' }, { value: 'up', label: 'Up only' }, { value: 'down', label: 'Down only' }];
+
+  function wellNodes(model) {
+    const well = model.well;
+    const name = 'Stairwell ' + well.letter;
+    const letter = field({
+      id: 'stairwell-letter-field',
+      label: 'Letter or name',
+      name: 'stairwellLetter',
+      value: well.letter,
+      // a refusal is the field's own, under it, in the engine's words
+      commit: (value) => {
+        store.apply(setStairwellLetter, { well: well.letter, letter: value });
+        ctx.announce((store.undoOutcome || {}).text || 'Renamed the stairwell.');
+      },
+    });
+    letter.input.dataset.key = 'well-letter';
+    // which way, for the whole stairwell: the chips of one stair, applied to every flight
+    const legendId = 'well-way-legend';
+    const ways = h('fieldset', { class: 'bi-way', data: { way: 'well' } }, h('legend', { class: 'bi-way__legend', id: legendId }, 'Which way'),
+      ...WAYS.map((option) => {
+        const input = h('input', { type: 'radio', class: 'bi-way__input', name: 'well-way', value: option.value, data: { key: 'well-way:' + option.value } });
+        input.checked = well.way === option.value;
+        input.addEventListener('change', () => {
+          if (!input.checked) return;
+          const outcome = ed().commit(setStairwellDirection, { well: well.letter, direction: option.value }, { done: (made) => made.text, toast: (made) => made.text });
+          if (outcome === null) input.checked = false;
+        });
+        return h('label', { class: 'bi-way__chip' }, input, h('span', { class: 'bi-way__text' }, option.label));
+      }));
+    const stops = h('ul', { class: 'bi-rows', id: 'well-stops', 'aria-label': 'The stops of ' + name },
+      ...well.stops.map((stop) => {
+        const here = stop.floorId === model.floorId && stop.cell === model.cell;
+        const two = well.stops.length <= 2;
+        const row = [
+          h('span', { class: 'bi-row__text' }, stop.floorName + (here ? ' (this stop)' : '')),
+          button('Show', 'show-stop:' + stop.floorId, () => showStop(stop.floorId, stop.cell, 'Showing the stop of ' + name + ' on ' + stop.floorName + '.'), { quiet: true, aria: 'Show the ' + name + ' stop on ' + stop.floorName }),
+        ];
+        if (two) {
+          // two stops are one flight: Disconnect, as for any stairs
+          if (here) row.push(button('Disconnect', 'disconnect-well', () => {
+            keeping(['panel-title'], () => ed().commit(disconnectStairs, { connectionId: well.flightIds[0] }, { done: () => 'Disconnected ' + name + '. Its stairs stay, not connected.' }));
+          }, { quiet: true, aria: 'Disconnect ' + name + ' (it has only two stops)' }));
+        } else {
+          row.push(button('Remove from stairwell', 'remove-stop:' + stop.floorId, () => {
+            keeping(['panel-title'], () => ed().commit(removeStairwellStop, { well: well.letter, floorId: stop.floorId }, { done: (made) => made.text, toast: (made) => made.text }));
+          }, { quiet: true, aria: 'Remove ' + stop.floorName + ' from ' + name }));
+        }
+        return h('li', { class: 'bi-row', data: { stop: stop.floorId + ':' + stop.cell } }, ...row);
+      }));
+    const nodes = [
+      h('h2', { class: 'bld-inspector__title', id: 'inspector-title', tabindex: '-1', data: { key: 'panel-title' } }, name),
+      h('p', { class: 'bi-lead', id: 'cell-where' }, model.where + '.'),
+      h('p', { class: 'bi-lead', id: 'well-floors' }, well.sentence),
+      letter.element,
+      ways,
+      h('p', { class: 'bld-inspector__small', id: 'well-way-says' }, well.way === 'mixed' ? 'The flights run different ways; choose one to set them all.' : name + ' runs ' + well.wayWords + '. Applied to ' + count(well.flights, 'flight') + '.'),
+      heading('Stops', 'well-stops-heading'),
+      stops,
+      h('div', { class: 'bi-buttons' },
+        button('Connect another floor…', 'well-connect', () => {
+          if (ed().connect) ed().connect.start({ floorId: model.floorId, cell: model.cell });
+        }),
+        button('Split into separate stairs', 'well-split', () => {
+          keeping(['panel-title'], () => ed().commit(splitStairwell, { well: well.letter }, { done: (made) => made.text, toast: (made) => made.text }));
+        })),
+    ];
+    if (well.parts > 1) nodes.push(h('p', { class: 'bld-inspector__small', id: 'well-parts' }, name + ' is in ' + well.parts + ' parts that share no stairs. Building checks offers to join them.'));
+    return nodes;
+  }
+
   function drawPlain(model) {
+    if (model.kind === 'stairs' && model.well) return [...wellNodes(model), ...refugeNodes(model)];
     const words = { stairs: 'Stairs cell', empty: 'Empty cell', room: 'Room cell', other: 'Cell of an other space' };
     const title = model.kind === 'stairs' && model.connections.length > 0 ? 'Stairs ' + model.connections.join(' and ') : model.kind === 'stairs' ? 'Stairs, not connected' : words[model.kind] || 'Cell';
     const nodes = [
@@ -343,6 +431,12 @@ export function cellPanel(env) {
       nodes.push(h('div', { class: 'bi-buttons' }, button('Connect these stairs…', 'stairs-connect', () => {
         if (ed().connect) ed().connect.start({ floorId: model.floorId, cell: model.cell });
       })));
+      if (model.offer) {
+        nodes.push(h('p', { class: 'bi-lead', id: 'well-offer' }, model.offer.sentence));
+        nodes.push(h('div', { class: 'bi-buttons' }, button('Make one stairwell', 'well-make', () => {
+          openMakeStairwell(ed(), model.offer.connectionId, document.querySelector('#inspector-properties [data-key="well-make"]'));
+        })));
+      }
       nodes.push(...refugeNodes(model));
     }
     return nodes;
