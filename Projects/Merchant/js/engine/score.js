@@ -4,11 +4,11 @@
 // the ranks are the city's (city.json `score`); the other rates are the game's, below.
 import { REP_GROUPS, cityOf, find } from './state.js';
 
-export const REP_POINTS = 1;        // points per step of reputation, summed over the four groups (floor 0)
-export const HOME_POINTS = 16;      // per agent alive and home
-export const HOME_TRUST_BONUS = 4;  // more for one whose trust is 2 or 3
+export const REP_POINTS = 0.5;       // points per step of reputation, summed over the four groups (floor 0)
+export const HOME_POINTS = 10;      // per agent alive and home
+export const HOME_TRUST_BONUS = 3;  // more for one whose trust is 2 or 3
 export const TRUST_BONUS_AT = 2;
-export const NOTEBOOK_POINTS = 0.8; // per entry found
+export const NOTEBOOK_POINTS = 1.05; // per entry found
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 

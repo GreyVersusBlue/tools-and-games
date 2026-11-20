@@ -108,7 +108,10 @@ test('score: the house multiplier is on the sum, and the rank follows the total'
   const big = score(bare({ money: 8000, house: 'rich' }), testport);
   eq(big.total, 72);
   eq(big.rank, 'A small but steady house');
-  eq(score(bare({ money: 8000, house: 'rich', rep: { partners: 3, agents: 3, court: 3, foreign: 3 } }), testport).rank, 'A respected house');
+  // reputation and four notebook pages lift the same house over the line (rates are the game's, so the pin follows them)
+  const lifted = score(bare({ money: 8000, house: 'rich', notebook: ['a', 'b', 'c', 'd'], rep: { partners: 3, agents: 3, court: 3, foreign: 3 } }), testport);
+  ok(lifted.total >= 80, `total ${lifted.total} is under the respected line`);
+  eq(lifted.rank, 'A respected house');
 });
 
 test('score: it is pure, and the state it reads is left alone', () => {
