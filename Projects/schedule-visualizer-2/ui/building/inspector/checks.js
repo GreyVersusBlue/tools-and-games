@@ -6,7 +6,7 @@ import { h } from '../../components/dom.js';
 import { count, list } from '../../components/words.js';
 import { buildingChecks } from '../../../engine/building-checks.js';
 import { joinStairwell } from '../../../engine/stairwells.js';
-import { keepFocus } from './controls.js';
+import { keepFocus, commitKeepingFocus } from './controls.js';
 
 const ORDER = { problem: 0, warning: 1, note: 2 };
 const WORDS = { problem: 'Problem', warning: 'Warning', note: 'Note' };
@@ -28,10 +28,12 @@ function summary(findings) {
 
 // checksPanel(env) -> { element, update(state) }
 export function checksPanel(env) {
-  const lead = h('p', { id: 'checks-lead' });
+  // the lead and the title can take the focus: where it goes when Join the parts
+  // took the last finding's row away
+  const lead = h('p', { id: 'checks-lead', tabindex: '-1', data: { key: 'checks-lead' } });
   const rows = h('ul', { class: 'bi-findings', id: 'building-findings', 'aria-label': 'What the building checks found' });
   const element = h('div', { class: 'bld-inspector__panel', id: 'inspector-checks' },
-    h('h2', { class: 'bld-inspector__title' }, 'Building checks'),
+    h('h2', { class: 'bld-inspector__title', tabindex: '-1', data: { key: 'checks-title' } }, 'Building checks'),
     lead,
     rows,
     h('p', { class: 'bld-inspector__small' }, 'The checks run again after every change. The number on a floor\'s tab counts the problems on that floor.'),
@@ -57,13 +59,15 @@ export function checksPanel(env) {
           'aria-label': 'Show me: ' + finding.text,
           on: { click: () => env.show(finding.where, 'On ' + floor.name + ': ' + finding.text) },
         }, 'Show me') : null,
-        // the fix of a stairwell in parts: one flight between its parts, one undo step
+        // the fix of a stairwell in parts: one flight between its parts, one
+        // undo step. The commit takes this row away, so the focus goes to the
+        // next finding's control, else the lead (SV2-135b)
         finding.fixable && finding.kind === 'stairwell-split' ? h('button', {
           type: 'button',
           class: 'btn bi-small',
           data: { key: 'join:' + finding.id, action: 'join' },
           'aria-label': 'Join the parts of Stairwell ' + finding.where.well,
-          on: { click: () => env.editor().commit(joinStairwell, { well: finding.where.well }, { done: (made) => made.text, toast: (made) => made.text }) },
+          on: { click: () => commitKeepingFocus(element, ['checks-lead', 'checks-title'], () => env.editor().commit(joinStairwell, { well: finding.where.well }, { done: (made) => made.text, toast: (made) => made.text })) },
         }, 'Join the parts') : null);
     })));
   }

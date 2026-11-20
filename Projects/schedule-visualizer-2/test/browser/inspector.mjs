@@ -728,6 +728,113 @@ test('an exit is shown on its floor and taken off from the tab', async () => {
   await clearToast(page);
 });
 
+// ---------------------------------------------------------------- dead ends and Join the parts (SV2-135b)
+
+const findingRows = () => page.$$eval('#building-findings li', (all) => all.map((li) => ({ id: li.dataset.finding, kind: li.dataset.kind, text: li.querySelector('.bi-finding__text').textContent })));
+const focused = () => page.evaluate(() => {
+  const el = document.activeElement;
+  return { tag: el ? el.tagName : null, id: el ? el.id : '', key: el && el.dataset ? el.dataset.key || '' : '', inChecks: Boolean(el && el.closest && el.closest('#inspector-checks')) };
+});
+let original = null;
+
+test('a dead end\'s "Show me" goes to its floor and marks the run (ARCHITECTURE 22.15)', async () => {
+  original = await project();
+  await tab('checks');
+  const row = '#building-findings li[data-finding="dead-end:fsample002:314"] ';
+  assert.equal(await text(row + '.bi-finding__text'), 'Warning: A dead end on Floor 2 off Upper Corridor goes nowhere: 5 cells that lead to no room, stair or exit. A slip in the drawing?');
+  assert.equal(await page.$eval(row + '[data-action="show"]', (el) => el.getAttribute('aria-label')), 'Show me: A dead end on Floor 2 off Upper Corridor goes nowhere: 5 cells that lead to no room, stair or exit. A slip in the drawing?');
+  await page.click('#inspector [data-tab="exits"]');
+  await page.click('#exits-list li:first-child [data-action="show"]');
+  await floorIs(page, 'Floor 1');
+  await tab('checks');
+  await page.click(row + '[data-action="show"]');
+  await floorIs(page, 'Floor 2');
+  const marked = await page.evaluate(() => document.querySelector('.bld').editor.finder.marked);
+  assert.deepEqual(marked.cells, [314, 315, 316, 317, 318], 'the five cells east of the stairs on row 8');
+  assert.match((await state(page)).said, /^On Floor 2: A dead end on Floor 2 off Upper Corridor goes nowhere/);
+  // the Floor 3 stub east of the stairs serves the doorless Plant Room (DECISIONS 2026-11-20): no row for it
+  assert.equal(await page.$('#building-findings li[data-finding="dead-end:fsample003:314"]'), null);
+  await page.focus('#plan');
+  await page.keyboard.press('Escape');
+});
+
+test('a Cell scale change makes the Checks tab work the dead ends out again: a note goes, comes back in metres, and Undo restores it', async () => {
+  await tab('checks');
+  const notes = async () => (await findingRows()).filter((row) => row.kind === 'dead-end' && row.text.startsWith('Note: ')).map((row) => row.id + ' ' + row.text.replace(/^.* is (\d+) cells long( \([^)]*\))?.*$/, '$1$2'));
+  // the planner's sample as these tests left it: the halls run 11 cells west of the stairs on Floors 1 and 2, 32 on Floor 3
+  const unscaled = ['dead-end:fsample001:291 11', 'dead-end:fsample002:291 11', 'dead-end:fsample003:312 32'];
+  assert.deepEqual(await notes(), unscaled, 'no scale: past 6 cells');
+  const apply = (value) => page.evaluate(async (scale) => {
+    const actions = await import('./engine/actions.js');
+    globalThis.sv2.store.apply(actions.setSetting, { key: 'cellScale', value: scale });
+  }, value);
+  await apply({ unit: 'feet', length: 1.5 });
+  assert.deepEqual(await notes(), ['dead-end:fsample003:312 32 (about 48 feet)'], '16.5 feet is within 20, so two notes went; 48 feet stays');
+  assert.match(await text('#checks-lead'), / and 1 note\.$/);
+  await apply({ unit: 'metres', length: 0.57 });
+  assert.deepEqual(await notes(), ['dead-end:fsample001:291 11 (about 6.3 metres)', 'dead-end:fsample002:291 11 (about 6.3 metres)', 'dead-end:fsample003:312 32 (about 18.2 metres)'], '6.27 metres is past 6.1, said to one decimal');
+  await page.click('#undo');
+  await page.click('#undo');
+  assert.deepEqual(await notes(), unscaled, 'two Undos: no scale again');
+  await clearToast(page);
+});
+
+test('Join the parts: the split finding goes, the focus stays in the list, and one Undo brings the split back', async () => {
+  // the sample with a Floor 4, and Stairwell A as a file edited elsewhere left it: Floor 1 to 2, and Floor 3 to 4
+  await page.evaluate(async () => {
+    const { newFloor } = await import('./engine/schema.js');
+    const { store } = globalThis.sv2;
+    const next = JSON.parse(JSON.stringify(store.project));
+    const top = newFloor('fsample004', 'Floor 4', 4, 40, 14);
+    top.cells = top.cells.slice(0, 353) + 'S' + top.cells.slice(354);
+    next.building.floors.push(top);
+    next.building.connections.find((connection) => connection.id === 'csample00a').well = 'A';
+    next.building.connections.push({ id: 'csample00f', label: 'F', well: 'A', a: { floorId: 'fsample003', cell: 353 }, b: { floorId: 'fsample004', cell: 353 }, direction: 'both' });
+    store.replace(next);
+  });
+  await tab('checks');
+  const split = '#building-findings li[data-kind="stairwell-split"] ';
+  assert.equal(await text(split + '.bi-finding__text'), 'Warning: Stairwell A is in 2 parts: Floor 1 to Floor 2, and Floor 3 to Floor 4. Join the parts, or split the stairwell.');
+  const before = await entries();
+  await page.focus(split + '[data-action="join"]');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.$('#building-findings li[data-kind="stairwell-split"]'), null, 'the finding is gone');
+  const wells = await page.evaluate(async () => (await import('./engine/schema.js')).stairwells(globalThis.sv2.store.project.building).filter((well) => well.letter === 'A').map((well) => well.parts));
+  assert.deepEqual(wells, [1]);
+  assert.equal(await entries(), before + 1, 'one undo step');
+  assert.equal((await state(page)).label, 'Join the parts of Stairwell A');
+  const at = await focused();
+  assert.equal(at.inChecks, true, 'the focus did not drop to ' + at.tag);
+  assert.match(at.key, /^show:/, 'the next finding\'s Show me has it');
+  await page.click('#undo');
+  assert.equal(await text(split + '.bi-finding__text'), 'Warning: Stairwell A is in 2 parts: Floor 1 to Floor 2, and Floor 3 to Floor 4. Join the parts, or split the stairwell.', 'one Undo brings it back');
+  await clearToast(page);
+});
+
+test('Join the parts when it is the last finding: the focus goes to the lead, which says nothing is wrong', async () => {
+  await page.evaluate(async () => {
+    const { planProject } = await import('./test/fixtures/buildings/plans.mjs');
+    const floor = ['.AA.BB.', '.AA.BB.', 'S######', '.......', '.......'];
+    const plan = planProject([floor, floor, floor, floor], { connections: [[1, 0, 2, 2, 0, 2], [3, 0, 2, 4, 0, 2]], exits: [[1, 6, 2, 'Main Door']] });
+    for (const connection of plan.building.connections) connection.well = 'A';
+    plan.onboarding = globalThis.sv2.store.project.onboarding;
+    globalThis.sv2.store.replace(plan);
+  });
+  await tab('checks');
+  assert.ok((await findingRows()).some((row) => row.kind === 'stairwell-split'));
+  await page.focus('#building-findings li[data-kind="stairwell-split"] [data-action="join"]');
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await findingRows(), [], 'joined, the floors above are reached and nothing is left');
+  assert.equal(await text('#checks-lead'), 'The building checks found nothing wrong.');
+  const at = await focused();
+  assert.equal(at.id, 'checks-lead', 'the focus is on the lead, not ' + at.tag);
+  await page.click('#undo');
+  assert.ok((await findingRows()).some((row) => row.kind === 'stairwell-split'), 'one Undo brings it back');
+  await clearToast(page);
+  // the sample as these tests found it
+  await page.evaluate((saved) => globalThis.sv2.store.replace(saved), original);
+});
+
 test('after all of that the page has logged no error', () => {
   assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
 });
