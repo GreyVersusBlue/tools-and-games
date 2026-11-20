@@ -8,7 +8,6 @@ import * as engine from '../../engine/index.js';
 import { dinars } from './paper.js';
 import { createOutfit, firstLegState, freeAgents, stopOf, stopName, cap } from './outfit.js';
 
-const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 const NEAR = 48;                 // a press goes to the closest stop within this many px (DESIGN 4.7)
 const TOAST_MS = 5000;           // how long the set-out toast stays
 const CLUSTER_BELOW = 700;       // px of screen width under which close stops show as one label
@@ -45,17 +44,11 @@ const GAP = 3;                   // px kept clear around a label, so two never t
 const hits = (a, b) => a.left < b.right + GAP && b.left < a.right + GAP && a.top < b.bottom + GAP && b.top < a.bottom + GAP;
 const inside = (a, f) => a.left >= f.left && a.right <= f.right && a.top >= f.top && a.bottom <= f.bottom;
 
-/** When an expedition is expected home, in words: "Winter 1325". Seasons count from the one being played. */
-function homeBy(app, seasonsAway) {
-  const v = app.view(), at = SEASONS.indexOf(v.season) + seasonsAway;
-  return `${cap(SEASONS[at % 4])} ${v.year + Math.floor(at / 4)}`;
-}
-/** Seasons until this expedition's last leg ends: what is left of the leg it is on, and every leg after. */
-function seasonsLeft(app, x) {
-  const legs = app.content.routes.find(r => r.id === x.route).legs;
-  let n = x.status === 'out' ? x.left : legs[x.leg].seasons;
-  for (let i = x.leg + 1; i < legs.length; i++) n += legs[i].seasons;
-  return n;
+/** When the soonest expedition of a group is expected home, in words ("Winter 1325"): the engine's own answer, view().homeBy. */
+function homeBy(app, list) {
+  const by = app.view().homeBy ?? {};
+  const best = list.map(x => by[x.id]).filter(Boolean).sort((p, q) => p.in - q.in)[0];
+  return best?.season ?? 'a season not yet known';
 }
 
 /** app: the page's app object. nav: { toDesk(), openOutfit() }. Returns { el, key, draw, hasDraft,
@@ -213,8 +206,8 @@ export function createMap(app, nav) {
       const first = g.list[0], agent = content.agents.find(ag => ag.id === first.agent), n = g.list.length;
       const tok = app.art.get(`token-${g.leg.by}`) ?? app.art.get('token-caravan');
       const seal = agent && app.art.get(agent.seal);
-      const text = n === 1 ? `${agent?.name ?? 'An agent'}, home about ${homeBy(app, seasonsLeft(app, first))}`
-        : `${n} expeditions, home about ${homeBy(app, Math.min(...g.list.map(e => seasonsLeft(app, e))))}`;
+      const text = n === 1 ? `${agent?.name ?? 'An agent'}, home about ${homeBy(app, [first])}`
+        : `${n} expeditions, home about ${homeBy(app, g.list)}`;
       out.push(h('div', { class: 'token', style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n) } },
         h('div', { class: 'token-piece' }, h('img', { src: `assets/art/${tok.file}`, alt: '', width: 64, height: 64 }), n > 1 ? h('span', { class: 'token-count' }, String(n)) : null),
         h('p', { class: 'token-label' }, seal ? h('img', { class: 'token-seal', src: `assets/art/${seal.file}`, alt: '', width: 20, height: 20 }) : null, text)));

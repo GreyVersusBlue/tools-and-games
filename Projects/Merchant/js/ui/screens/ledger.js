@@ -8,7 +8,6 @@ import { num, dinars, seal } from './paper.js';
 import { stopName, traitWords, cap } from './outfit.js';
 
 export const SECTIONS = ['money', 'warehouse', 'road', 'people'];
-const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 const MINUS = '−';
 const VESSEL = { caravan: 'caravan', galley: 'galley', dhow: 'dhow', nileboat: 'river boat', mules: 'mule train' };
 
@@ -23,15 +22,6 @@ const signed = n => (n > 0 ? `+${num(n)}` : n < 0 ? `${MINUS}${num(-n)}` : '0');
 export function moneyTrail(content, log) {
   return (log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4)
     .map(e => ({ at: e.at, season: writeSeason(content, e.at), change: e.change }));
-}
-
-/** When an expedition is expected home: the season it is on plus the seasons its legs have left. */
-function dueSeason(app, x) {
-  const legs = app.content.routes.find(r => r.id === x.route)?.legs ?? [];
-  let n = x.status === 'out' ? x.left : (legs[x.leg]?.seasons ?? 0);
-  for (let i = x.leg + 1; i < legs.length; i++) n += legs[i].seasons;
-  const v = app.view(), at = SEASONS.indexOf(v.season) + n;
-  return `${cap(SEASONS[at % 4])} ${v.year + Math.floor(at / 4)}`;
 }
 
 function whereIsExpedition(app, x) {
@@ -106,7 +96,7 @@ function road(app) {
     return h('li', { class: 'ledger-trip', dataset: { expedition: x.id } },
       h('strong', null, `${agent?.name ?? 'An agent'} to ${to}`), ' ',
       h('span', null, whereIsExpedition(app, x)), ' ',
-      h('span', null, x.status === 'home' ? 'Home now.' : `Due home about ${dueSeason(app, x)}.`));
+      h('span', null, x.status === 'home' ? 'Home now.' : `Due home about ${app.view().homeBy?.[x.id]?.season ?? 'a season not yet known'}.`));
   });
   return section('road', 'Out on the road',
     rows.length ? h('ul', { class: 'ledger-list', id: 'ledger-trips' }, rows) : h('p', { class: 'ledger-line', id: 'ledger-trips' }, 'No expedition is out.'));
