@@ -70,6 +70,10 @@ test('proposePlan: the bring-back good is the widest margin the house has news o
   know(s, c, 'hilltown', 'wool', 30);
   know(s, c, 'hilltown', 'salt', 8);
   eq(proposePlan(s, c, 'mira', 'harbour-hilltown').buy, ['salt'], 'the only one cheaper there');
+  // two goods cheaper there than at home: the wider margin is the one to bring back, whichever way the list or the alphabet runs
+  const both = (wool, salt) => { const u = game(c); know(u, c, 'hilltown', 'wool', wool); know(u, c, 'hilltown', 'salt', salt); return proposePlan(u, c, 'mira', 'harbour-hilltown').buy; };
+  eq(both(10, 4), ['salt'], 'salt: 10 at home for 4 (2.5 times) beats wool: 20 for 10 (2 times)');
+  eq(both(5, 4), ['wool'], 'wool: 20 for 5 (4 times) beats salt: 10 for 4 (2.5 times)');
   const none = game(c);
   const guess = proposePlan(none, c, 'mira', 'harbour-hilltown');
   ok(guess && guess.buy.length === 1, `with no news the stop's base prices guide the default: ${JSON.stringify(guess)}`);
@@ -164,7 +168,7 @@ test('estimate: the sales at the far end, each load a little lower, less the tol
   // (the way home from Hilltown is shut in winter, so the trip waits a season there: upkeep, which `estimate` counts)
   eq([e.gross + e.upkeep, e.tolls, e.stake, e.wage], [210 - 10, 10, 200, later.wage]);
   eq(e.net, 210 - 10 - 200 - later.wage - e.upkeep);
-  ok(e.upkeep % R.UPKEEP === 0, `${e.upkeep}`);
+  eq(e.upkeep, R.UPKEEP, 'one season waiting at Hilltown for the way home to open, at the upkeep the engine charges');
   eq([e.ok, e.seasons > 0, typeof e.line], [true, true, 'string']);
 });
 
@@ -189,6 +193,7 @@ test('estimate: it follows a calm trip to the dinar or close to it (prices that 
     const diff = Math.abs(paper.data.houseNet - e.net);
     ok(diff <= 6, `${name}: estimated ${e.net}, made ${paper.data.houseNet}`);
     eq(paper.data.hoped, e.net, `${name}: the paper carries what was hoped at sending`);
+    eq(-(paper.data.account.find(r => r.label === 'Waiting')?.amount ?? 0), e.upkeep, `${name}: the waiting the estimate counted is the waiting the paper shows`);
   }
 });
 

@@ -3,6 +3,7 @@
 // game is balanced: the thresholds in tools/bots.mjs are judged by `node tools/bots.mjs`, which needs
 // thousands of games to mean anything and is run by hand. Plain Node, no browser, no clock.
 import os from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
 import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
@@ -345,7 +346,10 @@ test('venture bots: careful and greedy send what proposePlan proposes for the ro
         const plan = venturePlan(bot, s, content, a);
         if (!plan) continue;
         sent++;
-        eq(plan, proposePlan(s, content, a, plan.route), `${bot}/${seed}: the plan is the engine's default for that road`);
+        // the plan is the engine's default for that road at one of the shares the bot tries (its own, then a bigger one if the wage bill wants it)
+        const share = [0.2, 0.35, 0.5, 0.65, 0.8].find(x => isDeepStrictEqual(plan, proposePlan(s, content, a, plan.route, { share: x })));
+        ok(share !== undefined, `${bot}/${seed}: the plan is the engine's default for that road: ${JSON.stringify(plan)}`);
+        ok(share >= (bot === 'careful' ? 0.5 : 0.2), `${bot} starts from its own share, not a smaller one: ${share}`);
         outfit(s, content, plan);
         const e = estimate(s, content, plan);
         ok(e.net > 0, `${bot} sends only what the estimate says pays: ${e.net}`);
