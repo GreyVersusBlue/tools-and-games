@@ -203,7 +203,8 @@ const SETTINGS = {
   elevatorWaitSeconds: { label: 'Change the elevator wait', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorWaitSeconds, 'The elevator wait in seconds') },
   elevatorSecondsPerFloor: { label: 'Change elevator seconds per floor', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorSecondsPerFloor, 'Elevator seconds per floor') },
   elevatorPeoplePerTrip: { label: 'Change people per elevator trip', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorPeoplePerTrip, 'People per elevator trip') },
-  cellScale: { label: 'Change the cell scale', bumps: [], check: (value) => (isCellScale(value) ? null : CELL_SCALE_RULE) },
+  // BUILDING: the building checks say a dead end's length in the Cell scale (SV2-135b)
+  cellScale: { label: 'Change the cell scale', bumps: [BUILDING], check: (value) => (isCellScale(value) ? null : CELL_SCALE_RULE) },
   'colourScale.mode': { label: 'Change the colour scale', bumps: [], check: choiceRule(COLOUR_SCALE_MODES, 'The colour scale') },
   'colourScale.bands': {
     label: 'Change the colour bands',

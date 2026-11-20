@@ -9,6 +9,10 @@ import { buildingChecks, deadEnds, DEAD_END_CELLS } from '../../engine/building-
 import { joinStairwell } from '../../engine/stairwells.js';
 import { stairwells } from '../../engine/schema.js';
 import { ctx, clone } from './helpers.mjs';
+import { createStore } from '../../engine/store.js';
+import { createIds, seededRandom } from '../../engine/ids.js';
+import { setSetting } from '../../engine/actions.js';
+import { createPipeline } from '../../engine/worker.js';
 import { planProject, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 
 const F1 = floorId(1);
@@ -140,6 +144,23 @@ test('with a cell scale the limit is 20 feet (6.1 metres) and the length is said
   const nothing = planProject([['.........', '.........', HALL, '....#....']], { exits });
   nothing.settings.cellScale = { unit: 'metres', length: 0.1 };
   assert.deepEqual(only(nothing, 'dead-end').map((finding) => finding.severity), ['warning']);
+});
+
+test('a Cell scale change makes the building checks run again: the store\'s Checks cache and the worker see the note come and go (SV2-135b)', () => {
+  const store = createStore({ project: longStub(7), clock: () => new Date('2026-09-01T12:00:00Z'), ids: createIds(seededRandom(16)) });
+  // the Checks panel's cache, as ui/building/inspector/checks.js asks it
+  const cached = () => store.derived.get('building:checks', ['building'], (project) => buildingChecks(project)).filter((finding) => finding.kind === 'dead-end').map((finding) => finding.severity);
+  const pipeline = createPipeline();
+  const versions = () => ({ geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion });
+  const worked = () => pipeline.run(store.project, versions()).buildingFindings.filter((finding) => finding.kind === 'dead-end').map((finding) => finding.severity);
+  assert.deepEqual(cached(), ['note'], '7 cells with no scale is past 6');
+  assert.deepEqual(worked(), ['note']);
+  store.apply(setSetting, { key: 'cellScale', value: { unit: 'feet', length: 2 } });
+  assert.deepEqual(cached(), [], '14 feet is within 20: the cache ran again');
+  assert.deepEqual(worked(), [], 'and so did the worker');
+  store.apply(setSetting, { key: 'cellScale', value: { unit: 'metres', length: 1 } });
+  assert.deepEqual(cached(), ['note'], '7 metres is past 6.1');
+  assert.deepEqual(worked(), ['note']);
 });
 
 test('the id names the cell next to the junction, so lengthening the far end keeps an accepted finding', () => {
