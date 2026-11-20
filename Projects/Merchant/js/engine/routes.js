@@ -1352,7 +1352,7 @@ function returnPaper(s, content, r) {
       headline: line ? `${line} ${headline}` : headline,
       orderLine: line, trip, ...askOf(content, entry, asking),
       route: `${homeName} to ${dest} and back, ${words(seasons)} ${plural(seasons, 'season', 'seasons')}`,
-      account: rows, houseNet: n, outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even',
+      account: rows, goodsBack: Object.fromEntries(Object.entries(r.goodsBack).filter(([, q]) => q > 0)), cargoValue: Math.round(r.cargoValue), houseNet: n, outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even',
       hoped: x.hoped ?? null, why: x.hoped === undefined ? null : whyLine(s, content, x, r),   // what the sheet said at sending, and one sentence for the gap (DESIGN 2.2 rule 2)
       shares: { agent: r.shares.agent, partners: r.shares.partners, house: r.shares.house },
       agentLine: `${agent.name} is home and wants to rest a season.`,

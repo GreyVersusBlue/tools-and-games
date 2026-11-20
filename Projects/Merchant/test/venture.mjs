@@ -609,4 +609,18 @@ test('MER-103 suggestPlan: in a city with no qirad the one-press suggestion pass
   eq(R.suggestPlan(s, c, 'hilltown'), null, 'both refuse and there is no qirad to offer');
 });
 
+test('MER-103 returnPaper: goodsBack and cargoValue say what came home unsold at home\'s price, and are empty and 0 when everything sold', () => {
+  const c = still();
+  const unsold = toReturn(outfit(game(c), c, { ...WOOL, sell: [] }), c).paper.data;
+  const home = toReturn(outfit(game(c), c, { ...WOOL, sell: [] }), c);
+  eq(Object.keys(unsold.goodsBack), ['wool']);
+  const n = unsold.goodsBack.wool;
+  ok(n > 0 && n <= 10, 'what the road left of ten loads');
+  eq(unsold.cargoValue, Math.round(n * M.truePrice(home.s, c, 'harbour', 'wool')));
+  ok(Number.isInteger(unsold.cargoValue) && unsold.cargoValue > 0);
+  ok(/worth/.test(unsold.account.find(r => r.label === 'Back home').text), 'the row keeps its words');
+  const sold = toReturn(outfit(game(c), c, WOOL), c).paper.data;
+  eq([sold.goodsBack, sold.cargoValue], [{}, 0]);
+});
+
 await done();
