@@ -5,6 +5,8 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import * as R from '../js/engine/routes.js';
+/** Runs `fn` with the rule that refuses unspent money switched on (it ships off, routes.js RULES), and puts it back. */
+const ruled = fn => () => { R.RULES.refuseUnspentMoney = true; try { return fn(); } finally { R.RULES.refuseUnspentMoney = false; } };
 import { steps } from '../js/engine/turn.js';
 import { WAIT } from '../js/engine/letters.js';
 import * as M from '../js/engine/market.js';
@@ -104,7 +106,7 @@ test('proposePlan: null for a road that does not project, an unknown agent and a
 
 // ---- money needs a good to bring back
 
-test('build refuses money sent with no bring-back good, says so in words and names the one to take; the same plan with it, or with no money, goes', () => {
+test('build refuses money sent with no bring-back good, says so in words and names the one to take; the same plan with it, or with no money, goes', ruled(() => {
   const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; });
   let s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
   s.stock = { linen: 20 };
@@ -118,10 +120,10 @@ test('build refuses money sent with no bring-back good, says so in words and nam
   const named = checkPlan(s, c, { ...plan, buy: [c.goods.find(g => g.name.toLowerCase() === best).id] });
   eq(named.ok, true, named.reasons.join(' '));
   throwsWith(() => outfit(s, c, plan), /needs a good to bring back/);
-});
+}));
 const throwsWith = (fn, re) => { try { fn(); } catch (e) { ok(re.test(e.message), e.message); return; } throw new Error('expected a throw'); };
 
-test('every road of the data ends at a stop with a good the house can bring back, so the refusal always has a good to offer', () => {
+test('every road of the data ends at a stop with a good the house can bring back, so the refusal always has a good to offer', ruled(() => {
   const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; });
   let s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
   s.stock = { linen: 20 };
@@ -135,12 +137,20 @@ test('every road of the data ends at a stop with a good the house can bring back
     void dest;
   }
   eq(bare, [], 'every route is refused for want of a bring-back good, nothing else');
-});
+}));
 
-test('the narrow corner: a stop with nothing the house sells at home has no good to offer, and money sent there is not refused for it (no stop of the data is like that)', () => {
+test('the narrow corner: a stop with nothing the house sells at home has no good to offer, and money sent there is not refused for it (no stop of the data is like that)', ruled(() => {
   const c = variant(T0, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; });
   const s = game(c);
   eq(checkPlan(s, c, { ...WOOL, purse: 20 }).ok, true, 'Hilltown as the data has it sells only wool, and the house sends wool');
+}));
+
+test('the rule ships off: money sent with no good to bring back goes through until test/letters.mjs names one (routes.js RULES)', () => {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; });
+  const s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.stock = { linen: 20 };
+  eq(R.RULES.refuseUnspentMoney, false);
+  eq(checkPlan(s, c, { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 5 }, purse: 100, contract: 'own', sell: ['linen'], buy: [] }).ok, true);
 });
 
 // ---- the estimate

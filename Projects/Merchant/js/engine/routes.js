@@ -24,6 +24,13 @@ import { decide, close, seasonsLeft, MAX_HOLD, WAIT, HOME } from './letters.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
 export const QIRAD_STAKE = 60;      // coins the partners put in for a suggested qirad, at most (a fifth of the house's money when that is less)
+export const RULES = {
+  // DESIGN 2.2 rule 1: money sent to buy with, and no good named to bring back, is refused in words. OFF for now: test/letters.mjs
+  // (`cairoGame`, MER-94's file) sends `purse: 40, buy: []` to every road and so is refused every time ("0 questions answered").
+  // Turn this on in the same commit that gives that plan a `buy` (any good the stop sells and the house sells at home).
+  // test/venture.mjs runs the rule with the switch on.
+  refuseUnspentMoney: false,
+};
 export const UPKEEP = 4;            // coins a season for an expedition waiting at a stop (an estimate; the bots tune it)
 // What happens to an expedition that is lost, and to an agent at home across the act jump: the
 // defaults for city.json's `jump` block (ARCHITECTURE 5.1). A loss is rolled the same way on the
@@ -521,7 +528,7 @@ function build(s, content, plan) {
     // money sent to buy with, and nothing named to bring back: it would come home unspent (DESIGN 2.2 rule 1, M4 play finding 8).
     // Refused only where the stop has a good the house could name; a stop with nothing the house trades at home leaves the
     // plan alone, because no default can be offered there (the fixtures' Hilltown; no stop of the data is like it, test/venture.mjs).
-    if (isCount(purse) && purse > 0 && !buy.length && !problems.length) {
+    if (RULES.refuseUnspentMoney && isCount(purse) && purse > 0 && !buy.length && !problems.length) {
       const best = bringBack(s, content, dest, [...carried]);
       if (best) no(`Money sent to buy with needs a good to bring back, and none is named. ${cap(goodName(content, best.good))} is the best known one from ${dest.name}: name it, or send no money.`);
     }
