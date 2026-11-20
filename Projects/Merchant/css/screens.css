@@ -481,7 +481,7 @@ dialog.book .panel-actions { flex: none; }
 .ending-body { margin: 0 0 var(--s2); }
 .ending-line { margin: 0; font-size: var(--step-0); }
 .ending-sheet ul { list-style: none; margin: var(--s2) 0; padding: 0; display: grid; gap: var(--s2); }
-.ending-row { padding: var(--s2) 0; border-top: 1px solid var(--paper-shade); display: grid; gap: var(--s2); }
+.ending-row, .ending-home-row { padding: var(--s2) 0; border-top: 1px solid var(--paper-shade); display: grid; gap: var(--s2); }
 .ending-who { display: flex; align-items: center; gap: var(--s3); }
 .ending-who .seal { flex: none; width: 2.4rem; height: 2.4rem; }
 .recall-choice { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
@@ -491,6 +491,16 @@ dialog.book .panel-actions { flex: none; }
 .ending-part { padding: var(--s2) 0; border-top: 1px solid var(--paper-shade); }
 .part-head { display: flex; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; font-family: var(--font-chrome); }
 .part-head .points { font-variant-numeric: tabular-nums; }
+.wealth-sums { margin: var(--s2) 0 0; display: grid; gap: .15rem; font-family: var(--font-chrome); }
+.wealth-row { display: grid; grid-template-columns: 8rem 1fr; gap: var(--s2); }
+.wealth-row dt { color: var(--ink-soft); }
+.wealth-row dd { margin: 0; display: grid; }
+.wealth-row .amount { font-variant-numeric: tabular-nums; }
+.wealth-row small { font-size: var(--step--1); color: var(--ink-soft); }
+.wealth-row[data-row="net"] { border-top: 1px solid var(--ink-soft); padding-top: .15rem; font-weight: 700; }
+.wealth-row[data-row="net"] dt { color: var(--ink); }
+.ending-athome { margin-top: 0; }
+.title-last { margin: 0; padding: var(--s1) var(--s2); font-style: italic; color: var(--ink-soft); border-bottom: 1px solid var(--paper-shade); }
 .ending-sum { margin: 0; font-family: var(--font-chrome); }
 .ending-total { margin: var(--s3) 0 0; font-size: var(--step-2); font-weight: 700; }
 .ending-rank { margin: 0 0 var(--s2); font-size: var(--step-1); font-style: italic; color: var(--brass-dark); }

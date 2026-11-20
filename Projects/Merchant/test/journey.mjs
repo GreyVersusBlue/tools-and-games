@@ -2699,6 +2699,73 @@ try {
       ok(!/most likely live/.test(text), text);
       await page.close();
     });
+    // ---- MER-90: the score page shows its sums, the recall page says each person's risk, the title remembers
+    {
+      const { recallRisk } = await import(pathToFileURL(path.join(MER, 'engine', 'routes.js')).href);
+      const DEATH = { sure: 'is very likely to die of the plague', likely: 'may well die of the plague', maybe: 'could die of the plague', unlikely: 'is unlikely to die of the plague' };
+      const nameOf = id => nodeContent.agents.find(a => a.id === id).name;
+      const ended = clone(eng.recall(road, nodeContent, DECIDED));
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const go = async (st, hash, ready) => {
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, st, SAVE_VERSION);
+        await page.goto(GAME + hash, { waitUntil: 'load' });
+        await page.waitForSelector(ready);
+      };
+      await test('MER-90: the recall page gives every person still alive a risk in words from recallRisk, those at home in Cairo too', async () => {
+        // seed 1324 keeps everyone hired on the road, so one more hire waits in Cairo
+        const withHome = clone(road), idle = nodeContent.agents.find(a => !withHome.agents[a.id].hired && !withHome.expeditions.some(x => x.agent === a.id)).id;
+        Object.assign(withHome.agents[idle], { hired: true, where: nodeContent.city.home });
+        const want = recallRisk(withHome, nodeContent);
+        ok(want.some(r => r.where === 'home'), 'this state has someone at home in Cairo');
+        ok(want.some(r => r.where === 'road'), 'and someone on the road');
+        await go(withHome, '#ending/recall', '#ending-send');
+        const got = await page.$$eval('[id^="recall-"][id$="-risk"]', es => es.map(e => ({ id: e.id, text: e.textContent, stay: e.dataset.stay, called: e.dataset.called ?? null, home: !!e.closest('[data-where="home"]') })));
+        eq(got.length, want.length, 'one risk line per person');
+        for (const r of want) {
+          const g = got.find(x => x.id === (r.where === 'road' ? `recall-${r.expedition}-risk` : `recall-${r.agent}-risk`));
+          ok(g, `${r.agent}: a risk line`);
+          eq(g.stay, r.risk, `${r.agent}: stay word`);
+          eq(g.home, r.where === 'home');
+          if (r.where === 'road') { eq(g.called, r.riskIfCalled); eq(g.text, `If ${nameOf(r.agent)} stays, ${nameOf(r.agent)} ${DEATH[r.risk]}. If called home, ${nameOf(r.agent)} ${DEATH[r.riskIfCalled]}.`); }
+          else eq(g.text, `${nameOf(r.agent)} ${DEATH[r.risk]}.`);
+        }
+        eq(await page.$$eval('[data-where="home"] button', bs => bs.length), 0, 'nothing to press for a person at home');
+        ok(!/\d%|percent/.test(await page.$eval('[data-page="recall"]', e => e.textContent)), 'no number shown');
+      });
+      await test('MER-90: the score page\'s wealth line shows cash, stock and loans, and they add up on screen to the wealth figure', async () => {
+        await go(ended, '#ending/score', '#wealth-sums');
+        const d = ended.score.parts.find(p => p.id === 'wealth').data;
+        const rows = await page.$$eval('#wealth-sums .wealth-row', rs => rs.map(r => ({ id: r.dataset.row, value: r.querySelector('.amount').textContent, note: r.querySelector('small')?.textContent ?? '' })));
+        eq(rows.map(r => r.id), ['cash', 'stock', 'loans', 'net']);
+        const n = t => Number(t.replace(/,/g, '').replace('−', '-').replace(/ dinars?$/, ''));
+        const [cash, stock, loans, net] = rows.map(r => n(r.value));
+        eq([cash, stock, -loans, net], [d.cash, d.stock.value, -d.loans, d.net], 'the engine\'s figures');
+        eq(cash + stock - loans, net, 'cash plus stock less loans is the wealth shown');
+        eq(Math.round(d.cash) + Math.round(d.stock.value) - Math.round(d.loans), Math.round(d.net), 'whole dinars add up too');
+        if (d.stock.loads) ok(rows[1].note.startsWith(`${d.stock.loads} load`), rows[1].note);
+      });
+      await test('MER-90: the ending\'s placeholder still is cropped like the desk\'s, so its file name never shows', async () => {
+        await go(ended, '#ending/score', '#score-total');
+        const r = await page.$eval('.ending-stills .desk-still', e => ({ cls: e.className, clip: getComputedStyle(e).clipPath }));
+        ok(r.cls.split(' ').includes('placeholder'), r.cls);
+        ok(/inset\(8%/.test(r.clip), r.clip);
+      });
+      await test('MER-90: Play again says what it replaces, and the title after a finished game shows the last score and rank', async () => {
+        await go(ended, '#ending/after', '#again-note');
+        const note = await page.$eval('#again-note', e => e.textContent);
+        ok(note.startsWith(`Play again replaces this finished game: ${withCommas(ended.score.total)} points, `), note);
+        ok(note.includes(ended.score.rank.toLowerCase()), note);
+        await go(ended, '#title', '#screen-title');
+        const t = await page.$eval('#title-last', e => e.textContent);
+        eq(t, `Last game: ${withCommas(ended.score.total)} points, ${ended.score.rank.charAt(0).toLowerCase()}${ended.score.rank.slice(1)}. A new game replaces it.`);
+        eq(await page.evaluate(() => Object.keys(localStorage)), ['merchant-save'], 'no new storage key');
+        await go(clone(road), '#title', '#screen-title');
+        eq(await page.$('#title-last'), null, 'a game not yet over shows no last score');
+      });
+      await test('MER-90: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
     for (const how of ['pointer', 'keyboard']) {
       const { page, consoleErrors } = await open(FRAMES[0]);
       const here = () => page.evaluate(() => ({ hash: location.hash, focus: document.activeElement.id, page: document.querySelector('[data-page]')?.dataset.page }));

@@ -6,7 +6,7 @@
 // app.recallPlan and is forgotten by a reload (nothing was decided yet).
 import { h, qs } from '../dom.js';
 import * as engine from '../../engine/index.js';
-import { recallChances } from '../../engine/routes.js';
+import { recallChances, recallRisk } from '../../engine/routes.js';
 import { seasonsLeft } from '../../engine/letters.js';
 import { leftHow } from '../../engine/agents.js';
 import { seal, sourceLine, num, dinars } from './paper.js';
@@ -20,6 +20,25 @@ const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.
 /** Points: a whole number as it is, a half (the notebook's pages are worth a half) with its decimal. */
 export const pts = n => (Number.isInteger(n) ? num(n) : n.toFixed(1));
 const lower = s => s.charAt(0).toLowerCase() + s.slice(1);
+
+/** The chance of dying of the plague, in the words of routes.js's `chanceWord`, as the end of a sentence about one person. */
+const DEATH = { sure: 'is very likely to die of the plague', likely: 'may well die of the plague', maybe: 'could die of the plague', unlikely: 'is unlikely to die of the plague' };
+export const deathLine = word => DEATH[word] ?? DEATH.maybe;
+
+/** The wealth line's sums, as rows: cash, stock and loans as MER-86 gives them in the part's `data`, then the
+    wealth they make. Cash less loans plus stock is the figure on the page, to the dinar. */
+export function wealthRows(data, money) {
+  const d = n => `${num(n)} ${money}`;
+  const loads = n => `${num(n)} ${n === 1 ? 'load' : 'loads'}`;
+  const stock = data.stock ?? { value: 0, loads: 0, unpriced: 0 };
+  return [
+    { id: 'cash', label: 'Cash', value: d(data.cash), note: data.brought ? `${d(data.brought)} of it brought home by a recall` : '' },
+    { id: 'stock', label: 'Stock', value: d(stock.value), note: stock.loads
+      ? `${loads(stock.loads)} at the last prices known at home${stock.unpriced ? `; ${loads(stock.unpriced)} of it with no known price counts for nothing` : ''}` : 'none in store' },
+    { id: 'loans', label: 'Loans owed', value: data.loans ? `−${d(data.loans)}` : `0 ${money}`, note: '' },
+    { id: 'net', label: 'Wealth', value: d(data.net), note: '' },
+  ];
+}
 
 /** In words: how likely word is to reach an expedition in time (the engine's chance, never shown as a number). */
 export function wordLine(chance, name) {
@@ -79,7 +98,7 @@ export function createEnding(app, nav) {
   let sending = false;
 
   const asset = app.art.get('harbour-empty');
-  if (asset) still.append(h('img', { class: 'desk-still', src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' }));
+  if (asset) still.append(h('img', { class: `desk-still${asset.final === false ? ' placeholder' : ''}`, src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' }));
 
   const button = (id, label, onclick, primary = true) => h('button', { class: `button${primary ? ' primary' : ''}`, type: 'button', id, onclick: e => onclick(e.currentTarget) }, label);
   const sheet = (name, title, ...rest) => h('article', { class: 'paper ending-sheet', dataset: { page: name }, 'aria-labelledby': 'ending-title' },
@@ -100,6 +119,8 @@ export function createEnding(app, nav) {
   const planOf = id => (app.recallPlan ??= {})[id] ?? 'stay';
   function recallPage() {
     const rows = outList(app.state, content);
+    const risks = new Map(recallRisk(app.state, content).map(r => [r.agent, r]));
+    const atHome = [...risks.values()].filter(r => r.where === 'home');
     const body = [
       h('p', { class: 'ending-body' }, rows.length
         ? 'Each of your people still out is listed below, with where they are and whether word can reach them in time. A person called home comes with part of the cargo, but the plague killed many in Cairo too, so no one is certain to live. A person who stays may finish the trip with all of it, or may not come back.'
@@ -119,9 +140,20 @@ export function createEnding(app, nav) {
           h('div', { class: 'ending-who' }, seal(app, r.seal),
             h('div', null, h('strong', { id: `recall-${r.id}-name` }, r.name),
               h('p', { class: 'ending-line', id: `recall-${r.id}-where` }, `${r.home ? 'Waiting in' : 'On the road to'} ${r.place}.${r.cargo.length ? ` Carrying ${r.cargo.join(' and ')}.` : ''}`),
+              h('p', { class: 'ending-line', id: `recall-${r.id}-risk`, dataset: { stay: risks.get(r.agent)?.risk, called: risks.get(r.agent)?.riskIfCalled } },
+                `If ${r.name} stays, ${r.name} ${deathLine(risks.get(r.agent)?.risk)}. If called home, ${r.name} ${deathLine(risks.get(r.agent)?.riskIfCalled)}.`),
               h('p', { class: 'ending-line', id: `recall-${r.id}-word`, dataset: { word: r.chance >= 0.8 ? 'sure' : r.chance >= 0.5 ? 'likely' : r.chance >= 0.25 ? 'maybe' : 'unlikely' } }, r.word))),
           group);
       })));
+    }
+    if (atHome.length) {
+      const name = a => (content.agents ?? []).find(x => x.id === a.agent);
+      body.push(h('h3', { id: 'recall-home-title' }, `At home in ${stopName(content, content.city.home)}`),
+        h('p', { class: 'ending-body' }, 'These people are already in the city. There is nothing to send them, and the sickness will reach them too.'),
+        h('ul', { class: 'ending-out ending-athome' }, atHome.map(r => h('li', { class: 'ending-home-row', dataset: { agent: r.agent, where: 'home' } },
+          h('div', { class: 'ending-who' }, seal(app, name(r)?.seal ?? null),
+            h('div', null, h('strong', null, name(r)?.name ?? r.agent),
+              h('p', { class: 'ending-line', id: `recall-${r.agent}-risk`, dataset: { stay: r.risk } }, `${name(r)?.name ?? r.agent} ${deathLine(r.risk)}.`)))))));
     }
     body.push(h('div', { class: 'ending-actions' },
       button('ending-send', rows.length ? 'Send word and wait' : 'Wait for the plague', () => send(), true)));
@@ -158,7 +190,9 @@ export function createEnding(app, nav) {
     return sheet('score', TITLES.score,
       h('ul', { class: 'ending-parts' }, sc.parts.map(p => h('li', { class: 'ending-part', dataset: { part: p.id } },
         h('div', { class: 'part-head' }, h('strong', null, PART_NAMES[p.id] ?? p.id), h('span', { class: 'points' }, `${pts(p.points)} points`)),
-        h('p', { class: 'ending-line' }, p.reason)))),
+        h('p', { class: 'ending-line' }, p.reason),
+        p.id === 'wealth' && p.data ? h('dl', { class: 'wealth-sums', id: 'wealth-sums' }, wealthRows(p.data, content.city?.currency ?? 'coins').map(r =>
+          h('div', { class: 'wealth-row', dataset: { row: r.id } }, h('dt', null, r.label), h('dd', null, h('span', { class: 'amount' }, r.value), r.note ? h('small', null, r.note) : null)))) : null))),
       h('p', { class: 'ending-sum', id: 'score-sum' }, `Together: ${pts(sc.sum)} points.`),
       h('p', { class: 'ending-sum', id: 'score-multiplier' }, `${house?.name ? `${house.name}, ` : ''}multiplied by ${sc.multiplier}.`),
       h('p', { class: 'ending-total', id: 'score-total' }, `Total: ${num(sc.total)} points`),
@@ -176,6 +210,7 @@ export function createEnding(app, nav) {
       h('p', { class: 'ending-body', id: 'after-house' }, `The house closes its books as ${lower(sc.rank)}. ${home} of ${people.length === 1 ? 'its 1 person' : `its ${people.length} people`} came home.`),
       entries.map(e => h('section', { class: 'ending-entry', dataset: { entry: e.id } },
         h('h3', null, e.title), h('p', { class: 'ending-body' }, e.body), sourceLine(content, e.sources))),
+      h('p', { class: 'ending-line', id: 'again-note' }, `Play again replaces this finished game: ${num(sc.total)} points, ${lower(sc.rank)}. The score is not kept once a new game starts.`),
       h('div', { class: 'ending-actions' },
         button('ending-again', 'Play again', b => nav.playAgain(b)),
         button('ending-title-btn', 'Back to the title', () => nav.toTitle(), false)));

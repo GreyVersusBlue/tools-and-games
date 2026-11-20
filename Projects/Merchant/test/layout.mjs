@@ -209,6 +209,8 @@ const SCREENS = [
     go: async (p, f) => { await load(p, '#title', { large: f.large }); await p.waitForSelector('#screen-title'); } },
   { name: 'title-continue', ready: '#btn-continue',
     go: async (p, f) => { await load(p, '#title', { state: states.start, large: f.large }); await p.waitForSelector('#btn-continue'); } },
+  { name: 'title-ended', ready: '#title-last',
+    go: async (p, f) => { await load(p, '#title', { state: states.ended, large: f.large }); await p.waitForSelector('#title-last'); } },
   { name: 'new-game', modal: 'dialog[open]',
     go: async (p, f) => { await load(p, '#title', { large: f.large }); await p.waitForSelector('#btn-new'); await p.click('#btn-new'); await p.waitForFunction(() => document.getElementById('panel-newgame')?.open); } },
   { name: 'desk-letter',
