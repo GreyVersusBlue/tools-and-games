@@ -333,7 +333,7 @@ function askOf(content, entry, trip) {
   };
 }
 
-/** Where an order's answer found the agent, in words: "at Aden" or "on the road to Jeddah". */
+/** Where an order's answer found the agent, in words: "at <stop>" or "on the road to <stop>". */
 const placeText = (content, p) => `${p.standing === false ? 'on the road to' : 'at'} ${stopName(content, p.stop)}`;
 
 /** One sentence for a return or a loss whose orders changed what the expedition did, or whose answer could not (DESIGN 2.1
@@ -546,7 +546,7 @@ function build(s, content, plan) {
     cargo, purse,
     contract: kind === 'qirad' ? { kind, agentShare: share[0], of: share[1] } : prepay ? { kind, prepaid: true } : { kind },
     staked: { house: stockValue + buyCost + purse - partners, partners },
-    orders: [], sent: idx, out: 1, start: first.startIdx,   // `out`: seasons the agent is away, the one it leaves in counted (MER-88), so the wage is the paper's season count
+    orders: [], sent: idx, out: 0, start: first.startIdx,
     plan: { sell: [...sell], buy: [...buy] },
     quote: Object.fromEntries(Object.keys(dest.sells ?? {}).map(g => [g, M.truePrice(s, content, route.to, g)])),
     book: { cargo: { ...cargo }, purse, capital: stockValue + buyCost + purse, ...(wagePaid ? { wagePaid } : {}), sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] },
@@ -628,7 +628,7 @@ const seasonsHome = seasonsLeft;
 /** Fills in what an expedition written before these fields existed (or by hand, in a test) lacks. */
 function norm(x) {
   x.status ??= 'out';
-  x.out ??= 1;
+  x.out ??= 0;
   x.plan ??= { sell: [], buy: [] };
   x.quote ??= {};
   x.book ??= { cargo: { ...x.cargo }, purse: x.purse ?? 0, capital: (x.staked?.house ?? 0) + (x.staked?.partners ?? 0), sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] };
@@ -714,7 +714,7 @@ export function risk(s, content) {
     // the vessel is gone: the agent is home or dead, the expedition is over
     const a = s.agents[x.agent];
     a.where = loss.survived ? homeOf(content) : 'dead';
-    if (loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
+    if (loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, (x.out + 1) * (agentOf(content, x.agent).wage ?? 0));   // away through this closing, as a return counts it (MER-88)
     lost.push(x.id);
     close(s, content, x, seasonIndex(s, content));
     s.log.push({ at: seasonIndex(s, content), kind: 'lost', ref: x.id, choice: loss.survived ? 'survived' : 'died' });
@@ -819,7 +819,7 @@ function bringHome(s, content, x, { elapsed }) {
   const partnersShort = pay(s, content, shares.partners), agentShort = pay(s, content, shares.agent);
   const short = partnersShort + agentShort;
   // a prepaid wage was charged at outfitting: it is shown on the paper and counted against the house, and charged no more
-  const wage = x.contract.kind !== 'own' ? 0 : x.contract.prepaid ? (x.book.wagePaid ?? 0) : x.out * (agent.wage ?? 0);
+  const wage = x.contract.kind !== 'own' ? 0 : x.contract.prepaid ? (x.book.wagePaid ?? 0) : elapsed * (agent.wage ?? 0);   // the wage is for the seasons the paper counts (MER-88)
   const wageShort = x.contract.prepaid ? 0 : pay(s, content, wage);
   if (short || wageShort) s.rep.partners = clamp(s.rep.partners - 1, -3, 3);
   returnTrust(s, content, x, { qirad: x.contract.kind === 'qirad', prepaid: !!x.contract.prepaid, agentShare: shares.agent, agentShort, wage, wageShort, lost: Object.keys(x.book.lost ?? {}).length > 0, since: x.sent }, seasonIndex(s, content));
@@ -865,7 +865,7 @@ function returnPaper(s, content, r) {
   const seasons = r.elapsed;
   const trip = { ...tripFacts(content, x.agent, route, x.book.turned ?? route.to, mainGoodOf(book.cargo), seasons, x.id), orders: (book.orders ?? []).map(o => ({ ...o })) };
   const line = orderLine(content, x, seasonIndex(s, content));
-  // "Sell the linen now?" is about the good that came home, not the one that went out (MER-88): the facts and the words
+  // "Sell the <good> now?" is about the good that came home, not the one that went out (MER-88): the facts and the words
   // read the main good of what came back, and `brought` says something did. A trip that sold everything it carried asks nothing about it.
   const homeGood = mainGoodOf(r.goodsBack);
   const asking = { ...trip, good: homeGood ?? trip.good };
@@ -894,7 +894,8 @@ export function returns(s, content) {
   for (const x of s.expeditions) {
     if (x.status !== 'home') continue;
     if (deskFull(s)) break;
-    const r = bringHome(s, content, x, { elapsed: x.out });   // the seasons it was away: the paper and the wage count the same ones (MER-88)
+    // `out` counts the closings it moved in; the season it left in is one it was away for too, so the paper's season count and the wage's are `out + 1` (MER-88)
+    const r = bringHome(s, content, x, { elapsed: x.out + 1 });
     put(s, returnPaper(s, content, r));
     close(s, content, x, idx);
     back.push(x.id);
