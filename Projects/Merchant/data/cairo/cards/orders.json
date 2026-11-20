@@ -995,7 +995,7 @@
         ]
       }
     ],
-    "note": "The Karimi merchants brought spices from Aden to Cairo, Alexandria and Damascus. In 1097 a trustee at Aden was told to buy pepper on the Malabar coast of India.",
+    "note": "The Karimi merchants brought spices from Aden to Cairo, Alexandria and Damascus. A lawsuit of 1097 to 1098 tells of a merchant in Fustat. He had told his agent to hand half the goods to the trustee of the merchants at Aden. The trustee was to buy pepper on the Malabar coast of India.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1009,7 +1009,7 @@
       },
       {
         "src": "goitein-1973",
-        "at": "no. 36, introduction; the trustee at Aden told to buy pepper on the Malabar coast, 1097 to 1098"
+        "at": "no. 36, introduction; the agent told to hand half the goods to the trustee of the merchants at Aden, to buy pepper on the Malabar coast, in a lawsuit of 1097 to 1098"
       }
     ]
   },
@@ -1105,7 +1105,7 @@
         ]
       }
     ],
-    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by the sack.",
+    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by weight, with 4 in every hundred taken off for the sack.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1115,7 +1115,7 @@
     "sources": [
       {
         "src": "pegolotti-1936",
-        "at": "the section on flax of Alexandria sold at Constantinople and Pera; the page was not confirmed"
+        "at": "the section on flax of Alexandria sold at Constantinople and Pera by weight, 4 percent off for the sack; 1766 printing pp. 16 to 17; the 1936 Evans page not confirmed"
       }
     ]
   },
@@ -1239,7 +1239,7 @@
       "seal": null
     },
     "title": "Sugar sells in Cyprus",
-    "body": "Amr is a broker. He says Italian buyers wait at Famagusta, on Cyprus, for sugar from Egypt. Venice stays away from Alexandria, so they meet our goods there. He has three loads to sell you today.",
+    "body": "Amr is a broker. He says Italian buyers wait at Famagusta, on Cyprus, for sugar from Egypt. Venice's trade with Alexandria is hampered, so they meet our goods there. He has three loads to sell you today.",
     "when": {
       "all": [
         {
@@ -1324,7 +1324,7 @@
         ]
       }
     ],
-    "note": "Venice stayed out of Egypt from 1323 to 1344. In that time Famagusta, on Cyprus, was the go-between for Venice and Egypt.",
+    "note": "Venice forbade its merchants to trade in Egypt from 1323, and its ships came back in 1345. Famagusta, on Cyprus, was a go-between for Venice and Egypt, as it had been since before the ban.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1334,7 +1334,7 @@
     "sources": [
       {
         "src": "jacoby-2018",
-        "at": "pp. 135 to 136; Famagusta as the market and go-between for Venice and Egypt while the ban lasted"
+        "at": "pp. 135 to 136; Famagusta as the market and go-between for Venice and Egypt, a role older than the ban of 1323"
       }
     ]
   }
