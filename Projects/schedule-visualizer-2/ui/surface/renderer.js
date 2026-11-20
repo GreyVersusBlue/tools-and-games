@@ -352,6 +352,13 @@ export function createRenderer(canvas) {
     return drawOne(left, top, w, parts.map((part) => part.text).join(' '), ink, t, parts.length === 1 ? parts[0].mark : null);
   }
 
+  // The pill's height for a letter of size s: a pixel and a half of padding
+  // over and under it, one under 22 px a cell, so the 9 px letter there leaves
+  // the glyph above it the strip an 8 px one would.
+  function pillHeight(w, s) {
+    return s + (w < 22 ? 2 : 3);
+  }
+
   // A mark drawn centred on (kx, ky) for a letter of size s.
   function drawMark(kx, ky, s, mark) {
     if (mark === 'key') {
@@ -412,7 +419,7 @@ export function createRenderer(canvas) {
     if (s < MIN_LABEL) return drawOne(left, top, w, parts.map((part) => part.text).join(' '), ink, t, null);
     const content = wideAt(s);
     const pw = Math.min(room, content + s * 0.7);
-    const ph = s + 3;
+    const ph = pillHeight(w, s);
     const { py } = pillBox(left, top, w, pw, ph, ink, t);
     const ky = py + ph / 2;
     g.fillStyle = ink;
@@ -458,7 +465,7 @@ export function createRenderer(canvas) {
     const wide = g.measureText(text).width;
     const notch = s * extra;
     const pw = Math.min(w - 4, wide + s * 0.7 + notch);
-    const ph = s + 3;
+    const ph = pillHeight(w, s);
     const { px, py } = pillBox(left, top, w, pw, ph, ink, t);
     g.fillStyle = ink;
     g.textAlign = 'center';

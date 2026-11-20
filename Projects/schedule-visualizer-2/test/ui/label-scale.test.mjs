@@ -179,7 +179,8 @@ function baselineScenes(modules, extra) {
 // elevator's pill was resized with it, which these digests took in too); the
 // others are as recorded at be5f4c88. SV2-131b re-recorded "the lanes overlay
 // at 20" alone: on a 20 px cell the pills' letters are written at 9 px, the
-// least label size, where SV2-131 let them fall to 8.
+// least label size, where SV2-131 let them fall to 8, and the pill is a pixel
+// less tall there, so the glyph above keeps the room it had.
 const BASELINE = {
   "Floor 1 at 10": "27ff385ff8611d34 599",
   "Floor 1 at 16": "7036aa11b3a2e4d9 654",
@@ -207,7 +208,7 @@ const BASELINE = {
   "a stairs cell with no connection at 40": "6e1837ffe36ef03d 773",
   "a stairs cell with no connection at 64": "668275d12fee917c 833",
   "the lanes overlay at 16": "93c58aa8584c9b33 736",
-  "the lanes overlay at 20": "74bd33fd8167010c 776", // SV2-131b: 9 px letters in the pills, not 8
+  "the lanes overlay at 20": "82471c938317c09c 776", // SV2-131b: 9 px letters in the pills, not 8, in a pill a pixel tighter
   "the lanes overlay at 24": "85c3bee9b891ff8f 792",
   "the lanes overlay at 40": "26c45334e44fd5b0 840",
   "a stair link between two ends": "0109e16af7b4331f 32",
