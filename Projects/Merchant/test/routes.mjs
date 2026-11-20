@@ -3,6 +3,7 @@
 // Testport (the invented city) carries the arithmetic; cairo carries the Venice roads, the
 // between-act events and a whole three-act game.
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import { test, eq, ok, throws, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { validateContent } from '../js/engine/content.js';
@@ -530,16 +531,15 @@ test('returns put a return paper on the desk: the headline sentence first, then 
   eq([paper.agent, paper.expedition, paper.state], ['mira', 'x1', 'open']);
   ok(/^Mira came home from Hilltown\. The house made \d+ coins\.$/.test(d.headline), d.headline);
   eq(d.route, 'Harbour to Hilltown and back, six seasons');
-  eq(d.account.map(r => r.label), ['Sent out', 'Sold', 'Waiting', 'Back home', 'Profit', "Mira's wage"]);
+  eq(d.account.map(r => r.label), ['Sent out', 'Sold', 'Waiting', 'Back home', "Mira's wage", 'Profit']);
   eq(d.account[2].text, 'one season at a stop, kept at 4 coins a season');
   eq(d.account[0].text, '6 loads of wool');
-  ok(/^6 loads of wool in Hilltown$/.test(d.account[1].text));
-  eq(paperChoices(s, c, paper.id), [{ id: 'ok', label: 'Into the ledger' }]);
+  ok(/^6 loads of wool in Hilltown, for \d+ coins$/.test(d.account[1].text), d.account[1].text);
+  ok(paperChoices(s, c, paper.id).length > 0, 'a return paper offers its returns.json choices (MER-81); the screens still answer it ok until MER-80');
   eq(s.agents.mira.where, 'harbour');
-  const profit = d.account.find(r => r.label === 'Profit').amount;
-  eq(d.houseNet, profit - 10, 'the headline is the account\'s profit less the wage, which the account also shows');
-  eq(d.account.find(r => r.label === "Mira's wage").amount, -10, 'five seasons on the road (the season it was sent in is not one) at 2 a season');
-  eq(d.account.find(r => r.label === "Mira's wage").text, '2 coins a season for five seasons');
+  eq(d.account.find(r => r.label === 'Profit').amount, d.houseNet, 'the Profit row is the headline\'s number (MER-88)');
+  eq(d.account.find(r => r.label === "Mira's wage").amount, -12, 'six seasons away, as the route line says, at 2 a season (MER-88: the season it left in counts)');
+  eq(d.account.find(r => r.label === "Mira's wage").text, '2 coins a season for six seasons');
   ok(d.houseNet > 0, `six loads sent at 20 and sold at 30 falling by a fifteenth a load: ${d.houseNet}`);
   void sent;
   eq(s.log.at(-1).kind === 'return' || s.log.some(e => e.kind === 'return' && e.ref === 'x1'), true);
@@ -609,8 +609,8 @@ test('a qirad end to end: the partners are paid their stake and share out of wha
   eq(agent + partners + house, cash + 0, 'with every load sold, what came home is cash, and the three shares are all of it');
   eq(s.money - before.money, cash - agent - partners, 'the house\'s money rose by the cash less what it paid out');
   ok(agent > 0 && partners >= 100, `agent ${agent}, partners ${partners}`);
-  eq(d.account.map(r => r.label).slice(-2), ["Mira's share", "The partners' share"]);
-  ok(/keeps one third of a profit and bears none of a loss/.test(d.account.at(-2).text), d.account.at(-2).text);
+  eq(d.account.map(r => r.label).slice(-4), ["The partners put in", "Mira's share", "The partners' share", 'Profit']);
+  ok(/keeps one third of a profit and bears none of a loss/.test(d.account.at(-3).text), d.account.at(-3).text);
   void money0;
 });
 
@@ -943,7 +943,147 @@ test('gold is traded by the chest: the goods file says so, and the account says 
   const paper = home.desk.find(p => p.kind === 'return');
   ok(paper, 'the expedition came home');
   eq(paper.data.account[0].text, '2 chests of gold');
-  ok(/^2 chests of gold in Damascus$/.test(paper.data.account[1].text), paper.data.account[1].text);
+  ok(/^2 chests of gold in Damascus, for \d+ dinars$/.test(paper.data.account[1].text), paper.data.account[1].text);
+});
+
+
+// ---- MER-88: the return paper adds up; one function says when an expedition is home; "Sell the X now" is asked only of a trip that brought X
+
+/** Seed 1324 on Cairo as the M4 play had it (first choice on every paper, the one-press expedition to Damascus in season two):
+    the states at the opening of every season until the first return paper is on the desk, and the money step's before and after. */
+function firstReturn1324() {
+  let s = newGame(C, { seed: 1324, length: 'acts', house: 'spice' });
+  const seen = [];
+  let sent = null, before = null;
+  const saved = steps.returns;
+  steps.returns = (st, ...a) => { before = { money: st.money, stock: { ...st.stock }, x: structuredClone(st.expeditions.find(e => e.status === 'home')) }; const out = saved(st, ...a); before.after = st.money; return out; };
+  try {
+    for (let i = 0; i < 12; i++) {
+      s = answer(s, C);
+      if (!sent && s.t >= 1) { const plan = suggestPlan(s, C, 'damascus'); if (plan) { s = outfit(s, C, plan); sent = { t: s.t, plan, estimate: destinations(s, C, C.agents.find(a => a.id === plan.agent)).find(d => d.stop === 'damascus') }; } }
+      seen.push(s);
+      if (s.desk.some(p => p.kind === 'return')) break;
+      s = step(s, C);
+    }
+  } finally { steps.returns = saved; }
+  return { s, seen, sent, before };
+}
+const numberIn = text => Number(/(\d[\d,]*)/.exec(text)[1].replace(/,/g, ''));
+const WORD_N = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+
+test('(MER-88) seed 1324\'s first return: the headline profit is the account\'s profit, the rows add up to it, and the money moved is the account\'s total', () => {
+  const { s, before } = firstReturn1324();
+  const paper = s.desk.find(p => p.kind === 'return'), d = paper.data;
+  const headline = /The house (made|lost) ([\d,]+) dinars/.exec(d.headline);
+  ok(headline, d.headline);
+  const said = (headline[1] === 'made' ? 1 : -1) * numberIn(headline[2]);
+  eq(said, d.houseNet, 'the headline says houseNet');
+  const profit = d.account.at(-1);
+  eq([profit.label, profit.amount, (profit.label === 'Loss' ? -1 : 1) * numberIn(profit.text)], ['Profit', d.houseNet, d.houseNet], 'the last row is the profit, and its words are the headline\'s number');
+  const total = d.account.filter(r => r.amount !== undefined && !r.detail && r !== profit).reduce((n, r) => n + r.amount, 0);
+  eq(total, d.houseNet, 'every row that is a sum adds up to the headline');
+  // money on the desk: what the house held before the opening's returns step and after it. The goods that came home count at the price the paper values them at.
+  const x = before.x, wage = d.account.find(r => /wage$/.test(r.label))?.amount ?? 0;
+  eq(before.after - before.money, x.purse + wage, 'the money the returns step moved is what came home less the wage');
+  const goods = d.account.find(r => r.label === 'Back home').amount - x.purse;
+  eq(before.after - before.money + goods, d.houseNet + x.staked.house, 'and with the goods at the value the paper gives them it is the account\'s total plus the stake the house had already put out');
+});
+test('(MER-88) seed 1324\'s first return: the wage is for the seasons the route line says, and the tolls carry a number', () => {
+  const { s } = firstReturn1324();
+  const d = s.desk.find(p => p.kind === 'return').data;
+  const seasons = /, (\w+) seasons?$/.exec(d.route);
+  const wage = d.account.find(r => /wage$/.test(r.label));
+  const paid = /for (\w+) seasons?/.exec(wage.text);
+  ok(seasons && paid, `${d.route} | ${wage?.text}`);
+  eq(WORD_N[paid[1]], WORD_N[seasons[1]], 'wage seasons equal the trip\'s seasons');
+  eq(WORD_N[seasons[1]], d.trip.seasons);
+  eq(-wage.amount, WORD_N[paid[1]] * C.agents.find(a => a.id === d.trip.agent).wage, 'and the amount is that many seasons of the agent\'s wage');
+  const tolls = d.account.find(r => r.label === 'Tolls');
+  ok(tolls && /^\d+ dinars paid on the road$/.test(tolls.text) && tolls.amount === -numberIn(tolls.text), `tolls: ${tolls?.text}`);
+});
+test('(MER-88) one function says when an expedition is home: the outfit\'s estimate, the view at every season of the road, and the opening the paper arrived in agree on seed 1324', () => {
+  const { seen, sent, s } = firstReturn1324();
+  const dest = sent.estimate;
+  eq(dest.seasons, 3, 'the sheet says about three seasons');
+  const arrived = seen.length - 1;
+  for (let i = sent.t; i < arrived; i++) {
+    const st = seen[i], x = st.expeditions[0];
+    eq(view(st, C).homeBy[x.id].in, arrived - i, `at season ${i} of the trip`);
+    eq(view(st, C).homeBy[x.id].season, M.writeSeason(C, arrived));
+  }
+  eq(arrived - sent.t, dest.seasons, 'and the paper arrived that many seasons after sending');
+  ok(s.desk.some(p => p.kind === 'return'));
+});
+test('(MER-88) the same holds on a road that waits for its season: the estimate at sending and the view along the way are the season it came home', () => {
+  // no letters: a question held to the agent's care adds seasons nothing can foretell (the sheet says "about"), so this case holds the road alone
+  const calmC = variant(risk(C, 0), x => { x.letters = []; });
+  let checked = 0;
+  for (const [stop, seed] of [['jeddah', 1324], ['jeddah', 5], ['alexandria', 9], ['damascus', 7]]) {
+    let s = newGame(calmC, { seed, length: 'full', house: 'spice' });
+    let sent = null;
+    const marks = [];
+    for (let i = 0; i < 24 && !s.desk.some(p => p.kind === 'return'); i++) {
+      s = answer(s, calmC);
+      if (!sent && s.t >= 1) { const plan = suggestPlan(s, calmC, stop); if (plan) { const est = destinations(s, calmC, calmC.agents.find(a => a.id === plan.agent)).find(d => d.stop === stop); s = outfit(s, calmC, plan); sent = { t: s.t, est: est.seasons }; } }
+      if (sent && s.expeditions[0]) marks.push([s.t, view(s, calmC).homeBy[s.expeditions[0].id].in]);
+      if (s.desk.some(p => p.kind === 'return')) break;
+      s = step(s, calmC);
+      if (s.phase !== 'desk') break;
+    }
+    if (!sent || !s.desk.some(p => p.kind === 'return')) continue;
+    checked++;
+    eq(s.t - sent.t, sent.est, `${stop}/${seed}: the paper came ${s.t - sent.t} seasons after sending, the sheet said ${sent.est}`);
+    for (const [t, n] of marks) eq(s.t - t, n, `${stop}/${seed}: at season ${t} the view said ${n}`);
+  }
+  ok(checked >= 3, `only ${checked} roads came home inside the search`);
+});
+
+/** Two loads of pepper go to Damascus with `purse` dinars and the buying list `buy`, calm roads; the return paper that comes home. */
+const tripOfPepper = ({ purse = 0, buy = [], sell = ['pepper'], stock = {} } = {}) => {
+  const s = cairo();
+  Object.assign(s.stock, { pepper: 4, ...stock });
+  let st = outfit(s, calmC, { agent: 'yusuf', route: 'cairo-damascus', cargo: { pepper: 2 }, purse, contract: 'own', sell, buy });
+  for (let i = 0; i < 8 && !st.desk.some(p => p.kind === 'return'); i++) st = step(st, calmC);
+  return { st, paper: st.desk.find(p => p.kind === 'return') };
+};
+test('(MER-88) "Sell the sugar now?" is asked of a trip that brought sugar home, and says sugar, not the pepper that went out', () => {
+  const { st, paper } = tripOfPepper({ purse: 300, buy: ['sugar'] });
+  eq([paper.data.entry, paper.data.ask.title, paper.data.trip.good], ['return-sell-sugar', 'Sell the sugar now?', 'pepper'], 'the paper still tells of the pepper trip');
+  ok(st.stock.sugar >= 3 && /the sugar is in your store/.test(paper.data.ask.body), paper.data.ask.body);
+});
+test('(MER-88) a trip that sold everything it carried is not asked to sell pepper, though the store holds pepper and linen from elsewhere', () => {
+  const { paper } = tripOfPepper({ stock: { linen: 6 } });
+  ok(!/^return-sell-/.test(paper.data.entry ?? ''), `got ${paper.data.entry}`);
+  ok(!paper.data.choices.some(c => c.id === 'sell'), 'no sell choice is offered');
+  eq(paper.data.account.find(r => r.label === 'Back home').text.startsWith('nothing') || /dinars/.test(paper.data.account.find(r => r.label === 'Back home').text), true);
+});
+test('(MER-88) a trip that brought a good home with too little in store for the broker is not asked about it', () => {
+  const { paper } = tripOfPepper({ purse: 300, buy: ['silk'], stock: { silk: 0 } });
+  eq(paper.data.entry, 'return-sell-silk', 'one load of silk is what the broker takes, and one came home');
+  const s = cairo();
+  const facts = { outcome: 'profit', good: 'sugar', brought: true };
+  eq(R.pickEntry({ ...s, stock: { sugar: 3 } }, calmC, 'return', facts)?.id, 'return-sell-sugar');
+  ok(R.pickEntry({ ...s, stock: { sugar: 2 } }, calmC, 'return', facts)?.id !== 'return-sell-sugar', 'two in store is less than the three the broker takes');
+  ok(R.pickEntry({ ...s, stock: { sugar: 9 } }, calmC, 'return', { ...facts, brought: false })?.id !== 'return-sell-sugar', 'nine in store, but the trip brought none');
+});
+test('(MER-88) a later effect set by a return paper\'s choice is named on the Accounts paper by the paper and the choice, in the words the player saw', () => {
+  let { st, paper } = tripOfPepper({ purse: 300, buy: ['sugar'] });
+  eq(paper.data.entry, 'return-sell-sugar');
+  st = choose(st, calmC, paper.id, 'sell');
+  eq(st.queue.filter(q => q.from === 'return-sell-sugar/sell').map(q => [q.from, q.viaCard, q.viaChoice]), [['return-sell-sugar/sell', 'Sell the sugar now?', 'Sell three loads to the broker']]);
+  const find = q => q.desk.filter(p => p.kind === 'accounts').flatMap(p => p.items).find(i => i.from === 'return-sell-sugar/sell');
+  for (let i = 0; i < 5 && !find(st); i++) st = step(st, calmC);
+  const item = find(st);
+  ok(item, 'the later effect fired onto the Accounts paper');
+  eq([item.card, item.choice], ['Sell the sugar now?', 'Sell three loads to the broker'], 'it names the paper and the choice that set it');
+  ok(/^From Sell the sugar now\?, "Sell three loads to the broker": /.test(item.text), item.text);
+});
+
+test('(MER-88) the sell entries of Cairo name the two things they need: the good came home, and enough of it is in store', () => {
+  for (const e of C.returns.filter(e => e.id.startsWith('return-sell-'))) {
+    eq(e.facts.brought, true, `${e.id}: brought`);
+    eq(e.when, { stock: e.choices[0].requires.stock, gte: e.choices[0].requires.gte }, `${e.id}: the store holds what the broker takes`);
+  }
 });
 
 // ---- whole games, scripted
@@ -998,7 +1138,10 @@ test('a seeded testport game with a scripted plan runs to the end in both length
 
 test('a seeded cairo three-act game with a scripted plan runs to the end in Node, jumps twice, and ends with the recall', () => {
   // an expedition is sent in the final season, so it is on the road when the game ends whatever the cards drew
-  const plan = { seed: 10, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  // MER-78: seed 10 became 13. The draw's one-favour and no-two-of-a-kind rules deal other cards, so no agent was home to face the plague in seed 10's game.
+  // MER-88: seed 15 became 13 (the wage now counts the season an agent leaves in, which moves the money every later card is drawn against).
+  // MER-79: seed 13 became 15 for the same reason: four new trade cards change the pool, so no agent was home to face the plague in seed 13's game.
+  const plan = { seed: 13, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
   const a = run(C, plan);
   const b = run(C, plan);
   ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');
@@ -1013,6 +1156,132 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   ok(end.results.some(r => r.how === 'home'), 'and an agent at home faced the plague');
   eq(new Set(end.results.map(r => r.agent)).size, end.results.length, 'no agent is rolled for twice');
   eq(end.results.every(r => typeof r.text === 'string' && r.text.length > 0), true);
+});
+
+// ---- MER-78: what a return and a loss ask (returns.json, DESIGN 2.1 rules 3 and 4). data.js loads returns.json since MER-81;
+// the cases still put the file into the content by hand, so each can add or remove entries.
+const RET = JSON.parse(await fs.readFile(new URL('../data/testport/returns.json', import.meta.url), 'utf8'));
+const withReturns = (c, extra = []) => variant(c, y => { y.returns = [...structuredClone(RET), ...structuredClone(extra)]; });
+const entry = (id, paper, facts, over = {}) => ({ id, paper, ...(facts ? { facts } : {}), title: 'T', body: 'B', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], note: 'n', sources: [{ src: 'testport-fiction' }], ...over });
+const homeWith = (c, plan = WOOL) => {
+  let s = outfit(game(c), c, plan);
+  for (let i = 0; i < 12 && !s.desk.some(p => p.kind === 'return'); i++) s = step(s, c);
+  return s;
+};
+
+test('returns.json of both cities is valid content, and a bad entry is refused in words', () => {
+  validateContent(withReturns(T), {});
+  const cairoRet = JSON.parse(readFileSyncOf('cairo'));
+  validateContent(variant(C, y => { y.returns = cairoRet; }), {});
+  const bad = e => { try { validateContent(withReturns(T, [e]), {}); } catch (err) { return err.problems.map(p => p.message).join(' | '); } return null; };
+  ok(/no fact "by"/.test(bad(entry('x', 'return', { by: ['galley'] }))), 'a return has no vessel fact');
+  ok(/no fact "outcome"/.test(bad(entry('x', 'loss', { outcome: ['profit'] }))), 'a loss has no outcome fact');
+  ok(/needs one of profit, loss, even/.test(bad(entry('x', 'return', { outcome: ['lucky'] }))));
+  ok(/no stop "nowhere"/.test(bad(entry('x', 'return', { to: ['nowhere'] }))));
+  ok(/needs a number/.test(bad(entry('x', 'return', { seasons: { gte: 'three' } }))));
+  ok(/used twice/.test(bad(entry('return-bonus', 'return'))));
+  ok(/needs at least 1 item/.test(bad(entry('x', 'return', null, { choices: [] }))));
+});
+function readFileSyncOf(city) { return fsSync.readFileSync(new URL(`../data/${city}/returns.json`, import.meta.url), 'utf8'); }
+
+test('a return paper carries the trip in data (route, to, good, seasons, orders) and a choices list from returns.json by its facts', () => {
+  const c = withReturns(calm), s = homeWith(c), p = s.desk.find(q => q.kind === 'return'), d = p.data;
+  eq([d.trip.route, d.trip.to, d.trip.good, d.trip.agent, d.trip.expedition], ['harbour-hilltown', 'hilltown', 'wool', 'mira', p.expedition]);
+  eq(d.trip.seasons, idx(s, c) - 0, 'the seasons are the ones between the sending (season 0) and the opening that brought it home');
+  eq(d.trip.orders, [], 'no order took effect');
+  eq(d.entry, d.outcome === 'profit' ? 'return-bonus' : 'return-out-again', `by the outcome, ${d.outcome}`);
+  eq(d.choices.map(x => x.id), d.outcome === 'profit' ? ['bonus', 'none'] : ['again', 'rest']);
+  ok(d.choices.every(x => !/[{}]/.test(x.label)) && /Mira/.test(JSON.stringify(d.choices)), 'the agent\'s name is in the words, no braces are left');
+  ok(/Mira is home from Hilltown after/.test(d.ask.body), d.ask.body);
+  eq(d.choices[0].now.length > 0, true, 'the entry\'s own effects ride on the choice');
+});
+test('a return paper of a city with no returns.json has an empty choices list and no entry, and still plays', () => {
+  const s = homeWith(variant(calm, c => { c.returns = []; })), d = s.desk.find(q => q.kind === 'return').data;
+  eq([d.entry, d.choices, d.ask], [null, [], null]);
+});
+test('returns.json: the entry that names the most facts wins, and an entry whose fact does not fit is shut out', () => {
+  const s = game(withReturns(calm)), pick = (c, facts, paper = 'return') => R.pickEntry(s, c, paper, facts)?.id;
+  const base = { outcome: 'profit', agent: 'mira', to: 'hilltown', good: 'wool', seasons: 4, orders: false, contract: 'own', lost: false };
+  const c = withReturns(calm, [
+    entry('mira-profit', 'return', { outcome: ['profit'], agent: ['mira'] }),
+    entry('far-profit', 'return', { outcome: ['profit'], seasons: { gte: 6 } }),
+    entry('saltmarsh', 'return', { outcome: ['profit'], to: ['saltmarsh'] }),
+    entry('never', 'return', { outcome: ['profit'], agent: ['mira'], good: ['wool'] }, { weight: 0 }),
+    entry('shut', 'return', { outcome: ['profit'], agent: ['mira'], good: ['wool'], orders: false }, { when: { flag: 'no-such-flag' } }),
+  ]);
+  eq(pick(c, base), 'mira-profit', 'two facts beat one (return-bonus), and the entries of weight 0 or a failing `when` are out');
+  eq(pick(c, { ...base, agent: 'tobin' }), 'return-bonus', 'another agent: back to the one-fact entry');
+  eq(pick(c, { ...base, seasons: 6, agent: 'tobin' }), 'far-profit', 'a range of seasons fits at its edge');
+  eq(pick(c, { ...base, seasons: 5, agent: 'tobin' }), 'return-bonus', 'and not below it');
+  eq(pick(c, { ...base, to: 'saltmarsh', agent: 'tobin' }), 'saltmarsh', 'a stop fits by name');
+  eq(pick(c, { ...base, outcome: 'loss' }), 'return-out-again', 'a loss: only the entry that names no fact fits');
+  eq(R.pickEntry(s, withReturns(calm), 'loss', { whole: false, survived: true })?.id, 'loss-survivor');
+  eq(R.pickEntry(s, { ...calm, returns: [] }, 'return', base), null, 'no entry, no choices');
+});
+test('a loss paper carries the trip and a choices list likewise: a lost agent and a safe one are asked different things', () => {
+  const c = withReturns(risk(T, 1));
+  const lose = (jump, seed) => {
+    const x = variant(c, y => { y.city.jump = jump; });
+    const s = outfit(game(x), x, { ...WOOL, purse: 30 });
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, x);
+    return s;
+  };
+  let seen = 0;
+  for (let seed = 1; seed <= 60 && seen < 2; seed++) {
+    const dead = lose({ wholeLoss: 1, survivesWhole: 0 }, seed), paper = dead.desk.find(p => p.kind === 'lost');
+    if (paper) {
+      seen++;
+      eq([paper.data.entry, paper.data.choices.map(x => x.id)], ['loss-lost-agent', ['family', 'nothing']]);
+      eq([paper.data.trip.agent, paper.data.trip.to, paper.data.trip.good, paper.data.trip.expedition], ['mira', 'hilltown', 'wool', paper.expedition]);
+      ok(/Mira did not come back/.test(paper.data.ask.title) && /lost on the road to Hilltown/.test(paper.data.ask.body), JSON.stringify(paper.data.ask));
+    }
+  }
+  ok(seen === 2, 'two whole losses turned up');
+  let safe = 0;
+  for (let seed = 1; seed <= 60 && !safe; seed++) {
+    const s = lose({ wholeLoss: 0, partial: [0.5, 0.5] }, seed), paper = s.desk.find(p => p.kind === 'lost');
+    if (paper) { safe++; eq([paper.data.entry, paper.data.choices.map(x => x.id)], ['loss-survivor', ['forgive', 'blame']]); }
+  }
+  ok(safe, 'a partial loss turned up');
+});
+
+// ---- MER-82: a loss paper names what struck, and the robbers entry is only for robbers
+const cairoRet = JSON.parse(await fs.readFile(new URL('../data/cairo/returns.json', import.meta.url), 'utf8'));
+test('causeOf: a vessel lost is the sea, the river or the desert; a part of a load taken on a road or the river is robbers; at sea it is the sea', () => {
+  const by = (b, whole) => R.causeOf({ by: b }, { whole });
+  eq(['galley', 'dhow'].flatMap(b => [by(b, true), by(b, false)]), ['sea', 'sea', 'sea', 'sea']);
+  eq([by('nileboat', true), by('caravan', true), by('mules', true)], ['river', 'desert', 'desert']);
+  eq([by('nileboat', false), by('caravan', false), by('mules', false)], ['robbers', 'robbers', 'robbers']);
+});
+test('a loss paper carries its cause, from the leg that struck, on the desk', () => {
+  const c = risk(T, 1);
+  const lose = (jump, seed) => {
+    const x = variant(c, y => { y.city.jump = jump; });
+    const s = outfit(game(x), x, { ...WOOL, purse: 30 });
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, x);
+    return [s.desk.find(p => p.kind === 'lost')];
+  };
+  let seen = 0;
+  for (const [jump, want] of [[{ wholeLoss: 1, survivesWhole: 0 }, 'whole'], [{ wholeLoss: 0, partial: [0.5, 0.5] }, 'part']]) {
+    for (let seed = 1; seed <= 60; seed++) {
+      const [paper] = lose(jump, seed);
+      if (!paper) continue;
+      seen++;
+      const by = paper.data.route && T.routes.find(r => r.id === paper.data.route).legs[0].by;
+      eq(paper.data.cause, R.causeOf({ by }, { whole: want === 'whole' }), `${want} loss on ${by}`);
+      break;
+    }
+  }
+  eq(seen, 2, 'a whole and a part loss turned up');
+});
+test('loss-robbers fires only for robbers: a part lost at sea, or a whole vessel, takes another entry', () => {
+  const cc = variant(T, y => { y.returns = structuredClone(cairoRet); });
+  const pick = facts => R.pickEntry(game(cc), cc, 'loss', facts)?.id;
+  eq(pick({ by: 'caravan', cause: 'robbers', whole: false, survived: true }), 'loss-robbers');
+  eq(pick({ by: 'galley', cause: 'sea', whole: false, survived: true }), 'loss-survivor', 'a part lost at sea is not robbers');
+  eq(pick({ by: 'caravan', cause: 'desert', whole: true, survived: false }), 'loss-desert-gone');
 });
 
 done();

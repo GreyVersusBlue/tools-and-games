@@ -35,21 +35,36 @@ const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'th
 
 /** Sentences for "what happened now": money and goods first, then whose trust or standing moved
     (`app` is optional; with it a reputation also says where it stands now, in the engine's words from
-    view()), else the plain line when nothing a player can see changed. */
-export function happened(content, effects, app = null) {
+    view()), else the plain line when nothing a player can see changed. `agent` is the paper's own agent:
+    an effect written for `$agent` is said with that agent's name, never the raw token. Moves of one group
+    in one result are added into one net line, so a result never says "think less" and "speak well" of the
+    same group back to back. `result` is the choice's own sentence, when its card wrote one: it is said
+    after the numbers, and then "Nothing changed at once." is never printed. */
+export function happened(content, effects, app = null, { agent = null, result = null } = {}) {
   const parts = seenEffects(content, effects).map(s => s.said);
   const view = app?.view?.();
+  const net = new Map();   // "trust:ali" or "rep:partners" -> { kind, id, by }, in the order first seen
   for (const e of effects ?? []) {
     if (typeof e.by !== 'number' || e.by === 0) continue;
-    const up = e.by > 0;
-    if (typeof e.trust === 'string') {
-      const name = (content.agents ?? []).find(a => a.id === e.trust)?.name ?? e.trust;
+    const id = typeof e.trust === 'string' ? (e.trust === '$agent' ? agent : e.trust) : null;
+    const key = typeof e.trust === 'string' ? `trust:${id ?? e.trust}` : typeof e.rep === 'string' ? `rep:${e.rep}` : null;
+    if (!key) continue;
+    const m = net.get(key) ?? { trust: typeof e.trust === 'string', id: id ?? e.trust ?? e.rep, rep: e.rep, by: 0 };
+    m.by += e.by;
+    net.set(key, m);
+  }
+  for (const m of net.values()) {
+    if (m.by === 0) continue;
+    const up = m.by > 0;
+    if (m.trust) {
+      const name = m.id === '$agent' ? 'The agent' : (content.agents ?? []).find(a => a.id === m.id)?.name ?? m.id;
       parts.push(`${name} trusts the house ${up ? 'more' : 'less'}.`);
-    } else if (typeof e.rep === 'string') {
-      const who = cap(REP_WORDS[e.rep] ?? e.rep), now = view?.rep?.[e.rep]?.words;
+    } else {
+      const who = cap(REP_WORDS[m.rep] ?? m.rep), now = view?.rep?.[m.rep]?.words;
       parts.push(`${who} think ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
     }
   }
+  if (result) parts.push(result);
   return parts.length ? parts.join(' ') : 'Nothing changed at once.';
 }
 
@@ -208,16 +223,10 @@ export function head(app, from) {
     h('p', { class: 'sender' }, h('strong', null, from?.name ?? ''), from?.role ? h('span', null, ` ${from.role}`) : null));
 }
 
-/** The front of a card, letter or notice. onChoose(choice, index). */
-export function front(app, paper, { onChoose, locked }) {
-  const s = sourceOf(app.content, paper);
-  const cards = app.view().cards;
-  const titleId = `paper-${paper.id}-title`;
-  const note = letterNotes(app, paper);
-  const choices = paper.kind === 'notice'
-    ? [{ id: 'ok', label: 'Noted', available: true, seen: [] }]
-    : choicesOf(app, paper);
-  const list = h('div', { class: 'choices', role: 'group', 'aria-labelledby': titleId, 'aria-describedby': note?.answer ? `paper-${paper.id}-answer` : null },
+/** The buttons of a paper's choices, numbered for the keyboard (DESIGN 6). Every paper that asks something
+    draws them here, so a card, a letter, a return and a loss answer to the same digits and the same press. */
+export function choiceList(choices, { titleId, describedBy = null, paper, onChoose, locked }) {
+  return h('div', { class: 'choices', role: 'group', 'aria-labelledby': titleId, 'aria-describedby': describedBy },
     choices.map((c, i) => h('button', {
       class: 'choice', type: 'button', id: `choice-${paper.id}-${c.id}`, dataset: { choice: c.id },
       'aria-disabled': c.available ? null : 'true',
@@ -231,6 +240,18 @@ export function front(app, paper, { onChoose, locked }) {
         c.hint ? h('em', { class: 'hint' }, c.hint) : null,
         c.prices ? h('span', { class: 'prices' }, c.prices) : null) : null)
       : h('span', { class: 'costline why' }, c.why))));
+}
+
+/** The front of a card, letter or notice. onChoose(choice, index). */
+export function front(app, paper, { onChoose, locked }) {
+  const s = sourceOf(app.content, paper);
+  const cards = app.view().cards;
+  const titleId = `paper-${paper.id}-title`;
+  const note = letterNotes(app, paper);
+  const choices = paper.kind === 'notice'
+    ? [{ id: 'ok', label: 'Noted', available: true, seen: [] }]
+    : choicesOf(app, paper);
+  const list = choiceList(choices, { titleId, describedBy: note?.answer ? `paper-${paper.id}-answer` : null, paper, onChoose, locked });
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
     head(app, senderOf(app.content, paper)),
     note?.line ? h('p', { class: 'letter-line', id: `paper-${paper.id}-line` }, note.line) : null,
@@ -253,16 +274,42 @@ export function back(app, paper, { now, fresh, onNext }) {
     sourceLine(app.content, s.sources));
 }
 
+/** The Accounts paper's lines grouped under the choice that caused them (DESIGN 2.1 rule 6), in the order the
+    first line of each cause arrived: "After "Lend Hasan", you chose "Lend it":". A line whose card is gone
+    from the content still names its cause as an earlier choice, never as a bare line. */
+export function accountGroups(items) {
+  const groups = [];
+  for (const i of items) {
+    const key = i.from ?? '';
+    let g = groups.find(x => x.key === key);
+    if (!g) {
+      g = { key, from: i.from ?? null, cause: i.card && i.choice ? `After "${i.card}", you chose "${i.choice}":` : i.card ? `After "${i.card}":` : 'After an earlier choice:', items: [] };
+      groups.push(g);
+    }
+    g.items.push(i);
+  }
+  return groups;
+}
+
+/** A loss paper's picture slot (DESIGN 2.1 rule 4): the still `lost` from the manifest when it has one, else the
+    bare frame the picture will fill, so the sheet does not change shape when the art comes. Never read aloud. */
+function pictureSlot(app) {
+  const asset = app.art.get('lost');
+  return h('figure', { class: 'picture-slot', dataset: { slot: 'lost' }, 'aria-hidden': 'true' },
+    asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null);
+}
+
 const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v));
 
 /** The engine's own papers (DESIGN 4.6, 2): a return, a loss, price letters and the folded
     Accounts paper. Each is read and set aside with one press. `open` says whether a return's
     account starts unfolded (it is folded shut on the first return of a game). */
-export function record(app, paper, { onDone, open }) {
+export function record(app, paper, { onDone, open, onChoose = () => {}, locked = () => false }) {
   const { content } = app;
   const titleId = `paper-${paper.id}-title`;
   const d = paper.data ?? {};
   const body = [];
+  let asking = false;
   if (paper.kind === 'return' || paper.kind === 'lost') {
     if (d.route && paper.kind === 'return') body.push(h('p', { class: 'route' }, d.route));
     const rows = paper.kind === 'return' ? (d.account ?? []) : (d.lines ?? []);
@@ -273,6 +320,16 @@ export function record(app, paper, { onDone, open }) {
         : table);
     }
     if (d.agentLine) body.push(h('p', { class: 'agent-line' }, d.agentLine));
+    // DESIGN 2.1 rules 3 and 4: the paper ends by asking, when returns.json has an entry for the trip
+    const choices = choicesOf(app, paper);
+    if (choices.some(c => c.id !== 'ok')) {
+      asking = true;
+      const askId = `paper-${paper.id}-ask`;
+      body.push(h('div', { class: 'ask', id: askId },
+        d.ask?.title ? h('h3', { class: 'ask-title' }, d.ask.title) : null,
+        d.ask?.body ? h('p', { class: 'sheet-body' }, d.ask.body) : null),
+      choiceList(choices, { titleId: d.ask?.title ? askId : titleId, paper, onChoose, locked }));
+    }
   } else if (paper.kind === 'news') {
     if (paper.line) body.push(h('p', { class: 'sheet-body' }, paper.line));
     else for (const l of paper.letters ?? []) {
@@ -281,21 +338,27 @@ export function record(app, paper, { onDone, open }) {
           row((content.goods ?? []).find(x => x.id === g)?.name ?? g, `${num(p)} a load`)))));
     }
   } else {
-    for (const i of paper.items ?? []) body.push(h('p', { class: 'account-item' }, i.text));
+    for (const g of accountGroups(paper.items ?? [])) {
+      body.push(h('section', { class: 'account-group', dataset: { from: g.from ?? '' } },
+        h('h3', { class: 'cause' }, g.cause),
+        ...g.items.map(i => h('p', { class: 'account-item' }, cap(i.changes?.join(', ') ?? i.text)))));
+    }
   }
   // Focus lands on the heading, so Enter there sets the paper aside, as it turns a card's back
   // over to Next (DESIGN 6). A focused button or the account's summary keeps its own Enter.
   const onKey = e => {
-    if (e.key !== 'Enter' || e.repeat || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (asking || e.key !== 'Enter' || e.repeat || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.target.closest?.('button, summary, a, input, select, textarea')) return;
     e.preventDefault();
     onDone();
   };
+  const slot = paper.kind === 'lost' ? pictureSlot(app) : null;
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId, onkeydown: onKey },
     head(app, senderOf(content, paper)),
+    slot,
     h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(content, paper)),
     ...body,
-    h('button', { class: 'button next', type: 'button', id: 'btn-next', onclick: onDone }, paper.kind === 'return' ? 'Into the ledger' : 'Noted'));
+    asking ? null : h('button', { class: 'button next', type: 'button', id: 'btn-next', onclick: onDone }, paper.kind === 'return' ? 'Into the ledger' : 'Noted'));
 }
 
 /** The edge of a paper lower in the stack: seal and title, pressed to raise it. */

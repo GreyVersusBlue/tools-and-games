@@ -337,6 +337,19 @@ test('rule 5: a banned stem anywhere but a d5 entry fails, including a good name
   ok(lintContent(variant(c => { c.text = { about: [{ id: 'a', body: 'About slaves.', sources: [{ src: 'testport-fiction' }] }] }; }), { banned }).some(f => f.rule === 5));
   eq(lintContent(variant(c => { c.text = { about: [{ id: 'a', body: 'About slaves.', context: 'd5', sources: [{ src: 'testport-fiction' }] }] }; }), { banned }), []);
 });
+test('rules 5 and 7 reach returns.json (MER-82): a banned stem, a dash or a web address in an entry fails', () => {
+  const withRet = edit => variant(c => { c.returns = structuredClone(content.returns?.length ? content.returns : [{ id: 'x', paper: 'loss', title: 'T', body: 'B', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], note: 'n', sources: [{ src: 'testport-fiction' }] }]); edit(c.returns[0]); });
+  const rules = edit => lintContent(withRet(edit), { banned }).map(f => f.rule);
+  ok(rules(e => { e.body = 'The slaver came.'; }).includes(5), 'banned stem in a body');
+  ok(rules(e => { e.choices[0].label = 'Pay \u2014 now'; }).includes(7), 'a dash in a label');
+  ok(rules(e => { e.note = 'See example.com for more.'; }).includes(7), 'a web address in a note');
+  ok(!rules(e => { e.body = 'The cart was empty.'; }).includes(5) && !rules(e => { e.body = 'The cart was empty.'; }).includes(7), 'plain text passes');
+});
+test('the cause fact (MER-82): a loss entry may name sea, river, desert or robbers, and nothing else', () => {
+  const bad = cause => { try { validateContent(variant(c => { c.returns = [{ id: 'x', paper: 'loss', facts: { cause }, title: 'T', body: 'B', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], note: 'n', sources: [{ src: 'testport-fiction' }] }]; }), {}); } catch (e) { return e.problems.map(p => p.message).join(' | '); } return null; };
+  eq(bad(['sea', 'river', 'desert', 'robbers']), null);
+  ok(/needs one of sea, river, desert, robbers/.test(bad(['storm']) ?? ''), String(bad(['storm'])));
+});
 test('rule 2: a fact in text.json needs a source unless it says fact false', () => {
   const t = piece => lintContent(variant(c => { c.text = { about: [piece] }; }), { banned });
   ok(t({ id: 'a', body: 'Cairo was large.' }).some(f => f.rule === 2));
@@ -454,5 +467,39 @@ test('sentences: split on . ! ? and a bare fragment is one sentence', () => {
   eq(longestSentence('Go now. Go to the market and buy four loads of wool for the house.'), 13);
 });
 test('the ceilings are the ones ARCH 6.3 names', () => eq(CEILINGS, { body: 7.0, note: 8.0, fileMean: 6.5, sentence: 22 }));
+
+test('validate: kind is required of every card (MER-81), and a kind outside the four is refused', () => {
+  const p = problemsOf(variant(c => { delete c.cards[0].kind; }));
+  eq(p.map(x => [x.path.split(' ')[0], x.message]), [['cards[0]', 'missing "kind"']]);
+  ok(problemsOf(variant(c => { c.cards[0].kind = 'gossip'; })).length === 1, 'an unknown kind is refused');
+  eq(problemsOf(variant(c => {})), [], 'the untouched city is clean');
+});
+test('data.js: returns.json is loaded by the page\'s loader (fetch as well as fs), and a file a city lacks reads empty (MER-81)', async () => {
+  const root = new URL('../data/', import.meta.url);
+  const serve = skip => async href => {
+    if (skip && skip.test(href)) return { ok: false, status: 404 };
+    try { const text = fsSync.readFileSync(new URL(href), 'utf8'); return { ok: true, status: 200, text: async () => text }; }
+    catch { return { ok: false, status: 404 }; }
+  };
+  const viaFetch = await loadContent('testport', { fetch: serve(null), base: root });
+  eq(viaFetch.returns, JSON.parse(fsSync.readFileSync(new URL('testport/returns.json', root), 'utf8')));
+  ok(viaFetch.returns.length > 0, 'testport has entries');
+  eq((await loadContent('testport', { fetch: serve(/returns\.json$/), base: root })).returns, [], 'a city with no returns.json reads an empty list');
+});
+
+test('validate: a choice may carry its own result text (MER-88); on a card or a letter it may not use a slot, and it must be a string', () => {
+  const withResult = (v, where = 'cards') => variant(c => { c[where][0].choices[0].result = v; });
+  eq(problemsOf(withResult('You paid the broker and he left content.')), [], 'a plain result passes');
+  ok(problemsOf(withResult('')).some(p => /non-empty string/.test(p.message)), 'an empty one is refused');
+  ok(problemsOf(withResult(7)).some(p => /non-empty string/.test(p.message)), 'a number is refused');
+  ok(problemsOf(withResult('{agent} paid the broker.')).some(p => /result.*may not use/.test(`${p.path} ${p.message}`)), 'a card\'s result with a slot is refused');
+  ok(problemsOf(withResult('{agent} waits.', 'letters')).some(p => /result.*may not use/.test(`${p.path} ${p.message}`)), 'and so is a letter\'s');
+});
+test('validate: returns.json facts include brought, a true-or-false key on a return entry and not on a loss entry (MER-88)', () => {
+  const edit = (paper, facts) => variant(c => { c.returns = [{ id: 'fact-probe', paper, facts, title: 'Home', body: 'Home again.', choices: [{ id: 'ok', label: 'Fine', now: [] }], note: 'An invented entry for testing.' }]; });
+  eq(problemsOf(edit('return', { brought: true })), [], 'a return entry may name it');
+  ok(problemsOf(edit('return', { brought: 'yes' })).length > 0, 'it is true or false');
+  ok(problemsOf(edit('loss', { brought: true })).some(p => /no fact "brought"/.test(p.message)), 'a loss entry has no such fact');
+});
 
 await done();

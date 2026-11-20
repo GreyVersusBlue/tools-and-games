@@ -13,7 +13,7 @@
 // risk (each season ridden is rolled), tolls (arrivals: toll, trade, start the next leg).
 // Trade is after risk, so a vessel lost on the way does not first sell its cargo.
 import { seasonIndex, seasonName, playedSeasons, actOfSeason, year } from './calendar.js';
-import { holds } from './conditions.js';
+import { holds, fillTrip, tripFacts, mainGoodOf, placeOf } from './conditions.js';
 import { applyAll } from './effects.js';
 import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
@@ -98,16 +98,15 @@ function legOpen(s, content, leg, k) {
 const listWords = list => (list.length <= 1 ? list.join('') : `${list.slice(0, -1).join(', ')} or ${list[list.length - 1]}`);
 const legName = (content, leg) => `${stopName(content, leg.from)} to ${stopName(content, leg.to)}`;
 
-/** Where a plan along `route` would be, season by season, if sent now. Legs start at the first
-    season they are open; the first may wait one season, a later one up to MAX_WAIT.
-    { ok, legs: [{ i, startK, startIdx, waits }], seasons, waits, warnings, why } */
-export function project(s, content, route, agent) {
+/** Walks the legs of `route` from leg `i0`, the first of which would start `k0` seasons ahead (`limit0` waits allowed
+    for it), and says where the road ends up: one rule for the outfit's estimate and for an expedition already out. */
+function walk(s, content, route, agent, i0, k0, limit0) {
   const warnings = [];
-  let k = 1, waits = 0;
+  let k = k0, waits = 0;
   const legs = [];
-  for (let i = 0; i < route.legs.length; i++) {
+  for (let i = i0; i < route.legs.length; i++) {
     const leg = route.legs[i];
-    const limit = i === 0 ? 1 : MAX_WAIT;
+    const limit = i === i0 ? limit0 : MAX_WAIT;
     let w = 0, o = legOpen(s, content, leg, k);
     while (!o.open && w < limit) { w++; k++; o = legOpen(s, content, leg, k); }
     if (!o.open) {
@@ -125,6 +124,29 @@ export function project(s, content, route, agent) {
   // k - 1 seasons from the season after sending to the last arrival, so the return opens k seasons ahead
   return { ok: true, legs, seasons: k, waits, warnings };
 }
+
+/** Where a plan along `route` would be, season by season, if sent now. Legs start at the first
+    season they are open; the first may wait one season, a later one up to MAX_WAIT.
+    { ok, legs: [{ i, startK, startIdx, waits }], seasons, waits, warnings, why } */
+export function project(s, content, route, agent) { return walk(s, content, route, agent, 0, 1, 1); }
+
+/** Seasons from the opening of the season being played until `x`'s return paper opens, by the rule `project` uses for the
+    outfit's estimate (MER-88): so the map's "home about" and the sheet's "about three seasons" are one number, and both
+    are the season the paper arrives in when nothing but the road changes it (an order, a hold, a loss). 0 for one that
+    is home. Just sent: the whole road; riding: what is left of the leg and then the rest; waiting at a stop: that leg
+    from next season. The first leg of an expedition sent this season does not move until the next closing. */
+export function returnsIn(s, content, x) {
+  if (x.status === 'home') return 0;
+  const route = routeOf(content, x.route), agent = agentOf(content, x.agent);
+  if (!route) return 0;
+  const idx = seasonIndex(s, content);
+  const fromStart = x.sent === idx;
+  const hit = fromStart ? walk(s, content, route, agent, 0, 1, 1)
+    : x.status === 'out' ? (x.leg + 1 >= route.legs.length ? { ok: true, seasons: x.left } : walk(s, content, route, agent, x.leg + 1, x.left, MAX_WAIT))
+    : walk(s, content, route, agent, x.leg, 1, MAX_WAIT);
+  return hit.ok ? hit.seasons : seasonsLeft(content, x);
+}
+
 const by = leg => ({ caravan: 'the caravan', galley: 'the galley', dhow: 'the dhow', nileboat: 'the boat', mules: 'the mules' }[leg.by] ?? 'the boat');
 
 /** The open route to `stopId` that gets there and back soonest, or null. Ties go to the one
@@ -211,6 +233,15 @@ export function jumpChances(content) {
   return { ...DEFAULT_JUMP, ...(content.city?.jump ?? {}) };
 }
 
+/** What struck, from the leg and the loss (returns.json's `cause` fact): a ship, a boat or a caravan that goes down is the
+    sea, the river or the desert; a part of a load that goes on a road or a river is taken by robbers; a part that goes
+    at sea is the sea's. No draw is spent, so a seed's stream does not move. */
+export function causeOf(leg, loss) {
+  if (leg.by === 'galley' || leg.by === 'dhow') return 'sea';
+  if (loss.whole) return leg.by === 'nileboat' ? 'river' : 'desert';
+  return 'robbers';
+}
+
 /** A loss happened to `x`. Draws: whole or partial; a whole loss then draws whether the agent
     lives, a partial loss how much goes. Returns what was lost; changes `x` on a partial loss. */
 function loseSome(s, content, x) {
@@ -257,7 +288,90 @@ function lostPaper(s, content, x, loss, leg) {
     lines.push({ label: 'The house', text: `${coins(content, costs.house)} of its money` });
     lines.push({ label: 'The partners', text: `${coins(content, costs.partners)} of theirs` });
   }
-  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, route: route.id, whole: loss.whole, survived: loss.survived, lines, costs } };
+  const idx = seasonIndex(s, content);
+  // an order the loss overtook says what became of it, in one sentence (MER-88)
+  const line = orderLine(content, x, seasonIndex(s, content), leg);
+  if (line) lines.push({ label: 'Your order', text: line });
+  const trip = tripFacts(content, x.agent, route, leg.to, mainGoodOf(x.book?.cargo ?? x.cargo), idx + 1 - x.sent, x.id);
+  const entry = pickEntry(s, content, 'loss', { by: leg.by, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
+  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, orderLine: line, route: route.id, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, lines, costs, trip, ...askOf(content, entry, trip) } };
+}
+
+// ---------------------------------------------------------------------------------------------
+// What a return or a loss asks (returns.json, DESIGN 2.1 rules 3 and 4)
+
+/** Whether a trip's `facts` (one value per key) fit an entry's `facts`: every key the entry names must match.
+    A list holds the values that fit, `seasons` is a { gte, lte } range, a true-or-false key matches by truth. */
+function factsFit(want, have) {
+  for (const [k, w] of Object.entries(want ?? {})) {
+    const v = have[k];
+    if (k === 'seasons') { if (!Number.isFinite(v) || (w.gte !== undefined && v < w.gte) || (w.lte !== undefined && v > w.lte)) return false; }
+    else if (typeof w === 'boolean') { if (!!v !== w) return false; }
+    else if (!w.includes(v)) return false;
+  }
+  return true;
+}
+
+/** The entry of returns.json for `paper` ('return' or 'loss') that fits the trip's facts and whose `when` holds: the one
+    that names the most facts, then the heavier, then the first in the file. No draw is spent, so the seed's stream does
+    not move. null when none fits. */
+export function pickEntry(s, content, paper, facts) {
+  const fit = (content.returns ?? []).filter(e => e.paper === paper && (e.weight ?? 1) > 0 && factsFit(e.facts, facts) && holds(e.when, s, content));
+  const named = e => Object.keys(e.facts ?? {}).length;
+  return fit.reduce((best, e) => (!best || named(e) > named(best) || (named(e) === named(best) && (e.weight ?? 1) > (best.weight ?? 1)) ? e : best), null);
+}
+
+/** The `choices` slot of a paper: the entry's title, body and choices with the trip's words filled in ({agent}, {to},
+    {good}, {route}, {seasons}). The effects are the entry's own; nothing runs until a choice is made. */
+function askOf(content, entry, trip) {
+  if (!entry) return { entry: null, ask: null, choices: [] };
+  const fill = text => (text === undefined ? text : fillTrip(content, text, trip));
+  return {
+    entry: entry.id,
+    ask: { title: fill(entry.title) ?? null, body: fill(entry.body) ?? null },
+    choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}), ...(c.result !== undefined ? { result: fill(c.result) } : {}) })),
+  };
+}
+
+/** Where an order's answer found the agent, in words: "at <stop>" or "on the road to <stop>". */
+const placeText = (content, p) => `${p.standing === false ? 'on the road to' : 'at'} ${stopName(content, p.stop)}`;
+
+/** One sentence for a return or a loss whose orders changed what the expedition did, or whose answer could not (DESIGN 2.1
+    rule 5), or null. The last order that acted is told first (`decide`, letters.js, wrote what the agent did and whether the
+    agent would have done it unasked); failing that, the last turn-back answer that did not act. A turn-back answer is never
+    lost without a word: it turns the agent back, or this line says why it did not (MER-88): there was no road home from the
+    stop it was used at, the agent was already on the way home, it reached the agent after the last stop where it could
+    turn, or the trip ended (`lostOn`, the leg a loss struck) before it reached the agent or before the next stop. */
+export function orderLine(content, x, idx, lostOn = null) {
+  const name = agentOf(content, x.agent)?.name ?? x.agent;
+  const route = routeOf(content, x.route);
+  const partyAt = stop => `the ${VESSEL[route?.legs?.find(l => l.from === stop && l.by)?.by] ?? 'party'}`;
+  const noTurn = e => (e.beyond
+    ? `You told ${name} to turn back at ${stopName(content, e.stop)}, but ${partyAt(e.stop)} was already on the road home, so there was nowhere to turn back to.`
+    : `Because you told ${name} to turn back at ${stopName(content, e.stop)}, ${partyAt(e.stop)} would have, but no road leads home from there, so it went on.`);
+  const o = (x.book?.orders ?? []).filter(e => e.changed).at(-1);
+  if (o) {
+    const at = stopName(content, o.stop), party = partyAt(o.stop);
+    if (o.did === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited a season there before going on.`;
+    if (o.did === HOME) return x.book.turned === o.stop ? `Because you told ${name} to turn back at ${at}, ${party} came home from there.` : noTurn(o);
+    if (o.go === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited as long as a trip may, then went on.`;
+    return `Because you told ${name} to go on from ${at}, ${party} did not wait there.`;
+  }
+  // an order used where the agent would have gone home unasked, or already was: it did not turn either
+  const home = (x.book?.orders ?? []).filter(e => e.go === HOME && e.did === HOME && x.book.turned !== e.stop).at(-1);
+  if (home) return noTurn(home);
+  const late = (x.orders ?? []).filter(e => !e.used && e.go === HOME).at(-1);
+  if (!late) return null;
+  const what = `You told ${name} to turn back`;
+  const reached = late.at !== undefined && (idx === undefined || late.at <= idx);
+  const wayOf = leg => `${stopName(content, leg.from)} to ${stopName(content, leg.to)}`;
+  if (lostOn) {
+    if (route && route.legs.indexOf(lostOn) > outEnd(route)) return `${what}, but ${name} was already on the road home when the ${VESSEL[lostOn.by] ?? 'party'} was lost on the way from ${wayOf(lostOn)}, so there was nowhere to turn back to.`;
+    if (!reached) return `${what}, but the answer had not reached ${name} when the ${VESSEL[lostOn.by] ?? 'party'} was lost on the way from ${wayOf(lostOn)}.`;
+    return `${what}, and the answer reached ${name} ${late.place ? placeText(content, late.place) : 'on the road'}, but the ${VESSEL[lostOn.by] ?? 'party'} was lost on the way from ${wayOf(lostOn)} before there was a stop to turn back at.`;
+  }
+  if (!reached) return `${what}, but the answer had not reached ${name} when the trip ended.`;
+  return `${what}, but the answer arrived too late: ${name} was ${late.place ? placeText(content, late.place) : 'on the road'} by then, past the last stop where the party could turn.`;
 }
 
 /** What a loss costs each party under the contract: the capital bears it in proportion to stake. */
@@ -279,6 +393,16 @@ function put(s, paper) {
   return shown;
 }
 
+/** For view(): when each expedition on the road is due home, by `returnsIn`, as { [expedition id]: { in, season } }: `in`
+    seasons from now and the season's name ("Winter 1324"). The map and the ledger say this, so they never count it themselves. */
+export function homeBy(s, content) {
+  const idx = seasonIndex(s, content);
+  return Object.fromEntries(s.expeditions.filter(x => routeOf(content, x.route)).map(x => {
+    const n = returnsIn(s, content, x);
+    return [x.id, { in: n, season: M.writeSeason(content, idx + n) }];
+  }));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Outfitting (ARCHITECTURE 4.5)
 
@@ -287,9 +411,9 @@ const isCount = n => Number.isInteger(n) && n >= 0;
 /** The way back is open only where there is no qirad to offer instead. */
 const canPrepay = city => !city.contracts?.qirad?.agentShare;
 
-/** The wage for the whole trip, paid up front: the return opens `seasons` ahead, so the agent is
-    out `seasons - 1` of them, at the agent's wage. */
-const tripWage = (agent, proj) => Math.max(1, proj.seasons - 1) * (agent.wage ?? 0);
+/** The wage for the whole trip, paid up front: the return opens `seasons` ahead and the paper counts the trip as that
+    many seasons (MER-88), so the agent is paid for `seasons` of them, at the agent's wage. */
+const tripWage = (agent, proj) => proj.seasons * (agent.wage ?? 0);
 
 /** What the house would pay up front for `agentId` on `routeId`, in coins, or 0 when the road does not project. */
 export function prepayCost(state, content, routeId, agentId) {
@@ -403,7 +527,7 @@ function build(s, content, plan) {
     goods: goodsCost, bought: buyCost, purse: isCount(purse) ? purse : 0, partners, wagePaid, total: houseMoney,
     later: route && proj?.ok ? {
       tolls: route.legs.reduce((n, l) => n + (l.toll ?? 0), 0),
-      wage: kind === 'own' && !prepay && agent ? Math.max(1, proj.seasons - 1) * (agent.wage ?? 0) : 0,
+      wage: kind === 'own' && !prepay && agent ? proj.seasons * (agent.wage ?? 0) : 0,
       wagePerSeason: agent?.wage ?? 0,
     } : null,
   };
@@ -429,6 +553,7 @@ function build(s, content, plan) {
   };
   s.expeditions.push(x);
   rec.where = 'road';
+  rec.trips = (rec.trips ?? 0) + 1;   // a trip for the house: the score counts a person home only if they made one (MER-86)
   s.log.push({ at: idx, kind: 'outfit', ref: x.id, choice: route.id });
   return { problems, warnings, cost };
 }
@@ -520,6 +645,8 @@ export function move(s, content) {
     norm(x);
     delete x.rode;
     if (!routeOf(content, x.route) || x.status === 'home' || x.sent === idx) continue;
+    // an answer reaching the agent this season finds it here: kept for the paper that says so if the answer comes too late to act
+    for (const o of x.orders ?? []) if (o.at !== undefined && o.at <= idx && !o.used && !o.place) o.place = placeOf(content, x);
     x.out += 1;
     if (x.status === 'out') {
       x.left -= 1;
@@ -548,8 +675,8 @@ export function move(s, content) {
     here, the rest are carried home. */
 function proceed(s, content, x, go, idx) {
   const route = routeOf(content, x.route);
-  if (go === HOME && x.leg <= outEnd(route)) {
-    const stop = route.legs[x.leg].from;
+  const stop = route.legs[x.leg].from, outbound = x.leg <= outEnd(route);
+  if (go === HOME && outbound) {
     const back = route.legs.findIndex((l, i) => i > outEnd(route) && l.from === stop);
     if (back > 0) {
       tradeAt(s, content, x, stop, { sell: Object.keys(x.cargo), buy: [] }, idx);
@@ -557,6 +684,8 @@ function proceed(s, content, x, go, idx) {
       x.book.turned = stop;
     }
   }
+  // an answer that turns back an agent past the far end, or at a stop with no road home, did not act: the paper says which
+  if (go === HOME && x.book.turned !== stop) { const o = (x.book.orders ?? []).at(-1); if (o?.go === HOME && o.stop === stop) o.beyond = !outbound; }
   startLeg(s, content, x, 1);
 }
 
@@ -585,7 +714,7 @@ export function risk(s, content) {
     // the vessel is gone: the agent is home or dead, the expedition is over
     const a = s.agents[x.agent];
     a.where = loss.survived ? homeOf(content) : 'dead';
-    if (loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
+    if (loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, (x.out + 1) * (agentOf(content, x.agent).wage ?? 0));   // away through this closing, as a return counts it (MER-88)
     lost.push(x.id);
     close(s, content, x, seasonIndex(s, content));
     s.log.push({ at: seasonIndex(s, content), kind: 'lost', ref: x.id, choice: loss.survived ? 'survived' : 'died' });
@@ -690,7 +819,7 @@ function bringHome(s, content, x, { elapsed }) {
   const partnersShort = pay(s, content, shares.partners), agentShort = pay(s, content, shares.agent);
   const short = partnersShort + agentShort;
   // a prepaid wage was charged at outfitting: it is shown on the paper and counted against the house, and charged no more
-  const wage = x.contract.kind !== 'own' ? 0 : x.contract.prepaid ? (x.book.wagePaid ?? 0) : x.out * (agent.wage ?? 0);
+  const wage = x.contract.kind !== 'own' ? 0 : x.contract.prepaid ? (x.book.wagePaid ?? 0) : elapsed * (agent.wage ?? 0);   // the wage is for the seasons the paper counts (MER-88)
   const wageShort = x.contract.prepaid ? 0 : pay(s, content, wage);
   if (short || wageShort) s.rep.partners = clamp(s.rep.partners - 1, -3, 3);
   returnTrust(s, content, x, { qirad: x.contract.kind === 'qirad', prepaid: !!x.contract.prepaid, agentShare: shares.agent, agentShort, wage, wageShort, lost: Object.keys(x.book.lost ?? {}).length > 0, since: x.sent }, seasonIndex(s, content));
@@ -708,31 +837,47 @@ function returnPaper(s, content, r) {
   const headline = `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`;
   const book = x.book;
   const rows = [];
+  // The account adds up (MER-88): every row with an `amount` and no `detail` is a sum the house took in or paid out, and
+  // together they come to `houseNet`, the same number the headline and the Profit row give. `detail` rows say what
+  // happened on the road; their money is inside the row that follows.
   rows.push({ label: 'Sent out', text: `${cargoText(content, book.cargo)}${book.purse ? `, ${coins(content, book.purse)} to spend` : ''}`, amount: -book.capital });
-  for (const e of book.sold) rows.push({ label: 'Sold', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}`, amount: e.got });
-  for (const e of book.bought) rows.push({ label: 'Bought', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}`, amount: -e.cost });
-  if (book.tolls) rows.push({ label: 'Tolls', text: 'paid on the road', amount: -book.tolls });
-  if (book.upkeep) rows.push({ label: 'Waiting', text: `${words(x.waiting)} ${plural(x.waiting, 'season', 'seasons')} at a stop, kept at ${coins(content, UPKEEP)} a season`, amount: -book.upkeep });
+  for (const e of book.sold) rows.push({ label: 'Sold', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}, for ${coins(content, e.got)}`, amount: e.got, detail: true });
+  for (const e of book.bought) rows.push({ label: 'Bought', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}, for ${coins(content, e.cost)}`, amount: -e.cost, detail: true });
+  if (book.tolls) rows.push({ label: 'Tolls', text: `${coins(content, book.tolls)} paid on the road`, amount: -book.tolls, detail: true });
+  if (book.upkeep) rows.push({ label: 'Waiting', text: `${words(x.waiting)} ${plural(x.waiting, 'season', 'seasons')} at a stop, kept at ${coins(content, UPKEEP)} a season`, amount: -book.upkeep, detail: true });
   if (book.lost && Object.keys(book.lost).length) rows.push({ label: 'Lost', text: cargoText(content, book.lost) });
   const back = [];
   if (Object.keys(r.goodsBack).length) back.push(`${cargoText(content, r.goodsBack)} (worth ${coins(content, r.cargoValue)} in ${homeName} now)`);
   if (r.moneyBack) back.push(coins(content, r.moneyBack));
-  rows.push({ label: 'Back home', text: back.length ? back.join(' and ') : 'nothing' });
-  const profit = r.value - book.capital;
-  rows.push({ label: 'Profit', text: `${profit >= 0 ? 'about' : 'a loss of about'} ${coins(content, Math.abs(profit))}`, amount: profit });
+  rows.push({ label: 'Back home', text: back.length ? `${back.join(' and ')}, ${coins(content, r.value)} in all` : 'nothing', amount: r.value });
   if (x.contract.kind === 'qirad') {
     const word = { 1: 'one third', 2: 'two thirds' }[x.contract.agentShare] ?? `${x.contract.agentShare} of ${x.contract.of}`;
-    rows.push({ label: `${agent.name}'s share`, text: `a qirad: ${agent.name} keeps ${x.contract.of === 3 ? word : `${x.contract.agentShare} in ${x.contract.of}`} of a profit and bears none of a loss`, amount: -r.shares.agent });
+    if (x.staked.partners) rows.push({ label: 'The partners put in', text: coins(content, x.staked.partners), amount: x.staked.partners });
+    rows.push({ label: `${agent.name}'s share`, text: `a qirad: ${agent.name} keeps ${x.contract.of === 3 ? word : `${x.contract.agentShare} in ${x.contract.of}`} of a profit and bears none of a loss, ${coins(content, r.shares.agent)} this time`, amount: -r.shares.agent });
     rows.push({ label: "The partners' share", text: r.shares.partners ? `${coins(content, r.shares.partners)} of the ${coins(content, x.staked.partners)} they put in, with their part of the profit` : 'nothing', amount: -r.shares.partners });
   } else if (r.wage) {
-    rows.push({ label: `${agent.name}'s wage`, text: `${coins(content, agent.wage)} a season for ${words(x.out)} ${plural(x.out, 'season', 'seasons')}`, amount: -r.wage });
+    // the seasons the wage was paid for: what the trip was away (a prepaid wage was fixed at sending)
+    const paid = agent.wage ? Math.round(r.wage / agent.wage) : x.out;
+    rows.push({ label: `${agent.name}'s wage`, text: `${coins(content, agent.wage)} a season for ${words(paid)} ${plural(paid, 'season', 'seasons')}${x.contract.prepaid ? ', paid before the trip' : ''}`, amount: -r.wage });
   }
   if (r.short) rows.push({ label: 'Not paid', text: `the house could not pay ${coins(content, r.short)} of what it owed, and its good name suffers` });
+  rows.push({ label: n < 0 ? 'Loss' : 'Profit', text: n === 0 ? 'none, the house came out even' : `${Object.keys(r.goodsBack).length ? 'about ' : ''}${coins(content, Math.abs(n))}`, amount: n });
   const seasons = r.elapsed;
+  const trip = { ...tripFacts(content, x.agent, route, x.book.turned ?? route.to, mainGoodOf(book.cargo), seasons, x.id), orders: (book.orders ?? []).map(o => ({ ...o })) };
+  const line = orderLine(content, x, seasonIndex(s, content));
+  // "Sell the <good> now?" is about the good that came home, not the one that went out (MER-88): the facts and the words
+  // read the main good of what came back, and `brought` says something did. A trip that sold everything it carried asks nothing about it.
+  const homeGood = mainGoodOf(r.goodsBack);
+  const asking = { ...trip, good: homeGood ?? trip.good };
+  const entry = pickEntry(s, content, 'return', {
+    outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even', agent: x.agent, to: trip.to, good: asking.good, seasons, orders: !!line,
+    contract: x.contract.kind, lost: Object.keys(book.lost ?? {}).length > 0, brought: homeGood !== null,
+  });
   return {
     kind: 'return', ref: 'return', agent: x.agent, expedition: x.id,
     data: {
-      headline,
+      headline: line ? `${line} ${headline}` : headline,
+      orderLine: line, trip, ...askOf(content, entry, asking),
       route: `${homeName} to ${dest} and back, ${words(seasons)} ${plural(seasons, 'season', 'seasons')}`,
       account: rows, houseNet: n, outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even',
       shares: { agent: r.shares.agent, partners: r.shares.partners, house: r.shares.house },
@@ -749,7 +894,8 @@ export function returns(s, content) {
   for (const x of s.expeditions) {
     if (x.status !== 'home') continue;
     if (deskFull(s)) break;
-    const r = bringHome(s, content, x, { elapsed: idx - x.sent });
+    // `out` counts the closings it moved in; the season it left in is one it was away for too, so the paper's season count and the wage's are `out + 1` (MER-88)
+    const r = bringHome(s, content, x, { elapsed: x.out + 1 });
     put(s, returnPaper(s, content, r));
     close(s, content, x, idx);
     back.push(x.id);
@@ -923,13 +1069,16 @@ function changesOf(content, q, s) {
 
 /** One item for the accounts paper from a later effect that fired with no follow-up card. */
 export function accountItem(s, content, q) {
-  const [cardId, choiceId] = String(q.from ?? '').split('/');
-  const card = (content.cards ?? []).find(c => c.id === cardId);
-  const choice = card?.choices?.find(c => c.id === choiceId);
   const changes = changesOf(content, q, s);
   if (!changes.length) return null;
-  const from = card ? `${card.title}${choice ? `, "${choice.label}"` : ''}` : (q.from ?? 'an earlier choice');
-  return { from: q.from ?? null, card: card?.title ?? null, choice: choice?.label ?? null, changes, text: `From ${from}: ${changes.join(', ')}` };
+  // the card and the choice that set this effect: the words the player saw when choosing (turn.js `choose` records them in
+  // the queue item), else looked up from the ids, else, for an item queued before they were recorded, a plain "earlier choice"
+  const [cardId, choiceId] = String(q.from ?? '').split('/');
+  const card = (content.cards ?? []).find(c => c.id === cardId) ?? (content.letters ?? []).find(l => l.id === cardId) ?? (content.returns ?? []).find(e => e.id === cardId);
+  const choice = card?.choices?.find(c => c.id === choiceId);
+  const title = q.viaCard ?? card?.title ?? null, label = q.viaChoice ?? choice?.label ?? null;
+  const from = title ? `${title}${label ? `, "${label}"` : ''}` : (q.from ?? 'an earlier choice');
+  return { from: q.from ?? null, card: title, choice: label, changes, text: `From ${from}: ${changes.join(', ')}` };
 }
 
 /** Puts one folded Accounts paper on the desk naming every item (a count, not a paper each). */
@@ -949,6 +1098,41 @@ export function recallChances(content) {
   return { ...DEFAULT_RECALL, ...r, reach: { ...DEFAULT_RECALL.reach, ...(r.reach ?? {}) }, byStop: { ...DEFAULT_RECALL.byStop, ...(r.byStop ?? {}) } };
 }
 
+/** A chance in the four words the recall page already uses for word reaching an expedition. */
+export function chanceWord(p) { return p >= 0.8 ? 'sure' : p >= 0.5 ? 'likely' : p >= 0.25 ? 'maybe' : 'unlikely'; }
+
+/** What the recall page may say of each person (MER-86): the engine's own numbers as plain facts, one entry
+    per hired agent who is on the road or at home, in the content's order. `reach` is the chance word gets
+    to an expedition in time; `ifCalled` and `ifStays` the chance the agent lives under each choice (a call
+    that word does not reach is a stay); `risk` is the chance of dying of the plague in the words of
+    `chanceWord`, for the choice most likely taken (stays) on the road and for the one at home. People at
+    home are rolled at `homeSurvives` too, so they carry the same fields with `where: 'home'`. */
+export function recallRisk(s, content) {
+  const cfg = recallChances(content);
+  const home = homeOf(content);
+  const out = [];
+  const onRoad = new Set(s.expeditions.map(x => x.agent));
+  for (const a of content.agents ?? []) {
+    const r = s.agents?.[a.id];
+    if (!r?.hired || r.where === 'dead' || r.where === 'gone') continue;
+    const x = s.expeditions.find(e => e.agent === a.id);
+    if (x) {
+      const route = routeOf(content, x.route);
+      const lag = x.status === 'home' ? 0 : seasonsHome(content, x);
+      const reach = clamp(cfg.reach.start - cfg.reach.perSeason * lag, cfg.reach.floor, 1);
+      const leg = route.legs[Math.min(x.leg, route.legs.length - 1)];
+      const place = x.status === 'out' ? leg.to : leg.from;
+      const stay = cfg.byStop[place] ?? cfg.stayedSurvives;
+      const called = reach * cfg.recalledSurvives + (1 - reach) * stay;
+      out.push({ agent: a.id, where: 'road', expedition: x.id, place, reach, reachWord: chanceWord(reach),
+        ifCalled: called, ifStays: stay, risk: chanceWord(1 - stay), riskIfCalled: chanceWord(1 - called) });
+    } else if (r.where === home && !onRoad.has(a.id)) {
+      out.push({ agent: a.id, where: 'home', place: home, ifStays: cfg.homeSurvives, risk: chanceWord(1 - cfg.homeSurvives), lives: cfg.homeSurvives });
+    }
+  }
+  return out;
+}
+
 /** The ending's last choice. `decisions` maps an expedition id to "recall" or "stay" (missing means
     stay). Each expedition is rolled in turn, then each agent at home. One line each in the log. */
 export function recall(s, content, decisions = {}) {
@@ -966,6 +1150,7 @@ export function recall(s, content, decisions = {}) {
     const leg = route.legs[Math.min(x.leg, route.legs.length - 1)];
     const place = x.status === 'out' ? leg.to : leg.from;
     const called = decisions[x.id] === 'recall' && word;
+    const before = s.money;
     let line;
     if (called) {
       const lives = next(s) < cfg.recalledSurvives;
@@ -988,6 +1173,7 @@ export function recall(s, content, decisions = {}) {
         line = { expedition: x.id, agent: x.agent, how, survived: false, text: `${agent.name} stayed in ${stopName(content, place)} and did not come back.`, houseNet: -x.staked.house };
       }
     }
+    line.brought = s.money - before;   // what this agent's return put into the house's cash, for the score's wealth line
     results.push(line);
   }
   s.expeditions = [];

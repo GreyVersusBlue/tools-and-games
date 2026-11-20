@@ -2,6 +2,7 @@
   {
     "id": "abu-bakr-again",
     "group": "followups",
+    "kind": "favour",
     "from": {
       "name": "Abu Bakr, your neighbour",
       "role": "Cairo",
@@ -71,13 +72,14 @@
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 71; the boat from Qus to Cairo in the flood"
+        "at": "vol. 1, p. 69; the boat from Qus to Cairo in the flood"
       }
     ]
   },
   {
     "id": "silk-order-due",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Nabil, the broker",
       "role": "Cairo",
@@ -150,6 +152,7 @@
   {
     "id": "rahel-first-pick",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Rahel, a dealer in dyes",
       "role": "Fustat",
@@ -217,6 +220,7 @@
   {
     "id": "farid-ship-lost",
     "group": "followups",
+    "kind": "favour",
     "from": {
       "name": "Farid, a partner",
       "role": "Cairo",
@@ -281,6 +285,7 @@
   {
     "id": "gold-price-falls",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Jamil, a cloth seller",
       "role": "Cairo",
@@ -352,6 +357,7 @@
   {
     "id": "muhtasib-fine",
     "group": "followups",
+    "kind": "world",
     "from": {
       "name": "Bishr, your clerk",
       "role": "Cairo",
@@ -420,6 +426,7 @@
   {
     "id": "yehuda-returns-favour",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Yehuda, a merchant",
       "role": "Cairo",
@@ -489,6 +496,7 @@
   {
     "id": "amina-thanks",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Amina, a sugar maker",
       "role": "Fustat",
@@ -560,6 +568,7 @@
   {
     "id": "kamil-boat-arrived",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Kamil, a boat owner",
       "role": "Cairo",
@@ -626,6 +635,7 @@
   {
     "id": "partners-ask-again",
     "group": "followups",
+    "kind": "people",
     "from": {
       "name": "Binyamin",
       "role": "Cairo",
@@ -668,7 +678,7 @@
       {
         "id": "ledger",
         "label": "Show him the ledger first",
-        "hint": "It may hurt his pride. The claim may shrink, and you keep 15 dinars.",
+        "hint": "It may hurt his pride now. You keep 15 dinars, and a fair count is respected later.",
         "now": [
           {
             "rep": "partners",
@@ -705,6 +715,7 @@
   {
     "id": "girgis-favour",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Girgis, a merchant",
       "role": "Damascus",
@@ -774,6 +785,7 @@
   {
     "id": "khalid-news",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Khalid, a spice merchant",
       "role": "Cairo",
@@ -839,6 +851,7 @@
   {
     "id": "zubayda-fee",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Zubayda, a linen seller",
       "role": "Cairo",
@@ -906,6 +919,7 @@
   {
     "id": "tamer-title",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Tamer, a rich merchant",
       "role": "Cairo",
@@ -975,6 +989,7 @@
   {
     "id": "bales-middling",
     "group": "followups",
+    "kind": "trade",
     "from": {
       "name": "Salih, the broker",
       "role": "Cairo",
@@ -988,7 +1003,7 @@
       {
         "id": "fee",
         "label": "Ask him to pay for the two poor bales",
-        "hint": "You win back 30 dinars. Brokers talk.",
+        "hint": "You win back 30 dinars. Brokers talk now, and trust a house that checks later.",
         "now": [
           {
             "money": 30
@@ -1013,7 +1028,7 @@
       {
         "id": "sell",
         "label": "Sell the two poor bales cheaply",
-        "hint": "You lose some linen and gain 50 dinars.",
+        "hint": "You lose two loads of linen and gain 50 dinars.",
         "now": [
           {
             "stock": "linen",
@@ -1022,7 +1037,11 @@
           {
             "money": 50
           }
-        ]
+        ],
+        "requires": {
+          "stock": "linen",
+          "gte": 2
+        }
       },
       {
         "id": "lesson",
@@ -1066,6 +1085,7 @@
   {
     "id": "yusuf-asks-in-writing",
     "group": "followups",
+    "kind": "people",
     "from": {
       "name": "Yusuf, your agent",
       "role": "Cairo",
@@ -1146,6 +1166,7 @@
   {
     "id": "samir-wants-a-share",
     "group": "followups",
+    "kind": "people",
     "from": {
       "name": "Samir, your agent",
       "role": "Cairo",
@@ -1202,7 +1223,7 @@
       {
         "id": "let-go",
         "label": "Let him go",
-        "hint": "He goes to another house.",
+        "hint": "He goes to another house, and pays back 10 coins he owes.",
         "now": [
           {
             "dismiss": "samir"
@@ -1228,6 +1249,7 @@
   {
     "id": "matteo-comes-back",
     "group": "followups",
+    "kind": "people",
     "from": {
       "name": "Matteo, a Genoese trader",
       "role": "Cairo",

@@ -143,7 +143,11 @@ export function apply(state, content, effect, ctx = {}) {
       if (state.agents[id].where === 'gone') {
         throw new Error(`${nameOf(content, id)} ${leftHow(state, id) === 'retired' ? 'has retired' : 'has gone to work for another house'} and cannot be hired again`);
       }
-      state.agents[id].hired = true;
+      const a = state.agents[id];
+      a.hired = true;
+      // A hired agent waits at the house's home: an agent hired at the house's home can be sent from there, whatever the
+      // agent's own home is. Not on the road (the expedition holds the agent) and not dead.
+      if (a.where !== 'road' && a.where !== 'dead' && !state.expeditions.some(x => x.agent === id)) a.where = content.city?.home ?? a.where;
       return;
     }
     case 'dismiss':

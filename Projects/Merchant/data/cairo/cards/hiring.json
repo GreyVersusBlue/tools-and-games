@@ -2,6 +2,7 @@
   {
     "id": "yusuf-asks-for-work",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Yusuf, a trader of Cairo",
       "role": "Cairo",
@@ -68,6 +69,7 @@
   {
     "id": "qirad-offer",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Samir, a young man of Cairo",
       "role": "Cairo",
@@ -92,7 +94,7 @@
       {
         "id": "qirad",
         "label": "Agree to a qirad",
-        "hint": "He keeps a third of the profit. You carry any loss. The next sheet shows the cost.",
+        "hint": "He keeps a third of the profit. You carry any loss. Some partners think Samir is too young, then come round. The next sheet shows the cost.",
         "now": [
           {
             "hire": "samir"
@@ -125,7 +127,7 @@
       {
         "id": "wage",
         "label": "Pay him a wage",
-        "hint": "You keep all the profit. He is paid even if the goods are lost. The next sheet shows the cost.",
+        "hint": "You keep all the profit. He is paid even if the goods are lost. Some partners think Samir is too young. The next sheet shows the cost.",
         "now": [
           {
             "hire": "samir"
@@ -187,6 +189,7 @@
   {
     "id": "contract-limits",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Yusuf, your agent",
       "role": "Cairo",
@@ -261,6 +264,7 @@
   {
     "id": "mariam-asks-for-work",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Mariam, a trader",
       "role": "Cairo",
@@ -374,6 +378,7 @@
   {
     "id": "matteo-for-one-load",
     "group": "hiring",
+    "kind": "people",
     "from": {
       "name": "Matteo, a Genoese trader",
       "role": "Cairo",

@@ -2,6 +2,7 @@
   {
     "id": "wool-offer",
     "group": "orders",
+    "kind": "trade",
     "from": {
       "name": "Nell the broker",
       "role": "Testport",

@@ -154,7 +154,7 @@ export function* strings(value, where = '', skip = () => false) {
   }
 }
 
-const FILES = ['city', 'calendar', 'houses', 'goods', 'stops', 'routes', 'agents', 'cards', 'letters', 'events', 'notebook', 'terms', 'text'];
+const FILES = ['city', 'calendar', 'houses', 'goods', 'stops', 'routes', 'agents', 'cards', 'letters', 'returns', 'events', 'notebook', 'terms', 'text'];
 const isD5 = n => n && typeof n === 'object' && n.context === 'd5';
 
 export function normalize(s) {

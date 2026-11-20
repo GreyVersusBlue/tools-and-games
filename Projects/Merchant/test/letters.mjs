@@ -153,7 +153,8 @@ test('(1) a report written on the way home reaches the desk after the expedition
 test('(1) a letter in the post when its expedition is lost is delivered, a report\'s happened applies, and a question\'s answer is logged as dropped', () => {
   const lossy = c => variant(trek(c, { risk: { 2: 1 } }), x => { x.city.jump = { wholeLoss: 1 }; });   // the third leg is lost; a letter written at s2 takes two seasons
   const rep = writing(lossy(calm), report('r1', at('s2')));
-  const seedR = seedFor(rep, st => everPosted(st, 'r1'), { n: 3 });
+  // MER-78: the seed must also be one where the third leg is lost (a risk of 1 is clamped to 0.95, and a draw moved by the new deal rode it safely)
+  const seedR = seedFor(rep, st => everPosted(st, 'r1') && st[st.findIndex(s => posted(s, 'r1')) + 1]?.expeditions.length === 0, { n: 6 });
   const lost = play(rep, seedR, { n: 6 }), control = play(noHappened(rep), seedR, { n: 6 });
   const w = lost.findIndex(s => posted(s, 'r1'));
   eq(lost[w + 1].expeditions, [], 'the expedition is lost in the season the letter was written, before it arrives');
@@ -163,7 +164,7 @@ test('(1) a letter in the post when its expedition is lost is delivered, a repor
   ok(got > w + 1, 'it reaches the desk after the loss');
   eq(salt(lost[got]) - salt(control[got]), 3, 'the happened effect applies');
   const ask = writing(lossy(calm), question('q1', at('s2')));
-  const seedQ = seedFor(ask, st => everPosted(st, 'q1'), { n: 3 });
+  const seedQ = seedFor(ask, st => everPosted(st, 'q1') && st[st.findIndex(s => posted(s, 'q1')) + 1]?.expeditions.length === 0, { n: 7 });   // MER-78: and the third leg is lost, as above
   const q = play(ask, seedQ, { choices: { q1: 'home' }, n: 7 });
   const arrived = q.findIndex(s => s.desk.some(p => p.ref === 'q1'));
   ok(arrived > 0 && q[arrived].expeditions.length === 0, 'the question reaches the desk of a house whose expedition is gone');
@@ -205,17 +206,47 @@ test('lag: a letter written at s1 reaches the desk the next season, one written 
   for (let seed = 1; seed <= 40; seed++) for (const s of play(c, seed, { n: 5 })) for (const p of s.post) seen[p.id] ??= { ...p };
   for (const [id, lag] of [['r1', 1], ['r2', 2]]) eq([seen[id].lag, seen[id].arrive - seen[id].written], [lag, lag], id);
 });
-test('one letter at most for an expedition in a season, whatever the pool holds, and about half the draws write', () => {
+test('one letter at most for an expedition in a season, whatever the pool holds', () => {
   const c = writing(trek(calm), report('r1', at('s2'), { repeat: true }), report('r2', at('s2'), { repeat: true }), question('q1', at('s2'), { repeat: true }));
-  let wrote = 0;
   for (let seed = 1; seed <= 200; seed++) {
     const states = play(c, seed, { n: 3 });          // season 3 is the one opening where the expedition stands at s2
     const byWritten = {};
     for (const s of states) for (const p of s.post) (byWritten[`${p.expedition}@${p.written}`] ??= new Set()).add(p.id);
     for (const ids of Object.values(byWritten)) ok(ids.size <= 1, `seed ${seed}: ${[...ids]}`);
-    wrote += Object.keys(byWritten).length;
   }
-  ok(wrote > 60 && wrote < 140, `about half of 200 eligible openings write (${wrote}); the chance is ${LETTER_CHANCE}`);
+});
+// MER-78 (DESIGN 2.1 rule 5): the plain chance is LETTER_CHANCE; a trip that has written nothing gains SILENT_RAMP for each
+// opening it could have written at. On the trek a one-season leg means the expedition stands at s1 in season 2 (the first
+// opening it can write at), at s2 in season 3, and so on, so every opening from 2 has a letter to write.
+const everyStop = () => writing(trek(calm), ...[1, 2, 3, 4, 5].map(i => report(`r${i}`, at(`s${i}`), { repeat: true })));
+const wroteAt = (states, season) => states.some(s => s.post.some(p => p.written === season));
+const tripsOf = (c, seeds, n) => Array.from({ length: seeds }, (_, i) => play(c, i + 1, { n }));
+test('the plain chance: about half of the first openings a trip can write at do', () => {
+  const trips = tripsOf(everyStop(), 400, 2), wrote = trips.filter(st => wroteAt(st, 2)).length;
+  ok(wrote > 160 && wrote < 240, `${wrote} of 400 first openings wrote; the chance is ${LETTER_CHANCE}`);
+});
+test('a trip that has written nothing is surer at each opening and is sure by its third', () => {
+  const quiet = tripsOf(everyStop(), 600, 4).filter(st => !wroteAt(st, 2));
+  const third = quiet.filter(st => wroteAt(st, 3)).length;
+  ok(quiet.length > 240 && third / quiet.length > 0.65 && third / quiet.length < 0.85, `${third} of ${quiet.length} trips quiet at the first opening wrote at the second (three in four expected)`);
+  const still = quiet.filter(st => !wroteAt(st, 3));
+  ok(still.length > 20, `${still.length} trips were quiet twice`);
+  eq(still.filter(st => !wroteAt(st, 4)).length, 0, 'every trip quiet at two openings writes at the third');
+});
+test('once a trip has written, its chance falls back to the plain one, however quiet it was before', () => {
+  // quiet at the first opening, then wrote at the second: the ramp is spent, so the third opening is an ordinary draw
+  const late = tripsOf(everyStop(), 800, 4).filter(st => !wroteAt(st, 2) && wroteAt(st, 3)), again = late.filter(st => wroteAt(st, 4)).length;
+  ok(late.length > 200 && again / late.length > 0.38 && again / late.length < 0.62, `${again} of ${late.length} trips that wrote at their second opening wrote again at the third (half expected)`);
+});
+test('(MER-82) a trip with a single writing opening writes there for sure the first time, whatever the seed', () => {
+  // one stop: the expedition stands at s1 in season 2, the only opening it has; a half chance would miss it about every other game
+  const c = writing(trek(calm, { n: 1 }), report('r1', at('s1'), { repeat: true }));
+  for (let seed = 1; seed <= 60; seed++) ok(wroteAt(play(c, seed, { n: 4 }), 2), `seed ${seed}: no letter at the only opening`);
+});
+test('(MER-82) the sure opening is the last one a trip has: with a later opening the first stays a draw', () => {
+  const trips = tripsOf(everyStop(), 400, 2);
+  const wrote = trips.filter(st => wroteAt(st, 2)).length;
+  ok(wrote > 160 && wrote < 240, `${wrote} of 400 first openings of a five-stop trek wrote; only the last opening is sure`);
 });
 test('never at home: a letter that wants Harbour is never written, however many seeds', () => {
   const c = writing(trek(calm), report('r1', at('harbour'), { repeat: true }));
@@ -368,6 +399,42 @@ test('(3) a turn-back sells the cargo the stop buys and carries the rest home', 
   eq([x0(kept[4]).cargo, x0(kept[5]).cargo], [{ salt: 2 }, { salt: 2 }], 'salt is not bought there, so it is carried home');
   const back = kept[9].desk.find(p => p.kind === 'return').data.account.find(r => r.label === 'Back home').text;
   ok(/2 loads of salt/.test(back), back);
+});
+// ---- MER-78: the first question is sure, and the return says what an order changed
+
+test('(MER-78) the first question a house can be asked is written whatever the weights and the chance', () => {
+  const c = writing(trek(calm), report('r1', at('s1'), { weight: 1000, repeat: true }), question('q1', at('s1'), { weight: 1 }));
+  for (let seed = 1; seed <= 100; seed++) eq(play(c, seed, { n: 2 }).at(-1).post.map(p => p.id), ['q1'], `seed ${seed}: season 2 is the first opening the expedition stands at s1`);
+});
+test('(MER-78) city.json\'s secondSeason.letter is the sure question when it can be written', () => {
+  const c = variant(writing(trek(calm), question('q1', at('s1')), question('q2', at('s1'))), x => { x.city.secondSeason = { letter: 'q2' }; });
+  for (let seed = 1; seed <= 60; seed++) eq(play(c, seed, { n: 2 }).at(-1).post.map(p => p.id), ['q2'], `seed ${seed}`);
+});
+test('(MER-78) after the first question, a question is an ordinary draw again', () => {
+  const c = writing(trek(calm), question('q1', at('s1')), report('r2', at('s2'), { weight: 1000, repeat: true }), question('q2', at('s2'), { weight: 1 }));
+  let q2 = 0;
+  for (let seed = 1; seed <= 200; seed++) q2 += play(c, seed, { n: 3 }).at(-1).post.filter(p => p.id === 'q2').length;   // season 3: at s2
+  ok(q2 <= 5, `q2 weighs 1 against 1000 and was written ${q2} times in 200 games`);
+});
+const returnOf = states => states.flatMap(s => s.desk).find(p => p.kind === 'return');
+test('(MER-78) a return whose order changed what the expedition did says so first: a turn-back', () => {
+  const p = returnOf(play(one, seedQ, { choices: { q1: 'home' }, n: 12 }));
+  ok(/^Because you told [A-Z][a-z]+ to turn back at Stop 4, the mule train came home from there\. [A-Z][a-z]+ came home from Stop 4\./.test(p.data.headline), p.data.headline);
+  eq(p.data.orderLine, p.data.headline.slice(0, p.data.orderLine.length), 'the line is also kept apart');
+  eq(p.data.trip.orders.map(o => [o.letter, o.go, o.stop, o.did, o.changed]), [['q1', 'home', 's4', 'home', true]]);
+});
+test('(MER-78) a return whose order changed what the expedition did says so first: a wait', () => {
+  const p = returnOf(play(one, seedQ, { choices: { q1: 'wait' }, n: 16 }));
+  ok(/^Because you told [A-Z][a-z]+ to wait at Stop 4, the mule train waited a season there before going on\. /.test(p.data.headline), p.data.headline);
+});
+test('(MER-78) an order that changed nothing leaves no line: a bold agent told to go on was going on', () => {
+  const p = returnOf(play(one, seedQ, { choices: { q1: 'on' }, n: 12 }));
+  eq([p.data.orderLine, p.data.trip.orders.map(o => [o.go, o.changed])], [null, [['on', false]]]);
+  ok(/^[A-Z][a-z]+ came home from Stop 5\./.test(p.data.headline), p.data.headline);
+});
+test('(MER-78) a return with no order has none', () => {
+  const p = returnOf(play(writing(trek(calm)), 3, { n: 12 }));
+  eq([p.data.orderLine, p.data.trip.orders], [null, []]);
 });
 test('(2) an order answered long before it is due acts at the next decision point whatever leg the question was asked on', () => {
   // the question was asked on leg 1; the order is due in 4 and acts at the end of leg 3, two decision points later
@@ -593,6 +660,58 @@ test(`a cairo measure: ${GAMES} three-act games, at least 80 percent of answered
   ok(m.answered >= GAMES / 4, `questions answered: ${m.answered}`);
   ok(m.took >= 0.8 * m.answered, `answers that took effect: ${m.took} of ${m.answered}`);
   eq(m.stranded, 0, 'no report left in the post at the game\'s end');
+});
+
+test('(MER-88) a later effect set by a letter\'s answer is named on the Accounts paper by the letter and the answer', () => {
+  const c = writing(trek(calm), question('q1', at('s2'), { title: 'The wind at Stop 2', choices: choicesOf().map(ch => (ch.id === 'on' ? { ...ch, later: [{ in: 1, do: [{ money: 5 }] }] } : ch)) }));
+  const seed = seedFor(c, st => st.some(s => s.desk.some(p => p.ref === 'q1')), { n: 8 });
+  const states = play(c, seed, { choices: { q1: 'on' }, n: 10 });
+  const items = states.flatMap(s => s.desk).filter(p => p.kind === 'accounts').flatMap(p => p.items);
+  const item = items.find(i => i.from === 'q1/on');
+  ok(item, 'the effect fired onto the Accounts paper');
+  eq([item.card, item.choice], ['The wind at Stop 2', 'Go on']);
+});
+
+// ---- MER-88: a turn-back answer turns the agent back, or the paper says in one sentence why it did not
+const lossy = (risk, stop) => writing(variant(trek(calm, { risk }), x => { x.city.jump = { wholeLoss: 1 }; }), question('q1', at(stop)));
+const lostOf = states => states.flatMap(s => s.desk).find(p => p.kind === 'lost');
+test('(MER-88) a loss that overtook a turn-back answer says the answer had not reached the agent, and where the loss struck', () => {
+  const c = lossy({ 4: 1 }, 's2');
+  const seed = seedFor(c, st => /had not reached/.test(lostOf(st)?.data.orderLine ?? ''), { choices: { q1: 'home' }, n: 10 });
+  const p = lostOf(play(c, seed, { choices: { q1: 'home' }, n: 10 }));
+  eq(p.data.orderLine, 'You told Tobin to turn back, but the answer had not reached Tobin when the mule train was lost on the way from Stop 4 to Stop 5.');
+  ok(p.data.lines.some(l => l.label === 'Your order' && l.text === p.data.orderLine), 'the paper prints it as a line');
+});
+test('(MER-88) a loss on the leg after the answer reached the agent says where the answer found it', () => {
+  const c = lossy({ 3: 1 }, 's1');
+  const seed = seedFor(c, st => /before there was a stop to turn back at/.test(lostOf(st)?.data.orderLine ?? ''), { choices: { q1: 'home' }, n: 10 });
+  const p = lostOf(play(c, seed, { choices: { q1: 'home' }, n: 10 }));
+  eq(p.data.orderLine, 'You told Tobin to turn back, and the answer reached Tobin at Stop 3, but the mule train was lost on the way from Stop 3 to Stop 4 before there was a stop to turn back at.');
+});
+test('(MER-88) an answer that reached an agent already on the road home says there was nowhere to turn back to', () => {
+  const c = lossy({ 3: 1 }, 's2');
+  const seed = seedFor(c, st => /already on the road home/.test(lostOf(st)?.data.orderLine ?? ''), { choices: { q1: 'home' }, n: 10 });
+  const p = lostOf(play(c, seed, { choices: { q1: 'home' }, n: 10 }));
+  ok(/^You told Tobin to turn back at Stop \d, but the mule train was already on the road home, so there was nowhere to turn back to\.$|was already on the road home when the mule train was lost/.test(p.data.orderLine), p.data.orderLine);
+});
+test('(MER-88) over sixty games, every turn-back answer given to a living expedition ends in a turn or a sentence on its paper', () => {
+  let checked = 0, turned = 0;
+  for (const risk of [{}, { 3: 0.5 }]) for (const stop of ['s1', 's2', 's3']) {
+    const c = lossy(risk, stop);
+    for (let seed = 1; seed <= 10; seed++) {
+      const states = play(c, seed, { choices: { q1: 'home' }, n: 14 });
+      const answered = states.find(s => s.desk.some(p => p.ref === 'q1' && s.expeditions.some(x => x.id === p.expedition)));
+      if (!answered) continue;
+      const paper = states.flatMap(s => s.desk).find(p => (p.kind === 'return' || p.kind === 'lost') && p.expedition === answered.desk.find(q => q.ref === 'q1').expedition);
+      if (!paper) continue;
+      checked++;
+      const line = paper.data.orderLine;
+      ok(typeof line === 'string' && /turn back/.test(line), `seed ${seed}, ${JSON.stringify(risk)}, ${stop}: a ${paper.kind} paper with no word on the turn-back answer (${line})`);
+      if (/came home from there/.test(line)) turned++;
+    }
+  }
+  ok(checked >= 20, `only ${checked} games gave a turn-back answer to a living expedition`);
+  ok(turned >= 1, 'some of them turned');
 });
 
 await done();
