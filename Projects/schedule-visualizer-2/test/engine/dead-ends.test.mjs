@@ -163,7 +163,7 @@ test('a stairwell in two parts is a warning with the fix, and a whole one says n
   const project = fiveFloors();
   assert.equal(stairwells(project.building)[0].parts, 2);
   const [finding] = only(project, 'stairwell-split');
-  assert.equal(finding.id, 'stairwell-split:A');
+  assert.equal(finding.id, 'stairwell-split:' + F1 + ':14', 'the lowest stop of the well: floor and cell');
   assert.equal(finding.severity, 'warning');
   assert.equal(finding.fixable, true);
   assert.equal(finding.text, 'Stairwell A is in 2 parts: Floor 1 to Floor 2, and Floor 4 to Floor 5. Join the parts, or split the stairwell.');

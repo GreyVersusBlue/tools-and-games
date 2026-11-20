@@ -100,7 +100,8 @@ test('the sample school: the walk that does not fit is found with real crowd res
   assert.equal(timedWalk.total, 261);
   assert.equal(timedWalk.late, true);
   assert.equal(result.versions, null);
-  assert.deepEqual(result.buildingFindings, []);
+  // SV2-135's dead-end check moved this line: the sample's halls end in dead ends and nothing else is wrong in the building
+  assert.deepEqual(result.buildingFindings.map((finding) => finding.severity + ' ' + finding.id), ['note dead-end:fsample001:291', 'note dead-end:fsample002:291', 'warning dead-end:fsample002:314', 'note dead-end:fsample003:312', 'warning dead-end:fsample003:314']);
 });
 
 test('what the pipeline keeps is what a fresh run works out, after every kind of change', () => {

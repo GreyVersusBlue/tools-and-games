@@ -403,7 +403,8 @@ export function buildingChecks(project, graph) {
   }
 
   // a stairwell in parts (a file edited elsewhere; the editor mends these as
-  // they happen): the fix is joinStairwell, offered as "Join the parts"
+  // they happen): the fix is joinStairwell, offered as "Join the parts". The id
+  // is the well's lowest stop (floor and cell), the form every id here has.
   const floorName = (floorId) => {
     const floor = building.floors.find((candidate) => candidate.id === floorId);
     return floor ? floor.name : 'a floor that is gone';
@@ -437,7 +438,7 @@ export function buildingChecks(project, graph) {
     const first = stopsOf[0][0];
     const onFirst = stopsOf[0].filter((stop) => stop.floorId === first.floorId).map((stop) => stop.cell).sort((a, b) => a - b);
     const where = { floorId: first.floorId, cells: onFirst, well: well.letter, connectionIds: well.connectionIds.slice(), floors: stopsOf.map((stops) => ({ floorId: stops[0].floorId, cells: stops.filter((stop) => stop.floorId === stops[0].floorId).map((stop) => stop.cell).sort((a, b) => a - b) })) };
-    const finding = { id: findingId('stairwell-split', well.letter), kind: 'stairwell-split', severity: 'warning', text: 'Stairwell ' + well.letter + ' is in ' + well.parts + ' parts: ' + (words.length > 2 ? words.slice(0, -1).join(', ') + ', and ' + words[words.length - 1] : words.join(', and ')) + '. Join the parts, or split the stairwell.', where, fixable: true };
+    const finding = { id: findingId('stairwell-split', first.floorId, first.cell), kind: 'stairwell-split', severity: 'warning', text: 'Stairwell ' + well.letter + ' is in ' + well.parts + ' parts: ' + (words.length > 2 ? words.slice(0, -1).join(', ') + ', and ' + words[words.length - 1] : words.join(', and ')) + '. Join the parts, or split the stairwell.', where, fixable: true };
     found['stairwell-split'].push(finding);
   }
 
