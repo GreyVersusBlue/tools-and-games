@@ -181,6 +181,15 @@ export function paperTitle(content, paper, cards) {
   return cards?.[paper.id]?.title ?? sourceOf(content, paper).title ?? 'A paper';
 }
 
+/** The headline on an opened return (DESIGN 2.2 rule 2): the engine's sentence, then what the sheet hoped for at sending and
+    the one reason for the gap. A save from before `hoped` was kept (both null) reads as it always did. */
+export function returnHeadline(content, paper) {
+  const d = paper.data ?? {}, head = paperTitle(content, paper);
+  if (paper.kind !== 'return' || !Number.isFinite(d.hoped) || !d.why) return head;
+  const hoped = d.hoped >= 0 ? `We hoped for about ${dinars(d.hoped)}.` : `We expected to lose about ${dinars(-d.hoped)}.`;
+  return `${head} ${hoped} ${d.why}`;
+}
+
 /** Who a paper is from: the agent's seal on a return or a loss, a plain mark on the rest. */
 export function senderOf(content, paper) {
   const agent = paper.agent && (content.agents ?? []).find(a => a.id === paper.agent);
@@ -356,7 +365,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId, onkeydown: onKey },
     head(app, senderOf(content, paper)),
     slot,
-    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(content, paper)),
+    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, returnHeadline(content, paper)),
     ...body,
     asking ? null : h('button', { class: 'button next', type: 'button', id: 'btn-next', onclick: onDone }, paper.kind === 'return' ? 'Into the ledger' : 'Noted'));
 }
