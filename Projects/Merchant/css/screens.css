@@ -327,7 +327,12 @@ html.large-text .title-what { display: none; }
 .stoplist .option.lit { outline: 2px solid var(--brass-dark); outline-offset: -2px; }
 .prices-open { display: none; }
 .prices-box { container-type: inline-size; }
-.prices-head { display: none; font-size: var(--step-1); margin: 0 0 var(--s2); }
+.prices-head { font-size: var(--step-1); margin: 0 0 var(--s1); }
+.trades { list-style: none; margin: var(--s2) 0; padding: 0; font-family: var(--font-chrome); font-size: var(--step-0); }
+.trade { padding: var(--s2) 0; border-bottom: 1px solid var(--paper-shade); }
+.trade .when { display: block; font-size: var(--step--1); color: var(--ink-soft); }
+.all-prices { margin: var(--s2) 0; }
+.prices-all[hidden] { display: none; }
 .prices { width: 100%; border-collapse: collapse; font-family: var(--font-chrome); font-size: var(--step-0); }
 .prices th, .prices td { padding: var(--s2) var(--s1); border-bottom: 1px solid var(--paper-shade); text-align: left; vertical-align: top; }
 .prices .when { display: block; font-size: var(--step--1); color: var(--ink-soft); }
@@ -390,16 +395,24 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 .outfit .summary .change { flex: none; }
 .outfit .change { min-height: var(--hit); min-width: var(--hit); padding: 0 var(--s2); background: none; color: var(--lapis); text-decoration: underline;
   font-family: var(--font-chrome); font-weight: 600; font-size: var(--step-0); }
+.outfit .typed { display: flex; align-items: center; gap: var(--s2); min-height: var(--hit); flex-wrap: wrap; }
+.outfit .typed input { min-height: var(--hit); width: 8rem; padding: 0 var(--s2); font: inherit; }
 .outfit .none, .outfit .total { font-family: var(--font-chrome); margin: var(--s2) 0 0; }
 .outfit .warn { color: var(--madder); font-family: var(--font-chrome); margin: var(--s2) 0 0; }
 .outfit .now.closed { color: var(--madder); font-weight: 600; }
 .outfit .legs { margin: 0; padding-left: 1.4rem; font-family: var(--font-chrome); }
 .outfit .legs li { padding: var(--s1) 0; }
 .agents, .contracts { display: grid; gap: var(--s2); grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-.agent, .contract { display: flex; gap: var(--s3); align-items: flex-start; text-align: left; min-height: 56px; padding: var(--s2) var(--s3);
+.agent, .contract, .back-pick { display: flex; gap: var(--s3); align-items: flex-start; text-align: left; min-height: 56px; padding: var(--s2) var(--s3);
   background: transparent; color: var(--ink); border: 1px solid var(--ink-soft); border-left: .3rem solid var(--brass); border-radius: var(--radius); font-family: var(--font-paper); }
-.agent[aria-checked="true"], .contract[aria-checked="true"] { background: var(--paper-shade); border-color: var(--brass-dark); box-shadow: inset 0 0 0 2px var(--brass-dark); }
-.agent-text, .contract { flex-direction: column; }
+.agent[aria-checked="true"], .contract[aria-checked="true"], .back-pick[aria-checked="true"] { background: var(--paper-shade); border-color: var(--brass-dark); box-shadow: inset 0 0 0 2px var(--brass-dark); }
+.agent-text, .contract, .back-pick { flex-direction: column; }
+.back-pick { width: 100%; font-family: var(--font-chrome); }
+.back-pick strong { font-family: var(--font-paper); font-size: var(--step-1); }
+.back-pick span { font-size: var(--step--1); color: var(--ink-soft); }
+.back-pick .suggested { color: var(--lapis); font-weight: 600; }
+.back-good { display: block; }
+.send-row .estimate { font-family: var(--font-chrome); margin: 0 0 var(--s2); }
 .agent-text { display: flex; gap: .15rem; font-family: var(--font-chrome); }
 .agent-text strong { font-family: var(--font-paper); font-size: var(--step-1); }
 .agent-text .trust, .contract span { font-size: var(--step--1); color: var(--ink-soft); font-family: var(--font-chrome); }
@@ -460,6 +473,8 @@ dialog.book .panel-actions { flex: none; }
 .nb-entry { display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s2) 0; border-bottom: 1px solid var(--paper-shade); }
 .nb-entry h4 { font-size: var(--step-1); margin: 0 0 var(--s1); }
 .nb-entry .nb-body { margin: 0; }
+.nb-open summary { min-height: var(--hit); display: list-item; padding: var(--s1) 0; box-sizing: border-box; cursor: pointer; }
+.nb-open summary h4 { display: inline; margin: 0; }
 .nb-entry .source { font-size: var(--step--1); color: var(--ink-soft); margin: var(--s1) 0 0; }
 .nb-art { flex: none; width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: var(--radius); }
 .nb-blank { height: var(--s4); border-bottom: 1px solid var(--ink-soft); opacity: .45; }

@@ -25,11 +25,10 @@ import { decide, close, seasonsLeft, MAX_HOLD, WAIT, HOME } from './letters.js';
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
 export const QIRAD_STAKE = 60;      // coins the partners put in for a suggested qirad, at most (a fifth of the house's money when that is less)
 export const RULES = {
-  // DESIGN 2.2 rule 1: money sent to buy with, and no good named to bring back, is refused in words. OFF for now: test/letters.mjs
-  // (its whole-city game function, MER-94's file) sends `purse: 40, buy: []` to every road and so is refused every time ("0 questions answered").
-  // Turn this on in the same commit that gives that plan a `buy` (any good the stop sells and the house sells at home).
-  // test/venture.mjs runs the rule with the switch on.
-  refuseUnspentMoney: false,
+  // DESIGN 2.2 rule 1: money sent to buy with, and no good named to bring back, is refused in words, and the sheet offers the
+  // default (MER-93). It shipped off until test/letters.mjs's game plan named a good to bring back (MER-95) and the sheet could
+  // show the reason; test/venture.mjs keeps a case that it is on, and a false here fails the named cases there.
+  refuseUnspentMoney: true,
 };
 export const UPKEEP = 4;            // coins a season for an expedition waiting at a stop (an estimate; the bots tune it)
 // What happens to an expedition that is lost, and to an agent at home across the act jump: the

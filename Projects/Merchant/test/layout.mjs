@@ -108,6 +108,10 @@ const states = {
   firstDone: (() => { let s = fresh(); for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, content, p.id, FIRST[p.ref]); return s; })(),
   interlude: playUntil(s => s.phase === 'interlude'),
   recall: playUntil(s => s.phase === 'recall'),
+  // the second expedition (MER-93): news has come, so the map's price panel has three best trades and the outfit sheet opens on the
+  // engine's proposal with every section open, a bring-back good named and an estimate line under Send
+  second: playUntil(x => x.phase === 'desk' && x.t >= 3 && x.log.some(e => e.kind === 'outfit') && eng.view(x, content).bestTrades.length === 3
+    && content.agents.filter(a => x.agents[a.id]?.hired && x.agents[a.id].where === 'cairo' && !x.expeditions.some(e => e.agent === a.id)).length >= 2),
   // a house with an expedition out, stock, a loan and several notebook entries, and the `season` log
   // entries the ledger's money trail reads (ledger.js: { kind: 'season', at, change }); the engine does not write them yet
   book: (() => {
@@ -248,6 +252,22 @@ const SCREENS = [
       if (await p.$eval('#prices-box', e => getComputedStyle(e).display === 'none')) { await p.click('#btn-prices'); }
     },
     modalOf: p => p.evaluate(() => { const b = document.getElementById('prices-box'); return b?.getAttribute('aria-modal') === 'true' ? '#prices-box' : null; }) },
+  { name: 'outfit-second', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      await p.click('#btn-outfit');
+      await p.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await p.waitForSelector('#outfit-estimate');
+    } },
+  { name: 'price-board-news',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      if (await p.$eval('#prices-box', e => getComputedStyle(e).display === 'none')) { await p.click('#btn-prices'); }
+      await p.waitForSelector('#best-trades li');
+    },
+    modalOf: p => p.evaluate(() => { const b = document.getElementById('prices-box'); return b?.getAttribute('aria-modal') === 'true' ? '#prices-box' : null; }) },
   { name: 'ledger', modal: 'dialog[open]',
     go: async (p, f) => {
       await load(p, '#desk', { state: states.book, large: f.large });
@@ -372,7 +392,11 @@ const collectText = scopeSel => {
       // keep what is on screen and inside every clipping ancestor
       let x0 = Math.max(r.left, 0), y0 = Math.max(r.top, 0), x1 = Math.min(r.right, vw), y1 = Math.min(r.bottom, vh);
       for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
-        if (getComputedStyle(a).overflow !== 'visible') { const b = a.getBoundingClientRect(); x0 = Math.max(x0, b.left); y0 = Math.max(y0, b.top); x1 = Math.min(x1, b.right); y1 = Math.min(y1, b.bottom); }
+        const ca = getComputedStyle(a);
+        if (ca.overflow !== 'visible') { const b = a.getBoundingClientRect(); x0 = Math.max(x0, b.left); y0 = Math.max(y0, b.top); x1 = Math.min(x1, b.right); y1 = Math.min(y1, b.bottom); }
+        // a fixed box is placed against the viewport: what scrolls or clips its ancestors does not clip it (the price board's phone dialog
+        // sits inside the board, which scrolls; with a short panel every line was above the board's own top edge and none was measured)
+        if (ca.position === 'fixed') break;
       }
       // a line cut by its scroll box is half a line: it is measured when it scrolls fully into view
       if ((y1 - y0) < (r.height - 1) || (x1 - x0) < (r.width - 1)) continue;
