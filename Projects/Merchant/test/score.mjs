@@ -5,8 +5,9 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { freshState } from '../js/engine/state.js';
-import { newGame, openSeason, choose, paperChoices, endSeason, recall, score } from '../js/engine/index.js';
-import { scaled, REP_POINTS, HOME_POINTS, HOME_TRUST_BONUS, NOTEBOOK_POINTS } from '../js/engine/score.js';
+import { newGame, openSeason, choose, paperChoices, endSeason, recall, score, outfit } from '../js/engine/index.js';
+import { recallRisk, chanceWord } from '../js/engine/routes.js';
+import { scaled, netWealth, REP_POINTS, HOME_POINTS, HOME_TRUST_BONUS, NOTEBOOK_POINTS } from '../js/engine/score.js';
 
 const testport = await loadContent('testport', { fs });
 const cairo = await loadContent('cairo', { fs });
@@ -71,24 +72,101 @@ test('score: reputation is the four groups summed, scaled, and never under 0', (
   eq(part(s, 'reputation').points, 0);
 });
 
-test('score: people home counts the hired who are alive and in the home city, more at trust 2 or 3', () => {
+test('score: people home counts the hired who made a trip and are alive in the home city, more at trust 2 or 3', () => {
   const s = bare();
-  s.agents.mira.hired = true; s.agents.mira.where = home; s.agents.mira.trust = 1;
+  s.agents.mira.hired = true; s.agents.mira.where = home; s.agents.mira.trust = 1; s.agents.mira.trips = 1;
   eq(part(s, 'people').points, HOME_POINTS);
   s.agents.mira.trust = 2;
   eq(part(s, 'people').points, HOME_POINTS + HOME_TRUST_BONUS);
-  s.agents.tobin.hired = true; s.agents.tobin.where = home; s.agents.tobin.trust = 3;
+  s.agents.tobin.hired = true; s.agents.tobin.where = home; s.agents.tobin.trust = 3; s.agents.tobin.trips = 2;
   eq(part(s, 'people').points, 2 * (HOME_POINTS + HOME_TRUST_BONUS));
 });
 
 test('score: an agent who is dead, gone, away or not hired earns nothing', () => {
   const s = bare();
+  s.agents.mira.trips = 3;
   for (const where of ['dead', 'gone', 'road', 'hilltown']) {
     s.agents.mira.hired = true; s.agents.mira.where = where;
     eq(part(s, 'people').points, 0, where);
   }
   s.agents.mira.where = home; s.agents.mira.hired = false;
   eq(part(s, 'people').points, 0, 'not hired');
+});
+
+test('score: a hire who never left home scores nothing for people, whenever they were hired (the M4 play\'s last-season hires)', () => {
+  const s = bare();
+  s.agents.mira.hired = true; s.agents.mira.where = home; s.agents.mira.trust = 3;   // trusted, alive, home, and never sent
+  eq(part(s, 'people').points, 0);
+  ok(/never left Harbour and counts for nothing/.test(part(s, 'people').reason), part(s, 'people').reason);
+  s.agents.mira.trips = 1;
+  eq(part(s, 'people').points, HOME_POINTS + HOME_TRUST_BONUS, 'one trip is enough');
+  ok(!/never left/.test(part(s, 'people').reason), part(s, 'people').reason);
+  s.agents.tobin.hired = true; s.agents.tobin.where = home;   // a second hire who never left
+  eq(part(s, 'people').points, HOME_POINTS + HOME_TRUST_BONUS, 'the one who stayed adds nothing');
+  s.agents.mira.where = 'dead';
+  eq(part(s, 'people').points, 0, 'a traveller who died before the end scores nothing either');
+});
+
+test('score: sending an agent counts a trip, and it is what the people part reads end to end', () => {
+  let s = newGame(testport, { seed: 7, length: 'acts', house: 'plain' });
+  eq(s.agents.mira.trips ?? 0, 0);
+  s = outfit(s, testport, { agent: 'mira', route: 'harbour-hilltown', cargo: { wool: 10 }, purse: 0, contract: 'own', sell: ['wool'], buy: [] });
+  eq(s.agents.mira.trips, 1);
+  const home0 = JSON.parse(JSON.stringify(s)); home0.expeditions = []; home0.agents.mira.where = home;
+  ok(part(home0, 'people').points >= HOME_POINTS, 'back from that trip, Mira scores');
+  const never = newGame(testport, { seed: 7, length: 'acts', house: 'plain' });
+  eq(part(never, 'people').points, 0, 'a house that sent nobody has no one who counts');
+});
+
+test('score: the wealth part carries cash, stock with its loads, loans and what a recall brought, and says them with separators', () => {
+  const g = testport.goods[0].id;
+  const s = bare({ money: 2000 });
+  s.stock = { [g]: 12 }; s.known = { [home]: { [g]: { p: 50, at: 0 } } };
+  s.loans = [{ id: 'l1', from: 'x', principal: 147, due: 9, rate: 0.1 }];
+  s.log = [{ at: 5, kind: 'recall', results: [{ agent: 'mira', how: 'recalled', survived: true, brought: 300 }, { agent: 'tobin', how: 'home', survived: true }] }];
+  const w = part(s, 'wealth');
+  eq(w.data, { cash: 2000, stock: { value: 600, loads: 12, goods: [{ good: g, loads: 12, price: 50 }], unpriced: 0 }, loans: 147, brought: 300, net: 2453 });
+  eq(w.reason, 'The house holds 2,453 dinars: 2,000 in cash (300 of it brought home by a recall), 600 in 12 loads of stock at the last prices known at home, less 147 owed.'.replace('dinars', testport.city.currency));
+  eq(netWealth(s, testport).net, 2453);
+  const plain = part(bare({ money: 1200 }), 'wealth');
+  eq(plain.reason, `The house holds 1,200 ${testport.city.currency}: 1,200 in cash, no stock, and owes nothing.`);
+  const unknown = bare({ money: 100 }); unknown.stock = { [g]: 3 };
+  ok(/3 loads of it with no known price and counted for nothing/.test(part(unknown, 'wealth').reason), part(unknown, 'wealth').reason);
+});
+
+test('recall: the engine says each person\'s odds in words, on the road and at home, from the numbers it rolls with', () => {
+  const c = structuredClone(testport);
+  c.city.recall = { reach: { start: 0.9, perSeason: 0, floor: 0 }, recalledKeeps: 0.5, recalledSurvives: 0.9, stayedSurvives: 0.5, homeSurvives: 0.6, byStop: {} };
+  let s = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  let facts = recallRisk(s, c);
+  const m = facts.find(f => f.agent === 'mira');
+  eq([m.where, m.place, m.ifStays, m.risk], ['home', home, 0.6, 'maybe'], 'at home the plague takes 4 in 10: "maybe"');
+  s = outfit(s, c, { agent: 'mira', route: 'harbour-hilltown', cargo: { wool: 10 }, purse: 0, contract: 'own', sell: ['wool'], buy: [] });
+  const r = recallRisk(s, c).find(f => f.agent === 'mira');
+  eq([r.where, r.expedition, r.reach, r.reachWord, r.ifStays, r.risk], ['road', 'x1', 0.9, 'sure', 0.5, 'likely']);
+  ok(Math.abs(r.ifCalled - (0.9 * 0.9 + 0.1 * 0.5)) < 1e-9, `ifCalled ${r.ifCalled}`);
+  eq(r.riskIfCalled, 'unlikely', 'called, 14 in 100 die: unlikely');
+  eq(recallRisk(s, c).filter(f => f.agent === 'mira').length, 1, 'one fact per person, not one at home as well');
+  s.agents.tobin.where = 'dead'; s.agents.mira.hired = false;
+  eq(recallRisk(s, c).find(f => f.agent === 'tobin'), undefined, 'the dead are not asked about');
+  eq([0.8, 0.79, 0.5, 0.49, 0.25, 0.24].map(chanceWord), ['sure', 'likely', 'likely', 'maybe', 'maybe', 'unlikely']);
+});
+
+test('recall: a return at the end writes the money it brought, and the score\'s wealth says it', () => {
+  const c = structuredClone(testport);
+  for (const r of c.routes) for (const l of r.legs) l.risk = 0;
+  c.city.recall = { reach: { start: 1, perSeason: 0, floor: 1 }, recalledKeeps: 1, recalledSurvives: 1, stayedSurvives: 1, homeSurvives: 1, byStop: {} };
+  let s = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  s = outfit(s, c, { agent: 'mira', route: 'harbour-hilltown', cargo: { wool: 10 }, purse: 40, contract: 'own', sell: ['wool'], buy: [] });
+  s.phase = 'recall';
+  const before = s.money;
+  const e = recall(s, c, { [s.expeditions[0].id]: 'recall' });
+  const line = e.log.at(-1).results[0];
+  eq(line.how, 'recalled');
+  eq(line.brought, e.money - before, 'brought is exactly what the cash gained');
+  ok(line.brought >= 40, `the purse alone is 40, got ${line.brought}`);
+  eq(e.score.parts.find(p => p.id === 'wealth').data.brought, line.brought);
+  eq(e.agents.mira.trips, 1);
 });
 
 test('score: the notebook gives points per entry found', () => {

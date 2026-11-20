@@ -335,7 +335,7 @@
       {
         "id": "judge",
         "label": "Take him to a judge",
-        "hint": "It costs now. Hamid will be your enemy.",
+        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues.",
         "requires": {
           "money": {
             "gte": 25

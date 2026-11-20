@@ -100,7 +100,7 @@
       {
         "id": "even",
         "label": "Split it evenly, as the ledger says",
-        "hint": "Both will be a little unhappy.",
+        "hint": "Both are a little unhappy now. A fair count earns respect later.",
         "now": [
           {
             "rep": "partners",

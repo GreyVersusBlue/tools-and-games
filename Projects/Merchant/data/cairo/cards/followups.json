@@ -678,7 +678,7 @@
       {
         "id": "ledger",
         "label": "Show him the ledger first",
-        "hint": "It may hurt his pride. The claim may shrink, and you keep 15 dinars.",
+        "hint": "It may hurt his pride now. You keep 15 dinars, and a fair count is respected later.",
         "now": [
           {
             "rep": "partners",
@@ -1003,7 +1003,7 @@
       {
         "id": "fee",
         "label": "Ask him to pay for the two poor bales",
-        "hint": "You win back 30 dinars. Brokers talk.",
+        "hint": "You win back 30 dinars. Brokers talk now, and trust a house that checks later.",
         "now": [
           {
             "money": 30
@@ -1028,7 +1028,7 @@
       {
         "id": "sell",
         "label": "Sell the two poor bales cheaply",
-        "hint": "You lose some linen and gain 50 dinars.",
+        "hint": "You lose two loads of linen and gain 50 dinars.",
         "now": [
           {
             "stock": "linen",
@@ -1037,7 +1037,11 @@
           {
             "money": 50
           }
-        ]
+        ],
+        "requires": {
+          "stock": "linen",
+          "gte": 2
+        }
       },
       {
         "id": "lesson",
@@ -1219,7 +1223,7 @@
       {
         "id": "let-go",
         "label": "Let him go",
-        "hint": "He goes to another house.",
+        "hint": "He goes to another house, and pays back 10 coins he owes.",
         "now": [
           {
             "dismiss": "samir"
