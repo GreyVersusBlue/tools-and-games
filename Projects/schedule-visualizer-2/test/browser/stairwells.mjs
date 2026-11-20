@@ -284,6 +284,35 @@ test('a stairwell\'s properties: one way for every flight, the Letter field, a r
   assert.deepEqual(await wells(), [['A', null], ['B', null]]);
 });
 
+test('a plain flight that lands on a stop of a stairwell is shown in the stop\'s properties, with Disconnect as the menu has it', async () => {
+  await floors(4, [1, 2, 3, 4], { flights: [[1, 2], [2, 3]] });
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const { makeStairwell } = await import('./engine/stairwells.js');
+    const actions = await import('./engine/actions.js');
+    store.apply(makeStairwell, { connectionId: store.project.building.connections[0].id });
+    // a plain flight from the stairwell's top stop on up, as an older file may hold
+    const all = store.project.building.floors;
+    store.apply(actions.connectStairs, { a: { floorId: all[2].id, cell: 14 + 10 * 40 }, b: { floorId: all[3].id, cell: 14 + 10 * 40 } });
+  });
+  const plain = (await building()).connections.find((connection) => !connection.well);
+  assert.ok(plain, 'no plain flight was made: ' + JSON.stringify(await wells()));
+  await propertiesOf('Floor 3');
+  assert.equal(await title(), 'Stairwell A');
+  const menu = await menuOn(14, 10);
+  await page.keyboard.press('Escape');
+  assert.ok(menu.includes('Disconnect stairs ' + plain.label), menu.join(' | '));
+  assert.equal(await text('#well-others-heading'), 'Other stairs at this stop');
+  const rows = await page.$$eval('#well-others li', (all) => all.map((li) => [li.querySelector('.bi-row__text').textContent, Array.from(li.querySelectorAll('button')).map((b) => b.textContent)]));
+  assert.deepEqual(rows, [['Stairs ' + plain.label + ': joins Floor 3 and Floor 4', ['Disconnect']]]);
+  const before = await entries();
+  await page.click(key('disconnect-other:' + plain.id));
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.every((connection) => connection.well));
+  assert.equal(await entries(), before + 1);
+  assert.equal(await exists('#well-others'), false, 'the row went with the flight');
+  assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.dataset.key), 'panel-title', 'the focus fell out of the panel');
+});
+
 // ---------------------------------------------------------------- connect another floor
 
 test('Connect another floor… adds a stop from a stop: the banner names the stairwell, a floor it already stops on is refused, Escape cancels', async () => {

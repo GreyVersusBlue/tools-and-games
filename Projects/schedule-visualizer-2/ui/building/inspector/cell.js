@@ -338,6 +338,11 @@ export function cellPanel(env) {
       cell,
       where: floor.name + ', ' + cellWords(floor, cell),
       connections: plain.map((connection) => stairsLetter(connection)),
+      // at a stop of a stairwell, the plain flights that land here too: shown under it, each with Disconnect, as the menu offers
+      others: facts ? plain.map((connection) => {
+        const names = [connection.a, connection.b].map((end) => (building.floors.find((each) => each.id === end.floorId) || { name: 'a floor that is gone' }).name);
+        return { id: connection.id, letter: stairsLetter(connection), joins: names[0] === names[1] ? 'two places on ' + names[0] : names[0] + ' and ' + names[1] };
+      }) : [],
       well: facts,
       offer,
       refuge: at.refuge ? { id: at.refuge.id, name: at.refuge.name, used: refugeUse(state.project, at.refuge.id) } : null,
@@ -417,6 +422,15 @@ export function cellPanel(env) {
         })),
     ];
     if (well.parts > 1) nodes.push(h('p', { class: 'bld-inspector__small', id: 'well-parts' }, name + ' is in ' + well.parts + ' parts that share no stairs. Building checks offers to join them.'));
+    if (model.others.length > 0) {
+      nodes.push(heading('Other stairs at this stop', 'well-others-heading'));
+      nodes.push(h('ul', { class: 'bi-rows', id: 'well-others', 'aria-label': 'Other stairs at this stop' },
+        ...model.others.map((other) => h('li', { class: 'bi-row', data: { other: other.id } },
+          h('span', { class: 'bi-row__text' }, 'Stairs ' + other.letter + ': joins ' + other.joins),
+          button('Disconnect', 'disconnect-other:' + other.id, () => {
+            keeping(['panel-title'], () => ed().commit(disconnectStairs, { connectionId: other.id }, { done: () => 'Disconnected stairs ' + other.letter + '.' }));
+          }, { quiet: true, aria: 'Disconnect stairs ' + other.letter })))));
+    }
     return nodes;
   }
 
