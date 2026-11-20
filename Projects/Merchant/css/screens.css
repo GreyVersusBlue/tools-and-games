@@ -165,10 +165,11 @@ html.large-text .title-what { display: none; }
 .sheet .next { margin: var(--s3) 0 var(--s2); }
 .sheet .source { font-size: var(--step--1); color: var(--ink-soft); margin-top: var(--s2); }
 .account summary { min-height: var(--hit); display: list-item; padding: var(--s2) 0; box-sizing: border-box; cursor: pointer; }
-.account table { width: 100%; border-collapse: collapse; margin-top: var(--s2); }
-.account th { text-align: left; font-weight: 400; }
-.account td { text-align: right; }
-.account th, .account td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); }
+/* every account table, the return's folded one and the loss paper's open one: label left, value right, one rule under each row (MER-97) */
+.accounts-table { width: 100%; border-collapse: collapse; margin-top: var(--s2); }
+.accounts-table th { text-align: left; font-weight: 400; }
+.accounts-table td { text-align: right; }
+.accounts-table th, .accounts-table td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); vertical-align: baseline; }
 /* a phone keeps each account row's label and its value on one line, the value at the right and wrapping under the label only when it must (MER-87, finding 12) */
 @media (max-width: 480px) { .accounts-table tr { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); border-bottom: 1px solid var(--paper-shade); }
   .accounts-table th, .accounts-table td { border: 0; } .accounts-table td { flex: 0 1 auto; min-width: 0; } }

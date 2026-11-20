@@ -74,7 +74,7 @@ export function priceLine(app) {
   const { content, state } = app;
   const home = content.city.home, stopId = content.city.firstStop ?? 'damascus';
   const stop = (content.stops ?? []).find(x => x.id === stopId);
-  const plan = engine.suggestPlan(state, content, stopId);
+  const plan = cardPlan(state, content, stopId);
   const good = Object.keys(plan?.cargo ?? {})[0] ?? Object.keys(state.stock).find(g => stop?.sells?.[g]);
   if (!stop || !good) return null;
   const prices = app.view().prices, name = goodName(content, good);
@@ -86,6 +86,30 @@ export function priceLine(app) {
     parts.push(`${stop.name} paid ${num(there.p)}, ${ago}.`);
   }
   return parts.length ? parts.join(' ') : null;
+}
+
+const planCache = new WeakMap();   // state -> stop id -> plan; a checked plan clones the state, and a card is drawn more than once
+
+/** The plan the outfit sheet opens on for `stopId`, by the sheet's own rule (outfit.js, DESIGN 2.2 rule 1): the plain suggestion for
+    the first expedition of a game, from the second on the engine's proposal for the road the stop is reached by, for the first free
+    agent (one who knows the stop first) the engine has a proposal and an estimate for. Null when there is none. */
+function cardPlan(state, content, stopId) {
+  const seen = planCache.get(state) ?? new Map();
+  planCache.set(state, seen);
+  if (seen.has(stopId)) return seen.get(stopId);
+  let plan = null;
+  if (!state.log.some(e => e.kind === 'outfit')) plan = engine.suggestPlan(state, content, stopId);
+  else {
+    const home = content.city.home, roadId = engine.routeFor(state, content, stopId)?.route.id;
+    const free = (content.agents ?? []).filter(a => state.agents[a.id]?.hired && state.agents[a.id].where === home && !state.expeditions.some(x => x.agent === a.id));
+    const knows = a => a.traits?.includes(`knows-${stopId}`);
+    for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
+      const p = roadId ? engine.proposePlan(state, content, a.id, roadId) : null;
+      if (p && engine.estimate(state, content, p)) { plan = p; break; }
+    }
+  }
+  seen.set(stopId, plan);
+  return plan;
 }
 
 const listOf = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
@@ -171,8 +195,27 @@ export const RECORD_KINDS = ['return', 'lost', 'news', 'accounts'];
 
 const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.name ?? id;
 
+const sayKey = t => String(t ?? '').replace(/[.!?]+\s*$/, '').trim().toLowerCase();
+
+/** A loss paper's title: its headline without any sentence its question (`ask.title`) already says as a heading. A whole loss's
+    headline ends "Ali did not come back." and so does the entry's title; the sheet shows each sentence once. A headline that is
+    nothing but the question's title stays whole, and the question then goes without a heading of its own (askTitle). */
+function lossTitle(paper) {
+  const head = paper.data?.headline ?? 'News of the house', ask = paper.data?.ask?.title;
+  if (!ask) return head;
+  const kept = (head.match(/[^.!?]+[.!?]+/g) ?? [head]).map(x => x.trim()).filter(x => sayKey(x) !== sayKey(ask));
+  return kept.length ? kept.join(' ') : head;
+}
+
+/** The heading over a return's or loss's question: the entry's title, unless the paper's own title already says it. */
+const askTitle = (content, paper) => {
+  const t = paper.data?.ask?.title;
+  return t && sayKey(t) !== sayKey(paperTitle(content, paper)) ? t : null;
+};
+
 export function paperTitle(content, paper, cards) {
-  if (paper.kind === 'return' || paper.kind === 'lost') return paper.data?.headline ?? 'News of the house';
+  if (paper.kind === 'lost') return lossTitle(paper);
+  if (paper.kind === 'return') return paper.data?.headline ?? 'News of the house';
   if (paper.kind === 'news') {
     const n = paper.letters?.length ?? 0;
     return n === 1 ? `News from ${stopName(content, paper.letters[0].stop)}` : `News from ${n} cities`;
@@ -194,7 +237,7 @@ export function returnHeadline(content, paper) {
 export function senderOf(content, paper) {
   const agent = paper.agent && (content.agents ?? []).find(a => a.id === paper.agent);
   if (agent && paper.kind === 'letter') return { name: agent.name, role: 'Word from the road', seal: agent.seal };
-  if (agent && paper.kind !== 'notice') return { name: agent.name, role: paper.kind === 'lost' ? 'Word from the road' : 'Home from the road', seal: agent.seal };
+  if (agent && paper.kind !== 'notice') return { name: agent.name, role: paper.kind === 'lost' ? 'Bad news from the road' : 'Home from the road', seal: agent.seal };
   if (paper.kind === 'news') return { name: 'Price letters', role: 'Cairo', seal: null };
   if (paper.kind === 'accounts') return { name: 'Your clerk', role: 'The house, Cairo', seal: null };
   return sourceOf(content, paper).from ?? null;
@@ -333,11 +376,12 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
     const choices = choicesOf(app, paper);
     if (choices.some(c => c.id !== 'ok')) {
       asking = true;
+      const asked = askTitle(content, paper);
       const askId = `paper-${paper.id}-ask`;
       body.push(h('div', { class: 'ask', id: askId },
-        d.ask?.title ? h('h3', { class: 'ask-title' }, d.ask.title) : null,
+        asked ? h('h3', { class: 'ask-title' }, asked) : null,
         d.ask?.body ? h('p', { class: 'sheet-body' }, d.ask.body) : null),
-      choiceList(choices, { titleId: d.ask?.title ? askId : titleId, paper, onChoose, locked }));
+      choiceList(choices, { titleId: asked ? askId : titleId, paper, onChoose, locked }));
     }
   } else if (paper.kind === 'news') {
     if (paper.line) body.push(h('p', { class: 'sheet-body' }, paper.line));
