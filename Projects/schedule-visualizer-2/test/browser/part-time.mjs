@@ -455,6 +455,35 @@ test('14. a Remove refused with no entry open is shown in the editor', async () 
   await fresh();
 });
 
+test('15. the days a note names: only real day words, and a negation counts only where it governs the days', async () => {
+  await loadModule(page, 'teachers', 'ui/schedule/teachers.js');
+  const cases = [
+    ['Mon/Wed only', [0, 2]],
+    ['Tues and Thurs', [1, 3]],
+    ['Mondays, Tuesdays and Weds.', [0, 1, 2]],
+    ['Thurs. and Fri.', [3, 4]],
+    ['Tuesday to Thursday', [1, 2, 3]],
+    ['Mon-Fri', null],
+    // words that only start like a day
+    ['Monitors the lunch line', null],
+    ['Friendly with the bus drivers', null],
+    ['Away for a wedding in June', null],
+    ['thunder drills; frisbee club', null],
+    // a negation that governs the days: the days away
+    ['Not in on Fri', [0, 1, 2, 3]],
+    ['Off Thu', [0, 1, 2, 4]],
+    ['out Mon/Wed', [1, 3, 4]],
+    ['Except Fridays', [0, 1, 2, 3]],
+    ['Fridays off', [0, 1, 2, 3]],
+    // a negation elsewhere changes nothing
+    ['Mon/Wed only, not on duties', [0, 2]],
+    ['Tue/Thu; does not coach', [1, 3]],
+    ['In Mon and Tue, not in Fri', [0, 1]],
+  ];
+  const got = await page.evaluate((all) => all.map(([words]) => globalThis.sv2modules.teachers.noteDays(words)), cases);
+  assert.deepEqual(got.map((days, at) => [cases[at][0], days]), cases);
+});
+
 test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, and every control is 44 px', async () => {
   await fresh();
   await page.evaluate(() => globalThis.sv2.storage.flush());

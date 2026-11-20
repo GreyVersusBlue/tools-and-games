@@ -73,19 +73,48 @@ function consequence(teacher, list) {
 }
 
 // "Mon/Wed only", "Tuesdays and Thursdays": the weekdays a note names, when
-// they read as part-time days. Days after "not", "off" or "except" are the
-// days away; otherwise they are the days in school.
-const DAY_WORDS = [['mon', 0], ['tue', 1], ['wed', 2], ['thu', 3], ['fri', 4]];
+// they read as part-time days. Only real day words count: the names, their
+// plurals and the usual short forms ("mon", "tues", "weds", "thurs", with or
+// without a full stop), never "monitors", "friendly" or "wedding". Days next
+// to each other ("Mon/Wed", "Tue, Thu and Fri", "Mon-Wed") are one list. A list is the
+// days away when a negation governs it, directly before it ("not in on Fri",
+// "off Thu", "out Mon/Wed", "except Fridays") or directly after it ("Fridays
+// off"); otherwise it is the days in school, and a "not" elsewhere in the
+// note ("Mon/Wed only, not on duties") changes nothing.
+const DAY_WORD = /\b(?:(mon)(?:days?)?|(tue)s?(?:days?)?|(wed)(?:s|nesdays?)?|(thu)(?:rs?)?(?:days?)?|(fri)(?:days?)?)\b\.?/g;
+const DAY_GAP = /^\s*(?:(?:[,/&+]|and|or)\s*)*$/;
+const DAY_RANGE = /^\s*(?:-|–|to|through|thru)\s*$/;
+const AWAY_BEFORE = /\b(?:not|off|except|away|out|never)(?:\s+(?:in|on|at|school|work|working|the|any|of))*\s*:?\s*$/;
+const AWAY_AFTER = /^\s*(?:off|out|away)\b/;
 export function noteDays(notes) {
-  const found = [];
-  for (const match of String(notes).toLowerCase().matchAll(/\b(mon|tue|wed|thu|fri)[a-z]*\b/g)) {
-    const day = DAY_WORDS.find(([word]) => word === match[1])[1];
-    if (!found.includes(day)) found.push(day);
+  const text = String(notes).toLowerCase();
+  const runs = [];
+  for (const match of text.matchAll(DAY_WORD)) {
+    const day = [1, 2, 3, 4, 5].find((group) => match[group] !== undefined) - 1;
+    const last = runs[runs.length - 1];
+    const gap = last ? text.slice(last.end, match.index) : '';
+    if (last && DAY_RANGE.test(gap)) {
+      // "Mon-Wed", "Tuesday to Thursday": every day from one to the other
+      for (let each = last.days[last.days.length - 1] + 1; each <= day; each += 1) last.days.push(each);
+      last.end = match.index + match[0].length;
+    } else if (last && DAY_GAP.test(gap)) {
+      last.days.push(day);
+      last.end = match.index + match[0].length;
+    } else {
+      runs.push({ start: match.index, end: match.index + match[0].length, days: [day] });
+    }
   }
-  if (found.length === 0 || found.length === SCHOOL_DAYS.length) return null;
-  const away = /\b(not|off|except|away|out)\b/i.test(notes);
-  const inSchool = away ? SCHOOL_DAYS.filter((day) => !found.includes(day)) : found;
-  return inSchool.length === 0 ? null : inSchool.sort((a, b) => a - b);
+  if (runs.length === 0) return null;
+  const inDays = new Set();
+  const awayDays = new Set();
+  for (const run of runs) {
+    const away = AWAY_BEFORE.test(text.slice(0, run.start)) || AWAY_AFTER.test(text.slice(run.end));
+    for (const day of run.days) (away ? awayDays : inDays).add(day);
+  }
+  const inSchool = inDays.size > 0
+    ? SCHOOL_DAYS.filter((day) => inDays.has(day) && !awayDays.has(day))
+    : SCHOOL_DAYS.filter((day) => !awayDays.has(day));
+  return inSchool.length === 0 || inSchool.length === SCHOOL_DAYS.length ? null : inSchool;
 }
 
 export function mount(env) {
