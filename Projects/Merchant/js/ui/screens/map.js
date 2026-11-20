@@ -342,10 +342,11 @@ export function createMap(app, nav) {
   }
 
   // ---- the price board
+  let allPrices = false;       // the full table of the selected stop, one press away from Best known trades
   function drawBoard() {
     const v = app.view(), s = stopOf(content, selected), isHome = selected === home;
     boardTitle.textContent = `Prices in ${s.name}`;
-    pricesBtn.textContent = `Prices in ${s.name}`;
+    pricesBtn.textContent = 'Prices and best trades';
     const goods = Object.keys(s.sells ?? {});
     const cell = p => (p?.p == null ? h('span', { class: 'nonews' }, 'no news') : [h('strong', null, dinars(p.p)), h('span', { class: 'when' }, ` ${p.written}, ${p.ageWords}`)]);
     const rows = goods.map(g => {
@@ -355,13 +356,27 @@ export function createMap(app, nav) {
         h('td', { dataset: { label: s.name }, class: 'here' }, cell(v.prices[selected]?.[g])),
         isHome ? null : h('td', { dataset: { label: homeLabel() }, class: 'there' }, cell(v.prices[home]?.[g])));
     });
+    const trades = v.bestTrades ?? [];
+    const best = trades.length
+      ? h('ol', { class: 'trades', id: 'best-trades' }, trades.map(t => h('li', { class: 'trade', dataset: { stop: t.stop, good: t.good } },
+        h('strong', null, t.text), ' ',
+        h('span', { class: 'when' }, `${t.road}, about ${t.seasons} ${t.seasons === 1 ? 'season' : 'seasons'}. News ${t.ageWords === 'this season' ? 'from this season' : t.ageWords}; the road is ${t.riskWord}.`),
+        t.stop === selected ? null : h('button', { class: 'button trade-look', type: 'button', onclick: () => select(t.stop, { keepFocus: true }) }, `Look at ${stopName(content, t.stop)}`))))
+      : h('p', { class: 'none', id: 'best-trades' }, 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.');
+    const table = h('table', { class: 'prices', id: 'prices' },
+      h('caption', { class: 'visually-hidden' }, `Prices for each good ${s.name} trades, with the season the news was written and how old it is`),
+      h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Good'), h('th', { scope: 'col' }, s.name), isHome ? null : h('th', { scope: 'col' }, homeLabel()))),
+      h('tbody', null, rows));
     pricesBox.replaceChildren(
-      h('h3', { class: 'prices-head', id: 'prices-head', tabindex: '-1' }, `Prices in ${s.name}`),
-      h('table', { class: 'prices', id: 'prices' },
-        h('caption', { class: 'visually-hidden' }, `Prices for each good ${s.name} trades, with the season the news was written and how old it is`),
-        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Good'), h('th', { scope: 'col' }, s.name), isHome ? null : h('th', { scope: 'col' }, homeLabel()))),
-        h('tbody', null, rows)),
-      h('p', { class: 'prices-note' }, 'A price with no news has not reached the house yet. Letters from far stops arrive late.'),
+      h('h3', { class: 'prices-head', id: 'prices-head', tabindex: '-1' }, 'Best known trades'),
+      h('p', { class: 'prices-note', id: 'best-note' }, 'The widest gaps the house has news of, from the prices it last heard.'),
+      best,
+      h('button', { class: 'button all-prices', type: 'button', id: 'btn-all-prices', 'aria-expanded': allPrices ? 'true' : 'false', 'aria-controls': 'prices-all',
+        onclick: () => { allPrices = !allPrices; drawBoard(); qs('#btn-all-prices', pricesBox)?.focus(); } },
+      allPrices ? `Hide the prices in ${s.name}` : `Every price in ${s.name}`),
+      h('div', { id: 'prices-all', class: 'prices-all', hidden: allPrices ? null : '' }, allPrices ? [
+        table,
+        h('p', { class: 'prices-note' }, 'A price with no news has not reached the house yet. Letters from far stops arrive late.')] : null),
       h('div', { class: 'panel-actions prices-close' }, h('button', { class: 'button', type: 'button', id: 'prices-close', onclick: () => closePrices() }, 'Close')));
     const o = outfitState(selected);
     outfitBtn.textContent = isHome ? 'Outfit an expedition' : `Outfit an expedition to ${s.name}`;

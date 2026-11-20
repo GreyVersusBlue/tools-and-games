@@ -327,7 +327,13 @@ html.large-text .title-what { display: none; }
 .stoplist .option.lit { outline: 2px solid var(--brass-dark); outline-offset: -2px; }
 .prices-open { display: none; }
 .prices-box { container-type: inline-size; }
-.prices-head { display: none; font-size: var(--step-1); margin: 0 0 var(--s2); }
+.prices-head { font-size: var(--step-1); margin: 0 0 var(--s1); }
+.trades { list-style: none; margin: var(--s2) 0; padding: 0; font-family: var(--font-chrome); font-size: var(--step-0); }
+.trade { padding: var(--s2) 0; border-bottom: 1px solid var(--paper-shade); }
+.trade .when { display: block; font-size: var(--step--1); color: var(--ink-soft); }
+.trade-look { margin-top: var(--s1); }
+.all-prices { margin: var(--s2) 0; }
+.prices-all[hidden] { display: none; }
 .prices { width: 100%; border-collapse: collapse; font-family: var(--font-chrome); font-size: var(--step-0); }
 .prices th, .prices td { padding: var(--s2) var(--s1); border-bottom: 1px solid var(--paper-shade); text-align: left; vertical-align: top; }
 .prices .when { display: block; font-size: var(--step--1); color: var(--ink-soft); }
