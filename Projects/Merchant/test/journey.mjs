@@ -1993,6 +1993,50 @@ try {
       await test(`${frame.name}: ledger and notebook, no offsite request, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
+
+    // ---- MER-97: opening a notebook entry is what reads it (DESIGN 2.2 rule 6): `notebookRead` holds its id once, closing and opening
+    // it again adds nothing, and a reload keeps it. The summary is pressed as a player presses it; readEntry runs on the details' toggle.
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const readNow = () => page.evaluate(() => [...window.__merchant.state.notebookRead]);
+      const stored = () => page.evaluate(() => [...JSON.parse(localStorage.getItem('merchant-save')).notebookRead]);
+      const pick = found[0];
+      await test('MER-97: a notebook entry the player has not opened is not read, and opening it reads it once', async () => {
+        ok(pick, 'the save has met at least one entry');
+        eq(book.notebookRead, [], 'the save starts with nothing read');
+        await loadBook(page, '#notebook');
+        await opened(page, 'notebook');
+        await page.click(`#nb-tab-${pick.tab}`);
+        eq(await readNow(), []);
+        await page.click(`[data-entry="${pick.id}"] summary`);
+        await page.waitForFunction(id => window.__merchant.state.notebookRead.includes(id), {}, pick.id);
+        eq(await readNow(), [pick.id]);
+        eq(await page.$eval(`[data-entry="${pick.id}"] details`, d => d.open), true);
+      });
+      await test('MER-97: closing the entry and opening it again leaves it in notebookRead once', async () => {
+        await page.click(`[data-entry="${pick.id}"] summary`);
+        await page.waitForFunction(id => !document.querySelector(`[data-entry="${id}"] details`).open, {}, pick.id);
+        eq(await readNow(), [pick.id], 'closing reads nothing new');
+        await page.click(`[data-entry="${pick.id}"] summary`);
+        await page.waitForFunction(id => document.querySelector(`[data-entry="${id}"] details`).open, {}, pick.id);
+        eq(await readNow(), [pick.id], 'opening again does not add it twice');
+      });
+      await test('MER-97: a reload keeps what was read, once', async () => {
+        eq(await stored(), [pick.id], 'the save slot holds it before the reload');
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('#screen-desk .sheet-title');
+        eq(await readNow(), [pick.id]);
+        eq(await stored(), [pick.id]);
+        await page.goto(GAME + '#notebook', { waitUntil: 'load' });
+        await opened(page, 'notebook');
+        await page.click(`#nb-tab-${pick.tab}`);
+        await page.click(`[data-entry="${pick.id}"] summary`);
+        await page.waitForFunction(id => document.querySelector(`[data-entry="${id}"] details`).open, {}, pick.id);
+        eq(await readNow(), [pick.id], 'opening it after the reload adds nothing');
+      });
+      await test('MER-97: the notebook read, no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
   }
 
   // ---- MER-63: letters from the road on the desk, an agent's leave notice, the outfit sheet's refusal
@@ -2672,8 +2716,8 @@ try {
     const lossSave = () => {
       const st = askingReturn(), r = st.desk[0], fill = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Damascus');
       st.desk = [{ id: 'p80-0', state: 'open', kind: 'lost', ref: 'lost', agent: 'ali', expedition: r.expedition, data: {
-        headline: 'Ali did not come back', route: 'cairo-damascus', whole: true, survived: false,
-        lines: [{ label: 'Lost', text: 'The ship and what it carried.' }], costs: [], trip: {}, entry: entry.id,
+        headline: 'Ali\'s galley was lost on the way from Cairo to Damascus. Ali did not come back.', route: 'cairo-damascus', whole: true, survived: false,
+        lines: [{ label: 'Lost', text: 'The ship and what it carried.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
         ask: { title: fill(entry.title), body: fill(entry.body) },
         choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }];
       return st;
@@ -2752,6 +2796,54 @@ try {
       await page.keyboard.press(String(n + 1));
       await page.waitForSelector(BACK);
       eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(lost, content80, 'p80-0', c.id))));
+    });
+
+    // ---- MER-97: the loss paper's words and rows, and the card's price line
+    await test('MER-97: a loss paper\'s title and its first heading are not the same sentence, and its kicker is not "Word from the road"', async () => {
+      await load(lost);
+      const t = await page.evaluate(() => ({ title: document.querySelector('.sheet-title').textContent, ask: document.querySelector('.ask-title').textContent,
+        kicker: document.querySelector('.sheet-head .sender span').textContent.trim() }));
+      eq(t.ask, 'Ali did not come back', 'the question keeps the entry\'s title');
+      ok(t.title !== t.ask && !t.title.includes(t.ask), `title "${t.title}" says what the heading "${t.ask}" says`);
+      ok(/lost on the way from Cairo to Damascus\.$/.test(t.title), t.title);
+      ok(t.kicker.length > 0 && t.kicker !== 'Word from the road', t.kicker);
+    });
+    await test('MER-97: a loss whose whole headline is the question\'s title keeps the title and gives the question no second heading', async () => {
+      const same = structuredClone(lost);
+      same.desk[0].data.headline = 'Ali did not come back.';
+      await load(same);
+      eq(await page.$eval('.sheet-title', e => e.textContent), 'Ali did not come back.');
+      eq(await page.$('.ask-title'), null, 'one heading, not two');
+      eq(await page.$eval('.choices', e => e.getAttribute('aria-labelledby')), 'paper-p80-0-title', 'the choices are named by the paper\'s title');
+    });
+    await test('MER-97: the loss paper\'s rows line up: labels start at one edge, values end at another, one row below the other', async () => {
+      await load(lost);
+      const rows = await page.$$eval('.sheet .accounts-table tr', trs => trs.map(tr => {
+        const edge = el => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().toJSON(); };
+        return { label: edge(tr.querySelector('th')), value: edge(tr.querySelector('td')), tr: tr.getBoundingClientRect().toJSON(), table: tr.closest('table').getBoundingClientRect().toJSON() };
+      }));
+      eq(rows.length, 2, 'Lost and The house lost');
+      ok(Math.abs(rows[0].label.left - rows[1].label.left) < 1, `label edges ${rows[0].label.left} and ${rows[1].label.left}`);
+      ok(Math.abs(rows[0].value.right - rows[1].value.right) < 1, `value edges ${rows[0].value.right} and ${rows[1].value.right}`);
+      ok(Math.abs(rows[0].label.left - rows[0].table.left) < 1 && Math.abs(rows[0].value.right - rows[0].table.right) < 1, 'the rows span the paper');
+      ok(rows[1].tr.top >= rows[0].tr.bottom - 1, 'the second row is below the first');
+    });
+    await test('MER-97: from the second expedition the card\'s price line names the good the sheet proposes, not the plain suggestion\'s', async () => {
+      const card = content80.cards.find(c => c.choices.some(x => x.ui === 'outfit-first'));
+      let st = eng.newGame(content80, { seed: SEED, length: 'acts', house: 'spice' }), found = null;
+      for (let i = 0; i < 40 && !found; i++) {
+        st = st.phase === 'interlude' ? eng.openSeason(st, content80) : play(st);
+        if (st.phase !== 'desk' || !st.log.some(e => e.kind === 'outfit')) continue;
+        const plain = eng.suggestPlan(st, content80, 'damascus'), plan = sheetPlan(st, content80, 'damascus');
+        if (plain && plan && Object.keys(plain.cargo)[0] !== Object.keys(plan.cargo)[0]) found = { st: structuredClone(st), plain, plan };
+      }
+      ok(found, 'a season where the plain suggestion and the proposal name different goods');
+      const name = id => content80.goods.find(g => g.id === id).name.toLowerCase();
+      found.st.desk = [{ id: 'p97-0', state: 'open', kind: 'card', ref: card.id }];
+      await load(found.st);
+      const line = await page.$eval('.sheet .choice .prices', e => e.textContent);
+      ok(line.includes(`a load of ${name(Object.keys(found.plan.cargo)[0])}.`), `${line} (the sheet proposes ${JSON.stringify(found.plan.cargo)})`);
+      ok(!line.includes(`a load of ${name(Object.keys(found.plain.cargo)[0])}.`), `${line} (the plain suggestion sends ${JSON.stringify(found.plain.cargo)})`);
     });
 
     await test('the Accounts paper groups each line under the card and the choice that caused it', async () => {
@@ -2924,6 +3016,39 @@ try {
         eq(await page.evaluate(() => Object.keys(localStorage)), ['merchant-save'], 'no new storage key');
         await go(clone(road), '#title', '#screen-title');
         eq(await page.$('#title-last'), null, 'a game not yet over shows no last score');
+      });
+      // ---- MER-97: the title is handed the last game, and New game over a finished game says its score
+      await test('MER-97: the title draws the last game app.js hands it and reads no storage of its own', async () => {
+        await go(ended, '#title', '#screen-title');   // the slot holds an ended game
+        const got = await page.evaluate(async () => {
+          const { renderTitle, lastScore } = await import('./js/ui/screens/title.js');
+          const none = () => {}, base = { city: null, save: { label: 'x' }, onNew: none, onContinue: none, onAbout: none, onSettings: none };
+          const text = el => el.querySelector('#title-last')?.textContent ?? null;
+          return { given: text(renderTitle({ ...base, last: { total: 12345, rank: 'Fair name' } })), ownAlone: text(renderTitle(base)),
+            fromState: lastScore(JSON.parse(localStorage.getItem('merchant-save'))), notOver: lastScore({ phase: 'desk', score: { total: 1, rank: 'x' } }) };
+        });
+        eq(got.given, 'Last game: 12,345 points, fair name. A new game replaces it.');
+        eq(got.ownAlone, null, 'with nothing handed over there is no line, though the slot holds a finished game');
+        eq(got.fromState, { total: ended.score.total, rank: ended.score.rank });
+        eq(got.notOver, null);
+        eq(await page.$eval('#title-last', e => e.textContent).then(t => t.includes(withCommas(ended.score.total))), true, 'app.js hands it the real one');
+      });
+      await test('MER-97: New game over a finished game names its score in the confirm; over a game in play it names the season', async () => {
+        const total = withCommas(ended.score.total), rank = `${ended.score.rank.charAt(0).toLowerCase()}${ended.score.rank.slice(1)}`;
+        await go(ended, '#title', '#screen-title');
+        await page.click('#btn-new'); await page.waitForSelector('#newgame-begin'); await page.click('#newgame-begin');
+        await page.waitForSelector('dialog.confirm #confirm-cancel');
+        const said = await page.$eval('dialog.confirm p', e => e.textContent);
+        ok(said.startsWith(`Your finished game, ${total} points, ${rank}, will be lost.`), said);
+        ok(!said.includes('Your game in'), said);
+        await page.click('#confirm-cancel');
+        await page.waitForFunction(() => !document.querySelector('dialog.confirm'));
+        eq(await engineState(page), clone(ended), 'cancel changes nothing');
+        await go(clone(road), '#title', '#screen-title');
+        await page.click('#btn-new'); await page.waitForSelector('#newgame-begin'); await page.click('#newgame-begin');
+        await page.waitForSelector('dialog.confirm #confirm-cancel');
+        ok(/^Your game in \w+ \d+, Act \w+ will be lost\./.test(await page.$eval('dialog.confirm p', e => e.textContent)), await page.$eval('dialog.confirm p', e => e.textContent));
+        await page.click('#confirm-cancel');
       });
       await test('MER-90: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();

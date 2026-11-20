@@ -150,7 +150,7 @@ const plain = s => JSON.parse(JSON.stringify(s));
   const base = plain(states.ret), r = base.desk.find(p => p.kind === 'return' && p.state === 'open');
   const entry = content.returns.find(e => e.id === 'loss-sea-gone'), fill = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Damascus');
   states.loss = { ...base, desk: [{ id: 'p80-0', state: 'open', kind: 'lost', ref: 'lost', agent: 'ali', expedition: r.expedition, data: {
-    headline: 'Ali did not come back', route: 'cairo-damascus', whole: true, survived: false,
+    headline: 'Ali\'s galley was lost on the way from Cairo to Damascus. Ali did not come back.', route: 'cairo-damascus', whole: true, survived: false,
     lines: [{ label: 'Lost', text: 'The ship and what it carried.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
     ask: { title: fill(entry.title), body: fill(entry.body) },
     choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
