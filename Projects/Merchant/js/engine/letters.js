@@ -131,8 +131,14 @@ function deliver(s, content, idx) {
   s.post = waiting;
 }
 
-/** The chance an expedition writes now: the plain chance, and a rising one while it has written nothing on this trip. */
-export const chanceFor = x => (x.wrote ? LETTER_CHANCE : Math.min(1, LETTER_CHANCE + SILENT_RAMP * (x.quiet ?? 0)));
+/** The chance an expedition writes now: the plain chance, a rising one while it has written nothing on this trip, and a
+    sure thing at the last opening a trip that has written nothing has (DESIGN 2.1 rule 5): a road of one stop and
+    one writing opening has no ramp to climb, so without this they cap near the plain chance. */
+export const chanceFor = (x, content) => {
+  if (x.wrote) return LETTER_CHANCE;
+  if (content && seasonsLeft(content, x) <= 1) return 1;
+  return Math.min(1, LETTER_CHANCE + SILENT_RAMP * (x.quiet ?? 0));
+};
 
 /** One draw at most for an expedition that is on the road and not at home. The first question a house can be asked
     is sure (DESIGN 2.1 rule 5, "the second season's question letter"): while no question has been written in this game, an
@@ -152,7 +158,7 @@ function write(s, content, x, idx) {
   const sure = first ? choices.filter(l => l.kind === 'question') : [];
   let letter = null;
   if (sure.length) letter = sure.find(l => l.id === content.city?.secondSeason?.letter) ?? weighted(s, sure);
-  else if (choices.length && chance(s, chanceFor(x))) letter = weighted(s, choices);
+  else if (choices.length && chance(s, chanceFor(x, content))) letter = weighted(s, choices);
   if (!letter) { x.quiet = (x.quiet ?? 0) + 1; return; }   // an opening it could have written at and did not
   x.wrote = (x.wrote ?? 0) + 1;
   s.seen[letter.id] = (s.seen[letter.id] ?? 0) + 1;

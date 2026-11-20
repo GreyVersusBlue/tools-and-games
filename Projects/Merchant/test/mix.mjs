@@ -7,14 +7,12 @@
 // It also fails if any season broke a rule of the draw: more than two pool cards while a trip was live, a pool
 // favour beside another favour, two pool cards of one kind, a card with no `kind`. The rules themselves are
 // pinned one by one, each seen to fail without it, in test/engine.mjs (the draw) and test/letters.mjs (the letter).
-// THE LETTER SHARE IS BELOW THE DESIGN'S FLOOR AND THE ENGINE CANNOT RAISE IT. Measured on 2026-11-19 over 1,000 games: 19.5 percent
-// (16.6 over 100 games before MER-78's rate change). The cap is content: data/cairo/letters.json has no letter for four of the
-// roads the bots send most, and those four carry 1,733 of the 2,934 trips of three seasons or more with 0 letters between them
-// (Constantinople 570, Qus 545, Quseir 318, Alexandria 300). A question also cannot be written on a road with no decision
-// point left, and every letter is once a game. With a chance of 1 and the once-a-game rule off the share was 36 percent in
-// 100 games. So the check that fails is HOLD, the share the content gives today less a margin, which catches the engine losing
-// letters; FLOOR and TARGET are the DESIGN's numbers, printed each run with the gap and the table by route. When letters.json
-// gains letters for those four roads, set HOLD to FLOOR here.
+// The letter share was 19.5 percent over 1,000 games on 2026-11-19 (four roads had no letter), 65.4 after MER-79 wrote letters
+// for them, and reaches the target after MER-82: a trip that has written nothing is sure to write at the last opening it has
+// (letters.js `chanceFor`), which the roads of one stop (Qus, Alexandria, Damascus) needed, since they have one opening and
+// no ramp to climb. The share printed over 1,000 games is in the MER-82 report. HOLD is FLOOR, so the check that fails is the
+// design's own floor; TARGET is printed each run with the gap and the table by route. A question still cannot be written on
+// a road with no decision point left, and every letter is once a game, so a few trips bring none.
 // Plain Node, no browser, no clock. bots.mjs reads process.argv when it is imported, so the one argument is `--games N`.
 import fs from 'node:fs/promises';
 import { loadContent } from '../js/data.js';
@@ -88,7 +86,7 @@ for (const [route, r] of Object.entries(byRoute).sort((a, b) => b[1].n - a[1].n)
 const untagged = content.cards.filter(c => !c.kind).map(c => c.id);
 if (untagged.length) fail(`cards with no kind: ${untagged.join(', ')}`);
 if (broke.length) fail(`${broke.length} seasons broke a rule of the draw, first: ${broke[0]}`);
-if (share < HOLD) fail(`only ${(share * 100).toFixed(1)} percent of trips of three seasons or more brought a letter; the content gave about 20 when this was written, so the engine has lost letters (HOLD ${HOLD * 100})`);
-if (share < FLOOR) console.log(`  BELOW THE DESIGN'S FLOOR of ${FLOOR * 100} percent by ${((FLOOR - share) * 100).toFixed(1)} points, and ${((TARGET - share) * 100).toFixed(1)} short of the ${TARGET * 100} percent target: the content has too few letters for the roads (see the head of this file)`);
+if (share < HOLD) fail(`only ${(share * 100).toFixed(1)} percent of trips of three seasons or more brought a letter; the engine gave about 70 when this was written, so it has lost letters (HOLD ${HOLD * 100})`);
+if (share < FLOOR) console.log(`  BELOW THE DESIGN'S FLOOR of ${FLOOR * 100} percent by ${((FLOOR - share) * 100).toFixed(1)} points, and ${((TARGET - share) * 100).toFixed(1)} short of the ${TARGET * 100} percent target (see the head of this file)`);
 else if (share < TARGET) console.log(`  above the floor, ${((TARGET - share) * 100).toFixed(1)} points short of the ${TARGET * 100} percent target`);
 process.exitCode = failed ? 1 : 0;
