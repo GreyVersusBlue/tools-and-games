@@ -877,15 +877,15 @@
       {
         "id": "yes",
         "label": "Agree to a standing deal",
-        "hint": "It costs a fee. It makes a steady friend.",
+        "hint": "A fee of 3 dinars now, and 4 back in three seasons. It makes a steady friend.",
         "requires": {
           "money": {
-            "gte": 4
+            "gte": 3
           }
         },
         "now": [
           {
-            "money": -4
+            "money": -3
           },
           {
             "rep": "partners",
@@ -906,8 +906,13 @@
       {
         "id": "no",
         "label": "Sell where you like",
-        "hint": "It costs nothing. It keeps you free.",
-        "now": [],
+        "hint": "You gain 3 dinars by choosing the best market. Zubayda will think you cold.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
         "later": [
           {
             "in": 2,
@@ -926,6 +931,9 @@
         "src": "agir-2017",
         "at": "Background n. 24; shops of one trade grouped for time saving and lower transport costs"
       }
+    ],
+    "unlocks": [
+      "term-dinar"
     ]
   },
   {
@@ -1111,15 +1119,15 @@
       {
         "id": "write",
         "label": "Write it down and seal it",
-        "hint": "It costs a clerk's time. Yusuf feels easier.",
+        "hint": "It costs 2 dinars for a clerk. Yusuf feels easier.",
         "requires": {
           "money": {
-            "gte": 4
+            "gte": 2
           }
         },
         "now": [
           {
-            "money": -4
+            "money": -2
           },
           {
             "trust": "yusuf",
@@ -1141,8 +1149,12 @@
       {
         "id": "spoken",
         "label": "Say your word is good enough",
-        "hint": "It costs nothing. Yusuf is more uneasy.",
+        "hint": "You save the clerk's 2 dinars. Yusuf is more uneasy.",
         "now": [
+          {
+            "trust": "yusuf",
+            "by": -1
+          },
           {
             "memory": "yusuf",
             "kind": "unfair"
@@ -1153,7 +1165,7 @@
             "in": 2,
             "do": [
               {
-                "money": 4
+                "money": 2
               }
             ]
           }

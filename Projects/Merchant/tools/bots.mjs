@@ -154,7 +154,7 @@ const freeAgents = (state, content) => content.agents.filter(a => {
     Roads are priced unchecked (`check: false`), and the chosen plan is sent through `outfit`, which checks it. */
 const FLOOR = 0.08;
 const STAKE_SHARE = { careful: 0.5, greedy: 0.2 };   // the part of its money a bot puts into one venture (the sheet's default is a half). Greedy runs several small ones at once; at 300 games a share from a tenth to four fifths each left one or two of greedy's card choices just over nine in ten (MER-92: the cards' rescale, MER-96, moves those), and a fifth left the fewest
-const RISK_WEIGHT = { careful: 1, greedy: 0.75 };   // how much of the road's chance of loss a bot counts against a venture: the estimate ignores it (the sheet warns in a word), a bot has to price it
+const RISK_WEIGHT = { careful: 1, greedy: 1 };   // how much of the road's chance of loss a bot counts against a venture: the estimate ignores it (the sheet warns in a word), a bot has to price it
 export function venturePlan(bot, state, content, agent, roll = () => 0.5) {
   if (bot === 'careful' && state.expeditions.length >= 1) return null;   // one venture at a time (DESIGN 2.2 rule 4 says one or two; measured: a second put careful's median score two points lower, losing a whole venture costs more than the second earns)
   const busy = new Set(state.expeditions.map(x => content.routes.find(r => r.id === x.route)?.to));
