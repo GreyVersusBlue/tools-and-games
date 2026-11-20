@@ -5,8 +5,8 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import * as R from '../js/engine/routes.js';
-/** Runs `fn` with the rule that refuses unspent money switched on (it ships off, routes.js RULES), and puts it back. */
-const ruled = fn => () => { R.RULES.refuseUnspentMoney = true; try { return fn(); } finally { R.RULES.refuseUnspentMoney = false; } };
+/** Runs `fn` with the rule that refuses unspent money switched on (routes.js RULES, on since MER-93), and puts it back as it was. */
+const ruled = fn => () => { const was = R.RULES.refuseUnspentMoney; R.RULES.refuseUnspentMoney = true; try { return fn(); } finally { R.RULES.refuseUnspentMoney = was; } };
 import { steps } from '../js/engine/turn.js';
 import { WAIT } from '../js/engine/letters.js';
 import * as M from '../js/engine/market.js';
@@ -149,12 +149,18 @@ test('the narrow corner: a stop with nothing the house sells at home has no good
   eq(checkPlan(s, c, { ...WOOL, purse: 20 }).ok, true, 'Hilltown as the data has it sells only wool, and the house sends wool');
 }));
 
-test('the rule ships off: money sent with no good to bring back goes through until test/letters.mjs names one (routes.js RULES)', () => {
+test('the rule is on: money sent with no good to bring back is refused as shipped, and naming the good takes it (routes.js RULES)', () => {
   const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; });
   const s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
   s.stock = { linen: 20 };
-  eq(R.RULES.refuseUnspentMoney, false);
-  eq(checkPlan(s, c, { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 5 }, purse: 100, contract: 'own', sell: ['linen'], buy: [] }).ok, true);
+  eq(R.RULES.refuseUnspentMoney, true);
+  const bare = { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 5 }, purse: 100, contract: 'own', sell: ['linen'], buy: [] };
+  const no = checkPlan(s, c, bare);
+  eq(no.ok, false);
+  ok(/needs a good to bring back/.test(no.reasons.join(' ')), no.reasons.join(' '));
+  const offered = proposePlan(s, c, 'yusuf', 'cairo-damascus');
+  ok(offered && offered.buy.length > 0, 'the default names a good to bring back');
+  eq(checkPlan(s, c, offered).ok, true, 'the engine takes the default it offers');
 });
 
 // ---- the estimate
