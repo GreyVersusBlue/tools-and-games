@@ -126,6 +126,18 @@ export function mount(env) {
   const blankDraft = () => ({ onlyTypes: false, dayTypeIds: [], weekdays: [], periods: [], more: false });
   const draftOf = (entry) => ({ onlyTypes: entry.dayTypeIds.length > 0, dayTypeIds: entry.dayTypeIds.slice(), weekdays: entry.weekdays.slice(), periods: entry.periods.slice(), more: entry.weekdays.some((day) => day >= 5) });
   const stateOf = (teacher) => (view.part && view.part.teacherId === teacher.id ? view.part : null);
+  // The stored list as it is now, to tell whether it changed under an open entry.
+  const stampOf = (teacher) => {
+    const fresh = ctx.store.project.teachers.find((each) => each.id === teacher.id);
+    return JSON.stringify(fresh ? awayList(fresh) : []);
+  };
+  // An entry put on the form: its draft, and the list it was drawn from.
+  function openEntry(teacher, st, index, draft) {
+    st.editing = index;
+    st.draft = draft;
+    st.base = stampOf(teacher);
+    st.refusal = '';
+  }
 
   // Commit a whole list of entries, or say why not, without a toast: the
   // refusal is shown under the controls (16.12 item 4). Returns the sentence,
@@ -276,20 +288,27 @@ export function mount(env) {
 
   function notEditor(project, teacher, st) {
     const list = awayList(teacher);
-    // nothing saved yet: the first entry is open to fill in
-    if (st.editing === null && list.length === 0) {
-      st.editing = 0;
-      st.draft = blankDraft();
+    // The stored list changed under an open entry (Undo, Redo): the draft was
+    // made for the list as it was, and its place in it may now be another
+    // entry's or a hole, so it is closed rather than written there.
+    if (st.editing !== null && st.base !== JSON.stringify(list)) {
+      const active = document.activeElement;
+      const inside = Boolean(active && active.closest && active.closest('#sch-part-' + teacher.id + ' .sch-part__entry'));
+      st.editing = null;
+      st.draft = null;
+      st.refusal = '';
+      ctx.announce('The times changed, so the entry that was open was closed without saving.');
+      if (inside) env.focusAfter(partKey(teacher, list.length === 0 ? 'e0:types:all' : 'edit:0'));
     }
+    // nothing saved yet: the first entry is open to fill in
+    if (st.editing === null && list.length === 0) openEntry(teacher, st, 0, blankDraft());
     const rows = list.map((entry, index) => {
       if (st.editing === index) return entryForm(project, teacher, st, index);
       const words = describeAway(project, entry) || 'Not in school';
       return h('div', { class: 'sch-part__saved', data: { entry: String(index) } },
         h('span', { class: 'sch-part__words' }, h('bdi', null, words)),
         button('Edit', () => {
-          st.editing = index;
-          st.draft = draftOf(entry);
-          st.refusal = '';
+          openEntry(teacher, st, index, draftOf(entry));
           env.render(partKey(teacher, 'e' + index + ':types:' + (st.draft.onlyTypes ? 'some' : 'all')));
         }, { small: true, key: partKey(teacher, 'edit:' + index), action: 'part-edit', more: ' entry ' + (index + 1) + ' for ' + teacher.name }),
         button('Remove', () => {
@@ -301,6 +320,9 @@ export function mount(env) {
             return;
           }
           st.refusal = '';
+          // an entry open below the one removed moves up with its row
+          if (st.editing !== null && st.editing > index) st.editing -= 1;
+          if (st.editing !== null) st.base = stampOf(teacher);
           env.render(partKey(teacher, next.length === 0 ? 'radio:not' : 'edit:' + Math.min(index, next.length - 1)));
         }, { small: true, key: partKey(teacher, 'remove:' + index), action: 'part-remove', more: ' entry ' + (index + 1) + ' for ' + teacher.name }));
     });
@@ -309,9 +331,7 @@ export function mount(env) {
     const adding = st.editing !== null && st.editing >= list.length;
     return h('div', { class: 'sch-part__not' }, rows,
       adding ? null : h('div', { class: 'sch-part__actions' }, button('Add another time', () => {
-        st.editing = list.length;
-        st.draft = blankDraft();
-        st.refusal = '';
+        openEntry(teacher, st, list.length, blankDraft());
         env.render(partKey(teacher, 'e' + list.length + ':types:all'));
       }, { small: true, key: partKey(teacher, 'add'), action: 'part-add', more: ' for ' + teacher.name })),
       most ? h('p', { class: 'sch-hint' }, 'A teacher has at most 12 times. Combine some to add another.') : null);
