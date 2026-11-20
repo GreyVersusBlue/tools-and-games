@@ -56,6 +56,7 @@ export const GROUPS = {
     'engine/building.test.mjs', // SV2-04
     'engine/graph.test.mjs', // SV2-04
     'engine/building-checks.test.mjs', // SV2-04
+    'engine/dead-ends.test.mjs', // SV2-135
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/w7-rules.test.mjs', // SV2-125
     'engine/w7-actions.test.mjs', // SV2-127

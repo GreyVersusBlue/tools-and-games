@@ -170,6 +170,7 @@ row names a file it does not run.
 | `test/engine/building.test.mjs` | The floor plan's geometry through its actions |
 | `test/engine/graph.test.mjs` | The walkable graph, room entries, reachability |
 | `test/engine/building-checks.test.mjs` | Each building check, found where it is, with its sentence |
+| `test/engine/dead-ends.test.mjs` | Dead ends on hand-drawn plans (an L stub, a two-wide hall, an isolated line, an exit, stairs and a lift at the end, a door's nook, an edge stub, feet and metres) with the warning and the note, their ids and limits; the stairwell in parts with Join the parts |
 | `test/engine/teacher-day.test.mjs` | The one rule for a teacher's day |
 | `test/engine/w7-rules.test.mjs` | W7's rule functions: period words and names, features, stairwells and their letter, away, directions through a stairwell, and a project without the new fields unchanged |
 | `test/engine/w7-actions.test.mjs` | W7's actions: features added, renamed, moved and deleted with the rooms counted, the common features, a room's features, the custom period word, period names and their refusals, when a teacher is not in school; and what fewer periods, a deleted day type, merged teachers and a cleared room do to names, entries and features |
