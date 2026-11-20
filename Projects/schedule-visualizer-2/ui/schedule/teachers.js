@@ -59,15 +59,16 @@ export function partTimeWords(project, teacher) {
 
 // What the editor changes, in a sentence with the name in it (16.6, 16.12).
 function consequence(teacher, list) {
-  const name = h('bdi', null, teacher.name);
+  // a node can sit in one place only: each use makes its own
+  const name = () => h('bdi', null, teacher.name);
   const parts = [];
-  if (list.some((entry) => !isWeekdayEntry(entry))) parts.push(h('span', null, name, ' will not be counted as free in these periods, and a class with ', name, ' then is flagged.'));
+  if (list.some((entry) => !isWeekdayEntry(entry))) parts.push(h('span', null, name(), ' will not be counted as free in these periods, and a class with ', name(), ' then is flagged. '));
   const days = list.filter(isWeekdayEntry);
   if (days.length > 0) {
     const named = Array.from(new Set(days.flatMap((entry) => entry.weekdays))).sort((a, b) => a - b).map((day) => WEEKDAY_NAMES[day] + 's');
-    parts.push(h('span', null, 'Day-type views list this as a note; the staff browser leaves ', name, ' out on ' + listOf(named) + ' by the calendar.'));
+    parts.push(h('span', null, 'Day-type views list this as a note; the staff browser leaves ', name(), ' out on ' + listOf(named) + ' by the calendar.'));
   }
-  if (parts.length === 0) parts.push(h('span', null, name, ' is in school at every time the schedule has.'));
+  if (parts.length === 0) parts.push(h('span', null, name(), ' is in school at every time the schedule has.'));
   return parts;
 }
 
