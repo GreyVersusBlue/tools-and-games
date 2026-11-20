@@ -494,6 +494,7 @@ function build(s, content, plan) {
   };
   s.expeditions.push(x);
   rec.where = 'road';
+  rec.trips = (rec.trips ?? 0) + 1;   // a trip for the house: the score counts a person home only if they made one (MER-86)
   s.log.push({ at: idx, kind: 'outfit', ref: x.id, choice: route.id });
   return { problems, warnings, cost };
 }
@@ -1021,6 +1022,41 @@ export function recallChances(content) {
   return { ...DEFAULT_RECALL, ...r, reach: { ...DEFAULT_RECALL.reach, ...(r.reach ?? {}) }, byStop: { ...DEFAULT_RECALL.byStop, ...(r.byStop ?? {}) } };
 }
 
+/** A chance in the four words the recall page already uses for word reaching an expedition. */
+export function chanceWord(p) { return p >= 0.8 ? 'sure' : p >= 0.5 ? 'likely' : p >= 0.25 ? 'maybe' : 'unlikely'; }
+
+/** What the recall page may say of each person (MER-86): the engine's own numbers as plain facts, one entry
+    per hired agent who is on the road or at home, in the content's order. `reach` is the chance word gets
+    to an expedition in time; `ifCalled` and `ifStays` the chance the agent lives under each choice (a call
+    that word does not reach is a stay); `risk` is the chance of dying of the plague in the words of
+    `chanceWord`, for the choice most likely taken (stays) on the road and for the one at home. People at
+    home are rolled at `homeSurvives` too, so they carry the same fields with `where: 'home'`. */
+export function recallRisk(s, content) {
+  const cfg = recallChances(content);
+  const home = homeOf(content);
+  const out = [];
+  const onRoad = new Set(s.expeditions.map(x => x.agent));
+  for (const a of content.agents ?? []) {
+    const r = s.agents?.[a.id];
+    if (!r?.hired || r.where === 'dead' || r.where === 'gone') continue;
+    const x = s.expeditions.find(e => e.agent === a.id);
+    if (x) {
+      const route = routeOf(content, x.route);
+      const lag = x.status === 'home' ? 0 : seasonsHome(content, x);
+      const reach = clamp(cfg.reach.start - cfg.reach.perSeason * lag, cfg.reach.floor, 1);
+      const leg = route.legs[Math.min(x.leg, route.legs.length - 1)];
+      const place = x.status === 'out' ? leg.to : leg.from;
+      const stay = cfg.byStop[place] ?? cfg.stayedSurvives;
+      const called = reach * cfg.recalledSurvives + (1 - reach) * stay;
+      out.push({ agent: a.id, where: 'road', expedition: x.id, place, reach, reachWord: chanceWord(reach),
+        ifCalled: called, ifStays: stay, risk: chanceWord(1 - stay), riskIfCalled: chanceWord(1 - called) });
+    } else if (r.where === home && !onRoad.has(a.id)) {
+      out.push({ agent: a.id, where: 'home', place: home, ifStays: cfg.homeSurvives, risk: chanceWord(1 - cfg.homeSurvives), lives: cfg.homeSurvives });
+    }
+  }
+  return out;
+}
+
 /** The ending's last choice. `decisions` maps an expedition id to "recall" or "stay" (missing means
     stay). Each expedition is rolled in turn, then each agent at home. One line each in the log. */
 export function recall(s, content, decisions = {}) {
@@ -1038,6 +1074,7 @@ export function recall(s, content, decisions = {}) {
     const leg = route.legs[Math.min(x.leg, route.legs.length - 1)];
     const place = x.status === 'out' ? leg.to : leg.from;
     const called = decisions[x.id] === 'recall' && word;
+    const before = s.money;
     let line;
     if (called) {
       const lives = next(s) < cfg.recalledSurvives;
@@ -1060,6 +1097,7 @@ export function recall(s, content, decisions = {}) {
         line = { expedition: x.id, agent: x.agent, how, survived: false, text: `${agent.name} stayed in ${stopName(content, place)} and did not come back.`, houseNet: -x.staked.house };
       }
     }
+    line.brought = s.money - before;   // what this agent's return put into the house's cash, for the score's wealth line
     results.push(line);
   }
   s.expeditions = [];

@@ -70,6 +70,9 @@ export const SENSIBLE = ['careful', 'greedy', 'qirad'];
 export const directionOf = dest => Object.keys(DIRECTIONS).find(d => DIRECTIONS[d].includes(dest)) ?? null;
 export const DEFAULTS = { games: 2000, seed0: 1000, length: 'acts' };
 export const BOTS = ['careful', 'greedy', 'random', 'qirad'];
+// `first` presses the first choice that can be taken on every paper, sends nobody and recalls nobody (MER-86: the M4 play's
+// 127 against careful's 95). It is not in BOTS, so the balance table and its checks do not play it; ask for it with --bots first.
+export const EXTRA_BOTS = ['first'];
 
 // ---- a bot's own dice: a separate stream so the bot never shifts the engine's draws
 const dice = seed => { const st = { rng: (seed * 2654435761 + 12345) >>> 0 }; return () => next(st); };
@@ -142,6 +145,7 @@ const freeAgents = (state, content) => content.agents.filter(a => {
 
 /** A plan for `agent` or null: the policy of each bot, ending in `sizes` tried from big to small. */
 function plan(bot, state, content, agent, roll) {
+  if (bot === 'first') return null;
   // a sensible bot does not send a second agent to a stop one of its expeditions is already bound for: the
   // market there is the same depth for both (random does not mind)
   const busy = new Set(bot === 'random' ? [] : state.expeditions.map(x => content.routes.find(r => r.id === x.route)?.to));
@@ -237,6 +241,7 @@ export function worthOf(state, content, choice, follow = 1, depth = 0) {
 const standingOf = (w, state, temper) => Object.entries(w.regard).reduce((n, [g, by]) => n + by * state.money * (temper[g] ?? 0), 0);
 export function ranked(bot, state, content, open, roll, temper = {}) {
   if (bot === 'random') return shuffle(open, roll);
+  if (bot === 'first') return open;
   const scored = open.map((c, i) => ({ c, i, w: worthOf(state, content, c, bot === 'greedy' ? (temper.follow ?? 1) : 1) }));
   const by = bot === 'greedy'
     ? (a, b) => (b.w.net + standingOf(b.w, state, temper)) - (a.w.net + standingOf(a.w, state, temper)) || a.i - b.i
@@ -282,7 +287,7 @@ export function netWorth(state, content) {
 /** One whole game. Returns { bot, seed, house, worth, trips: [profit share per round trip], routes: {id: count},
     cards: [ids drawn], offers/multi/takes: {card: n, 'card|choice': n}, brokeBy: season index or null, survivors, lost } */
 export function playGame(content, { bot, seed, house, length = DEFAULTS.length }) {
-  if (!BOTS.includes(bot)) throw new Error(`bots: no bot called "${bot}"`);
+  if (!BOTS.includes(bot) && !EXTRA_BOTS.includes(bot)) throw new Error(`bots: no bot called "${bot}"`);
   const roll = dice(seed);
   const tdice = dice(seed + 77); tdice(); tdice();   // the first draws of a nearby seed are alike, so two are spent
   const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, tdice() * STANDING_MAX]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
@@ -348,7 +353,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   out.parts = Object.fromEntries(sc.parts.map(p => [p.id, p.points]));
   out.sum = sc.sum;
   // what the four parts are made of, so a rate can be tried on a finished run without replaying it
-  const homeAgents = content.agents.map(a => s.agents[a.id]).filter(r => r?.hired && r.where === cityOf(content, 'bots').home);
+  const homeAgents = content.agents.map(a => s.agents[a.id]).filter(r => r?.hired && r.where === cityOf(content, 'bots').home && (r.trips ?? 0) > 0);
   out.raw = { net: netWealth(s, content).net, rep: REP_GROUPS.reduce((n, g) => n + (s.rep[g] ?? 0), 0), home: homeAgents.length,
     trusted: homeAgents.filter(r => r.trust >= TRUST_BONUS_AT).length, pages: (s.notebook ?? []).length, multiplier: content.houses.find(h => h.id === house).multiplier ?? 1 };
   out.cards = Object.keys(out.offers);   // a follow-up reaches the desk by an effect, so `seen` does not count it
@@ -610,7 +615,7 @@ const parseArgs = argv => {
 if (isMainThread && import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const args = parseArgs(process.argv.slice(2));   // only when run, never when imported
   const bots = args.bots ? args.bots.split(',') : BOTS;
-  for (const b of bots) if (!BOTS.includes(b)) { console.error(`bots: no bot called "${b}"`); process.exit(2); }
+  for (const b of bots) if (!BOTS.includes(b) && !EXTRA_BOTS.includes(b)) { console.error(`bots: no bot called "${b}"`); process.exit(2); }
   const lengthArg = args.length ?? 'both';
   const lengths = lengthArg === 'both' ? ['acts', 'full'] : [lengthArg];
   const started = Date.now();
