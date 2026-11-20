@@ -85,7 +85,7 @@
       "seal": null
     },
     "title": "A neighbour wants your linen",
-    "body": "Abu Bakr makes sails and needs cloth today. He offers Cairo's price for your other ten loads of linen. He will pay in coin at once.",
+    "body": "Abu Bakr makes sails and needs cloth today. He offers Cairo's price for ten loads of your linen. He will pay in coin at once.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -135,8 +135,8 @@
       },
       {
         "id": "gone",
-        "label": "Tell him the linen is spoken for",
-        "hint": "He will think well of an honest answer.",
+        "label": "Say no, and thank him",
+        "hint": "He will think well of a polite answer.",
         "now": [
           {
             "rep": "partners",
@@ -145,17 +145,25 @@
         ]
       }
     ],
-    "note": "A handbook of about 1340 says goods brought into Alexandria paid 20 in every hundred, and goods leaving paid nothing. A price far away had to cover costs like that.",
+    "note": "Egyptian linen was woven for export. Ports across the Mediterranean paid more for it than Cairo did, though how much more is a guess.",
     "unlocks": [
       "term-load",
       "term-dinar"
     ],
     "sources": [
       {
-        "src": "pegolotti-1936",
-        "at": "Alexandria chapter, print p. 72"
+        "src": "walker-2000",
+        "at": "the direction of the price gap only"
+      },
+      {
+        "src": "ashtor-1976",
+        "at": "the direction of the price gap only"
       }
-    ]
+    ],
+    "when": {
+      "stock": "linen",
+      "gte": 10
+    }
   },
   {
     "id": "silk-order",
@@ -630,6 +638,10 @@
         },
         {
           "notebook": "term-load"
+        },
+        {
+          "stock": "linen",
+          "gte": 2
         }
       ]
     },
@@ -668,7 +680,7 @@
       {
         "id": "two",
         "label": "Sell him two loads",
-        "hint": "You keep half your linen. He comes back for the rest and pays 20 more.",
+        "hint": "You keep the rest of your linen. He comes back for more and pays 20 more.",
         "requires": {
           "stock": "linen",
           "gte": 2
