@@ -355,7 +355,7 @@ test('venture bots: careful and greedy send what proposePlan proposes for the ro
   ok(sent >= 4, `${sent} ventures were chosen`);
 });
 
-test('venture bots: careful takes a road with no waiting and at most six seasons there and back, and never has more than two out', () => {
+test('venture bots: careful takes a road with no waiting and at most six seasons there and back, and never has more than one out', () => {
   for (const seed of [5, 6, 7, 8]) {
     const s = seasoned(seed, 5);
     for (const a of content.agents) {
@@ -366,9 +366,9 @@ test('venture bots: careful takes a road with no waiting and at most six seasons
       const d = destinations(s, content, a).find(x => x.route === plan.route);
       ok(d.waits === 0 && d.seasons <= 6, `${plan.route}: ${d.waits} waits, ${d.seasons} seasons`);
     }
-    const two = structuredClone(s);
-    two.expeditions = [{ route: 'cairo-qus', agent: 'ghost1' }, { route: 'cairo-quseir', agent: 'ghost2' }];
-    for (const a of content.agents) eq(venturePlan('careful', two, content, a), null, 'two out already: no third');
+    const one = structuredClone(s);
+    one.expeditions = [{ route: 'cairo-qus', agent: 'ghost1' }];
+    for (const a of content.agents) eq(venturePlan('careful', one, content, a), null, 'one out already: no second');
   }
 });
 

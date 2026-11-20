@@ -6,8 +6,9 @@
 // Papers (MER-68): a bot answers every card and letter by the policy below (CARD POLICY); `random` takes a random
 // choice that holds. They differ in what they send out:
 //   careful  open legs only (no waiting), the engine's default venture (`proposePlan`, DESIGN 2.2 rule 1) on the road whose
-//            estimate pays most a season, never more than two out at once, own money
-//   greedy   the engine's default venture on the road whose estimate pays most, waiting allowed, any number out
+//            estimate, once the road's risk is counted, pays the widest margin a season; one out at a time, own money
+//   greedy   the engine's default venture, a fifth of its money in each, on the road whose estimate pays most dinars (half the
+//            risk counted, its eye on each road wobbling by half either way), waiting allowed, any number out
 //            (MER-92: both read the sheet's own estimate, `estimate`, and send what it proposes)
 //   random   any destination, any good, any size
 //   qirad    greedy's choice and a medium cargo, always under a qirad with partners
@@ -149,20 +150,35 @@ const freeAgents = (state, content) => content.agents.filter(a => {
 
 /** The venture careful and greedy send (MER-92): every road open to `agent` is given the engine's default plan and its
     estimate, the ones that should pay (careful: by at least FLOOR of their stake, on roads with no waiting and at most six
-    seasons there and back) are ranked, careful by dinars a season and greedy by dinars, and the first the engine takes goes.
+    seasons there and back) are ranked, careful by margin on its stake a season and greedy by dinars, and the first the engine takes goes.
     Roads are priced unchecked (`check: false`), and the chosen plan is sent through `outfit`, which checks it. */
 const FLOOR = 0.08;
-export function venturePlan(bot, state, content, agent) {
-  if (bot === 'careful' && state.expeditions.length >= 2) return null;   // one or two ventures at a time (DESIGN 2.2 rule 4)
+const STAKE_SHARE = { careful: 0.5, greedy: 0.2 };   // the part of its money a bot puts into one venture (the sheet's default is a half). Greedy runs several small ones at once; at 300 games a share from a tenth to four fifths each left one or two of greedy's card choices just over nine in ten (MER-92: the cards' rescale, MER-96, moves those), and a fifth left the fewest
+const RISK_WEIGHT = { careful: 1, greedy: 0.5 };   // how much of the road's chance of loss a bot counts against a venture: the estimate ignores it (the sheet warns in a word), a bot has to price it
+export function venturePlan(bot, state, content, agent, roll = () => 0.5) {
+  if (bot === 'careful' && state.expeditions.length >= 1) return null;   // one venture at a time (DESIGN 2.2 rule 4 says one or two; measured: a second put careful's median score two points lower, losing a whole venture costs more than the second earns)
   const busy = new Set(state.expeditions.map(x => content.routes.find(r => r.id === x.route)?.to));
   const list = [];
+  const J = jumpChances(content);
+  const takes = J.wholeLoss + (1 - J.wholeLoss) * (J.partial[0] + J.partial[1]) / 2;   // the share of a venture a loss takes, on average
   for (const d of destinations(state, content, agent)) {
     if (busy.has(d.stop)) continue;
     if (bot === 'careful' && (d.waits > 0 || d.seasons > 6)) continue;
-    const plan = proposePlan(state, content, agent, d.route, { check: false });
-    const e = plan && estimate(state, content, plan);
-    if (!e || e.net <= 0 || (bot === 'careful' && e.net < FLOOR * e.stake)) continue;
-    list.push({ plan, score: bot === 'careful' ? e.net / d.seasons : e.net, route: d.route });
+    // a sensible bot sends no stake the wage bill of the road would swallow (MER-51): a road where the wage is a fixed cost
+    // and the stop buys nothing the house sells (the desert's) gets a bigger share of the money than the bot's own
+    const minStake = (agent.wage ?? 0) * d.seasons * LIMITS.wageBillShare;
+    let plan = null, e = null;
+    for (const share of [STAKE_SHARE[bot], 0.35, 0.5, 0.65, 0.8].filter(x => x >= STAKE_SHARE[bot])) {
+      plan = proposePlan(state, content, agent, d.route, { check: false, share });
+      e = plan && estimate(state, content, plan);
+      if (!e || e.stake >= minStake) break;
+    }
+    if (!e || e.stake < minStake) continue;
+    // what the venture is worth once the road's chance of losing a share of it is counted: (net + stake) comes home, less the share lost
+    const lose = RISK_WEIGHT[bot] * e.risk * takes, ev = e.net - lose * (e.net + e.stake);
+    if (ev <= 0 || (bot === 'careful' && ev < FLOOR * e.stake)) continue;
+    // greedy's eye for a margin is not exact: what it makes of each road wobbles by half either way (its own dice), so one road (Aden's, which pays most on paper) is not its answer in two games of three
+    list.push({ plan, score: bot === 'careful' ? ev / e.stake / d.seasons : ev * (0.5 + roll()), route: d.route });
   }
   list.sort((a, b) => b.score - a.score || (a.route < b.route ? -1 : 1));
   for (const r of list) {
@@ -174,7 +190,7 @@ export function venturePlan(bot, state, content, agent) {
 /** A plan for `agent` or null: the policy of each bot, ending in `sizes` tried from big to small. */
 function plan(bot, state, content, agent, roll) {
   if (bot === 'first') return null;
-  if (bot === 'careful' || bot === 'greedy') return venturePlan(bot, state, content, agent);
+  if (bot === 'careful' || bot === 'greedy') return venturePlan(bot, state, content, agent, roll);
   // a sensible bot does not send a second agent to a stop one of its expeditions is already bound for: the
   // market there is the same depth for both (random does not mind)
   const busy = new Set(bot === 'random' ? [] : state.expeditions.map(x => content.routes.find(r => r.id === x.route)?.to));

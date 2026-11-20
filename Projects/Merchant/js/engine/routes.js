@@ -673,8 +673,10 @@ function bringBack(s, content, dest, except = []) {
     bought now at home with about half the money on hand (the goods that sell best there by the house's news), and one good
     to bring back, the best known margin; the money left after selling there buys it. A trip whose far stop buys nothing the
     house can send goes as money alone, about half the money on hand, to buy that good. Own contract, or a qirad when the
-    agent will not go for a wage again. `agent` and `route` are ids or records. A plan the engine takes, or null when none is. */
-export function proposePlan(state, content, agent, route) {
+    agent will not go for a wage again. `agent` and `route` are ids or records. A plan the engine takes, or null when none is;
+    `check: false` skips that last check against the whole state (a caller that prices many roads and sends one checks the one);
+    `share` is the part of the money on hand the plan spends (a half, as the sheet opens; a bot that wants a bigger stake says so). */
+export function proposePlan(state, content, agent, route, { check = true, share = 0.5 } = {}) {
   const a = typeof agent === 'string' ? agentOf(content, agent) : agent;
   const r = typeof route === 'string' ? routeOf(content, route) : route;
   const dest = r ? stopOf(content, r.to) : null;
@@ -690,7 +692,7 @@ export function proposePlan(state, content, agent, route) {
     .sort((x, y) => y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
   const carried = out.map(e => e.g);
   const back = bringBack(state, content, dest, carried);
-  const budget = Math.floor(state.money / 2);
+  const budget = Math.floor(state.money * share);
   const cargo = {};
   let purse = 0;
   // buying now at home moves the home price: price each load after the one before it
@@ -719,6 +721,7 @@ export function proposePlan(state, content, agent, route) {
     const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
     Object.assign(base, { contract: 'qirad', partners: stake, purse: Math.max(purse, base.buy.length ? stake : 0) });
   }
+  if (!check) return !Object.keys(cargo).length && !base.purse ? null : base;
   // shrink until the engine takes it (money, wage, rules in words), as the outfit sheet would
   for (const f of [1, 0.7, 0.5, 0.35, 0.25, 0.15]) {
     const p = { ...base, cargo: Object.fromEntries(Object.entries(cargo).map(([g, n]) => [g, Math.floor(n * f)]).filter(([, n]) => n > 0)), purse: Math.floor(base.purse * f) };
