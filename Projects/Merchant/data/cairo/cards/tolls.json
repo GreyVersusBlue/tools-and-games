@@ -42,7 +42,7 @@
       {
         "id": "quseir",
         "label": "Send the goods by Quseir",
-        "hint": "It costs less, later. Quseir is nearer to Qus.",
+        "hint": "It costs less, later. Quseir is nearer to Qus, and partners like a house that counts its costs.",
         "now": [],
         "later": [
           {
@@ -50,6 +50,10 @@
             "do": [
               {
                 "money": -4
+              },
+              {
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -120,7 +124,7 @@
       {
         "id": "store",
         "label": "Leave the goods in the harbour store",
-        "hint": "It costs less. Your goods wait, and he notices.",
+        "hint": "It costs less. Your goods wait and the officer notices, but partners like a patient house.",
         "now": [],
         "later": [
           {
@@ -130,8 +134,8 @@
                 "money": -3
               },
               {
-                "rep": "court",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -192,15 +196,15 @@
       {
         "id": "refuse",
         "label": "Say you do not know him",
-        "hint": "You keep your money. Giorgio will tell others.",
+        "hint": "You keep your money. The port officers like a house that knows whom it vouches for.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "rep": "foreign",
-                "by": -1
+                "rep": "court",
+                "by": 1
               }
             ]
           }
@@ -262,7 +266,7 @@
       {
         "id": "alone",
         "label": "Send them alone",
-        "hint": "It costs less. Nabil may feel left out.",
+        "hint": "It costs less. Nabil may feel left out, but the officers see your own count.",
         "now": [],
         "later": [
           {
@@ -272,8 +276,8 @@
                 "money": -2
               },
               {
-                "rep": "partners",
-                "by": -1
+                "rep": "court",
+                "by": 1
               }
             ]
           }

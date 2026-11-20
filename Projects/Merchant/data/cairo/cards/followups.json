@@ -195,7 +195,7 @@
       {
         "id": "wait",
         "label": "Wait for the price to fall",
-        "hint": "You keep your money.",
+        "hint": "You keep your money, and buyers abroad hear that you wait for a fair price.",
         "now": [],
         "later": [
           {
@@ -203,6 +203,10 @@
             "do": [
               {
                 "money": 3
+              },
+              {
+                "rep": "foreign",
+                "by": 1
               }
             ]
           }
@@ -255,19 +259,18 @@
       {
         "id": "hold",
         "label": "Ask for the rest over a year",
-        "hint": "You may get it. Farid will be hurt.",
-        "now": [
-          {
-            "rep": "partners",
-            "by": -1
-          }
-        ],
+        "hint": "You may get it. Farid will be hurt, and the court likes a clear book.",
+        "now": [],
         "later": [
           {
             "in": 4,
             "do": [
               {
                 "money": 2
+              },
+              {
+                "rep": "court",
+                "by": 1
               }
             ]
           }
@@ -440,7 +443,7 @@
       {
         "id": "take",
         "label": "Take the buyer",
-        "hint": "It costs money to fill the order. It may pay.",
+        "hint": "It costs money to fill the order. It may pay, and Alexandria hears of it.",
         "requires": {
           "money": {
             "gte": 4
@@ -457,6 +460,10 @@
             "do": [
               {
                 "money": 7
+              },
+              {
+                "rep": "foreign",
+                "by": 1
               }
             ]
           }
@@ -472,17 +479,7 @@
             "by": 1
           }
         ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "rep": "foreign",
-                "by": 1
-              }
-            ]
-          }
-        ]
+        "later": []
       }
     ],
     "note": "Jewish and Muslim merchants had long called each other business friends and done each other favours.",
@@ -679,18 +676,13 @@
         "id": "ledger",
         "label": "Show him the ledger first",
         "hint": "It may hurt his pride now. You keep 4 dinars, and a fair count is respected later.",
-        "now": [
-          {
-            "rep": "partners",
-            "by": -1
-          }
-        ],
+        "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "rep": "partners",
+                "rep": "court",
                 "by": 1
               },
               {
@@ -746,6 +738,10 @@
             "do": [
               {
                 "money": 8
+              },
+              {
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -761,17 +757,7 @@
             "by": 1
           }
         ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "rep": "partners",
-                "by": 1
-              }
-            ]
-          }
-        ]
+        "later": []
       }
     ],
     "note": "Some friendships between merchants lasted for a lifetime. A few went on for generations.",
@@ -1131,10 +1117,6 @@
         "label": "Say your word is good enough",
         "hint": "It costs nothing. Yusuf is more uneasy.",
         "now": [
-          {
-            "trust": "yusuf",
-            "by": -1
-          },
           {
             "memory": "yusuf",
             "kind": "unfair"

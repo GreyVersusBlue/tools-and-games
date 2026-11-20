@@ -461,7 +461,7 @@
       {
         "id": "silent",
         "label": "Say nothing and watch",
-        "hint": "It costs nothing now. Yusuf may feel unseen.",
+        "hint": "It costs nothing now. Partners like a steady house, though Yusuf may feel unseen.",
         "now": [
           {
             "flag": "yusuf-watched",
@@ -473,8 +473,8 @@
             "in": 2,
             "do": [
               {
-                "trust": "yusuf",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }

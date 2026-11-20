@@ -41,7 +41,7 @@
       {
         "id": "decline",
         "label": "Say you are too busy",
-        "hint": "Your carter earns 4 dinars on your own goods. Yehuda will ask someone else.",
+        "hint": "Your carter earns 4 dinars on your own goods, and the street sees a house with steady work. Yehuda will ask someone else.",
         "now": [],
         "later": [
           {
@@ -56,8 +56,8 @@
             "in": 3,
             "do": [
               {
-                "rep": "partners",
-                "by": -1
+                "rep": "court",
+                "by": 1
               }
             ]
           }

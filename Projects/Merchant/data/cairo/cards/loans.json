@@ -46,11 +46,11 @@
       {
         "id": "refuse",
         "label": "Refuse",
-        "hint": "Farid will remember.",
+        "hint": "Farid will remember. The court likes a careful house.",
         "now": [
           {
-            "rep": "partners",
-            "by": -1
+            "rep": "court",
+            "by": 1
           }
         ],
         "later": [
@@ -128,12 +128,16 @@
       {
         "id": "decline",
         "label": "Say you cannot",
-        "hint": "Murad will ask someone else.",
+        "hint": "Murad will ask someone else. The court likes a careful house.",
         "now": [],
         "later": [
           {
             "in": 3,
             "do": [
+              {
+                "rep": "court",
+                "by": 1
+              },
               {
                 "rep": "partners",
                 "by": -1
@@ -274,7 +278,7 @@
       {
         "id": "partner",
         "label": "Put in 5 dinars as her partner",
-        "hint": "It costs now. You would take a share of the profit.",
+        "hint": "It costs now. You would take a share of the profit, and the whole market would see the partnership.",
         "requires": {
           "money": {
             "gte": 5
@@ -286,7 +290,7 @@
           },
           {
             "rep": "partners",
-            "by": 1
+            "by": 2
           }
         ],
         "later": [
@@ -303,7 +307,7 @@
       {
         "id": "small",
         "label": "Lend her 3 dinars as a kindness",
-        "hint": "A small help. She will repay it.",
+        "hint": "A small help. She will repay it, and the street will hear of the kindness.",
         "now": [
           {
             "money": -3
@@ -315,6 +319,10 @@
             "do": [
               {
                 "money": 3
+              },
+              {
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -323,7 +331,7 @@
       {
         "id": "keep",
         "label": "Keep your money for your own trade",
-        "hint": "It stays free to work. Dalal may be hurt.",
+        "hint": "It stays free to work, and the court likes a careful house. Dalal may be hurt.",
         "now": [],
         "later": [
           {
@@ -333,8 +341,8 @@
                 "money": 2
               },
               {
-                "rep": "partners",
-                "by": -1
+                "rep": "court",
+                "by": 1
               }
             ]
           }

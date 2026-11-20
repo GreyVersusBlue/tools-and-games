@@ -42,7 +42,7 @@
       {
         "id": "hide",
         "label": "Hide the sacks and hope",
-        "hint": "Bad food is easy to smell.",
+        "hint": "Bad food is easy to smell, but your street hears nothing yet.",
         "now": [],
         "later": [
           {
@@ -52,8 +52,8 @@
                 "money": -4
               },
               {
-                "rep": "court",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ],
             "card": "muhtasib-fine"
@@ -163,10 +163,6 @@
               {
                 "rep": "partners",
                 "by": 1
-              },
-              {
-                "rep": "court",
-                "by": 1
               }
             ]
           }
@@ -196,6 +192,10 @@
               {
                 "rep": "partners",
                 "by": -1
+              },
+              {
+                "rep": "court",
+                "by": 1
               }
             ]
           }

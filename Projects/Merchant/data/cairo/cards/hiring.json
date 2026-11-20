@@ -234,15 +234,15 @@
       {
         "id": "keep",
         "label": "Keep to your orders",
-        "hint": "Yusuf will keep his word.",
+        "hint": "Yusuf will keep his word, and partners like a house that holds its orders.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "trust": "yusuf",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }

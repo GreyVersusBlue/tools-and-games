@@ -56,7 +56,7 @@
       {
         "id": "walk",
         "label": "Say nothing and buy elsewhere",
-        "hint": "Rahel will hear that you left.",
+        "hint": "You buy elsewhere, and other sellers hear of it.",
         "now": [
           {
             "rep": "partners",
@@ -69,6 +69,10 @@
             "do": [
               {
                 "money": 4
+              },
+              {
+                "rep": "foreign",
+                "by": 1
               }
             ]
           }
@@ -416,10 +420,6 @@
               {
                 "rep": "court",
                 "by": 1
-              },
-              {
-                "rep": "partners",
-                "by": 1
               }
             ]
           }
@@ -454,7 +454,7 @@
       {
         "id": "settle",
         "label": "Settle it yourselves over a meal",
-        "hint": "It costs 4 dinars. The quarrel may come back.",
+        "hint": "It costs 4 dinars, and the street likes a quarrel ended. It may come back.",
         "now": [
           {
             "money": -4
@@ -462,6 +462,17 @@
           {
             "flag": "two-judges-settled",
             "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
           }
         ]
       }
