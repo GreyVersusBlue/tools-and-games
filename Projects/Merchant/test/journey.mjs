@@ -89,7 +89,11 @@ const hashOf = page => page.evaluate(() => location.hash);
 const sendFromMap = async page => {
   if (!['#map', '#outfit'].includes(await hashOf(page))) return false;
   await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
-  if (await page.$('#outfit-send')) { await page.click('#outfit-send'); await page.waitForSelector('#map-toast:not([hidden])'); }
+  if (await page.$('#outfit-send')) {
+    // a card's outfit effect (MER-77) can open a sheet that cannot be sent yet: leave it by Back to the map
+    if (await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true')) await page.click('#outfit-cancel');
+    else { await page.click('#outfit-send'); await page.waitForSelector('#map-toast:not([hidden])'); }
+  }
   await page.click('#map-desk-top');
   await page.waitForSelector('#screen-desk');
   return true;
@@ -1428,7 +1432,10 @@ try {
     const faceOf = () => page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
     const sendByKeys = async () => {
       await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
-      if (await page.$('#outfit-send')) { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
+      if (await page.$('#outfit-send')) {
+        if (await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true')) { await page.focus('#outfit-cancel'); await page.keyboard.press('Enter'); }
+        else { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
+      }
       await page.keyboard.press('Escape');
       await page.waitForSelector('#screen-desk');
     };
@@ -1989,7 +1996,8 @@ try {
       const fullDesk = (() => {
         let best = null, st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
         for (let i = 0; i < 10 && st.phase === 'desk'; i++) { if (!best || openCount(st) > openCount(best)) best = st; st = playSeason(st); }
-        return best;
+        // cards first: after MER-75 the fullest desk opens on a record paper, which has no choices to focus
+        return { ...best, desk: [...best.desk.filter(p => p.kind === 'card'), ...best.desk.filter(p => p.kind !== 'card')] };
       })();
       const focusId = page => page.evaluate(() => document.activeElement.id || document.activeElement.tagName.toLowerCase());
       const doneIds = page => page.evaluate(() => window.__merchant.state.desk.filter(p => p.state !== 'open').map(p => p.id));
@@ -2204,7 +2212,8 @@ try {
   // Each line on the page is checked against the jump's own log entry, and the order is trips, the money line,
   // who left, then the history.
   {
-    let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    // seed 1, not 1324: after MER-75's card rewrites the first-choice play on 1324 loses nobody in act one; seed 1 loses one
+    let g = eng.newGame(nodeContent, { seed: 1, length: 'acts', house: 'spice' });
     for (let guard = 0; guard < 20 && g.phase !== 'interlude'; guard++) {
       for (const p of g.desk) {
         if (p.state !== 'open') continue;
@@ -2278,7 +2287,7 @@ try {
       await page.goto(GAME, { waitUntil: 'load' });
       await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
       await page.goto(GAME + '#desk', { waitUntil: 'load' });
-      await page.waitForSelector('#choice-p9-0-go');
+      await page.waitForSelector('#screen-desk .choice');
     };
     const money = () => page.$eval('#bar-money', e => e.textContent.trim());
 
