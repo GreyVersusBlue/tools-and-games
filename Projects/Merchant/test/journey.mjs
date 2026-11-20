@@ -591,7 +591,7 @@ try {
       await page.click('#choice-p0-1-go');
       await page.waitForSelector(BACK);
       const m1 = eng.choose(m0, nodeContent, 'p0-1', 'go');
-      eq(await page.$eval('.sheet-title', e => e.textContent), 'Nothing changed at once.', 'the choice itself takes no money');
+      eq(await page.$eval('.sheet-title', e => e.textContent), 'Yusuf trusts the house more.', 'the choice names the trust it moves and takes no money');
       eq(await page.$eval('#bar-money', e => e.textContent.trim()), '1,500 dinars', 'the house still has all its money before Send');
       await page.click('#btn-next');
       // the one-press first expedition (DESIGN 7): the sheet over the map table, filled in for Damascus
