@@ -23,7 +23,7 @@ import { playGame } from '../tools/bots.mjs';
 
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? Number(process.argv[i + 1]) : fallback; };
 const GAMES = arg('games', 1000);
-export const TARGET = 0.7, FLOOR = 0.5, HOLD = 0.12;
+export const TARGET = 0.7, FLOOR = 0.5, HOLD = FLOOR;
 
 const content = await loadContent('cairo', { fs });
 const kindOf = id => content.cards.find(c => c.id === id)?.kind;

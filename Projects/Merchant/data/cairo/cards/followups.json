@@ -919,7 +919,7 @@
   {
     "id": "tamer-title",
     "group": "followups",
-    "kind": "world",
+    "kind": "trade",
     "from": {
       "name": "Tamer, a rich merchant",
       "role": "Cairo",

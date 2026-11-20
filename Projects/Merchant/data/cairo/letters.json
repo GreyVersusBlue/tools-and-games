@@ -1170,5 +1170,1160 @@
         "at": "vol. 4, p. 947 for the salt prices, told to him at Taghaza, and p. 950 for the two months"
       }
     ]
+  },
+  {
+    "id": "nile-flood-boats",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "The flood fills the boats",
+    "body": "We are on the river. The Nile is in flood and every boat is loading in a rush. The boatmen asked double. I paid it and took the first boat, so our goods were not left on the bank.",
+    "when": {
+      "all": [
+        {
+          "leg": {
+            "by": "nileboat"
+          }
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        }
+      ]
+    },
+    "happened": [
+      {
+        "money": -25
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "tell-partners",
+        "label": "Tell the partners what it cost",
+        "hint": "It costs 5. Partners like a house that keeps them told.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Maqrizi wrote of boats loaded with crops, spices and sugar. They set sail when the Nile flowed into the Alexandria canal, between 25 July and 23 August. In July 1326 Ibn Battuta came down from Qus in eight nights, in the flood.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 150, quoting al-Maqrizi on the boats that sailed when the flood filled the Alexandria canal"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 71; eight nights from Qus in the flood of July 1326"
+      }
+    ]
+  },
+  {
+    "id": "nile-slow-boat",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "The boatman stops at every landing",
+    "body": "The boat is slow. The boatman stops at every landing to sell goods of his own. I paid him extra to go straight on, so we would not lose a week.",
+    "when": {
+      "leg": {
+        "by": "nileboat"
+      }
+    },
+    "happened": [
+      {
+        "money": -15
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "bonus",
+        "label": "Send a bonus",
+        "hint": "It costs 15. Your agent will not forget it.",
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "$agent",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A traveller of the 1100s, Ibn Jubayr, went by boat from Cairo to Qus. Gibb counts the trip as 18 days.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 59 n. 185; Gibb's note, citing Ibn Jubayr, gives 18 days by boat from Cairo to Qus"
+      }
+    ]
+  },
+  {
+    "id": "qus-boats-for-cairo",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "Too many goods, too few boats",
+    "body": "I am at Qus. Goods have come over the desert from the Red Sea, and they all wait for a boat down the river. Boats are few. I paid for a place on the next one.",
+    "when": {
+      "at": "qus"
+    },
+    "happened": [
+      {
+        "money": -20
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "bonus",
+        "label": "Send a bonus",
+        "hint": "It costs 15. Your agent will not forget it.",
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "$agent",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Qus, goods from the Red Sea were loaded onto Nile boats for Cairo and Alexandria.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 33; Qus as the place where goods from the Red Sea were loaded onto Nile boats"
+      }
+    ]
+  },
+  {
+    "id": "qus-camels",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "Camels for the desert",
+    "body": "I am at Qus. The camel men say the desert road to Quseir takes five days, and the road to Aydhab takes much longer. I hired camels for the whole time, with some spare, so nothing would be left behind.",
+    "when": {
+      "at": "qus"
+    },
+    "happened": [
+      {
+        "money": -25
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "copy",
+        "label": "Ask for the camel men's names",
+        "hint": "It costs 5. Partners trust a house that keeps its papers.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A note of Gibb's calls Quseir the port nearest the Nile valley, five days from Qus. Another note, citing Ibn Jubayr, gives 19 days from Qus to Aydhab.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 413 n. 3, Quseir five days from Qus; vol. 1, p. 59 n. 185, 19 days from Qus to Aydhab"
+      }
+    ]
+  },
+  {
+    "id": "quseir-north-wind",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "Ships fight the north wind",
+    "body": "I am at Quseir. Ships come up the Red Sea against the north wind, and it makes them slow. The owner of the next ship wants half the freight now. I paid it, so our goods have a place.",
+    "when": {
+      "at": "quseir"
+    },
+    "happened": [
+      {
+        "money": -30
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "paper",
+        "label": "Ask the owner for a paper",
+        "hint": "It costs 5. Partners trust a house that keeps its papers.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The sea voyage to Quseir was long and hard, because ships had to fight the strong north winds. In 1330 Ibn Battuta wrote of a ship that was loaded at Jeddah for Quseir.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 33; Quseir had the shorter desert road and the longer, harder sea voyage against the north winds"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, pp. 412 to 413; the ship loaded at Jeddah for Quseir in 1330"
+      }
+    ]
+  },
+  {
+    "id": "quseir-short-road",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "The short road from Qus",
+    "body": "I am at Quseir. The road from Qus took five days. Merchants here say that is why they come, and not to Aydhab. The camel men want a high price to take goods back, so I hired them early.",
+    "when": {
+      "at": "quseir"
+    },
+    "happened": [
+      {
+        "money": -20
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "bonus",
+        "label": "Send a bonus",
+        "hint": "It costs 15. Your agent will not forget it.",
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "$agent",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Quseir was the port nearest the Nile valley, five days from Qus. A writer of about 1400 says some merchants chose Quseir over Aydhab because it was nearer Qus.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 413 n. 3; Quseir five days from Qus"
+      },
+      {
+        "src": "peacock-2008",
+        "at": "p. 33, citing al-Qalqashandi: some merchants preferred Quseir to Aydhab because it was nearer Qus"
+      }
+    ]
+  },
+  {
+    "id": "constantinople-sacks",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "Flax sold by the sack",
+    "body": "I am at Constantinople. The buyers here weigh flax by the sack. Flax is the plant that linen is made from. One buyer took 4 in every hundred off the weight for the sack itself. I agreed, and he paid at once.",
+    "when": {
+      "at": "constantinople"
+    },
+    "happened": [
+      {
+        "money": 20
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "write",
+        "label": "Ask him to write the weights down",
+        "hint": "It costs 5. Partners trust a house that keeps its papers.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by the sack. The buyer took 4 in every hundred off the weight for the sack.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "the section on flax of Alexandria sold at Constantinople and Pera, 4 percent off for the sack; the page was not confirmed"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-winter-ship",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "A captain who sails in winter",
+    "body": "I am at Alexandria, and it is winter. The Italian cities say their ships must stay in port until spring. A captain here will sail anyway for extra pay. I paid him, so we did not lose a season.",
+    "when": {
+      "all": [
+        {
+          "at": "alexandria"
+        },
+        {
+          "season": [
+            "winter"
+          ]
+        }
+      ]
+    },
+    "happened": [
+      {
+        "money": -35
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "crew",
+        "label": "Send a gift for the crew",
+        "hint": "It costs 10. Agents hear which houses are generous.",
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Venice, Genoa, Pisa and Ancona passed laws against sailing in winter. A study of recorded voyages finds that ships sailed anyway. One went from Alexandria to Crete in December 1319.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "duggan-2015",
+        "at": "p. 277, the winter bans as a legal fiction; p. 294, the voyage from Alexandria to Crete in December 1319"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-canal-fills",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "The canal is filling",
+    "body": "I am at Alexandria. The canal from the Nile is filling with the flood, and loaded boats are leaving for the river. I booked a place on the first one before the price went up.",
+    "when": {
+      "all": [
+        {
+          "at": "alexandria"
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        }
+      ]
+    },
+    "happened": [
+      {
+        "money": -20
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "bonus",
+        "label": "Send a bonus",
+        "hint": "It costs 15. Your agent will not forget it.",
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "$agent",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Maqrizi wrote of boats loaded with crops, spices and sugar. They set sail when the Nile flowed into the Alexandria canal, between 25 July and 23 August.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 150, quoting al-Maqrizi"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-twenty-in-a-hundred",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "The customs men count",
+    "body": "I am at Alexandria. The customs men, who tax goods that come in, took 20 in every hundred of mine. They took nothing on goods going out. I paid, and they gave me a paper to show it.",
+    "when": {
+      "at": "alexandria"
+    },
+    "happened": [
+      {
+        "money": -40
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "complain",
+        "label": "Tell the court in Cairo",
+        "hint": "It costs 20. It may help every house in time.",
+        "now": [
+          {
+            "money": -20
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A handbook for merchants from about 1340 says goods put in at Alexandria paid 20 in every hundred. Goods going out paid nothing. What a merchant really paid could be less than the list.",
+    "unlocks": [
+      "term-customs"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "print p. 72; the duty at Alexandria, 20 percent on entry and nothing on leaving; the number rests on a modern reading of the handbook"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-genoese-buyer",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "A Genoese buyer",
+    "body": "I am at Alexandria. No Venetian ships have come, but a Genoese buyer did. He wanted my goods and paid a fair price at once. I sold more than I planned, so the house has cash in hand.",
+    "when": {
+      "all": [
+        {
+          "at": "alexandria"
+        },
+        {
+          "year": [
+            1324,
+            1344
+          ]
+        }
+      ]
+    },
+    "happened": [
+      {
+        "money": 30
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "word",
+        "label": "Write to him to thank him",
+        "hint": "It costs 5. Foreign merchants hear of a house that is polite.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Venice kept its ships out of Egypt from 1323 to 1344. One historian finds no sign that the Genoese or the Catalans stopped trading with Alexandria.",
+    "unlocks": [],
+    "sources": [
+      {
+        "src": "hill-2017",
+        "at": "p. 49; no evidence that Catalans or Genoese suspended trade with Alexandria"
+      },
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 135 to 137; Venice's halt in direct trade, 1323 to 1344"
+      }
+    ]
+  },
+  {
+    "id": "galley-freight",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "Freight on the galley",
+    "body": "We are on a galley, a long ship with oars. The captain charges freight by the sack, and it must be paid before we land. I paid for all our goods, so none was put off at the next port.",
+    "when": {
+      "leg": {
+        "by": "galley"
+      }
+    },
+    "happened": [
+      {
+        "money": -30
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "paper",
+        "label": "Ask for the captain's paper",
+        "hint": "It costs 5. Partners trust a house that keeps its papers.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti's handbook lists what freight cost. It gives 7 gold bezants a sack to carry pepper from Alexandria to Venice on an armed galley.",
+    "unlocks": [
+      "term-ships"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "print p. 75; freight from Alexandria to Venice by armed galley, 7 gold bezants a sack"
+      }
+    ]
+  },
+  {
+    "id": "qus-sugar-press",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "A place in the next pressing",
+    "body": "I am at Qus, where sugar cane grows. A press owner offered us a place in his next pressing if we paid half now. I paid, so the house has a claim on his next sugar.",
+    "when": {
+      "at": "qus"
+    },
+    "happened": [
+      {
+        "money": -30
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "bonus",
+        "label": "Send a bonus",
+        "hint": "It costs 15. Your agent will not forget it.",
+        "now": [
+          {
+            "money": -15
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "$agent",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "By the 1300s most of Egypt's sugar was made in Upper Egypt, in towns such as Assiut, Qus and Fayyum. The sultan's own estates and presses were part of it.",
+    "unlocks": [
+      "good-sugar"
+    ],
+    "sources": [
+      {
+        "src": "sato-2004",
+        "at": "pp. 91 to 99; sugar made mainly in Upper Egypt by the 13th and 14th centuries, and the sultan's estates and presses"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-galleys-back",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "On the road"
+    },
+    "title": "Venice's galleys are back",
+    "body": "I am at Alexandria. Venice's galleys, its long ships with oars, have come back after many years. Their buyers pay well for pepper. I sold at once, before more ships came and the price fell.",
+    "when": {
+      "all": [
+        {
+          "at": "alexandria"
+        },
+        {
+          "year": [
+            1345,
+            1347
+          ]
+        }
+      ]
+    },
+    "happened": [
+      {
+        "money": 40
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "word",
+        "label": "Write to the Venetians",
+        "hint": "It costs 5. Foreign merchants hear of a house that is polite.",
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Venice's state galleys sailed to Alexandria again in 1345. A treaty with the sultan fixed the taxes on gold and silver at 2 in every hundred.",
+    "unlocks": [
+      "term-ships"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 136 to 137; the treaty of 1345 and the galley service resumed in 1345"
+      }
+    ]
   }
 ]
