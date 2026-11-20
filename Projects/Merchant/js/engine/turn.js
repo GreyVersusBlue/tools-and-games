@@ -7,7 +7,7 @@
 //   close: move, risk, tolls, drift, fireDue, advance, (jump), end, then open
 // Expeditions and the jump are routes.js, letters from the road letters.js, markets market.js.
 import { playedSeasons, seasonIndex, seasonName, year, actOf, actPosition, isLastSeason } from './calendar.js';
-import { holds, describeTrips } from './conditions.js';
+import { holds, describeTrips, tripLeaf } from './conditions.js';
 import { apply, applyAll, check } from './effects.js';
 import { find, addPaper, deskFull, cityOf, MAX_PAPERS } from './state.js';
 import { weighted } from './rng.js';
@@ -18,6 +18,8 @@ import * as agents from './agents.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
+/** Pool cards a season may draw while the house has a trip out or home (DESIGN 2.1 rule 1). */
+export const POOL_WITH_TRIP = 2;
 
 export const steps = {
   // opening a season
@@ -69,6 +71,13 @@ function cardTarget(s, content) {
   return s.expeditions.length >= 3 || i + 1 > of / 2 ? 3 : 2;
 }
 
+/** A trip is live this season: an expedition is on the road, or a return or loss paper is on the desk. */
+const tripLive = s => s.expeditions.length > 0 || s.desk.some(p => p.kind === 'return' || p.kind === 'lost');
+
+/** Draws the season's cards (DESIGN 2.1). The papers of the house's own trips are already on the desk (returns, losses,
+    letters). From the pool: a card that tells of a trip (a `trip` leaf) is drawn before any other; at most POOL_WITH_TRIP pool
+    cards while a trip is live; at most one `favour` card on the desk, a follow-up's included; and no two pool cards of one
+    kind. A draw that no card fits is not spent: the desk holds fewer cards. */
 function drawCards(s, content) {
   const idx = seasonIndex(s, content);
   const city = cityOf(content, 'drawing cards');
@@ -83,17 +92,26 @@ function drawCards(s, content) {
     if (deskFull(s, opening.length)) throw new Error(`opening for "${s.house}" is more than ${MAX_PAPERS} papers`);
     for (const id of opening) { find(content.cards, id, 'card'); put(id); }
   }
+  const live = tripLive(s), kindsDrawn = new Set();
+  let drawn = 0;
   for (let want = cardTarget(s, content) - cardsOnDesk(s).length; want > 0; want--) {
+    if (live && drawn >= POOL_WITH_TRIP) break;
     const groups = new Set(cardsOnDesk(s).map(p => find(content.cards, p.ref, 'card').group));
+    const favours = cardsOnDesk(s).filter(p => find(content.cards, p.ref, 'card').kind === 'favour').length;
     const recent = new Set(s.log.filter(e => e.kind === 'card' && idx - e.at < RECENT).map(e => e.ref));
     const onDesk = new Set(s.desk.map(p => p.ref));
     const pool = (content.cards ?? []).filter(c =>
       c.group !== 'followups' && c.weight !== 0 &&
       !onDesk.has(c.id) && !groups.has(c.group) && !recent.has(c.id) &&
       !(c.repeat === false && s.seen[c.id]) &&
+      !(c.kind === 'favour' && favours >= 1) && !(c.kind && kindsDrawn.has(c.kind)) &&
       holds(c.when, s, content));
     if (!pool.length || deskFull(s)) break; // no draw is spent on a paper that has no room
-    put(weighted(s, pool).id);
+    const trips = pool.filter(c => tripLeaf(c.when));
+    const card = weighted(s, trips.length ? trips : pool);
+    if (!put(card.id)) break;
+    drawn++;
+    if (card.kind) kindsDrawn.add(card.kind);
   }
 }
 

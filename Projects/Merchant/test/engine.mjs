@@ -414,7 +414,8 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
   eq(s.phase, 'ended');
   // MER-41: 406 and 16 became 416 and 24. The jump rolls each hired agent's retirement from state.rng, which moves the
   // second act's draws, and the log gains one entry for the jump and one for each Accounts paper.
-  eq(s.money, 416, 'final money');
+  // MER-78: 416 became 403. The draw takes at most one favour a season and no two cards of one kind, which deals other cards from season 3 on.
+  eq(s.money, 403, 'final money');
   // MER-60: 24 became 30. The closing step writes one `season` entry for each of the six seasons played.
   // MER-61: 30 became 31. The opening keeps one `trust` entry, replaced each season, not one a season.
   eq(s.log.length, 31, 'log length');
@@ -604,18 +605,18 @@ test('pinned game: the papers of each season of seed 7 (full) are pinned, and a 
   // MER-41: the papers other than the Accounts paper are exactly what they were; the money is too. The log grew by the
   // accounts entries (23 to 39). MER-60: 39 became 50, one `season` entry for each of the eleven seasons closed.
   eq(seq.map(x => x.filter(r => r !== 'accounts').join('+')), [
-    'welcome-note+wool-offer', 'lamp-order', 'wool-due+salt-order+court-summons', 'quay-toll+lamp-quarrel', 'salt-dispute+bridge-toll',
-    'rope-dispute+harvest-gift', 'wool-offer', 'lamp-order', 'wool-due+salt-order', 'quay-toll+lamp-quarrel+court-summons', 'fair-closes+salt-dispute+bridge-toll',
-  ]);
-  eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, false, true, true], 'the seasons that open with an Accounts paper');
-  eq([s.money, s.log.length], [396, 51]);   // MER-61: 50 became 51, the one `trust` entry
+    'welcome-note+wool-offer', 'lamp-order', 'wool-due+salt-order+court-summons', 'quay-toll+salt-dispute', 'rope-dispute',
+    'lamp-quarrel+bridge-toll', 'wool-offer+harvest-gift', 'lamp-order', 'wool-due+salt-order', 'quay-toll+salt-dispute+court-summons', 'fair-closes+rope-dispute',
+  ]);   // MER-78: seasons 4 to 7, 10 and 11 changed (one favour a season, no two of one kind; testport has few cards, so season 5 is one card); seasons 1 to 3, 8 and 9 deal what they dealt
+  eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, true, true, true], 'the seasons that open with an Accounts paper');
+  eq([s.money, s.log.length], [404, 52]);   // MER-78: 396 and 51 became 404 and 52 (other cards, so another delayed line and one more Accounts paper)   // MER-61: 50 became 51, the one `trust` entry
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
 });
 test('season log: one { at, kind: season, change } entry for each closed season, change the net dinars of that season (MER-60, for the ledger)', () => {
   const { s } = play(content, { seed: 7 });
   const seasons = s.log.filter(e => e.kind === 'season');
-  eq(seasons.map(e => [e.at, e.change]), [[0, -40], [1, -30], [2, 59], [3, -10], [4, -25], [5, -12], [6, -40], [7, -30], [8, 84], [9, -35], [10, -25]]);
+  eq(seasons.map(e => [e.at, e.change]), [[0, -40], [1, -30], [2, 59], [3, -15], [4, -12], [5, -20], [6, -40], [7, -30], [8, 84], [9, -40], [10, -12]]);
   eq(seasons.map(e => Object.keys(e).sort().join()).every(k => k === 'at,change,kind,money'), true, 'the ledger reads at and change; money is where the next change starts');
   eq(500 + seasons.reduce((n, e) => n + e.change, 0), s.money, 'the plain house starts with 500 and the changes add up to what it ends with');
 });

@@ -153,7 +153,8 @@ test('(1) a report written on the way home reaches the desk after the expedition
 test('(1) a letter in the post when its expedition is lost is delivered, a report\'s happened applies, and a question\'s answer is logged as dropped', () => {
   const lossy = c => variant(trek(c, { risk: { 2: 1 } }), x => { x.city.jump = { wholeLoss: 1 }; });   // the third leg is lost; a letter written at s2 takes two seasons
   const rep = writing(lossy(calm), report('r1', at('s2')));
-  const seedR = seedFor(rep, st => everPosted(st, 'r1'), { n: 3 });
+  // MER-78: the seed must also be one where the third leg is lost (a risk of 1 is clamped to 0.95, and a draw moved by the new deal rode it safely)
+  const seedR = seedFor(rep, st => everPosted(st, 'r1') && st[st.findIndex(s => posted(s, 'r1')) + 1]?.expeditions.length === 0, { n: 6 });
   const lost = play(rep, seedR, { n: 6 }), control = play(noHappened(rep), seedR, { n: 6 });
   const w = lost.findIndex(s => posted(s, 'r1'));
   eq(lost[w + 1].expeditions, [], 'the expedition is lost in the season the letter was written, before it arrives');
@@ -163,7 +164,7 @@ test('(1) a letter in the post when its expedition is lost is delivered, a repor
   ok(got > w + 1, 'it reaches the desk after the loss');
   eq(salt(lost[got]) - salt(control[got]), 3, 'the happened effect applies');
   const ask = writing(lossy(calm), question('q1', at('s2')));
-  const seedQ = seedFor(ask, st => everPosted(st, 'q1'), { n: 3 });
+  const seedQ = seedFor(ask, st => everPosted(st, 'q1') && st[st.findIndex(s => posted(s, 'q1')) + 1]?.expeditions.length === 0, { n: 7 });   // MER-78: and the third leg is lost, as above
   const q = play(ask, seedQ, { choices: { q1: 'home' }, n: 7 });
   const arrived = q.findIndex(s => s.desk.some(p => p.ref === 'q1'));
   ok(arrived > 0 && q[arrived].expeditions.length === 0, 'the question reaches the desk of a house whose expedition is gone');
