@@ -166,9 +166,9 @@
     "do": [ { "flag": "venice-talks-1344", "set": true }, { "unlock": "person-venetians" } ],
     "notice": {
       "title": "Venice asks to trade again",
-      "body": "Venice wants to trade at Alexandria again. It sends an envoy to the sultan. Venetian ships have stayed away since 1323."
+      "body": "Venice wants to trade at Alexandria again. It sends an envoy to the sultan. Venice has forbidden its merchants to trade there since 1323."
     },
-    "interlude": "Venice had stopped trading at Alexandria in 1323. In 1344 the pope eased his ban on trade with the sultan's lands. In August Venice voted to send an envoy to Egypt, and a treaty followed in 1345.",
+    "interlude": "In 1323 Venice forbade its merchants to trade at Alexandria. Trade did not stop, but it was hampered. In 1344 the pope eased his ban on trade with the sultan's lands. In August Venice voted to send an envoy to Egypt, and a treaty followed in 1345.",
     "note": "Jacoby writes that the pope eased the ban in 1344. That August, Venice decided to send an envoy. Hill says Venice stayed away from Alexandria from 1323 until 1345.",
     "sources": [
       { "src": "jacoby-2018", "at": "pp. 136 to 137" },
