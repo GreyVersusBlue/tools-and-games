@@ -421,6 +421,22 @@ test('joinStairwell joins three parts in two flights', () => {
   assert.equal(after.building.connections.length, 6 - 2 + 2);
 });
 
+// SV2-135b: two parts that meet at one level (gap 0) cannot be one well. The sample's A (Floor 1 to 2 at column 13)
+// and B (Floor 2 to 3 at column 34) given one letter, as a file edited elsewhere might: both stop on Floor 2.
+test('joinStairwell refuses parts that both stop on one floor, and the check offers no Join for them', async () => {
+  const { buildingChecks } = await import('../../engine/building-checks.js');
+  const torn = clone(school());
+  for (const connection of torn.building.connections) if (connection.id === 'csample00a' || connection.id === 'csample00b') connection.well = 'A';
+  const well = stairwells(torn.building).find((each) => each.letter === 'A');
+  assert.equal(well.parts, 2);
+  refused(joinStairwell, torn, { well: 'A' }, 'floor-twice', /^Stairwell A stops twice on Floor 2: at row 9, column 13 and row 9, column 34\. A stairwell stops once on each floor, so its parts cannot be joined; split the stairwell, or remove one of those connections\.$/);
+  const [finding] = buildingChecks(torn).filter((each) => each.kind === 'stairwell-split');
+  assert.equal(finding.fixable, false, 'no Join the parts for a join that would be refused');
+  assert.equal(finding.text, 'Stairwell A is in 2 parts: Floor 1 to Floor 2, and Floor 2 to Floor 3. Its parts both stop on Floor 2, at different stairs, so they cannot be joined; split the stairwell.');
+  // split, the two flights are plain stairs again and nothing is said
+  assert.deepEqual(buildingChecks(run(splitStairwell, torn, { well: 'A' })).filter((each) => each.kind === 'stairwell-split'), []);
+});
+
 // ---------------------------------------------------------------- the in-session mend
 
 test('disconnecting a middle flight splits the well: the upper part takes a fresh letter and the summary says so', () => {

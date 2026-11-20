@@ -1008,7 +1008,8 @@ test('Cell scale is not set in a new project, is set and cleared as one setting,
   const cleared = run(actions.setSetting, set, { key: 'cellScale', value: null });
   assert.equal(cleared.settings.cellScale, null);
   assert.equal(info(actions.setSetting, set, { key: 'cellScale', value: null }, cleared).label, 'Change the cell scale');
-  assert.deepEqual(info(actions.setSetting, set, { key: 'cellScale', value: null }, cleared).bumps, [], 'nothing reads it for a route or a load yet');
+  // SV2-135b moved this line: the building checks say a dead end's length in the Cell scale, so it bumps BUILDING (no route or load reads it)
+  assert.deepEqual(info(actions.setSetting, set, { key: 'cellScale', value: null }, cleared).bumps, [actions.BUILDING], 'the building checks read it; no route or load does');
   const given = { unit: 'feet', length: 5 };
   const kept = run(actions.setSetting, school(), { key: 'cellScale', value: given });
   given.length = 9;

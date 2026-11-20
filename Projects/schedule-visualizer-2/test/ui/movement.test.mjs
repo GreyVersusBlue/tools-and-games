@@ -198,6 +198,19 @@ test('four groups at most are compared, and the fifth is refused with the reason
   assert.equal(settled.measure, 'busiest');
 });
 
+// SV2-135b: Movement's grade picker agrees with the dismissal card (ARCHITECTURE 22.13, 22.17)
+test('grades: "Grade 7", "Grade7" and " grade 7 " are one grade in the picker and on screen, as on the dismissal card', async () => {
+  const { gradesOf: cardGrades } = await import('../../ui/schedule/release.js');
+  const project = JSON.parse(JSON.stringify(sample.project));
+  project.groups = project.groups.map((group, index) => ({ ...group, grade: index === 0 ? 'Grade 7' : index === 1 ? 'Grade7' : index === 2 ? ' grade 7 ' : index === 3 ? '' : 'Grade 8' }));
+  assert.deepEqual(gradesOf(project), ['', 'Grade 7', 'Grade 8'], 'one grade, as first typed; no grade is its own');
+  assert.deepEqual(gradesOf(project).filter((grade) => grade !== ''), cardGrades(project), 'the same grades as the dismissal card');
+  const seven = shownGroups(project, settleChoice(project, { who: 'grade', grade: 'Grade 7' })).map((each) => each.id);
+  assert.deepEqual(seven, project.groups.slice(0, 3).map((each) => each.id), 'all three spellings on screen');
+  assert.deepEqual(shownGroups(project, { ...settleChoice(project, {}), who: 'grade', grade: 'GRADE7' }).map((each) => each.id), seven);
+  assert.deepEqual(shownGroups(project, settleChoice(project, { who: 'grade', grade: '' })).map((each) => each.id), [project.groups[3].id]);
+});
+
 test('who is shown: every group, one grade, or the chosen groups in the project\'s order; Clear is no group at all', () => {
   const project = sample.project;
   assert.deepEqual(gradesOf(project), ['6', '7', '8']);

@@ -832,6 +832,19 @@ test('applyLevers: a trial release lays over the real entry of its key, and is o
   assert.equal(delay(onTheBell, 'gsample07b'), 120);
 });
 
+// SV2-135b: a grade is keyed as release.js matches it (spacelessKey, ARCHITECTURE 22.13), so "Grade7" and "Grade 7" are one key
+test('applyLevers: a trial for "Grade7" replaces a saved "Grade 7" entry; the two do not both apply', () => {
+  assert.equal(leverKey({ ...L_GRADE, who: { grade: 'Grade7' } }), leverKey({ ...L_GRADE, who: { grade: 'Grade 7' } }));
+  assert.equal(leverKey({ ...L_GRADE, who: { grade: 'grade  7' } }), leverKey({ ...L_GRADE, who: { grade: 'GRADE7' } }));
+  assert.notEqual(leverKey({ ...L_GRADE, who: { wing: 'North Wing' } }), leverKey({ ...L_GRADE, who: { grade: 'North Wing' } }), 'a wing is never a grade');
+  const project = school();
+  project.release = [{ id: 'lsample001', who: { grade: 'Grade 7' }, seconds: 60, after: null, dayTypeIds: null }];
+  const over = applyLevers(project, [{ ...L_GRADE, who: { grade: 'Grade7' }, seconds: 180 }]);
+  assert.equal(over.release.length, 1, 'the saved entry is replaced, not added to');
+  assert.equal(over.release[0].seconds, 180);
+  assert.deepEqual(normaliseLevers(project, [{ ...L_GRADE, who: { grade: 'grade7' }, seconds: 60 }]), [], 'the same as the saved entry, so it changes nothing');
+});
+
 test('normaliseLevers: a later lever of a key replaces the earlier whole; the added one that changes nothing goes', () => {
   const project = school();
   assert.deepEqual(normaliseLevers(project, [L_BELL, { ...L_BELL, start: '13:25', end: '14:10' }]), [{ ...L_BELL, start: '13:25', end: '14:10' }]);

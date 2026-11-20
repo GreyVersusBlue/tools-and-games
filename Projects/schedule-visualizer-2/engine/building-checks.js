@@ -17,7 +17,8 @@
 // is not connected", and stairs and elevator stops are judged in runs of their
 // own kind.
 
-import { roomNumberKey, CELL_STAIRS, neighbourCell, DOOR_SIDES, nameOfRoom, isWalkable, stairwells } from './schema.js';
+import { roomNumberKey, CELL_STAIRS, neighbourCell, DOOR_SIDES, nameOfRoom, isWalkable, stairwells, isLiftCell } from './schema.js';
+import { spaceName } from './building.js';
 import { buildGraph, reachable, components } from './graph.js';
 import { findingId } from './findings.js';
 
@@ -49,14 +50,14 @@ function plural(count, one, many) {
 }
 
 // Dead ends (ARCHITECTURE 22.6, 22.17; spec 4.9's wish). Fixed thresholds: a
-// dead end that serves a room is a note only past 6 cells, or, with a Cell
+// dead end that serves a room or another space is a note only past 6 cells, or, with a Cell
 // scale set, past 6.1 metres (20 feet); one that serves nothing is a warning
 // whatever its length.
 export const DEAD_END_CELLS = 6;
 export const DEAD_END_METRES = 6.1;
 export const DEAD_END_FEET = 20;
 
-// deadEnds(project, graph?) → [{ floorId, cells, end, first, junction, length, roomIds, name }]
+// deadEnds(project, graph?) → [{ floorId, cells, end, first, junction, length, roomIds, spaceIds, name }]
 // On each floor, over the corridor and stairs cells (connections, levers and
 // one-way rules ignored): an end is a corridor cell, not stairs and not an
 // exit, with exactly one walkable edge neighbour. From it the run goes on
@@ -68,6 +69,11 @@ export const DEAD_END_FEET = 20;
 // cell with one neighbour, so it never makes an end. `first` is the walked
 // cell next to the junction: it names the dead end, so editing the far end of
 // a stub keeps the id. `name` is the junction cell's corridor name, or ''.
+// A dead end serves every space the run gives access to, by the rule the
+// graph enters rooms by: through a door's cell when the space has doors, else
+// from any cell beside it (DECISIONS 2026-11-20, so a stub that leads only to
+// a doorless Plant Room serves it). `spaceIds` is every one, rooms first by
+// the floor's order; `roomIds` the rooms among them.
 export function deadEnds(project, graph) {
   const building = project.building ? project.building : project;
   const g = graph || buildGraph(project);
@@ -106,28 +112,74 @@ export function deadEnds(project, graph) {
       if (junction === -1) continue;
       const own = new Set(cells);
       const roomIds = [];
+      const otherIds = [];
       for (const space of floor.spaces) {
-        if (space.kind !== 'room') continue;
-        const entry = g.rooms.get(space.id);
-        if (entry && entry.entries.some((way) => own.has(way.cell))) roomIds.push(space.id);
+        if (space.kind === 'room') {
+          const entry = g.rooms.get(space.id);
+          if (entry && entry.entries.some((way) => own.has(way.cell))) roomIds.push(space.id);
+        } else if (entersFrom(floor, space).some((cell) => own.has(cell))) otherIds.push(space.id);
       }
       const corridor = floor.corridors.find((candidate) => candidate.cells.includes(junction));
-      found.push({ floorId: floor.id, cells, end: start, first: cells[cells.length - 1], junction, length: cells.length, roomIds, name: corridor ? corridor.name : '' });
+      found.push({ floorId: floor.id, cells, end: start, first: cells[cells.length - 1], junction, length: cells.length, roomIds, spaceIds: roomIds.concat(otherIds), name: corridor ? corridor.name : '' });
     }
   }
   return found;
 }
 
-function roomsWords(rooms) {
-  const names = rooms.map((room) => nameOfRoom(room, false));
-  if (names.every((name) => name.startsWith('Room '))) return (names.length === 1 ? 'room ' : 'rooms ') + list(names.map((name) => name.slice(5)));
-  return list(names);
+// The cells a space that is not a room is entered from, by the graph's rule
+// for rooms: across each door when it has doors, else every walkable cell
+// beside it.
+function entersFrom(floor, space) {
+  const doors = Array.isArray(space.doors) ? space.doors : [];
+  const cells = [];
+  const ways = doors.length > 0 ? doors.map((door) => [door.cell, door.side]) : space.cells.flatMap((cell) => DOOR_SIDES.map((side) => [cell, side]));
+  for (const [cell, side] of ways) {
+    const across = neighbourCell(floor, cell, side);
+    if (across !== -1 && isWalkable(floor.cells[across])) cells.push(across);
+  }
+  return cells;
 }
 
-// "about 27 feet": the length in the Cell scale's unit, whole numbers
-function lengthWords(cells, scale) {
-  const whole = Math.round(cells * scale.length);
-  return 'about ' + whole + ' ' + (whole === 1 ? (scale.unit === 'feet' ? 'foot' : 'metre') : scale.unit);
+// "room 101", "rooms 101 and 104", "room 101 and Gym", "room 303 and
+// Instrument Store": the rooms in number order, "room" in lower case where it
+// is the word, then the other spaces as the app names them (spaceName).
+function servedWords(rooms, others) {
+  const sorted = rooms.slice().sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' }));
+  const names = sorted.map((room) => nameOfRoom(room, false));
+  const otherNames = others.map((space) => spaceName(space));
+  if (names.length > 0 && names.every((name) => name.startsWith('Room '))) {
+    const rooms = (names.length === 1 ? 'room ' : 'rooms ') + list(names.map((name) => name.slice(5)));
+    if (otherNames.length === 0) return rooms;
+    if (names.length === 1) return list([rooms].concat(otherNames));
+    return rooms + (otherNames.length === 1 ? ', and ' : ', ') + list(otherNames);
+  }
+  return list(names.map((name) => (name.startsWith('Room ') ? 'room ' + name.slice(5) : name)).concat(otherNames));
+}
+
+// "about 27 feet", "about 6.3 metres": the length in the Cell scale's unit,
+// feet in whole numbers and metres to one decimal. A length over the limit is
+// never rounded down to the limit or under it: it is said to one more decimal
+// (feet), or rounded up at one decimal, so it never reads as allowed.
+function lengthWords(cells, scale, limit) {
+  const exact = cells * scale.length;
+  const at = (places) => Math.round(exact * 10 ** places) / 10 ** places;
+  let shown = scale.unit === 'feet' ? at(0) : at(1);
+  if (exact > limit && shown <= limit) shown = at(1);
+  if (exact > limit && shown <= limit) shown = Math.ceil(exact * 10) / 10;
+  return 'about ' + shown + ' ' + (shown === 1 ? (scale.unit === 'feet' ? 'foot' : 'metre') : scale.unit);
+}
+
+const HEADING_WORDS = { n: 'north', e: 'east', s: 'south', w: 'west' };
+
+// What a dead end is "off": the junction cell's corridor name, else the door
+// name of the exit there, else what the cell is and where.
+function offWords(building, floor, end) {
+  if (end.name !== '') return end.name;
+  const where = ' at row ' + (Math.floor(end.junction / floor.width) + 1) + ', column ' + ((end.junction % floor.width) + 1);
+  const exit = floor.exits.find((each) => each.cell === end.junction);
+  if (exit) return typeof exit.doorName === 'string' && exit.doorName.trim() !== '' ? exit.doorName : 'the exit' + where;
+  if (floor.cells[end.junction] === CELL_STAIRS) return (isLiftCell(building, floor.id, end.junction) ? 'the elevator stop' : 'the stairs') + where;
+  return 'a corridor' + where;
 }
 
 // buildingChecks(project) → Finding[]. Pass the graph when one is already
@@ -386,20 +438,27 @@ export function buildingChecks(project, graph) {
   // when one that serves a room is longer than the fixed limit
   const scale = project.settings && project.settings.cellScale;
   const limit = scale ? (scale.unit === 'feet' ? DEAD_END_FEET : DEAD_END_METRES) : null;
-  for (const end of deadEnds(project, g)) {
+  const ends = deadEnds(project, g);
+  for (const end of ends) {
     const floor = building.floors.find((candidate) => candidate.id === end.floorId);
-    const off = end.name !== '' ? end.name : 'a corridor at row ' + (Math.floor(end.junction / floor.width) + 1) + ', column ' + ((end.junction % floor.width) + 1);
-    const served = end.roomIds.map((id) => floor.spaces.find((space) => space.id === id));
+    // two dead ends off one junction are told apart by the way each runs
+    const shared = ends.some((other) => other !== end && other.floorId === end.floorId && other.junction === end.junction);
+    const step = end.first - end.junction;
+    const heading = step === -floor.width ? 'n' : step === floor.width ? 's' : step === -1 ? 'w' : 'e';
+    const lead = 'A dead end on ' + floor.name + (shared ? ' running ' + HEADING_WORDS[heading] : '') + ' off ' + offWords(building, floor, end);
+    const spaces = end.spaceIds.map((id) => floor.spaces.find((space) => space.id === id));
     const where = { floorId: floor.id, cells: end.cells.slice().sort((a, b) => a - b), roomIds: end.roomIds };
     const about = [floor.id, end.first];
-    if (served.length === 0) {
-      add('dead-end', 'warning', about, 'A dead end on ' + floor.name + ' off ' + off + ' goes nowhere: ' + plural(end.length, 'cell', 'cells') + (end.length === 1 ? ' that leads' : ' that lead') + ' to no room, stair or exit. A slip in the drawing?', where);
+    if (spaces.length === 0) {
+      add('dead-end', 'warning', about, lead + ' goes nowhere: ' + plural(end.length, 'cell', 'cells') + (end.length === 1 ? ' that leads' : ' that lead') + ' to no room, stair or exit. A slip in the drawing?', where);
       continue;
     }
     const long = scale ? end.length * scale.length > limit : end.length > DEAD_END_CELLS;
     if (!long) continue; // a door's nook
     const code = scale && scale.unit === 'metres' ? 'about 6 metres' : 'about 20 feet';
-    add('dead-end', 'note', about, 'A dead end on ' + floor.name + ' off ' + off + ' is ' + plural(end.length, 'cell', 'cells') + ' long' + (scale ? ' (' + lengthWords(end.length, scale) + ')' : '') + ' and serves ' + roomsWords(served) + '. Many fire codes limit dead-end corridors, often to ' + code + '; check your local code.', where);
+    const rooms = spaces.filter((space) => space.kind === 'room');
+    const others = spaces.filter((space) => space.kind !== 'room');
+    add('dead-end', 'note', about, lead + ' is ' + plural(end.length, 'cell', 'cells') + ' long' + (scale ? ' (' + lengthWords(end.length, scale, limit) + ')' : '') + ' and serves ' + servedWords(rooms, others) + '. Many fire codes limit dead-end corridors, often to ' + code + '; check your local code.', where);
   }
 
   // a stairwell in parts (a file edited elsewhere; the editor mends these as
@@ -438,7 +497,11 @@ export function buildingChecks(project, graph) {
     const first = stopsOf[0][0];
     const onFirst = stopsOf[0].filter((stop) => stop.floorId === first.floorId).map((stop) => stop.cell).sort((a, b) => a - b);
     const where = { floorId: first.floorId, cells: onFirst, well: well.letter, connectionIds: well.connectionIds.slice(), floors: stopsOf.map((stops) => ({ floorId: stops[0].floorId, cells: stops.filter((stop) => stop.floorId === stops[0].floorId).map((stop) => stop.cell).sort((a, b) => a - b) })) };
-    const finding = { id: findingId('stairwell-split', first.floorId, first.cell), kind: 'stairwell-split', severity: 'warning', text: 'Stairwell ' + well.letter + ' is in ' + well.parts + ' parts: ' + (words.length > 2 ? words.slice(0, -1).join(', ') + ', and ' + words[words.length - 1] : words.join(', and ')) + '. Join the parts, or split the stairwell.', where, fixable: true };
+    // parts that both stop on one floor cannot be joined (a stairwell stops
+    // once on each floor, and joinStairwell refuses): the fix is not offered
+    const twice = building.floors.find((floor) => well.stops.filter((stop) => stop.floorId === floor.id).length > 1);
+    const fix = twice ? ' Its parts both stop on ' + twice.name + ', at different stairs, so they cannot be joined; split the stairwell.' : ' Join the parts, or split the stairwell.';
+    const finding = { id: findingId('stairwell-split', first.floorId, first.cell), kind: 'stairwell-split', severity: 'warning', text: 'Stairwell ' + well.letter + ' is in ' + well.parts + ' parts: ' + (words.length > 2 ? words.slice(0, -1).join(', ') + ', and ' + words[words.length - 1] : words.join(', and ')) + '.' + fix, where, fixable: !twice };
     found['stairwell-split'].push(finding);
   }
 
