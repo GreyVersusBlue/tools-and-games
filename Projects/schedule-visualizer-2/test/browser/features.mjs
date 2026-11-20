@@ -382,7 +382,7 @@ test('7. the Rooms tab: a Features column that sorts by count, and a popover wit
   await page.click('#inspector [data-tab="properties"]');
 });
 
-test('8. the room list print and the batch pages list features, and the batch heads read a custom period word', async () => {
+test('8. the room list print and the batch pages list features after Shared space, the batch heads read a custom period word, and a part-time teacher\u2019s sheet shows the days out', async () => {
   const made = await page.evaluate(async () => {
     const roomList = await import('./ui/prints/room-list.js');
     const batch = await import('./ui/prints/batch.js');
@@ -401,7 +401,43 @@ test('8. the room list print and the batch pages list features, and the batch he
     word.settings.periodCustom = { word: 'Lesson', plural: 'Lessons', count: 'number' };
     const teachers = batch.render(word, null, { batch: 'teachers', now }).html;
     const roomsWord = batch.render(word, null, { batch: 'rooms', now }).html;
-    return { list, sorted, rooms, plain, teachers, roomsWord };
+    // a shared room with features: Shared space first, then Features (DESIGN 16.4)
+    const shared = JSON.parse(JSON.stringify(project));
+    const sharedRoom = shared.building.floors.flatMap((floor) => floor.spaces).find((space) => space.kind === 'room' && (space.featureIds || []).length > 0);
+    sharedRoom.shared = true;
+    const sharedFacts = batch.render(shared, null, { batch: 'rooms', now }).html.split('data-id="' + sharedRoom.id + '"')[1].split('batch-sheet__facts">')[1].split('</p>')[0];
+    // a part-time teacher: the first of the full sample school's (invented) teachers, whose
+    // Assembly Day runs as B Day; one sheet, its day tables and its period rows
+    const sample = (await import('./data/sample-school.js')).sampleSchool();
+    const teacherSheet = (copy, teacherId) => {
+      const html = batch.render(copy, null, { batch: 'teachers', now }).html.split('data-id="' + teacherId + '"')[1].split('<section class="batch-sheet')[0];
+      const tables = {};
+      for (const part of html.split('<section class="batch-day">').slice(1)) {
+        const title = part.split('batch-day__name">')[1].split('<')[0];
+        tables[title] = {};
+        for (const row of part.split('<tr>').slice(1)) {
+          const head = row.match(/<th scope="row">([^<]*)/);
+          if (head) tables[title][head[1]] = row.split('</th><td>')[1].split('</td>')[0];
+        }
+      }
+      return tables;
+    };
+    const away = (entries) => {
+      const copy = JSON.parse(JSON.stringify(sample));
+      const teacher = copy.teachers[0];
+      teacher.away = entries;
+      return teacherSheet(copy, teacher.id);
+    };
+    const [dayA, , assembly] = sample.dayTypes.map((dayType) => dayType.id);
+    const partTime = {
+      none: away([]),
+      // sometimes out (Fridays) in one period of Assembly Day only: no period is taken, but the
+      // note is Assembly Day's alone, so it is a kind of day of its own now
+      assemblyOnly: away([{ dayTypeIds: [assembly], weekdays: [4], periods: [3] }]),
+      // out every A Day (the classes still taught stay); out in Period 4 on Fridays, whatever the day type
+      sometimes: away([{ dayTypeIds: [dayA], weekdays: [], periods: [] }, { dayTypeIds: [], weekdays: [4], periods: [3] }]),
+    };
+    return { list, sorted, rooms, plain, teachers, roomsWord, sharedFacts, partTime, names: sample.dayTypes.map((dayType) => dayType.name) };
   });
   assert.match(made.list, /<th scope="col">Features<\/th>/);
   assert.match(made.list, /<td>Lab, &lt;i&gt;Stage&lt;\/i&gt;/);
@@ -411,6 +447,23 @@ test('8. the room list print and the batch pages list features, and the batch he
   assert.doesNotMatch(made.plain, /<th scope="col">Features<\/th>/, 'a school with no features prints no column');
   assert.match(made.rooms, /Features: [^<]*Lab/);
   assert.match(made.rooms, /Features: [^<]*&lt;i&gt;Stage&lt;\/i&gt;/);
+  // Features comes straight after Shared space on a room's sheet
+  assert.match(made.sharedFacts, /Shared space · Features: [^·]+/, 'Shared space, then Features: ' + made.sharedFacts);
+  assert.ok(made.sharedFacts.indexOf('Shared space') < made.sharedFacts.indexOf('Features:'));
+  // a part-time teacher's sheet: the day kinds split on its away entries
+  assert.deepEqual(made.names, ['A Day', 'B Day', 'Assembly Day'], 'the sample\u2019s day types');
+  assert.deepEqual(Object.keys(made.partTime.none), ['A Day', 'B Day and Assembly Day'], 'with no away entry, B Day and Assembly Day are one table');
+  assert.deepEqual(Object.keys(made.partTime.assemblyOnly), ['A Day', 'B Day', 'Assembly Day'], 'a sometimes entry on Assembly Day alone makes it a table of its own');
+  assert.match(made.partTime.assemblyOnly['Assembly Day']['Period 4'], /Not in school in Period 4 on Fridays when it is Assembly Day/);
+  assert.doesNotMatch(made.partTime.assemblyOnly['B Day']['Period 4'], /Not in school/);
+  // out all A Day: a free period reads Not in school, and a period already out has no "sometimes" note on top
+  const aDay = made.partTime.sometimes['A Day'];
+  assert.equal(aDay['Period 1'], 'Not in school', 'A Day: ' + JSON.stringify(aDay));
+  assert.equal(aDay['Period 4'], 'Not in school', 'a period already out has no Fridays note: ' + JSON.stringify(aDay));
+  // the sometimes entry: a quiet note on Period 4 of the other days, and on no other period
+  const other = made.partTime.sometimes['B Day and Assembly Day'];
+  assert.match(other['Period 4'], /<span class="batch-day__quiet">Not in school in Period 4 on Fridays<\/span>/);
+  assert.ok(Object.entries(other).filter(([period]) => period !== 'Period 4').every(([, cell]) => !cell.includes('on Fridays')), 'only Period 4 has the note: ' + JSON.stringify(other));
   assert.match(made.teachers, /<th scope="col">Lesson<\/th>/, 'the batch teacher heads read the custom word');
   assert.match(made.roomsWord, /<th scope="col">Lesson<\/th>/);
   assert.doesNotMatch(made.teachers, /<th scope="col">Period<\/th>/);
@@ -437,6 +490,7 @@ for (const theme of ['light', 'dark']) {
     const highlighted = await page.$eval('#room-features-add', (el) => ({ expanded: el.getAttribute('aria-expanded'), active: el.getAttribute('aria-activedescendant'), options: document.querySelectorAll('#room-features-list [role="option"]').length }));
     assert.equal(highlighted.expanded, 'true');
     assert.ok(highlighted.active && highlighted.options >= 1, 'an option is highlighted: ' + JSON.stringify(highlighted));
+    await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
     const open = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#room-features'), { runOnly: { type: 'tag', values: tags } }), TAGS);
     assert.ok(open.passes.length > 5, 'axe ran very few rules');
     assert.deepEqual(violations(open), [], 'the combobox with its list open, ' + theme);
