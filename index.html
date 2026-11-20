@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <!-- push test, 2026-10-07 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="greyversusblue — quests posted, services offered. Games, worlds, and school tools.">
+<meta name="description" content="greyversusblue — Browser games and a few classroom tools, free, nothing to install. Quests posted, services offered.">
 <title>greyversusblue — The Guild Board</title>
 
 <!-- ---------- Open Graph / social preview ---------- -->
@@ -12,14 +12,14 @@
 <meta property="og:site_name" content="greyversusblue">
 <meta property="og:url" content="https://greyversusblue.com/">
 <meta property="og:title" content="The Guild Board of greyversusblue">
-<meta property="og:description" content="Quests posted, services offered. Browser games, Pathfinder tools, and things built for a middle school.">
+<meta property="og:description" content="Browser games and a few classroom tools, free, nothing to install. Quests posted, services offered.">
 <meta property="og:image" content="https://greyversusblue.com/assets/og/guild-board.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="A tavern notice board headed 'The Guild Board of greyversusblue'.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="The Guild Board of greyversusblue">
-<meta name="twitter:description" content="Quests posted, services offered. Browser games, Pathfinder tools, and things built for a middle school.">
+<meta name="twitter:description" content="Browser games and a few classroom tools, free, nothing to install. Quests posted, services offered.">
 <meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
 <meta name="theme-color" content="#140E07">
 
@@ -106,6 +106,12 @@
     font-family: 'Alegreya SC', serif; font-size: clamp(.62rem, 1.5vw, .82rem);
     letter-spacing: .26em; color: #C9B583; margin-top: .5rem;
   }
+  #about {
+    max-width: 780px; margin: .9rem auto 0; padding: 0 1.2rem; text-align: center; pointer-events: none;
+    font-family: 'Alegreya SC', serif; font-size: 1.02rem; letter-spacing: .06em; color: #E6D3A3;
+    text-shadow: 0 2px 6px rgba(0,0,0,.9);
+  }
+  #about + #flavor { margin-top: .4rem; }
   #flavor {
     max-width: 640px; margin: 1rem auto 0; padding: 0 1.2rem; text-align: center; pointer-events: none;
     font-style: italic; font-size: 1.06rem; color: #D3BE90; min-height: 1.6em;
@@ -305,6 +311,7 @@
     :root { --band: 330px; }
     header.sign { margin-top: 2rem; }
     #flavor { font-size: .98rem; }
+    #about { font-size: .95rem; }
     .plaque.first { margin-top: calc(var(--band) - 26px); }
     .board { grid-template-columns: 1fr; gap: 1.3rem; }
     .board .notice, .board .notice:nth-child(3n+1), .board .notice:nth-child(3n+2), .board .notice:nth-child(3n) { transform: none; }
@@ -313,6 +320,7 @@
     :root { --band: 268px; }
     header.sign { margin-top: 1.4rem; }
     #flavor { font-size: .92rem; padding: 0 1rem; }
+    #about { font-size: .88rem; padding: 0 1rem; }
     .plaque { margin: 2rem auto 1rem; letter-spacing: .16em; }
     .plaque.first { margin-top: calc(var(--band) - 20px); }
     .ledger { padding: 0 .8rem; gap: .4rem; }
@@ -374,6 +382,7 @@
     <h1>The Guild Board <span class="amp">of</span> greyversusblue</h1>
     <div class="sub">QUESTS POSTED · SERVICES OFFERED · ALL COMERS WELCOME</div>
   </header>
+  <p id="about">Browser games and a few classroom tools, free to play, nothing to install.</p>
   <p id="flavor">Take a notice down to accept the job. The barkeep vouches for every posting.</p>
 
   <div class="plaque first" id="quests">QUESTS</div>
@@ -429,7 +438,7 @@
     <div class="reward">REWARD: <b>THE CORNER OFFICE</b> · SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-house"/></svg></span>
   </a>
-  <a class="notice" data-tags="Puzzle" data-new data-preview="assets/previews/integer-foundry.jpg" href="Projects/integer-foundry.html">
+  <a class="notice" data-tags="Puzzle" data-preview="assets/previews/integer-foundry.jpg" href="Projects/integer-foundry.html">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Integer Foundry</h3>
@@ -437,7 +446,7 @@
     <div class="reward">REWARD: <b>INGOTS BEYOND COUNTING</b> · FACTORY PUZZLE</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-anvil"/></svg></span>
   </a>
-  <a class="notice" data-tags="Sim" data-new data-preview="assets/previews/aphelion.jpg" href="Projects/aphelion/">
+  <a class="notice" data-tags="Sim" data-preview="assets/previews/aphelion.jpg" href="Projects/aphelion/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Aphelion</h3>
@@ -445,7 +454,7 @@
     <div class="reward">REWARD: <b>SILENCE, AND A WORKING HULL</b> · SPACE SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-star"/></svg></span>
   </a>
-  <a class="notice" data-tags="Narrative Explore" data-new data-preview="assets/previews/castle-conundrum.jpg" href="https://greyversusblue.github.io/castle-conundrum/">
+  <a class="notice" data-tags="Narrative Explore" data-preview="assets/previews/castle-conundrum.jpg" href="https://greyversusblue.github.io/castle-conundrum/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Castle Conundrum</h3>
@@ -469,7 +478,7 @@
     <div class="reward">REWARD: <b>SAND IN YOUR BOOTS</b> · WALKING SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-sun"/></svg></span>
   </a>
-  <a class="notice" data-tags="Explore" data-new data-preview="assets/previews/blue-hour.jpg" href="Projects/blue-hour-trail/">
+  <a class="notice" data-tags="Explore" data-preview="assets/previews/blue-hour.jpg" href="Projects/blue-hour-trail/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Blue Hour</h3>
@@ -477,7 +486,7 @@
     <div class="reward">REWARD: <b>WHATEVER'S WATCHING FROM THE TOWER</b> · WALKING SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-moon"/></svg></span>
   </a>
-  <a class="notice" data-tags="Sim" data-new data-preview="assets/previews/faire-weekend.jpg" href="Projects/Ren-Faire-Claude/">
+  <a class="notice" data-tags="Sim" data-preview="assets/previews/faire-weekend.jpg" href="Projects/Ren-Faire-Claude/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Faire Weekend</h3>
@@ -485,7 +494,7 @@
     <div class="reward">REWARD: <b>A FULL HOUSE AT EVERY STAGE</b> · MANAGEMENT SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-pennant"/></svg></span>
   </a>
-  <a class="notice" data-tags="Puzzle" data-new data-preview="assets/previews/orbital.jpg" href="Projects/orbital/">
+  <a class="notice" data-tags="Puzzle" data-preview="assets/previews/orbital.jpg" href="Projects/orbital/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Orbital</h3>
@@ -493,7 +502,7 @@
     <div class="reward">REWARD: <b>A CLEAN INSERTION</b> · GRAVITY PUZZLE</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-orbit"/></svg></span>
   </a>
-  <a class="notice" data-tags="Sim" data-new href="Projects/bell-to-bell/">
+  <a class="notice" data-tags="Sim" href="Projects/bell-to-bell/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Bell to Bell</h3>
@@ -517,7 +526,7 @@
     <div class="reward">REWARD: <b>A BUILDING THAT PASSES</b> · DESIGN TOOL</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-house"/></svg></span>
   </a>
-  <a class="notice" data-tags="Sim" data-new data-preview="assets/previews/signal-city.jpg" href="Projects/signal-city/">
+  <a class="notice" data-tags="Sim" data-preview="assets/previews/signal-city.jpg" href="Projects/signal-city/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Signal City</h3>
@@ -525,7 +534,7 @@
     <div class="reward">REWARD: <b>A GREEN WAVE</b> · SIGNAL SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-signal"/></svg></span>
   </a>
-  <a class="notice" data-tags="Sim Explore" data-new data-preview="assets/previews/skywings64.jpg" href="Projects/skywings64/">
+  <a class="notice" data-tags="Sim Explore" data-preview="assets/previews/skywings64.jpg" href="Projects/skywings64/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>SkyWings 64</h3>
@@ -533,7 +542,7 @@
     <div class="reward">REWARD: <b>SIX GOLD MEDALS</b> · FLIGHT SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-wing"/></svg></span>
   </a>
-  <a class="notice" data-tags="Action" data-new data-preview="assets/previews/throneshard.jpg" href="Projects/throneshard/">
+  <a class="notice" data-tags="Action" data-preview="assets/previews/throneshard.jpg" href="Projects/throneshard/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Throneshard</h3>

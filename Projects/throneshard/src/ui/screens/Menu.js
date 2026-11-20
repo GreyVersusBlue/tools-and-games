@@ -21,6 +21,7 @@ export class MainMenu {
           <div class="mn-t2">THRONESHARD</div>
           <div class="mn-rule"><span></span><i>✦</i><span></span></div>
           <div class="mn-t3">Sunward &nbsp;·&nbsp; Duskward</div>
+          <div class="mn-touch">Best on a computer with a keyboard and mouse.</div>
         </div>
         <div class="mn-card panel-frame">
           <button class="btn-play" data-act="play"><span>PLAY VS BOTS</span><em>5v5 · All Pick</em></button>

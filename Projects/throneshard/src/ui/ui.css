@@ -212,6 +212,8 @@
 .mn-rule span { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
 .mn-rule i { color: var(--gold-hi); font-style: normal; text-shadow: 0 0 10px rgba(255, 200, 100, 0.8); }
 .mn-t3 { font-family: var(--f-title); color: #8d8270; letter-spacing: 0.4em; font-size: 13px; text-transform: uppercase; }
+.mn-touch { display: none; margin-top: 12px; font-size: 14px; color: #e0c98f; text-shadow: 0 1px 0 #000; } /* TG-101: phones and tablets only, as TG-62 did elsewhere (#1021) */
+@media (pointer: coarse) { .mn-touch { display: block; } }
 .mn-card { padding: 22px; display: flex; flex-direction: column; gap: 20px; }
 .mn-label { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim); margin-bottom: 7px; font-weight: 700; }
 .mn-diff-desc { margin-top: 8px; font-size: 13px; color: #9a927e; min-height: 18px; }
