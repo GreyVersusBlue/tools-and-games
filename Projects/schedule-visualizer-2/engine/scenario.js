@@ -115,7 +115,7 @@
 // module's function bodies, never at its top level. Keep it so: no top-level
 // `class extends ActionError`, no constant built from an actions.js export.
 
-import { findRoom, findById, resolveSlotRoom, nameKey, roomNumberKey, allRooms, bellSchedulesOf, releaseOf, isBellTime, inRange, RANGES, RELEASE_SECONDS, CELL_CORRIDOR, ELEVATOR_KIND } from './schema.js';
+import { findRoom, findById, resolveSlotRoom, nameKey, spacelessKey, roomNumberKey, allRooms, bellSchedulesOf, releaseOf, isBellTime, inRange, RANGES, RELEASE_SECONDS, CELL_CORRIDOR, ELEVATOR_KIND } from './schema.js';
 import { findDayType, isOwnCopy, ownDayTypes, effectiveSchedule, describeDayType } from './day-types.js';
 import { periodName, periodWordForms, formatTime } from './bells.js';
 import { slotTeacherIds } from './teacher-day.js';
@@ -606,9 +606,12 @@ function listKey(list) {
   return list === null ? '*' : list.slice().sort().join(',');
 }
 
+// A grade is keyed as release.js matches it (spacelessKey, ARCHITECTURE
+// 22.13), so a lever for "Grade7" replaces a saved "Grade 7" (SV2-135b).
 function releaseWhoKey(who) {
   const kind = releaseKind(who);
   if (kind === 'groups') return 'groups:' + listKey(who.groups);
+  if (kind === 'grade') return 'grade:' + spacelessKey(String(who.grade));
   return kind === null ? '?' : kind + ':' + nameKey(String(who[kind]));
 }
 
