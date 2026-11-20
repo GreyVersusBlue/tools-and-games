@@ -27,6 +27,13 @@ const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'st
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
+/** The headline an opened return paper wears (DESIGN 2.2 rule 2): the engine's sentence, then what was hoped for and the one reason for the gap.
+    A paper from before `hoped` was kept (hoped and why null) reads as its engine headline alone. */
+const dinarsOf = n => `${withCommas(n)} ${Math.abs(n) === 1 ? 'dinar' : 'dinars'}`;
+const headlineOf = p => (Number.isFinite(p.data.hoped) && p.data.why
+  ? `${p.data.headline} ${p.data.hoped >= 0 ? `We hoped for about ${dinarsOf(p.data.hoped)}.` : `We expected to lose about ${dinarsOf(-p.data.hoped)}.`} ${p.data.why}`
+  : p.data.headline);
+
 /** The plan the outfit sheet opens on for `stop` (outfit.js): the first expedition of a game opens on the plain suggestion; after that
     the engine's proposal for the free agent who knows the stop first (then the others) on the road the sheet picks. The page's Send
     is checked against this one. */
@@ -871,6 +878,15 @@ try {
     };
     let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
     let sawReturn = null;
+    await test('MER-93: a return from a save that kept no hoped and why reads as it did before; one that kept them says the hope and the reason', async () => {
+      const { returnHeadline } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
+      const head = 'Yusuf came home from Damascus. The house made 12 dinars.';
+      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: null, why: null } }), head, 'both null');
+      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head } }), head, 'neither written');
+      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: 340, why: null } }), head, 'a hope with no reason is not half said');
+      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: 340, why: 'Damascus had too much linen.' } }), `${head} We hoped for about 340 dinars. Damascus had too much linen.`);
+      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: -20, why: 'The trip went about as hoped.' } }), `${head} We expected to lose about 20 dinars. The trip went about as hoped.`);
+    });
     await test('play to the first return: the page matches the engine every season, and the return paper leads with its sentence', async () => {
       for (let season = 1; season <= 10 && !sawReturn; season++) {
         const ret = model.desk.find(p => p.kind === 'return');
@@ -882,8 +898,11 @@ try {
           // the engine's other papers sit first or after; raise the return
           await page.$$eval('.edge, .sheet', () => {});
           const raised = await page.$eval('.sheet-title', e => e.textContent);
-          if (raised !== ret.data.headline) await page.click(`.edge[data-paper="${rid}"]`);
-            await page.waitForFunction(h => document.querySelector('.sheet-title')?.textContent === h, {}, ret.data.headline);
+          if (raised !== headlineOf(ret)) await page.click(`.edge[data-paper="${rid}"]`);
+            await page.waitForFunction(h => document.querySelector('.sheet-title')?.textContent === h, {}, headlineOf(ret));
+          // MER-93: the headline names what the sheet hoped for at sending and why the house made more or less
+          ok(Number.isFinite(ret.data.hoped) && ret.data.why, `the return carries hoped and why: ${JSON.stringify([ret.data.hoped, ret.data.why])}`);
+          ok((await page.$eval('.sheet-title', e => e.textContent)).startsWith(`${ret.data.headline} We `) && (await page.$eval('.sheet-title', e => e.textContent)).endsWith(ret.data.why), 'the headline is the sentence, then the hope, then the reason');
           eq(await page.$eval('.sheet', e => e.dataset.kind), 'return');
           eq(await page.$eval('.account', d => d.open), false, 'the account is folded shut on the first return of a game');
           ok((await page.$eval('.account summary', e => e.textContent)) === 'Show the account');
@@ -1104,9 +1123,9 @@ try {
     await test(`${how}: Send sends the engine's plan, the sheet closes to the map and a token stands in Cairo`, async () => {
       if (how === 'pointer') await page.click('#outfit-send');
       else {
-        // Tab order on the sheet: three Change links, Back to the map, Send
+        // Tab order on the sheet: four Change links, Back to the map, Send
         await page.evaluate(() => document.getElementById('panel-outfit-title').focus());
-        for (let i = 0; i < 5; i++) await page.keyboard.press('Tab');
+        for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
         eq(await page.evaluate(() => document.activeElement.id), 'outfit-send');
         await page.keyboard.press('Enter');
       }
@@ -1181,6 +1200,7 @@ try {
         eq(await page.$eval('#step-partners', e => e.getAttribute('role')), 'spinbutton');
         await page.focus('#step-purse'); await page.keyboard.press('PageUp');
         eq(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow')), '250', 'PageUp moves the purse by 250 (MER-72)');
+        eq(await page.$eval('#outfit-reasons', e => e.textContent), '', 'the qirad plan stands: ' + await page.$eval('#outfit-reasons', e => e.textContent));
         await page.click('#outfit-send');
         await page.waitForFunction(() => !document.getElementById('panel-outfit'));
         const x = await page.evaluate(() => window.__merchant.state.expeditions.at(-1));
@@ -1219,6 +1239,13 @@ try {
     const M72 = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
     const moneyOf = page => page.evaluate(() => window.__merchant.state.money);
     const numOf = t => Number(t.match(/[\d,]+(?= dinars?)/)[0].replace(/,/g, ''));
+    // opens "What they bring back" on the one-press sheet and names the first good the stop offers, if none is named
+    const nameBack = async page => {
+      if (await page.$('#change-back')) await page.click('#change-back');
+      await page.waitForSelector('.back-pick');
+      if (!(await page.$('.back-pick[aria-checked="true"]'))) await page.click('.back-pick');
+      await page.waitForSelector('.back-pick[aria-checked="true"]');
+    };
     const numOfWords = t => Number(t.match(/costs ([\d,]+) dinars?/)[1].replace(/,/g, ''));
     const { page, consoleErrors } = await open(FRAME);
     await start(page, 'pointer');
@@ -1253,12 +1280,39 @@ try {
       eq((await engineState(page)).agents.yusuf.where, 'cairo');
     });
 
+    await test('MER-93: money sent with no good to bring back is refused in the engine\'s words, and the sheet offers the default in one press', async () => {
+      await goMap(page);
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await page.click('#change-carry'); await page.waitForSelector('#step-purse');
+      await page.click('#change-back'); await page.waitForSelector('.back-pick');
+      eq(await page.$eval('#outfit-back-total', e => e.textContent.startsWith('Nothing')), true, 'no good named: the line says so');
+      await page.click('#step-purse-plus');
+      const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+      const plan = { ...sheetPlan(s0, nodeContent, 'damascus'), purse: 50, buy: [] };
+      const reasons = eng.checkPlan(s0, nodeContent, plan).reasons;
+      ok(reasons.length === 1 && /needs a good to bring back/.test(reasons[0]), `the engine refuses it: ${reasons}`);
+      await page.waitForFunction(() => /needs a good to bring back/.test(document.getElementById('outfit-reasons').textContent));
+      eq(await page.$$eval('#outfit-reasons p', ps => ps.map(p => p.textContent)), reasons, 'the sheet says the engine\'s own words');
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+      const best = await page.$eval('#outfit-back-default', b => b.textContent);
+      ok(/^Bring back /.test(best), best);
+      await page.click('#outfit-back-default');
+      await page.waitForFunction(() => document.getElementById('outfit-reasons').textContent === '');
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false', 'with the good named, Send is open');
+      eq(await page.$$eval('.back-pick[aria-checked="true"]', bs => bs.length), 1);
+      eq(await page.$('#outfit-back-offer'), null, 'the offer goes once it is taken');
+      await page.click('#outfit-cancel');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+    });
+
     await test('MER-72: the purse moves by 50 a press, 10 with Shift, and a typed amount is taken, commas and all', async () => {
       await goMap(page);
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
       await page.click('#change-carry');
       await page.waitForSelector('#step-purse');
+      await nameBack(page);   // money sent to buy with needs a good to bring back (routes.js RULES)
       const val = () => page.$eval('#step-purse', e => e.getAttribute('aria-valuenow'));
       // the sheet opens on the engine's proposal, so the purse starts where the proposal put it, not at nothing
       const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
@@ -2086,6 +2140,9 @@ try {
         eq(await page.$$eval('#contract-qirad', e => e.length), 0, 'no qirad is offered');
         await page.click('#contract-prepay');
         await page.waitForFunction(() => document.getElementById('contract-prepay')?.getAttribute('aria-checked') === 'true');
+        // clicking an agent asks the engine for that agent's proposal; empty it, so the plan sent is the one this case names (linen, no money)
+        for (const id of await page.$$eval('[id^="step-cargo-"][role="spinbutton"], #step-purse', es => es.map(e => e.id))) { await page.focus(`#${id}`); await page.keyboard.press('Home'); }
+        for (const b of await page.$$('.back-pick[aria-checked="true"]')) await b.click();
         await page.focus('#step-cargo-linen');
         await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
         const linen = Number(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')));
