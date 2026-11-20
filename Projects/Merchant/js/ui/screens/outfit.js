@@ -396,7 +396,13 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   function render(focusKey) {
     memo = null;
     if (draft.contract === 'prepay' && !prepayOffered()) draft.contract = 'own';
-    if (draft.contract === 'qirad' && draft.partnersSet) draft.partners = Math.min(draft.partners, outgoing());
+    // the partners' share is settled before the plan is checked, so the reasons and the estimate answer the plan that is shown
+    // (set after the check, a qirad's first render said "say how much" while the number beside it was already half)
+    if (draft.contract === 'qirad') {
+      const out = outgoing();
+      draft.partners = draft.partnersSet ? Math.min(draft.partners, out) : Math.floor(out / 2);
+      memo = null;
+    }
     const a = agent(), s = sendState();
     const label = a ? `Send ${a.name} to ${stop.name}` : `Send someone to ${stop.name}`;
     const send = h('button', { class: 'button primary send', type: 'button', id: 'outfit-send', dataset: { key: 'outfit-send' }, 'aria-disabled': s.ok ? 'false' : 'true',

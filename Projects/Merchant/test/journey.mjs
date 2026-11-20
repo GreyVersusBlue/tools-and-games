@@ -457,6 +457,7 @@ try {
     money: document.getElementById('bar-money')?.textContent.trim(),
     left: document.querySelector('.stack-count')?.textContent,
     raised: document.querySelector('.sheet-title')?.textContent,
+    paper: document.querySelector('.sheet')?.dataset.paper,
     face: document.querySelector('.sheet')?.dataset.face,
     edges: [...document.querySelectorAll('.edge')].map(e => e.textContent.trim()),
     endDisabled: document.getElementById('btn-end')?.getAttribute('aria-disabled'),
@@ -475,8 +476,11 @@ try {
     const got = await screenOf(page), want = expected(s);
     eq([got.date, got.count, got.money, got.left], [want.date, want.count, want.money, want.left], `${label}: bar and counter`);
     if (want.open.length) {
-      eq([got.raised, ...got.edges].sort(), [...want.open].sort(), `${label}: papers on the desk`);
-      if (raisedFirst) eq(got.raised, want.open[0], `${label}: raised paper`);
+      // an opened return wears its longer headline (hoped and why, MER-93); the same paper's edge, and every other paper, its short title
+      const open = s.desk.filter(p => p.state === 'open');
+      const names = open.map(p => (p.id === got.paper && p.kind === 'return' ? headlineOf(p) : titleOf(s, p)));
+      eq([got.raised, ...got.edges].sort(), [...names].sort(), `${label}: papers on the desk`);
+      if (raisedFirst) eq(got.raised, names[0], `${label}: raised paper`);
     }
   };
   const engineState = page => page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
