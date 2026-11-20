@@ -484,6 +484,35 @@ test('15. the days a note names: only real day words, and a negation counts only
   assert.deepEqual(got.map((days, at) => [cases[at][0], days]), cases);
 });
 
+test('16. an entry\'s days and periods offer "Every day" and "The whole day" as choices of their own', async () => {
+  await fresh();
+  await open();
+  await press(key('radio:not'));
+  await page.waitForSelector('[data-entry="0"] fieldset');
+  const pressed = (part) => page.$eval(key(part), (el) => el.getAttribute('aria-pressed'));
+  assert.equal(await text(key('e0:days:every')), 'Every day');
+  assert.equal(await text(key('e0:periods:whole')), 'The whole day');
+  assert.equal(await pressed('e0:days:every'), 'true', 'nothing ticked is every day');
+  assert.equal(await pressed('e0:periods:whole'), 'true');
+  await press(key('e0:day:1'));
+  await press(key('e0:day:3'));
+  assert.equal(await pressed('e0:days:every'), 'false');
+  await press(key('e0:period:2'));
+  assert.equal(await pressed('e0:periods:whole'), 'false');
+  // choosing Every day takes the ticks away
+  await press(key('e0:days:every'));
+  assert.equal(await pressed('e0:days:every'), 'true');
+  assert.equal(await pressed('e0:day:1'), 'false');
+  assert.equal(await pressed('e0:day:3'), 'false');
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:e0:days:every');
+  await press(key('e0:day:4'));
+  await press(key('e0:periods:whole'));
+  assert.equal(await pressed('e0:period:2'), 'false');
+  await press(key('e0:done'));
+  await awayIs([{ dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await fresh();
+});
+
 test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, and every control is 44 px', async () => {
   await fresh();
   await page.evaluate(() => globalThis.sv2.storage.flush());

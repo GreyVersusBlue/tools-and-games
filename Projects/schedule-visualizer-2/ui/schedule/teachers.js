@@ -281,7 +281,16 @@ export function mount(env) {
       return h('label', { class: 'sch-radio' }, box, h('span', null, dayType.name));
     })) : null;
     const days = draft.more || draft.weekdays.some((day) => day >= 5) ? ALL_DAYS : SCHOOL_DAYS;
-    const dayChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Days of the week' }, days.map((day) => {
+    // "Every day" and "The whole day" are choices of their own (DESIGN 16.6):
+    // pressed while no day (no period) is ticked, and pressing one clears the ticks
+    const all = (label, on, clear, part) => keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), data: { all: part }, on: { click: () => {
+      if (on) return;
+      clear();
+      change(key(part));
+    } } }, label), key(part));
+    const dayChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Days of the week' }, all('Every day', draft.weekdays.length === 0, () => {
+      draft.weekdays = [];
+    }, 'days:every'), days.map((day) => {
       const on = draft.weekdays.includes(day);
       return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), on: { click: () => {
         draft.weekdays = on ? draft.weekdays.filter((other) => other !== day) : draft.weekdays.concat([day]);
@@ -291,7 +300,9 @@ export function mount(env) {
       draft.more = true;
       change(key('day:5'));
     } } }, 'More'), key('more')));
-    const periodChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Periods' }, Array.from({ length: project.settings.periods }, (_, period) => {
+    const periodChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Periods' }, all('The whole day', draft.periods.length === 0, () => {
+      draft.periods = [];
+    }, 'periods:whole'), Array.from({ length: project.settings.periods }, (_, period) => {
       const on = draft.periods.includes(period);
       return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), on: { click: () => {
         draft.periods = on ? draft.periods.filter((other) => other !== period) : draft.periods.concat([period]);
@@ -327,8 +338,8 @@ export function mount(env) {
         h('label', { class: 'sch-radio' }, every, h('span', null, 'Every day type')),
         h('label', { class: 'sch-radio' }, only, h('span', null, 'Only these…')), ticks,
         draft.onlyTypes && draft.dayTypeIds.length === 0 ? h('p', { class: 'sch-hint' }, 'Tick a day type. Until one is ticked, this holds on every day type.') : null),
-      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Days of the week (none is every day)'), dayChips),
-      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Periods (none is the whole day)'), periodChips),
+      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Days of the week'), dayChips),
+      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Periods'), periodChips),
       refusalLine(st),
       h('div', { class: 'sch-part__actions' },
         button('Done', done, { primary: true, small: true, key: key('done'), action: 'part-done' }),
