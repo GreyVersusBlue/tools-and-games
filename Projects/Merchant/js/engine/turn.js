@@ -75,7 +75,7 @@ function cardTarget(s, content) {
 const dismisses = c => new Set((c.choices ?? []).flatMap(ch => (ch.now ?? []).filter(e => e && typeof e === 'object' && 'dismiss' in e).map(e => e.dismiss)));
 const boundTo = c => tripLeaf(c.when)?.agent ?? null;
 /** Two cards on one desk that cannot both be answered: one dismisses the agent whose trip the other tells of, so whichever is answered
-    second has every choice refused ("Samir is not free to be sent out") and the season cannot end. The draw never deals the pair. */
+    second has every choice refused ("is not free to be sent out") and the season cannot end. The draw never deals the pair. */
 const clash = (a, b) => (boundTo(a) !== null && dismisses(b).has(boundTo(a))) || (boundTo(b) !== null && dismisses(a).has(boundTo(b)));
 
 /** A trip is live this season: an expedition is on the road, or a return or loss paper is on the desk. */
