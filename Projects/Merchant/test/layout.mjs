@@ -138,7 +138,18 @@ const plain = s => JSON.parse(JSON.stringify(s));
 
 // MER-84: the ending's pages after the recall was sent. Every expedition still out is called home, so the
 // engine's own rolls decide who lives; the pages read the state this leaves.
-states.ended = eng.recall(states.recall, content, Object.fromEntries(states.recall.expeditions.map(x => [x.id, 'recall'])));
+// The seeded game reaches the plague with nobody out, so the recall page is also drawn from the last season
+// replayed with four expeditions sent on the engine's plans: four rows with their two buttons each.
+states.road = (() => {
+  let s = fresh();
+  for (let i = 0; i < 80 && !(s.phase === 'desk' && s.t === 23); i++) s = s.phase === 'interlude' ? eng.openSeason(s, content) : playSeason(s);
+  s = playPapers(s);
+  for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = eng.suggestPlan(s, content, stop); if (plan) s = eng.outfit(s, content, plan); }
+  s = eng.endSeason(s, content);
+  if (s.phase !== 'recall' || s.expeditions.length < 3) throw new Error('layout.mjs: the last season did not end with people on the road');
+  return s;
+})();
+states.ended = eng.recall(states.road, content, Object.fromEntries(states.road.expeditions.map((x, i) => [x.id, i % 2 ? 'stay' : 'recall'])));
 
 const server = await serve(PORT);
 const browser = await launch();
@@ -229,9 +240,9 @@ const SCREENS = [
     } },
   { name: 'between-acts',
     go: async (p, f) => { await load(p, '#desk', { state: states.interlude, large: f.large }); await p.waitForSelector('#btn-open-house'); } },
-  ...[['notice', 'recall', 'ending-next'], ['recall', 'recall', 'ending-send'], ['home', 'ended', 'ending-next'], ['score', 'ended', 'ending-next'], ['after', 'ended', 'ending-again']].map(([page, st, ready]) => ({
+  ...[['notice', 'road', 'ending-next'], ['recall', 'road', 'ending-send'], ['recall-empty', 'recall', 'ending-send'], ['home', 'ended', 'ending-next'], ['score', 'ended', 'ending-next'], ['after', 'ended', 'ending-again']].map(([page, st, ready]) => ({
     name: `ending-${page}`,
-    go: async (p, f) => { await load(p, `#ending/${page}`, { state: states[st], large: f.large }); await p.waitForSelector(`#${ready}`); await p.waitForSelector(`[data-page="${page}"]`); } })),
+    go: async (p, f) => { const at = page.replace('-empty', ''); await load(p, `#ending/${at}`, { state: states[st], large: f.large }); await p.waitForSelector(`#${ready}`); await p.waitForSelector(`[data-page="${at}"]`); } })),
 ];
 
 // ---- the measuring, in the page. `scopeSel` is what is measured (a dialog when one is open).

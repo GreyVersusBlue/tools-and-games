@@ -17,7 +17,8 @@ export const ENDING_PAGES = { recall: ['notice', 'recall'], ended: ['home', 'sco
 const PART_NAMES = { wealth: 'Wealth', reputation: 'Reputation', people: 'People who came home', notebook: 'Notebook pages' };
 const TITLES = { recall: 'Send word to your people', home: 'Who came home', score: 'The score', after: 'After 1347' };
 const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.name ?? id;
-const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+/** Points: a whole number as it is, a half (the notebook's pages are worth a half) with its decimal. */
+export const pts = n => (Number.isInteger(n) ? num(n) : n.toFixed(1));
 const lower = s => s.charAt(0).toLowerCase() + s.slice(1);
 
 /** In words: how likely word is to reach an expedition in time (the engine's chance, never shown as a number). */
@@ -156,9 +157,9 @@ export function createEnding(app, nav) {
     const house = (content.houses ?? []).find(x => x.id === app.state.house);
     return sheet('score', TITLES.score,
       h('ul', { class: 'ending-parts' }, sc.parts.map(p => h('li', { class: 'ending-part', dataset: { part: p.id } },
-        h('div', { class: 'part-head' }, h('strong', null, PART_NAMES[p.id] ?? p.id), h('span', { class: 'points' }, `${num(p.points)} points`)),
+        h('div', { class: 'part-head' }, h('strong', null, PART_NAMES[p.id] ?? p.id), h('span', { class: 'points' }, `${pts(p.points)} points`)),
         h('p', { class: 'ending-line' }, p.reason)))),
-      h('p', { class: 'ending-sum', id: 'score-sum' }, `Together: ${num(sc.sum)} points.`),
+      h('p', { class: 'ending-sum', id: 'score-sum' }, `Together: ${pts(sc.sum)} points.`),
       h('p', { class: 'ending-sum', id: 'score-multiplier' }, `${house?.name ? `${house.name}, ` : ''}multiplied by ${sc.multiplier}.`),
       h('p', { class: 'ending-total', id: 'score-total' }, `Total: ${num(sc.total)} points`),
       h('p', { class: 'ending-rank', id: 'score-rank' }, sc.rank),
