@@ -5,8 +5,10 @@
 //
 // Papers (MER-68): a bot answers every card and letter by the policy below (CARD POLICY); `random` takes a random
 // choice that holds. They differ in what they send out:
-//   careful  open legs only (no waiting), small cargo, goods from the warehouse first, own money
-//   greedy   the biggest margin by last known price, a big cargo, buys goods back at the far end
+//   careful  open legs only (no waiting), the engine's default venture (`proposePlan`, DESIGN 2.2 rule 1) on the road whose
+//            estimate pays most a season, never more than two out at once, own money
+//   greedy   the engine's default venture on the road whose estimate pays most, waiting allowed, any number out
+//            (MER-92: both read the sheet's own estimate, `estimate`, and send what it proposes)
 //   random   any destination, any good, any size
 //   qirad    greedy's choice and a medium cargo, always under a qirad with partners
 //
@@ -25,7 +27,7 @@ import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { loadContent } from '../js/data.js';
-import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score } from '../js/engine/index.js';
+import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score, proposePlan, estimate } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 import { outEnd, jumpChances } from '../js/engine/routes.js';
 import { truePrice, baseOf } from '../js/engine/market.js';
@@ -65,13 +67,15 @@ LIMITS.carefulRank = 'A respected house';   // the score (MER-85): careful's med
 LIMITS.randomBelow = 2;             // ...random's median ends in one of this many lowest ranks
 LIMITS.topRankShare = 0.01;         // ...the top rank is reached by the best game of a long run but by no more than this share of all games
 LIMITS.partShare = 0.5;             // ...and for a sensible bot no one part of the score is more than this share of the median total before the house multiplier, so no single lever wins the game
+LIMITS.ventureOverCards = 5;       // careful's median venture profit is at least this many times the median money of one season's cards (MER-92, DESIGN 2.2 rule 4)
 LIMITS.mediterraneanMax = 0.60;    // ...and the Mediterranean at most this share. An estimate of balance, not a recorded figure: the long roads were risky and paid the most, so a sensible bot uses them sometimes
 export const SENSIBLE = ['careful', 'greedy', 'qirad'];
 export const directionOf = dest => Object.keys(DIRECTIONS).find(d => DIRECTIONS[d].includes(dest)) ?? null;
 export const DEFAULTS = { games: 2000, seed0: 1000, length: 'acts' };
 export const BOTS = ['careful', 'greedy', 'random', 'qirad'];
 // `first` presses the first choice that can be taken on every paper, sends nobody and recalls nobody (MER-86: the M4 play's
-// 127 against careful's 95). It is not in BOTS, so the balance table and its checks do not play it; ask for it with --bots first.
+// 127 against careful's 95). It is not in BOTS (the smoke test and the checks that need a trip leave it out), but the command line
+// plays it with the rest, so the table carries its row (MER-92: `first` below careful).
 export const EXTRA_BOTS = ['first'];
 
 // ---- a bot's own dice: a separate stream so the bot never shifts the engine's draws
@@ -143,9 +147,34 @@ const freeAgents = (state, content) => content.agents.filter(a => {
   return r?.hired && r.where === cityOf(content, 'bots').home && !state.expeditions.some(x => x.agent === a.id);
 });
 
+/** The venture careful and greedy send (MER-92): every road open to `agent` is given the engine's default plan and its
+    estimate, the ones that should pay (careful: by at least FLOOR of their stake, on roads with no waiting and at most six
+    seasons there and back) are ranked, careful by dinars a season and greedy by dinars, and the first the engine takes goes.
+    Roads are priced unchecked (`check: false`), and the chosen plan is sent through `outfit`, which checks it. */
+const FLOOR = 0.08;
+export function venturePlan(bot, state, content, agent) {
+  if (bot === 'careful' && state.expeditions.length >= 2) return null;   // one or two ventures at a time (DESIGN 2.2 rule 4)
+  const busy = new Set(state.expeditions.map(x => content.routes.find(r => r.id === x.route)?.to));
+  const list = [];
+  for (const d of destinations(state, content, agent)) {
+    if (busy.has(d.stop)) continue;
+    if (bot === 'careful' && (d.waits > 0 || d.seasons > 6)) continue;
+    const plan = proposePlan(state, content, agent, d.route, { check: false });
+    const e = plan && estimate(state, content, plan);
+    if (!e || e.net <= 0 || (bot === 'careful' && e.net < FLOOR * e.stake)) continue;
+    list.push({ plan, score: bot === 'careful' ? e.net / d.seasons : e.net, route: d.route });
+  }
+  list.sort((a, b) => b.score - a.score || (a.route < b.route ? -1 : 1));
+  for (const r of list) {
+    try { outfit(state, content, r.plan); return r.plan; } catch { /* the next road */ }
+  }
+  return null;
+}
+
 /** A plan for `agent` or null: the policy of each bot, ending in `sizes` tried from big to small. */
 function plan(bot, state, content, agent, roll) {
   if (bot === 'first') return null;
+  if (bot === 'careful' || bot === 'greedy') return venturePlan(bot, state, content, agent);
   // a sensible bot does not send a second agent to a stop one of its expeditions is already bound for: the
   // market there is the same depth for both (random does not mind)
   const busy = new Set(bot === 'random' ? [] : state.expeditions.map(x => content.routes.find(r => r.id === x.route)?.to));
@@ -251,12 +280,16 @@ export function ranked(bot, state, content, open, roll, temper = {}) {
 
 function answerPapers(state, content, bot, roll, out, temper) {
   let s = state;
+  let cards = 0, stakes = 0;   // the season's cards, and the money they put on the table: for each, the most any of its open choices moves (MER-92's money row)
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
     const choices = paperChoices(s, content, p.id);
     const open = choices.filter(c => holds(c.requires, s, content));
     const order = ranked(bot, s, content, open, roll, temper);
     if (p.kind === 'card') {
+      // what this card puts on the table is the largest sum any choice moves, in money and in goods at the home price, whichever the bot takes
+      cards++;
+      stakes += Math.max(0, ...open.map(c => { const w = worthOf(s, content, c); return Math.max(w.outlay, Math.abs(w.net)); }));
       out.offers[p.ref] = (out.offers[p.ref] ?? 0) + 1;
       if (open.length >= 2) out.multi[p.ref] = (out.multi[p.ref] ?? 0) + 1;   // a real choice: two or more can be taken
     }
@@ -266,6 +299,7 @@ function answerPapers(state, content, bot, roll, out, temper) {
     }
     if (!done) throw new Error(`bots: no choice of "${p.ref}" can be taken`);
   }
+  if (cards) out.cardMoney.push(stakes);
   return s;
 }
 function shuffle(list, roll) {
@@ -292,7 +326,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   const tdice = dice(seed + 77); tdice(); tdice();   // the first draws of a nearby seed are alike, so two are spent
   const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, tdice() * STANDING_MAX]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
   let s = newGame(content, { seed, length, house });
-  const out = { bot, seed, house, trips: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
+  const out = { bot, seed, house, trips: [], profits: [], cardMoney: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
   const routeOfX = {};   // expedition id to its route, so a return or a settlement can be told by where it went
   for (let guard = 0; guard < 500; guard++) {
     if (s.phase === 'interlude') { s = openSeason(s, content); continue; }
@@ -313,6 +347,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
         const stake = p.data.shares.house - p.data.houseNet - wage;
         if (stake > 0) {
           out.trips.push(p.data.houseNet / stake);
+          out.profits.push(p.data.houseNet);
           out.tripRoute.push(routeOfX[p.expedition]);
           out.gross.push((p.data.houseNet + wage) / stake);
           out.capital.push(stake);
@@ -341,7 +376,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
       const jumped = s.log.slice(logAt).find(e => e.kind === 'jump');
       for (const line of jumped ? jumped.settled : []) {
         if (line.result === 'lost') out.lost++;
-        else if (stakes[line.expedition] > 0) { out.trips.push(line.houseNet / stakes[line.expedition]); out.tripRoute.push(routeOfX[line.expedition]); out.settled++; }
+        else if (stakes[line.expedition] > 0) { out.trips.push(line.houseNet / stakes[line.expedition]); out.profits.push(line.houseNet); out.tripRoute.push(routeOfX[line.expedition]); out.settled++; }
       }
     }
   }
@@ -452,6 +487,19 @@ export function check({ content, results, offered, taken, games }) {
       const med = quantile(results.careful.map(g => g.score), 0.5), p75 = quantile(results.random.map(g => g.score), 0.75);
       add('careful median score above random 75th percentile', med, p75, med > p75, `random median ${num(quantile(results.random.map(g => g.score), 0.5))}`, false, 'num');
     }
+  }
+  // trade that pays (MER-92, DESIGN 2.2 rule 4): the venture is the lever and the cards are small beside it, and a bot that
+  // takes the first choice of every paper and sends nobody ends below the one that trades. `first` is played by the command
+  // line with the rest (EXTRA_BOTS) and its row is added when it was played.
+  if (results.careful) {
+    const profits = results.careful.flatMap(g => g.profits);
+    const profit = quantile(profits, 0.5), cards = quantile(results.careful.flatMap(g => g.cardMoney), 0.5);
+    add(`careful: median venture profit, in dinars, at least ${LIMITS.ventureOverCards} times the median money of one season's cards`, profit, LIMITS.ventureOverCards * cards, profit >= LIMITS.ventureOverCards * cards,
+      `cards move ${num(cards)} a season; ${profits.length} ventures`, false, 'num');
+  }
+  if (results.careful && results.first) {
+    const first = quantile(results.first.map(g => g.score), 0.5), careful = quantile(results.careful.map(g => g.score), 0.5);
+    add("first: median score below careful's", first, careful, first < careful, 'the first choice on every paper, no one sent out', false, 'num');
   }
   // the score's ranks (MER-85)
   const ranks = [...(cityOf(content, 'bots').score?.ranks ?? [])].sort((a, b) => a.from - b.from);
@@ -614,7 +662,7 @@ const parseArgs = argv => {
 
 if (isMainThread && import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const args = parseArgs(process.argv.slice(2));   // only when run, never when imported
-  const bots = args.bots ? args.bots.split(',') : BOTS;
+  const bots = args.bots ? args.bots.split(',') : [...BOTS, ...EXTRA_BOTS];
   for (const b of bots) if (!BOTS.includes(b) && !EXTRA_BOTS.includes(b)) { console.error(`bots: no bot called "${b}"`); process.exit(2); }
   const lengthArg = args.length ?? 'both';
   const lengths = lengthArg === 'both' ? ['acts', 'full'] : [lengthArg];

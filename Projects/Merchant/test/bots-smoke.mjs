@@ -6,7 +6,8 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
-import { BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf } from '../tools/bots.mjs';
+import { holds } from '../js/engine/conditions.js';
+import { BOTS, EXTRA_BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf, venturePlan } from '../tools/bots.mjs';
 
 const content = await loadContent('cairo', { fs });
 const PER_BOT = 50;
@@ -318,5 +319,95 @@ test('score check: one part over half of a sensible bot\'s median total is a bre
   ok(!row(c).ok && row(c).note.startsWith('wealth 51%') && !c.ok, JSON.stringify(row(c)));
   ok(rowOf(lever('random', 90), 'random: no one part') === undefined, 'random is not a sensible bot and is not judged');
 });
+
+// ---- trade that pays (MER-92)
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, proposePlan, estimate, destinations } from '../js/engine/index.js';
+
+/** A desk with news in it: a few seasons of the first choice on every paper, and no one sent. */
+function seasoned(seed, seasons) {
+  let s = newGame(content, { seed, length: 'acts', house: content.houses[0].id });
+  for (let i = 0; i < seasons; i++) {
+    for (const p of s.desk) if (p.state === 'open') { const ch = paperChoices(s, content, p.id).find(c => holds(c.requires, s, content)); s = choose(s, content, p.id, ch.id); }
+    s = endSeason(s, content);
+    if (s.phase === 'interlude') s = openSeason(s, content);
+  }
+  return s;
+}
+
+test('venture bots: careful and greedy send what proposePlan proposes for the road they chose, and the engine takes it', () => {
+  let sent = 0;
+  for (const bot of ['careful', 'greedy']) {
+    for (const seed of [5, 6, 7]) {
+      const s = seasoned(seed, 5);
+      for (const a of content.agents) {
+        const r = s.agents[a.id];
+        if (!r?.hired || r.where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+        const plan = venturePlan(bot, s, content, a);
+        if (!plan) continue;
+        sent++;
+        eq(plan, proposePlan(s, content, a, plan.route), `${bot}/${seed}: the plan is the engine's default for that road`);
+        outfit(s, content, plan);
+        const e = estimate(s, content, plan);
+        ok(e.net > 0, `${bot} sends only what the estimate says pays: ${e.net}`);
+      }
+    }
+  }
+  ok(sent >= 4, `${sent} ventures were chosen`);
+});
+
+test('venture bots: careful takes a road with no waiting and at most six seasons there and back, and never has more than two out', () => {
+  for (const seed of [5, 6, 7, 8]) {
+    const s = seasoned(seed, 5);
+    for (const a of content.agents) {
+      const r = s.agents[a.id];
+      if (!r?.hired || r.where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+      const plan = venturePlan('careful', s, content, a);
+      if (!plan) continue;
+      const d = destinations(s, content, a).find(x => x.route === plan.route);
+      ok(d.waits === 0 && d.seasons <= 6, `${plan.route}: ${d.waits} waits, ${d.seasons} seasons`);
+    }
+    const two = structuredClone(s);
+    two.expeditions = [{ route: 'cairo-qus', agent: 'ghost1' }, { route: 'cairo-quseir', agent: 'ghost2' }];
+    for (const a of content.agents) eq(venturePlan('careful', two, content, a), null, 'two out already: no third');
+  }
+});
+
+test('venture bots: a careful game earns a venture profit in dinars and the cards put a sum on the table every season they come', () => {
+  const g = playGame(content, { bot: 'careful', seed: 1000, house: content.houses[0].id });
+  ok(g.profits.length > 3 && g.profits.length === g.trips.length, `${g.profits.length} profits for ${g.trips.length} trips`);
+  ok(g.profits.every(Number.isInteger), 'whole dinars');
+  ok(g.cardMoney.length > 3 && g.cardMoney.every(n => Number.isFinite(n) && n >= 0), JSON.stringify(g.cardMoney));
+});
+
+test('first: it is played by the command line with the rest, not by BOTS, sends no one and recalls no one', () => {
+  ok(EXTRA_BOTS.includes('first') && !BOTS.includes('first'));
+  const g = playGame(content, { bot: 'first', seed: 1000, house: content.houses[0].id });
+  eq([g.trips.length, g.profits.length, Object.keys(g.routes).length], [0, 0, 0]);
+  ok(Number.isFinite(g.score) && g.cardMoney.length > 3);
+});
+
+const withFirst = (firstScore, edit = () => {}) => doctored(r => {
+  r.results.first = r.results.careful.map(g => ({ ...g, bot: 'first', score: firstScore }));
+  edit(r);
+});
+
+test('check: careful\'s median venture profit under five times one season\'s cards is a breach, at it is not, and the row says what the cards move', () => {
+  const at = (profit, cards) => doctored(r => { for (const g of r.results.careful) { g.profits = [profit]; g.cardMoney = [cards]; } });
+  const row = c => rowOf(c, 'careful: median venture profit');
+  ok(!row(at(149, 30)).ok, JSON.stringify(row(at(149, 30))));
+  ok(row(at(150, 30)).ok, 'exactly five times is allowed');
+  ok(row(at(150, 30)).note.startsWith('cards move 30 a season'), row(at(150, 30)).note);
+  ok(row(at(150, 30)).name.includes('at least 5 times'));
+});
+
+test('check: first no better than careful is a breach of its row, and a run without first has no row', () => {
+  const row = c => rowOf(c, "first: median score below careful's");
+  ok(row(withFirst(0)).ok, JSON.stringify(row(withFirst(0))));
+  ok(!row(withFirst(10000)).ok);
+  const careful = quantileOf(res.results.careful.map(g => g.score));
+  ok(!row(withFirst(careful)).ok, 'equal is a breach: first must be below');
+  eq(row(check({ ...res, content })), undefined, 'the four sensible and random bots alone are not judged against first');
+});
+const quantileOf = xs => { const a = [...xs].sort((x, y) => x - y), i = (a.length - 1) / 2; return (a[Math.floor(i)] + a[Math.ceil(i)]) / 2; };
 
 await done();

@@ -730,6 +730,14 @@ export function proposePlan(state, content, agent, route) {
   return null;
 }
 
+/** What `n` loads of a good fetch at a stop whose price is `p`, depth `depth`, for an agent who gets `cut` of it: each load is
+    priced after the one before it, as `tradeAt` sells them (market.js's glut), so the last loads fetch least. */
+const saleRevenue = (p, depth, cut, n) => {
+  let got = 0;
+  for (let k = 0; k < n; k++) got += Math.round(Math.max(1, Math.round(p * (1 - Math.min(M.GLUT_MAX, k / depth)))) * cut);
+  return got;
+};
+
 /** Loads of each good in `cargo` with their price at home now, the part drawn from the warehouse and the part to buy:
     { stockValue, buyCost }, the second priced load by load as `build` prices it. */
 function homeStake(s, content, cargo) {
@@ -784,7 +792,7 @@ export function estimate(state, content, plan) {
   for (const g of sell) {
     const p = priceHere(g), depth = dest.sells[g].depth, cut = bargain(agent, dest.id, 'sell');
     pricesSell[g] = p;
-    for (let k = 0; k < cargo[g]; k++) money += Math.round(Math.max(1, Math.round(p * (1 - Math.min(M.GLUT_MAX, k / depth)))) * cut);
+    money += saleRevenue(p, depth, cut, cargo[g]);
     delete goodsBack[g];
   }
   const live = buy.filter(g => M.truePrice(state, content, home, g) !== null);
@@ -1119,9 +1127,14 @@ export function gapCauses(s, content, x, r) {
     const now = M.truePrice(s, content, home, g) ?? 0, pH = hope.home?.[g];
     if (pH) note('news', (pH - now) * n, { stop: home, good: g, side: 'home', got: now, hoped: pH });
   }
+  // a toll paid in goods that the far end would have bought costs what the last loads would have fetched there, less the toll they paid
+  const dest = stopOf(content, routeOf(content, x.route).to);
   for (const [g, q] of Object.entries(book.paidInGoods ?? {})) {
-    const homeP = M.truePrice(s, content, home, g) ?? 0, there = hope.sell?.[g];
-    if (there && there > homeP) note('tolls', (there - homeP) * q, { good: g });
+    const pH = hope.sell?.[g], depth = dest.sells?.[g]?.depth;
+    if (!pH || !depth) continue;
+    const sold = (book.sold ?? []).filter(e => e.good === g).reduce((n, e) => n + e.q, 0), cut = bargain(agent, dest.id, 'sell');
+    const lost = saleRevenue(pH, depth, cut, sold + q) - saleRevenue(pH, depth, cut, sold);
+    note('tolls', lost - q * (M.truePrice(s, content, home, g) ?? 0), { good: g });
   }
   causes.tolls += Math.max(0, book.tolls - (hope.tolls ?? book.tolls));
   for (const [g, q] of Object.entries(book.lost ?? {})) note('loss', q * (hope.sell?.[g] ?? hope.home?.[g] ?? M.truePrice(s, content, home, g) ?? 0), { good: g });
