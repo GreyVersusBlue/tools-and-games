@@ -177,6 +177,15 @@ export function createDesk(app) {
     return net < 0 ? `Your people's trips cost ${dinars(-net)}.` : net === 0 ? `Your people's trips came out even.` : `Your people's trips brought ${dinars(net)}.`;
   }
 
+  /** "It carried 20 loads of silk." for a settled line's cargo, or "" when it has none. */
+  const cargoLine = cargo => {
+    const parts = Object.entries(cargo ?? {}).filter(([, n]) => n > 0).map(([g, n]) => {
+      const good = content.goods.find(x => x.id === g), unit = good?.unit ?? 'load';
+      return `${n} ${n === 1 ? unit : `${unit}s`} of ${(good?.name ?? g).toLowerCase()}`;
+    });
+    return parts.length ? `It carried ${parts.join(', ')}.` : '';
+  };
+
   function phasePage(phase) {
     const v = app.view();
     const wrap = (title, ...rest) => h('article', { class: 'paper sheet front kind-phase', dataset: { phase, face: 'front' }, 'aria-labelledby': 'phase-title' },
@@ -185,7 +194,10 @@ export function createDesk(app) {
       const gap = v.interlude;
       return wrap('Years pass',
         gap ? h('p', { class: 'span', id: 'interlude-span' }, `${gap.from} to ${gap.to}`) : null,
-        ...(gap?.settled ?? []).map(x => h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text)),
+        ...(gap?.settled ?? []).flatMap(x => [
+          h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text),
+          ...(cargoLine(x.cargo) ? [h('p', { class: 'sheet-body', id: `cargo-${x.expedition}` }, cargoLine(x.cargo))] : []),
+        ]),
         ...(gap?.settled?.length ? [h('p', { class: 'sheet-body', id: 'interlude-trips' }, tripsLine(gap.settled))] : []),
         ...(gap?.agents ?? []).map(g => {
           const name = content.agents.find(a => a.id === g.id)?.name ?? g.id;
