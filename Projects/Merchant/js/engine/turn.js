@@ -15,6 +15,7 @@ import * as market from './market.js';
 import * as routes from './routes.js';
 import * as letters from './letters.js';
 import * as agents from './agents.js';
+import { score } from './score.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
@@ -338,6 +339,7 @@ export function recall(state, content, decisions = {}) {
   if (state.phase !== 'recall') throw new Error(`recall: the game is not at its end (phase ${state.phase})`);
   const s = clone(state);
   routes.recall(s, content, decisions);
+  s.score = score(s, content);
   return s;
 }
 
