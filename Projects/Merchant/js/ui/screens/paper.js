@@ -110,6 +110,7 @@ export function whyNot(cond, state, content) {
 export function choicesOf(app, paper) {
   const { content } = app;
   const state = app.state;
+  const filled = app.view().cards?.[paper.id]?.choices ?? {};
   return engine.paperChoices(state, content, paper.id).map(c => {
     let available = true, refusal = null;
     try { engine.choose(state, content, paper.id, c.id); } catch (e) { available = false; refusal = /is refused: (.+)$/.exec(e.message)?.[1] ?? null; }
@@ -118,7 +119,7 @@ export function choicesOf(app, paper) {
       why = (refusal && `${refusal.charAt(0).toUpperCase()}${refusal.slice(1)}${/[.!?]$/.test(refusal) ? '' : '.'}`)
         || whyNot(c.requires, state, content) || 'Not open to you now.';
     }
-    return { ...c, available, why, seen: seenEffects(content, c.now), prices: c.ui === 'outfit-first' ? priceLine(app) : null };
+    return { ...c, label: filled[c.id]?.label ?? c.label, hint: filled[c.id]?.hint ?? c.hint, available, why, seen: seenEffects(content, c.now), prices: c.ui === 'outfit-first' ? priceLine(app) : null };
   });
 }
 
@@ -140,15 +141,14 @@ export const RECORD_KINDS = ['return', 'lost', 'news', 'accounts'];
 
 const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.name ?? id;
 
-export function paperTitle(content, paper) {
+export function paperTitle(content, paper, cards) {
   if (paper.kind === 'return' || paper.kind === 'lost') return paper.data?.headline ?? 'News of the house';
   if (paper.kind === 'news') {
     const n = paper.letters?.length ?? 0;
     return n === 1 ? `News from ${stopName(content, paper.letters[0].stop)}` : `News from ${n} cities`;
   }
   if (paper.kind === 'accounts') return 'Accounts';
-  const s = sourceOf(content, paper);
-  return s.title ?? 'A paper';
+  return cards?.[paper.id]?.title ?? sourceOf(content, paper).title ?? 'A paper';
 }
 
 /** Who a paper is from: the agent's seal on a return or a loss, a plain mark on the rest. */
@@ -196,6 +196,7 @@ export function head(app, from) {
 /** The front of a card, letter or notice. onChoose(choice, index). */
 export function front(app, paper, { onChoose, locked }) {
   const s = sourceOf(app.content, paper);
+  const cards = app.view().cards;
   const titleId = `paper-${paper.id}-title`;
   const note = letterNotes(app, paper);
   const choices = paper.kind === 'notice'
@@ -218,8 +219,8 @@ export function front(app, paper, { onChoose, locked }) {
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
     head(app, senderOf(app.content, paper)),
     note?.line ? h('p', { class: 'letter-line', id: `paper-${paper.id}-line` }, note.line) : null,
-    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(app.content, paper)),
-    h('p', { class: 'sheet-body' }, s.body ?? ''),
+    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(app.content, paper, cards)),
+    h('p', { class: 'sheet-body' }, cards?.[paper.id]?.body ?? s.body ?? ''),
     list,
     note?.answer ? h('p', { class: 'letter-answer', id: `paper-${paper.id}-answer` }, note.answer) : null);
 }
@@ -285,6 +286,6 @@ export function record(app, paper, { onDone, open }) {
 /** The edge of a paper lower in the stack: seal and title, pressed to raise it. */
 export function edge(app, paper, { onRaise, tilt }) {
   return h('button', { class: 'edge', type: 'button', style: `--tilt:${tilt}deg`, dataset: { paper: paper.id }, onclick: onRaise,
-    'aria-label': `Raise: ${paperTitle(app.content, paper)}` },
-  seal(app, senderOf(app.content, paper)?.seal), h('span', null, paperTitle(app.content, paper)));
+    'aria-label': `Raise: ${paperTitle(app.content, paper, app.view().cards)}` },
+  seal(app, senderOf(app.content, paper)?.seal), h('span', null, paperTitle(app.content, paper, app.view().cards)));
 }

@@ -127,6 +127,14 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   const suggestion = first ? engine.suggestPlan(app.state, content, stopId) : null;
   if (suggestion) { draft.agent = suggestion.agent; draft.cargo = { ...suggestion.cargo }; draft.purse = suggestion.purse ?? 0; }
   else { draft.agent = freeAgents(app)[0]?.id ?? null; }
+  // a card's `outfit` effect names the agent and the contract (the desk leaves them on app.outfitWith, once, for this stop)
+  const asked = app.outfitWith?.stop === stopId ? app.outfitWith : null;
+  app.outfitWith = null;
+  if (asked) {
+    if (freeAgents(app).some(a => a.id === asked.agent)) draft.agent = asked.agent;
+    // the one-press sheet offers no contract choice; it is always the house's own
+    if (!first && ['own', 'qirad'].includes(asked.contract)) draft.contract = asked.contract;
+  }
   const onePress = !!suggestion;
   const expanded = k => !onePress || open.has(k);
 
@@ -176,7 +184,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
 
   // ---- sections
   const section = (id, title, ...body) => h('section', { class: 'step', id: `outfit-${id}`, 'aria-labelledby': `outfit-${id}-h` },
-    h('h3', { id: `outfit-${id}-h` }, title), ...body);
+    h('h3', { id: `outfit-${id}-h`, tabindex: '-1' }, title), ...body);
   const changeLink = (id, onclick, what) => h('button', { class: 'change', type: 'button', id: `change-${id}`, 'aria-label': `Change: ${what}`, onclick }, 'Change');
   const summary = (id, text, onclick, what) => h('p', { class: 'summary' }, h('span', { id: `summary-${id}` }, text), ' ', changeLink(id, onclick, what));
 
@@ -189,7 +197,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
           card ? h('a', { href: '#desk', id: 'outfit-hire-link', onclick: e => { e.preventDefault(); onDesk(); } }, 'A card on your desk offers someone.') : null));
     }
     const a = agent();
-    if (!expanded('who') && a) return section('who', '1. Who goes', summary('who', `${a.name} (${traitWords(app, a)}).`, () => { open.add('who'); render('change-who'); }, 'who goes'));
+    if (!expanded('who') && a) return section('who', '1. Who goes', summary('who', `${a.name} (${traitWords(app, a)}).`, () => { open.add('who'); render('outfit-who-h'); }, 'who goes'));
     return section('who', '1. Who goes', h('div', { class: 'agents', role: 'radiogroup', 'aria-labelledby': 'outfit-who-h' },
       free.map(ag => {
         const on = ag.id === draft.agent, trust = app.view().trust[ag.id];
@@ -235,7 +243,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const parts = Object.entries(draft.cargo).filter(([, n]) => n > 0).map(([g, n]) => `${n} ${unitOf(content, g, n)} of ${goodName(content, g)}`);
     const line = parts.length ? parts.join(' and ') : 'no goods';
     if (!expanded('carry')) {
-      return section('carry', '3. What they carry', summary('carry', `${cap(line)}${draft.purse ? `, and ${dinars(draft.purse)} to buy with` : ''}.`, () => { open.add('carry'); render('change-carry'); }, 'what they carry'), costSheet(quote()));
+      return section('carry', '3. What they carry', summary('carry', `${cap(line)}${draft.purse ? `, and ${dinars(draft.purse)} to buy with` : ''}.`, () => { open.add('carry'); render('outfit-carry-h'); }, 'what they carry'), costSheet(quote()));
     }
     const rows = goods.map(g => {
       const have = stock(g), p = homePrice(g), n = draft.cargo[g] ?? 0;

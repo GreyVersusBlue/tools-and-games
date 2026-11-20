@@ -2238,6 +2238,106 @@ try {
     await page.close();
   }
 
+  // ---- MER-77: the desk reads a card's filled words (view().cards) and opens the outfit sheet from an
+  // `outfit` effect. No cairo card carries slots or the effect yet (MER-75 is writing them), so two
+  // cards of the test's own go into the page's `followups.json` request and into the Node content, and
+  // the paper is put on a seeded desk by hand. Everything else is the engine's.
+  {
+    const mk = (id, contract) => ({ id, group: 'followups', from: { name: 'A clerk', role: 'Cairo', seal: null },
+      title: 'Send {agent} to {to}', body: '{agent} could take {good} to {to}, {seasons} out.',
+      when: { trip: { agent: 'ali', is: 'ready' } }, weight: 0, repeat: false,
+      choices: [{ id: 'go', label: 'Send {agent} to {to}', hint: 'About {seasons} on the road.', now: [{ outfit: 'ali', contract }], later: [] }], note: 'A test card.' });
+    const extra = [mk('mer77-own', 'own'), mk('mer77-qirad', 'qirad')];
+    const raw = JSON.parse(await fs.promises.readFile(path.join(MER, '..', 'data', 'cairo', 'cards', 'followups.json'), 'utf8'));
+    const swapped = JSON.stringify([...raw, ...extra]);
+    const c77 = structuredClone(await loadContent('cairo', { fs: await import('node:fs/promises') }));
+    c77.cards.push(...extra);
+    const content77 = eng.validateContent(c77);
+    // a game where Ali is hired and one card lies on the desk; `after` plays the first expedition out first
+    const seeded = (ref, { sent = false } = {}) => {
+      let s = eng.newGame(content77, { seed: SEED, length: 'acts', house: 'spice' });
+      if (sent) s = eng.outfit(s, content77, eng.suggestPlan(s, content77, 'damascus'));
+      s.agents.ali.hired = true;
+      s.desk = [{ id: 'p9-0', state: 'open', kind: 'card', ref }];
+      return s;
+    };
+    // The page's own fetch answers for followups.json: a request interceptor would fight the harness's
+    // (Puppeteer lets one handler answer a request), and an init script works the same in both engines.
+    const serveCards = page => {
+      const src = `(() => { const real = window.fetch.bind(window); window.fetch = (u, ...a) => String(u?.url ?? u).endsWith('/data/cairo/cards/followups.json')
+        ? Promise.resolve(new Response(${JSON.stringify(swapped)}, { status: 200, headers: { 'content-type': 'application/json' } })) : real(u, ...a); })();`;
+      return page.addInitScript ? page.addInitScript(src) : page.evaluateOnNewDocument(src);
+    };
+    const engineState = page => page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    await serveCards(page);
+    const load77 = async st => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + '#desk', { waitUntil: 'load' });
+      await page.waitForSelector('#choice-p9-0-go');
+    };
+    const money = () => page.$eval('#bar-money', e => e.textContent.trim());
+
+    await test('a card that tells of a trip shows its filled title, body, label and hint, and no {slot}', async () => {
+      const st = seeded('mer77-own');
+      const v = eng.view(st, content77).cards['p9-0'];
+      ok(v && /Alexandria/.test(v.title) && !/[{}]/.test(v.title + v.body), 'the engine fills the card, or this case checks nothing');
+      await load77(st);
+      eq(await page.$eval('.sheet-title', e => e.textContent), v.title);
+      eq(await page.$eval('.sheet-body', e => e.textContent), v.body);
+      eq(await page.$eval('#choice-p9-0-go .label', e => e.textContent), v.choices.go.label);
+      eq(await page.$eval('#choice-p9-0-go .hint', e => e.textContent), v.choices.go.hint);
+      eq(await page.$eval('#screen-desk', e => /[{}]/.test(e.textContent)), false, 'no raw slot anywhere on the desk');
+    });
+
+    await test('the outfit effect: Next opens the sheet with Ali chosen for the card\'s stop, and no money moves until Send', async () => {
+      const st = seeded('mer77-own');
+      await load77(st);
+      const dinars0 = await money();
+      await page.click('#choice-p9-0-go');
+      await page.waitForSelector(BACK);
+      eq(await money(), dinars0, 'the choice itself takes no money');
+      await page.click('#btn-next');
+      await page.waitForSelector('#outfit-send');
+      eq(await hashOf(page), '#outfit');
+      const label = await page.$eval('#outfit-send', b => b.textContent);
+      eq(label, 'Send Ali to Alexandria', 'the agent and the stop are the card\'s');
+      eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(st, content77, 'p9-0', 'go'))), 'nothing is sent, and nothing is paid, before Send');
+      await page.click('#outfit-send');
+      await page.waitForSelector('#map-toast:not([hidden])');
+      const sent = JSON.parse(await page.evaluate(() => localStorage.getItem('merchant-save')));
+      eq(sent.expeditions.map(x => x.agent), ['ali'], 'Send is what sends him');
+    });
+
+    await test('the outfit effect with a qirad: the contract on the sheet is the one the card named', async () => {
+      const st = seeded('mer77-qirad', { sent: true });
+      await load77(st);
+      await page.click('#choice-p9-0-go');
+      await page.waitForSelector(BACK);
+      await page.click('#btn-next');
+      await page.waitForSelector('#contract-qirad');
+      eq(await page.$eval('#contract-qirad', b => b.getAttribute('aria-checked')), 'true');
+      eq(await page.$eval('#contract-own', b => b.getAttribute('aria-checked')), 'false');
+      eq(await page.$eval('#outfit-send', b => b.textContent), 'Send Ali to Alexandria');
+    });
+
+    await test('after a Change line on the one-press sheet, focus lands on the section it opened, never the body', async () => {
+      const st = seeded('mer77-own');
+      await load77(st);
+      await page.click('#choice-p9-0-go'); await page.waitForSelector(BACK); await page.click('#btn-next');
+      await page.waitForSelector('#change-who');
+      for (const [key, section] of [['who', 'outfit-who'], ['carry', 'outfit-carry']]) {
+        await page.click(`#change-${key}`);
+        const at = await page.evaluate(() => ({ tag: document.activeElement.tagName, section: document.activeElement.closest('section')?.id ?? null }));
+        eq(at.section, section, `focus is inside the ${key} section after Change`);
+        ok(at.tag !== 'BODY', 'focus is not on the body');
+      }
+    });
+    await test('the MER-77 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.close();
+  }
+
 } finally {
   await browser.close();
   server.close();
