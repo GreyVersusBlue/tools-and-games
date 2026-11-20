@@ -8,7 +8,8 @@
 // argument to `holds`; used with none they throw, so a card cannot use one by mistake.
 import { seasonIndex, seasonName, year, actOf, SEASONS } from './calendar.js';
 import { REP_GROUPS } from './state.js';
-import { legSeasons } from './agents.js';
+import { legSeasons, refusesAny } from './agents.js';
+import { destinations } from './routes.js';
 
 const LEAVES = {
   season: [], year: [], act: [], length: [], notebook: [], out: [], money: [],
@@ -17,6 +18,7 @@ const LEAVES = {
   rep: ['gte', 'lte'],
   agent: ['hired', 'where'],
   leg: [], at: [], trait: [],
+  trip: [],
 };
 
 const routeOf = (content, id) => (content.routes ?? []).find(r => r.id === id);
@@ -32,6 +34,102 @@ export function placeOf(content, x) {
   const agent = (content.agents ?? []).find(a => a.id === x.agent);
   const standing = x.status === 'waiting' || x.left >= legSeasons(agent, leg);
   return { leg: x.leg, by: leg.by, stop: standing ? leg.from : leg.to, standing };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The `trip` leaf (ARCHITECTURE 4.12): `{ trip: { agent, is } }` holds when that agent has a trip in the
+// state `is` names. A card that tells of a trip carries it, and its words are filled from the trip.
+
+export const TRIP_STATES = ['home', 'out', 'ready'];
+const agentOf = (content, id) => (content.agents ?? []).find(a => a.id === id);
+const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.name ?? id;
+const goodName = (content, id) => ((content.goods ?? []).find(g => g.id === id)?.name ?? id).toLowerCase();
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+
+/** The good a cargo is mostly made of: the most loads, the first listed on a tie. */
+const mainGood = cargo => Object.entries(cargo ?? {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+/** What a trip is, in the four words a card may use. `to` and `good` are ids (or null), `seasons` a number. */
+const trip = (content, agent, route, to, good, seasons, x) => ({
+  agent, expedition: x ?? null, route: route.id, to, good, seasons,
+  from: stopName(content, route.legs?.[0]?.from ?? content.city?.home), });
+
+/** The trip `agent` has in state `is`, or null. `home`: a return paper for the agent is on the desk
+    (the opening brought them home this season). `out`: an expedition of theirs is on the road.
+    `ready`: hired, at home, on no expedition, and the nearest stop the house holds something to sell to
+    gives the plan. { agent, expedition, route, to, good, seasons, from } */
+export function tripOf(state, content, agent, is) {
+  const a = agentOf(content, agent), idx = seasonIndex(state, content);
+  if (!a || !state.agents[agent]) return null;
+  if (is === 'home') {
+    const p = state.desk.find(q => q.kind === 'return' && q.agent === agent && q.expedition);
+    const sent = p && state.log.find(e => e.kind === 'outfit' && e.ref === p.expedition);
+    const route = sent && routeOf(content, sent.choice);
+    if (!route) return null;
+    // the return paper writes where the agent turned back and what was sent, in words; read them back by name
+    const head = p.data?.headline ?? '', sentOut = (p.data?.account ?? []).find(r => r.label === 'Sent out')?.text ?? '';
+    const turned = (content.stops ?? []).find(s => head.startsWith(`${a.name} came home from ${s.name}.`))?.id ?? route.to;
+    const good = (content.goods ?? []).map(g => ({ id: g.id, at: sentOut.indexOf(` of ${g.name.toLowerCase()}`) })).filter(g => g.at >= 0).sort((u, v) => u.at - v.at)[0]?.id ?? null;
+    return trip(content, agent, route, turned, good, idx - sent.at, p.expedition);
+  }
+  if (is === 'out') {
+    const x = state.expeditions.find(e => e.agent === agent && e.status !== 'home');
+    const route = x && routeOf(content, x.route);
+    if (!route) return null;
+    return trip(content, agent, route, x.book?.turned ?? route.to, mainGood(x.book?.cargo ?? x.cargo), idx - x.sent, x.id);
+  }
+  if (is === 'ready') {
+    const rec = state.agents[agent];
+    if (!rec.hired || rec.where !== content.city?.home || state.expeditions.some(e => e.agent === agent) || refusesAny(state, a)) return null;
+    for (const d of destinations(state, content, a).sort((u, v) => u.seasons - v.seasons)) {
+      const stop = (content.stops ?? []).find(s => s.id === d.stop);
+      const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0).sort((u, v) => state.stock[v] - state.stock[u] || (u < v ? -1 : 1));
+      if (goods.length) return trip(content, agent, routeOf(content, d.route), d.stop, goods[0], d.seasons, null);
+    }
+  }
+  return null;
+}
+
+/** The `trip` leaf of a card's `when`, at the top or inside a top-level `all`; null when it has none. */
+export function tripLeaf(when) {
+  if (!when || typeof when !== 'object') return null;
+  if ('trip' in when) return when.trip;
+  if (Array.isArray(when.all)) for (const c of when.all) if (c && typeof c === 'object' && 'trip' in c) return c.trip;
+  return null;
+}
+
+const SLOTS = /\{(agent|to|good|route|seasons)\}/g;
+export const hasSlots = text => typeof text === 'string' && /\{(agent|to|good|route|seasons)\}/.test(text);
+
+/** The text with its slots filled from trip `t` ({ agent, ... } from `tripOf`). */
+export function fillTrip(content, text, t) {
+  const words = {
+    agent: agentOf(content, t.agent)?.name ?? t.agent,
+    to: t.to ? stopName(content, t.to) : 'the road',
+    good: t.good ? goodName(content, t.good) : 'goods',
+    route: t.to ? `${t.from} to ${stopName(content, t.to)}` : 'the road',
+    seasons: t.seasons === undefined || t.seasons === null ? 'some seasons' : `${NUMBER_WORDS[t.seasons] ?? t.seasons} ${t.seasons === 1 ? 'season' : 'seasons'}`,
+  };
+  return typeof text === 'string' ? text.replace(SLOTS, (_, k) => words[k]) : text;
+}
+
+/** For view(): the filled words of every card on the desk that tells of a trip, by paper id:
+    { title, body, choices: { id: { label, hint } }, trip }. A paper whose trip has since changed state (the
+    player sent the agent out while the card lay on the desk) is filled from the state the agent is in now. */
+export function describeTrips(state, content) {
+  const out = {};
+  for (const p of state.desk) {
+    if (p.kind !== 'card' || p.id === null) continue;
+    const card = (content.cards ?? []).find(c => c.id === p.ref);
+    const leaf = tripLeaf(card?.when);
+    if (!leaf) continue;
+    const t = [leaf.is, ...TRIP_STATES].map(is => tripOf(state, content, leaf.agent, is)).find(Boolean) ?? { agent: leaf.agent };
+    out[p.id] = {
+      title: fillTrip(content, card.title, t), body: fillTrip(content, card.body, t), trip: t,
+      choices: Object.fromEntries((card.choices ?? []).map(c => [c.id, { label: fillTrip(content, c.label, t), hint: fillTrip(content, c.hint, t) }])),
+    };
+  }
+  return out;
 }
 
 function only(cond, allowed, where) {
@@ -58,6 +156,7 @@ function typed(cond, head) {
     case 'year': if (!Array.isArray(v) || v.length !== 2 || !v.every(isNum)) bad(head, 'a [from, to] pair of numbers', v); break;
     case 'act': if (!Number.isInteger(v)) bad(head, 'a whole number', v); break;
     case 'length': case 'notebook': case 'stock': case 'flag': case 'rep': case 'agent': case 'at': case 'trait': if (!isStr(v)) bad(head, 'a name', v); break;
+    case 'trip': if (!v || typeof v !== 'object' || Array.isArray(v)) bad(head, '{ agent, is }', v); only(v, ['agent', 'is'], 'trip'); if (!isStr(v.agent)) bad('trip agent', 'an agent id', v.agent); if (!TRIP_STATES.includes(v.is)) bad('trip is', `one of ${TRIP_STATES.join(', ')}`, v.is); break;
     case 'leg': if (!v || typeof v !== 'object' || Array.isArray(v)) bad(head, '{ by: vessel }', v); only(v, ['by'], 'leg'); if (!isStr(v.by)) bad('leg by', 'a vessel name', v.by); break;
   }
   for (const k of ['gte', 'lte']) if (head !== 'money' && head !== 'out' && cond[k] !== undefined && !isNum(cond[k])) bad(`${head} ${k}`, 'a number', cond[k]);
@@ -106,6 +205,7 @@ export function holds(cond, state, content, x) {
     }
     case 'leg': { const p = placeOf(content, x); return !!p && !p.standing && p.by === v.by; }
     case 'at': { const p = placeOf(content, x); return !!p && p.standing && p.stop === v; }
+    case 'trip': return !!tripOf(state, content, v.agent, v.is);
     case 'trait': return ((content.agents ?? []).find(a => a.id === x.agent)?.traits ?? []).includes(v);
     case 'agent': {
       const a = state.agents[v];

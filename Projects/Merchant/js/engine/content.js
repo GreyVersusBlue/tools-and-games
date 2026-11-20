@@ -12,6 +12,7 @@ import { check as checkEffect } from './effects.js';
 import { REP_GROUPS } from './state.js';
 import { CARD_GROUPS } from '../data.js';
 import { SEASONS } from './calendar.js';
+import { TRIP_STATES, tripLeaf, hasSlots } from './conditions.js';
 
 export const TABS = ['terms', 'places', 'people', 'goods'];
 export const TRAITS = ['careful', 'bold', 'honest', 'sharp'];
@@ -26,7 +27,7 @@ const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 // pins that this table and the engine's agree (test/content.mjs).
 export const CONDITION_LEAVES = {
   season: [], year: [], act: [], length: [], notebook: [], out: [], money: [], stock: ['gte'],
-  flag: ['not', 'gte'], rep: ['gte', 'lte'], agent: ['hired', 'where'],
+  flag: ['not', 'gte'], rep: ['gte', 'lte'], agent: ['hired', 'where'], trip: [],
 };
 // Leaves only a letter's `when` may use (ARCHITECTURE 5.7); letters.js reads them off the expedition.
 export const LETTER_LEAVES = { leg: [], at: [], trait: [] };
@@ -137,6 +138,11 @@ export function validateContent(raw, { art } = {}) {
         if (where !== 'later' && where !== 'do') schema(p, 'a card effect goes only inside a later entry');
         break;
       case 'unlock': refOf('notebook')(v, `${p}.unlock`); break;
+      case 'outfit':
+        agentRef(v, `${p}.outfit`);
+        oneOf(['own', 'qirad'], e.contract, `${p}.contract`);
+        if (where !== 'now') schema(p, 'an outfit effect goes only in a card choice\'s now list: the sheet opens when the choice is made');
+        break;
       case 'order':
         obj(v, `${p}.order`, { go: (x, q) => oneOf(['wait', 'on', 'home'], x, q) }, ['go']);
         if (where !== 'letter-now') schema(p, 'an order goes only in a letter choice\'s now list');
@@ -177,6 +183,10 @@ export function validateContent(raw, { art } = {}) {
       case 'leg': obj(v, q, { by: (x, r) => oneOf(BY, x, r) }, ['by']); break;
       case 'at': refOf('stops')(v, q); break;
       case 'trait': trait(v, q); break;
+      case 'trip':
+        obj(v, q, { agent: refOf('agents'), is: (x, r) => oneOf(TRIP_STATES, x, r) }, ['agent', 'is']);
+        if (letter) schema(p, 'a letter reads its own expedition, so it takes no trip leaf');
+        break;
     }
   }
   function trait(t, p) {
@@ -205,7 +215,16 @@ export function validateContent(raw, { art } = {}) {
     items.forEach((c, i) => {
       const p = `cards[${i}]${isObj(c) && typeof c.id === 'string' ? ` (${c.id})` : ''}`;
       obj(c, p, { ...common(false), group: (x, q) => oneOf(CARD_GROUPS, x, q) }, ['id', 'group', 'from', 'title', 'body', 'choices', 'note']);
+      if (isObj(c)) tripRules(c, p);
     });
+  }
+  // A card's trip leaf must be where `view()` can find it, and its slots need one to fill them (ARCHITECTURE 4.12).
+  function tripRules(c, p) {
+    const w = c.when, inAny = JSON.stringify(w ?? {}).includes('"trip"');
+    const leaf = isObj(w) ? tripLeaf(w) : null;
+    if (inAny && !leaf) schema(`${p}.when`, 'the trip leaf must stand alone in "when" or directly inside its top-level "all", so the card is bound to one trip');
+    const texts = [c.title, c.body, ...(Array.isArray(c.choices) ? c.choices.flatMap(ch => (isObj(ch) ? [ch.label, ch.hint] : [])) : [])];
+    if (!leaf && texts.some(hasSlots)) schema(p, 'uses {agent}, {to}, {good}, {route} or {seasons} but has no trip leaf to fill them from');
   }
   function letters(items) {
     items.forEach((c, i) => {

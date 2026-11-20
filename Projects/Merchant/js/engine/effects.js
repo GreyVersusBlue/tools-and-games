@@ -13,7 +13,7 @@ import { leftHow } from './agents.js';
 const ARGS = {
   money: [], stock: ['by'], rep: ['by'], trust: ['by'], memory: ['kind'],
   flag: ['set', 'clear'], price: ['good', 'by'], loan: [], hire: [], dismiss: [],
-  card: [], unlock: [], order: [],
+  card: [], unlock: [], order: [], outfit: ['contract'],
 };
 export const EFFECT_KEYS = Object.keys(ARGS);
 
@@ -44,7 +44,7 @@ function stayedId(state, content, ref, ctx, what) {
 }
 
 // The keys of a card's `when`, a choice's `requires` and its effects that name an agent.
-const NAMES_AGENT = ['agent', 'trust', 'memory', 'hire', 'dismiss'];
+const NAMES_AGENT = ['agent', 'trust', 'memory', 'hire', 'dismiss', 'outfit'];
 
 /** Every agent a card names, in its `when`, its choices' `requires`, and the effects of its choices
     (now and later): an id, or "$agent" read as the paper's agent. A string that is not an agent of
@@ -164,6 +164,15 @@ export function apply(state, content, effect, ctx = {}) {
       if (typeof v !== 'string') throw new Error('effect unlock: needs an entry id');
       if (!state.notebook.includes(v)) state.notebook.push(v);
       return;
+    case 'outfit': {
+      // Opens the outfit sheet for this agent and contract (the screens read the effect off the choice).
+      // It moves no money and changes nothing: the money moves only at Send. It is refused, so the
+      // choice is not open, for an agent who could not be sent.
+      const id = agentId(state, v, ctx), a = state.agents[id];
+      if (!['own', 'qirad'].includes(effect.contract)) throw new Error(`effect outfit: no contract called "${effect.contract}"`);
+      if (!a.hired || a.where !== content.city?.home || state.expeditions.some(x => x.agent === id)) throw new Error(`${nameOf(content, id)} is not free to be sent out`);
+      return;
+    }
     case 'order': {
       const x = ctx.expedition && state.expeditions.find(e => e.id === ctx.expedition);
       if (!x) throw new Error('effect order: only on a letter from an expedition on the road');

@@ -804,10 +804,10 @@ function settledLine(s, content, x, out, r) {
   const agent = agentOf(content, x.agent), dest = stopName(content, x.book?.turned ?? routeOf(content, x.route).to);
   if (out.result === 'lost') {
     const surv = out.fate === 'died' ? `${agent.name} did not come back.` : `${agent.name} got home.`;
-    return { expedition: x.id, agent: x.agent, result: 'lost', text: `${agent.name}'s expedition to ${dest} was lost on the way. ${surv}`, houseNet: -x.staked.house };
+    return { expedition: x.id, agent: x.agent, result: 'lost', cargo: { ...x.book?.cargo }, text: `${agent.name}'s expedition to ${dest} was lost on the way. ${surv}`, houseNet: -x.staked.house };
   }
   const n = r.houseNet;
-  return { expedition: x.id, agent: x.agent, result: 'home', text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
+  return { expedition: x.id, agent: x.agent, result: 'home', cargo: { ...x.book?.cargo }, text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
 }
 
 /** Settles `x` (settle, then bring it home or write it off). Returns its line. */
