@@ -11,15 +11,25 @@
 // entries collapse to their words with Edit and a named Remove; Add another
 // time focuses the new entry's first control. The sentence under the editor
 // and the staff-browser line, the one-time offer from Notes that name
-// weekdays, a class put in an away period shown in Checks, a name as typed,
-// by pointer and by keyboard at 1280 by 900, and by tap at 390 by 844. Every
+// weekdays (once for each teacher), a class put in an away period shown in
+// Checks, a name as typed, by pointer and by keyboard at 1280 by 900, and by
+// tap and by keyboard at 390 by 844. SV2-132b added: an open entry kept in
+// its place when a row above it is removed and closed by Undo; a refusal said
+// once; Every day and The whole day; the summary said again on a second close;
+// Edit then Cancel; the Teachers table's widths; axe on the editor in both
+// themes; noteDays on its own. Every
 // wait is on a state the page sets (`data-pending` gone from the section, an
 // attribute or a store value), never on a first paint or a sleep.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go as goHash, assertTouch, loadModule } from './harness.mjs';
+import path from 'node:path';
+
+import { openPlanner, go as goHash, assertTouch, loadModule, TOOL_DIR } from './harness.mjs';
+
+const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
+const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
 
 const HOSTILE = '<b>Lin</b> "Q" 名前';
 const T = 'tsample001'; // teaches 8B in period 2 of A Day (the sample school)
@@ -110,13 +120,49 @@ async function open() {
   await settled();
 }
 
+// The Teachers table's Subject select and Notes field, measured: the select
+// at least as wide as its own longest option (a copy of it at max-content),
+// the Notes field at least 7 rem.
+const columnWidths = () => page.evaluate(() => {
+  const select = document.querySelector('.sch-teachers tbody .sch-teachers__subject select');
+  const copy = select.cloneNode(true);
+  copy.style.width = 'max-content';
+  copy.style.minWidth = '0';
+  copy.style.position = 'absolute';
+  select.parentElement.append(copy);
+  const wanted = copy.getBoundingClientRect().width;
+  copy.remove();
+  const box = document.querySelector('.sch-teachers .sch-scroll');
+  return {
+    select: select.getBoundingClientRect().width,
+    wanted,
+    notes: Math.min(...[...document.querySelectorAll('.sch-teachers tbody input[aria-label^="Notes on"]')].map((el) => el.getBoundingClientRect().width)),
+    rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+    box: box.clientWidth,
+    table: box.scrollWidth,
+    page: document.documentElement.scrollWidth,
+    window: document.documentElement.clientWidth,
+  };
+});
+
 before(async () => {
   session = await openPlanner({ hash: '#schedule/teachers', theme: 'light' });
   page = session.page;
   await page.waitForSelector('.sch-teachers table');
   await settled();
   await loadModule(page, 'actions', 'engine/actions.js');
+  await loadModule(page, 'w7', 'engine/w7-actions.js');
 });
+
+// Store a list of entries for the teacher, as one step of its own.
+async function setAway(list) {
+  await loadModule(page, 'w7', 'engine/w7-actions.js');
+  await page.evaluate((id, wanted) => globalThis.sv2.store.apply(globalThis.sv2modules.w7.setTeacherAway, { teacherId: id, away: wanted }), T, list);
+  await awayIs(list);
+  await settled();
+}
+const P = (period) => ({ dayTypeIds: [], weekdays: [], periods: [period] });
+const formAt = () => page.evaluate((selector) => [...document.querySelectorAll(selector + ' .sch-part__entry')].map((el) => el.dataset.entry), editor);
 
 after(async () => {
   if (session) await session.close();
@@ -255,32 +301,38 @@ test('5. a class put in an away period is a finding in Checks', async () => {
   await go('#schedule/teachers');
 });
 
-test('6. Notes that name weekdays are offered once as part-time days', async () => {
+test('6. Notes that name weekdays are offered once for each teacher, whatever the words', async () => {
   await fresh();
   const notes = 'input[aria-label^="Notes on"]';
   const field = '[data-teacher="' + T + '"] ' + notes;
-  await page.click(field, { clickCount: 3 });
-  await page.keyboard.type('Mon/Wed only');
-  await page.keyboard.press('Enter');
+  const typeNotes = async (words) => {
+    await page.click(field, { clickCount: 3 });
+    await page.keyboard.type(words);
+    await page.keyboard.press('Enter');
+  };
+  // words that only look like days are no offer, and do not use it up
+  await typeNotes('Monitors the lunch line');
+  await settled();
+  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent || null), null, 'no offer for "Monitors"');
+  await typeNotes('Mon/Wed only');
   await shows(() => /Notes say ‘Mon\/Wed only’\. Set it as part-time\?/.test(document.querySelector('.toast .toast__text')?.textContent || ''));
   assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent), 'Set as part-time');
-  // the same words again do not offer again
-  await closeToast();
+  await page.click('.toast .toast__action');
+  await awayIs([{ dayTypeIds: [], weekdays: [1, 3, 4], periods: [] }]);
+  await page.waitForSelector(editor);
+  assert.equal(await expanded(), 'true', 'the editor is open on what was set');
+  assert.equal(await page.$eval(key('day:0'), (el) => el.getAttribute('aria-pressed')), 'true');
+  // the offer was this teacher's one: other words, with the times cleared again, are no offer
+  await fresh();
+  await typeNotes('Tues and Thurs');
   await settled();
-  await page.click(field, { clickCount: 3 });
-  await page.keyboard.type('Mon/Wed only');
-  await page.keyboard.press('Enter');
-  await settled();
-  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent || null), null, 'offered once');
-  // other words are another offer; take it
-  await page.click(field, { clickCount: 3 });
+  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__action')?.textContent || null), null, 'offered once for the teacher');
+  // another teacher still has theirs
+  const other = await page.evaluate((id) => globalThis.sv2.store.project.teachers.find((teacher) => teacher.id !== id).id, T);
+  await page.click('[data-teacher="' + other + '"] ' + notes, { clickCount: 3 });
   await page.keyboard.type('Tues and Thurs');
   await page.keyboard.press('Enter');
   await shows(() => /Notes say ‘Tues and Thurs’/.test(document.querySelector('.toast .toast__text')?.textContent || ''));
-  await page.click('.toast .toast__action');
-  await awayIs([{ dayTypeIds: [], weekdays: [0, 2, 4], periods: [] }]);
-  await page.waitForSelector(editor);
-  assert.equal(await expanded(), 'true', 'the editor is open on what was set');
   await fresh();
 });
 
@@ -328,6 +380,276 @@ test('8. a name and a day type name are shown as typed, never as markup', async 
   await fresh();
 });
 
+test('11. Remove above an open entry moves the entry up with its row: Done writes it in its own place, and nothing is lost', async () => {
+  await fresh();
+  await setAway([P(0), P(1), P(2)]);
+  await open();
+  assert.equal(await page.$eval(key('radio:not'), (el) => el.checked), true);
+  // edit the second, remove the first, then finish the edit
+  await press(key('edit:1'));
+  await page.waitForSelector('[data-entry="1"] fieldset');
+  await press(key('e1:period:4'));
+  await press(key('remove:0'));
+  await awayIs([P(1), P(2)]);
+  await settled();
+  assert.deepEqual(await formAt(), ['0'], 'the open entry is now the first');
+  await press(key('e0:done'));
+  await awayIs([{ dayTypeIds: [], weekdays: [], periods: [1, 4] }, P(2)]);
+  assert.equal(await refusal(), null);
+  // adding: remove one of the saved entries while the new one is open
+  await press(key('add'));
+  await page.waitForSelector('[data-entry="2"] fieldset');
+  await press(key('e2:day:4'));
+  await press(key('remove:0'));
+  await awayIs([P(2)]);
+  await settled();
+  assert.deepEqual(await formAt(), ['1'], 'the new entry follows the list');
+  await press(key('e1:done'));
+  await awayIs([P(2), { dayTypeIds: [], weekdays: [4], periods: [] }]);
+  assert.equal(await refusal(), null, 'no hole was written');
+  await fresh();
+});
+
+test('12. Undo with an entry open closes it without saving: the draft was for the list as it was', async () => {
+  await fresh();
+  await setAway([P(0)]);
+  await setAway([P(0), P(1)]);
+  await setAway([P(0), P(1), P(2)]);
+  await open();
+  await press(key('edit:2'));
+  await page.waitForSelector('[data-entry="2"] fieldset');
+  await press(key('e2:period:5'));
+  await undo();
+  await awayIs([P(0), P(1)]);
+  await settled();
+  assert.deepEqual(await formAt(), [], 'the entry that was open is closed');
+  assert.equal(await exists(key('e2:done')), false);
+  assert.equal(await exists(key('add')), true);
+  // the same while adding
+  await press(key('add'));
+  await page.waitForSelector('[data-entry="2"] fieldset');
+  await undo();
+  await awayIs([P(0)]);
+  await settled();
+  assert.deepEqual(await formAt(), []);
+  assert.deepEqual(await away(), [P(0)]);
+  await fresh();
+});
+
+test('13. a refusal is said once: a later drawing shows it without role="alert", and a change to the draft takes it away', async () => {
+  await fresh();
+  await open();
+  for (const day of [0, 1, 2, 3]) await press(key('day:' + day));
+  await awayIs([{ dayTypeIds: [], weekdays: [0, 1, 2, 3], periods: [] }]);
+  await press(key('day:4'));
+  await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+  assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.getAttribute('role')), 'alert', 'said when it first appears');
+  // a drawing for something else: the words stay, the alert is not made again
+  await page.$eval('[data-refusal="part"]', (el) => { el.__old = true; });
+  await page.evaluate((id) => {
+    const other = globalThis.sv2.store.project.teachers.find((teacher) => teacher.id !== id);
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions.editTeacher, { id: other.id, notes: 'Coaches the chess club' });
+  }, T);
+  await shows(() => document.querySelector('[data-refusal="part"]')?.__old !== true);
+  await settled();
+  assert.match(await refusal(), /never in school/);
+  assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.getAttribute('role')), null, 'not announced again');
+  await press(key('day:3'));
+  await awayIs([{ dayTypeIds: [], weekdays: [0, 1, 2], periods: [] }]);
+  assert.equal(await refusal(), null);
+  // under Not in school: a change to the draft clears it before Done
+  await fresh();
+  await open();
+  await press(key('radio:not'));
+  await page.waitForSelector('[data-entry="0"] fieldset');
+  await press(key('e0:done'));
+  await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+  assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.getAttribute('role')), 'alert');
+  await press(key('e0:period:2'));
+  assert.equal(await refusal(), null, 'the change answered it');
+  await fresh();
+});
+
+test('14. a Remove refused with no entry open is shown in the editor', async () => {
+  await fresh();
+  const before = await page.evaluate(() => JSON.stringify(globalThis.sv2.store.project));
+  try {
+    // a stored entry naming a day type that has gone (as a file from elsewhere might)
+    await page.evaluate((id) => {
+      const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+      project.teachers.find((teacher) => teacher.id === id).away = [{ dayTypeIds: ['dgone0001'], weekdays: [], periods: [0] }, { dayTypeIds: [], weekdays: [], periods: [1] }];
+      globalThis.sv2.store.replace(project);
+    }, T);
+    await settled();
+    await open();
+    assert.equal(await page.$eval(key('radio:not'), (el) => el.checked), true);
+    assert.deepEqual(await formAt(), []);
+    await press(key('remove:1'));
+    await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+    assert.match(await refusal(), /no longer in the project/);
+    assert.equal(await page.$eval('[data-refusal="part"]', (el) => el.closest('.sch-part') !== null), true, 'inside the editor');
+    assert.equal((await away()).length, 2, 'nothing was stored');
+  } finally {
+    await page.evaluate((json) => globalThis.sv2.store.replace(JSON.parse(json)), before);
+    await settled();
+  }
+  await fresh();
+});
+
+test('15. the days a note names: only real day words, and a negation counts only where it governs the days', async () => {
+  await loadModule(page, 'teachers', 'ui/schedule/teachers.js');
+  const cases = [
+    ['Mon/Wed only', [0, 2]],
+    ['Tues and Thurs', [1, 3]],
+    ['Mondays, Tuesdays and Weds.', [0, 1, 2]],
+    ['Thurs. and Fri.', [3, 4]],
+    ['Tuesday to Thursday', [1, 2, 3]],
+    ['Mon-Fri', null],
+    // words that only start like a day
+    ['Monitors the lunch line', null],
+    ['Friendly with the bus drivers', null],
+    ['Away for a wedding in June', null],
+    ['thunder drills; frisbee club', null],
+    // a negation that governs the days: the days away
+    ['Not in on Fri', [0, 1, 2, 3]],
+    ['Off Thu', [0, 1, 2, 4]],
+    ['out Mon/Wed', [1, 3, 4]],
+    ['Except Fridays', [0, 1, 2, 3]],
+    ['Fridays off', [0, 1, 2, 3]],
+    // a negation elsewhere changes nothing
+    ['Mon/Wed only, not on duties', [0, 2]],
+    ['Tue/Thu; does not coach', [1, 3]],
+    ['In Mon and Tue, not in Fri', [0, 1]],
+  ];
+  const got = await page.evaluate((all) => all.map(([words]) => globalThis.sv2modules.teachers.noteDays(words)), cases);
+  assert.deepEqual(got.map((days, at) => [cases[at][0], days]), cases);
+});
+
+test('16. an entry\'s days and periods offer "Every day" and "The whole day" as choices of their own', async () => {
+  await fresh();
+  await open();
+  await press(key('radio:not'));
+  await page.waitForSelector('[data-entry="0"] fieldset');
+  const pressed = (part) => page.$eval(key(part), (el) => el.getAttribute('aria-pressed'));
+  assert.equal(await text(key('e0:days:every')), 'Every day');
+  assert.equal(await text(key('e0:periods:whole')), 'The whole day');
+  assert.equal(await pressed('e0:days:every'), 'true', 'nothing ticked is every day');
+  assert.equal(await pressed('e0:periods:whole'), 'true');
+  await press(key('e0:day:1'));
+  await press(key('e0:day:3'));
+  assert.equal(await pressed('e0:days:every'), 'false');
+  await press(key('e0:period:2'));
+  assert.equal(await pressed('e0:periods:whole'), 'false');
+  // choosing Every day takes the ticks away
+  await press(key('e0:days:every'));
+  assert.equal(await pressed('e0:days:every'), 'true');
+  assert.equal(await pressed('e0:day:1'), 'false');
+  assert.equal(await pressed('e0:day:3'), 'false');
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:e0:days:every');
+  await press(key('e0:day:4'));
+  await press(key('e0:periods:whole'));
+  assert.equal(await pressed('e0:period:2'), 'false');
+  await press(key('e0:done'));
+  await awayIs([{ dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await fresh();
+});
+
+test('17. the summary is said on close, and said again on a second close with the same words; a teacher with times opens on Not in school with the focus there', async () => {
+  await fresh();
+  await page.evaluate(() => {
+    globalThis.__said = [];
+    const node = document.getElementById('announcer');
+    globalThis.__sayer?.disconnect();
+    globalThis.__sayer = new MutationObserver(() => globalThis.__said.push(node.textContent));
+    globalThis.__sayer.observe(node, { childList: true, characterData: true, subtree: true });
+  });
+  const name = await page.evaluate((id) => globalThis.sv2.store.project.teachers.find((teacher) => teacher.id === id).name, T);
+  const summary = name + ': Full-time.';
+  const saidTimes = () => page.evaluate((words) => globalThis.__said.filter((each) => each === words).length, summary);
+  await open();
+  await page.keyboard.press('Escape');
+  await shows((words) => globalThis.__said.includes(words), summary);
+  await open();
+  await press(key('close'));
+  await shows((words) => globalThis.__said.filter((each) => each === words).length === 2, summary);
+  assert.equal(await saidTimes(), 2, 'said on each close');
+  const log = await page.evaluate(() => globalThis.__said.slice());
+  const second = log.lastIndexOf(summary);
+  assert.ok(log.slice(log.indexOf(summary) + 1, second).includes(''), 'emptied between the two, so the second is spoken: ' + JSON.stringify(log));
+  // a teacher with a time that is not weekdays only: Not in school is checked and has the focus (the checked radio of the group)
+  await setAway([P(3)]);
+  await open();
+  assert.equal(await page.$eval(key('radio:not'), (el) => el.checked), true);
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:radio:not');
+  await page.keyboard.press('Escape');
+  await shows((words) => globalThis.__said.some((each) => each.startsWith(words) && /Not in school in Period 4/.test(each)), name + ': ');
+  await page.evaluate(() => globalThis.__sayer.disconnect());
+  await fresh();
+});
+
+test('18. Edit then Cancel keeps the entry as it was, and the hint says Only in school on… replaces times set under Not in school', async () => {
+  await fresh();
+  await setAway([P(3), { dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await open();
+  await press(key('edit:0'));
+  await page.waitForSelector('[data-entry="0"] fieldset');
+  await press(key('e0:period:5'));
+  await press(key('e0:day:2'));
+  await press(key('e0:cancel'));
+  await page.waitForSelector(key('edit:0'));
+  assert.deepEqual(await formAt(), [], 'the form is closed');
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:edit:0', 'focus back on Edit');
+  assert.deepEqual(await away(), [P(3), { dayTypeIds: [], weekdays: [4], periods: [] }], 'nothing stored');
+  assert.match(await text('[data-entry="0"]'), /Period 4/);
+  assert.doesNotMatch(await text('[data-entry="0"]'), /Period 6/);
+  // the hint under Only in school on…
+  await press(key('radio:only'));
+  await shows((selector) => /Choosing days here replaces the times set under Not in school\./.test(document.querySelector(selector)?.textContent || ''), editor);
+  await press(key('day:2'));
+  await awayIs([{ dayTypeIds: [], weekdays: [2], periods: [] }]);
+  await settled();
+  assert.doesNotMatch(await text(editor), /replaces the times set under Not in school/, 'gone once the days are what is stored');
+  await undo();
+  await awayIs([P(3), { dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await fresh();
+});
+
+test('19. at 1280 px the Subject select shows its longest subject, Notes is a readable width, and the whole row fits beside the inspector', async () => {
+  await fresh();
+  const got = await columnWidths();
+  assert.ok(got.select >= got.wanted - 0.5, 'the select is not cut short: ' + JSON.stringify(got));
+  assert.ok(got.notes >= 7 * got.rem - 0.5, 'Notes is at least 7 rem: ' + JSON.stringify(got));
+  assert.ok(got.table <= got.box, 'no sideways scroll in the table at 1280 px: ' + JSON.stringify(got));
+});
+
+test('21. axe finds nothing on the open editor, an entry and a refusal showing, in the light theme and the dark', async () => {
+  await fresh();
+  await setAway([{ dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await open();
+  await press(key('radio:not'));
+  await page.waitForSelector(key('add'));
+  await press(key('add'));
+  await page.waitForSelector('[data-entry="1"] fieldset');
+  await press(key('e1:types:some'));
+  await page.waitForSelector(key('e1:type:' + A));
+  await press(key('e1:done'));
+  await shows(() => document.querySelector('[data-refusal="part"]') !== null);
+  if (!(await page.evaluate(() => Boolean(globalThis.axe)))) await page.addScriptTag({ path: AXE });
+  try {
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: scheme }]);
+      await shows((wanted) => getComputedStyle(document.documentElement).colorScheme === wanted, scheme);
+      await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+      const result = await page.evaluate((selector, tags) => globalThis.axe.run(document.querySelector(selector), { runOnly: { type: 'tag', values: tags }, resultTypes: ['violations'] }).then((found) => ({ passes: found.passes.length, violations: found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', ')) })), editor, AXE_TAGS);
+      assert.ok(result.passes > 0, 'axe ran its rules on the editor');
+      assert.deepEqual(result.violations, [], 'axe in the ' + scheme + ' theme');
+    }
+  } finally {
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  }
+  await fresh();
+});
+
 test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, and every control is 44 px', async () => {
   await fresh();
   await page.evaluate(() => globalThis.sv2.storage.flush());
@@ -363,6 +685,44 @@ test('9. at 390 px with touch the editor stacks, fits with no sideways scroll, a
   } finally {
     touching = false;
   }
+  await fresh();
+});
+
+test('20. at 390 px by keyboard: the columns keep their widths in the table\'s own scroll, and the editor works with keys alone', async () => {
+  // the page is still the phone of case 9
+  await fresh();
+  const got = await columnWidths();
+  assert.ok(got.select >= got.wanted - 0.5 && got.notes >= 7 * got.rem - 0.5, 'nothing cut short at 390: ' + JSON.stringify(got));
+  assert.ok(got.page <= got.window, 'the page itself does not scroll sideways: ' + JSON.stringify(got));
+  await page.$eval(key('button'), (el) => el.scrollIntoView({ block: 'center' }));
+  await page.focus(key('button'));
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(editor);
+  await shows(() => document.activeElement?.dataset.key?.endsWith(':part:radio:only'));
+  // Only in school on…: Tab to the first chip, Space unticks Friday
+  await keyOn(key('day:4'), 'Space');
+  await awayIs([{ dayTypeIds: [], weekdays: [4], periods: [] }]);
+  await settled();
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:day:4');
+  await page.focus(key('radio:only'));
+  await page.keyboard.press('ArrowDown');
+  await page.waitForSelector(key('add'));
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:radio:not');
+  await keyOn(key('add'), 'Enter');
+  await page.waitForSelector('[data-entry="1"] fieldset');
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:e1:types:all');
+  await keyOn(key('e1:period:0'), 'Enter');
+  await keyOn(key('e1:done'), 'Enter');
+  await awayIs([{ dayTypeIds: [], weekdays: [4], periods: [] }, P(0)]);
+  await settled();
+  const fits = await page.evaluate((selector) => {
+    const box = document.querySelector(selector).getBoundingClientRect();
+    return { left: box.left, right: box.right, width: document.documentElement.clientWidth };
+  }, editor + ' .sch-part');
+  assert.ok(fits.left >= 0 && fits.right <= fits.width, 'the editor is inside the window: ' + JSON.stringify(fits));
+  await page.keyboard.press('Escape');
+  await shows((selector) => document.querySelector(selector)?.getAttribute('aria-expanded') === 'false', key('button'));
+  assert.equal(await activeKey(), 'teacher:' + T + ':part:button');
   await fresh();
 });
 

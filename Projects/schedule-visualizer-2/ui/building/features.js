@@ -6,8 +6,11 @@
 //   featuresField(env, { room(), state(), id }) -> { element, input, sync() }
 //     The chips, the combobox and the "Edit the features list…" button of one
 //     room. `room()` is the room it is for (null when there is none), `state()`
-//     the inspector's state ({ project }). `sync()` draws it again.
-//   openFeaturesDialog(env, opener) -> { element, close, closed }
+//     the inspector's state ({ project }). `sync()` draws it again. When the
+//     field sits in something the dialog hides (the Rooms tab's popover),
+//     `back()` gives what the dialog returns the focus to, and `backFallback()`
+//     what takes it when that has gone.
+//   openFeaturesDialog(env, opener, { fallbackFocus }) -> { element, close, closed }
 //     The list as rows (a name field, Move up, Move down, Delete…), Add a
 //     feature, and Add common ones on an empty list.
 //
@@ -106,7 +109,10 @@ export function featuresField(env, source) {
     data: { key: 'feature-add' },
   });
   const list = h('ul', { class: 'picker__list bi-feature-list', role: 'listbox', id: listId, 'aria-label': 'Features to add', hidden: true });
-  const edit = h('button', { type: 'button', class: 'btn btn--quiet bi-linkbutton', data: { key: 'feature-edit' }, on: { click: () => openFeaturesDialog(env, edit) } }, 'Edit the features list…');
+  const edit = h('button', { type: 'button', class: 'btn btn--quiet bi-linkbutton', data: { key: 'feature-edit' }, on: { click: () => {
+    const back = typeof source.back === 'function' ? source.back() : null;
+    openFeaturesDialog(env, back || edit, back ? { fallbackFocus: source.backFallback } : undefined);
+  } } }, 'Edit the features list…');
   const element = h('div', { class: 'bi-features', id, data: { part: 'features' } },
     heading,
     chips,
@@ -261,7 +267,8 @@ export function featuresField(env, source) {
         return;
       }
       if (shown.length === 0) {
-        ctx.announce('Nothing to add: ' + (list.textContent || 'no match') + '.');
+        // the list's words end in their own full stop
+        ctx.announce('Nothing to add: ' + (list.textContent || 'no match.'));
         return;
       }
       // near matches, and Enter has not been told which: say so, add nothing
@@ -330,7 +337,7 @@ export function featuresField(env, source) {
 
 // ---------------------------------------------------------------- the list dialog
 
-export function openFeaturesDialog(env, opener) {
+export function openFeaturesDialog(env, opener, options) {
   const { store, ctx } = env;
   const body = h('div', { class: 'features-dialog__content' });
   const note = h('p', { class: 'features-dialog__note', id: 'features-note' });
@@ -338,7 +345,7 @@ export function openFeaturesDialog(env, opener) {
   const rows = h('ul', { class: 'features-dialog__rows', id: 'features-rows', 'aria-label': 'The school’s features' });
   const empty = h('div', { class: 'features-dialog__empty', id: 'features-empty' },
     h('p', null, 'The school has no features yet.'),
-    h('button', { type: 'button', class: 'btn', data: { key: 'common' }, on: { click: () => commit(addCommonFeatures, undefined, 'Added ' + COMMON_FEATURES.length + ' common features.') } }, 'Add common ones'),
+    h('button', { type: 'button', class: 'btn', data: { key: 'common' }, on: { click: addCommon } }, 'Add common ones'),
     h('p', { class: 'bld-inspector__small' }, 'Add ' + COMMON_FEATURES.length + ' common features; delete any you do not need.'));
   const addInput = h('input', { class: 'field__input', id: 'features-add', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'Type a feature, like Lab', 'aria-describedby': 'features-add-hint features-add-refusal', data: { key: 'add' } });
   const addRefusal = h('p', { class: 'field__refusal', id: 'features-add-refusal', hidden: true });
@@ -348,8 +355,9 @@ export function openFeaturesDialog(env, opener) {
     h('div', { class: 'features-dialog__addrow' }, addInput, addButton),
     h('p', { class: 'bld-inspector__small', id: 'features-add-hint' }, 'At most ' + FEATURES_MOST + ' features, each ' + FEATURE_NAME_MOST + ' characters or fewer.'),
     addRefusal);
-  // a deleted feature's way back: the toast's Undo is behind the dialog, so the dialog says it too
-  const undone = h('p', { class: 'features-dialog__undo', id: 'features-undo', role: 'status', hidden: true });
+  // a deleted feature's way back: the toast's Undo is behind the dialog, so the dialog shows
+  // it too. Not a live region: the toast is the one that is heard.
+  const undone = h('p', { class: 'features-dialog__undo', id: 'features-undo', hidden: true });
   body.append(note, countLine, empty, rows, adder, undone);
 
   const dialog = openDialog({
@@ -358,14 +366,18 @@ export function openFeaturesDialog(env, opener) {
     opener,
     id: 'features-dialog',
     class: 'features-dialog',
-    fallbackFocus: () => document.getElementById('inspector-title') && document.getElementById('inspector-title').focus(),
+    fallbackFocus: (options && options.fallbackFocus) || (() => document.getElementById('inspector-title') && document.getElementById('inspector-title').focus()),
     buttons: [{ label: 'Done', value: true, kind: 'primary' }],
   });
 
   const project = () => store.project;
-  // the feature rows' name fields, by feature id, kept while only their values change
-  const fields = new Map();
-  let builtKey = null;
+  // feature id -> a row's renew(feature), which writes a new name into the row in place
+  const renewals = new Map();
+  // the rows are built again only when the list's order or its rooms change, never for a
+  // name alone: a rename kept on blur would otherwise replace the control the focus or a
+  // click is going to
+  let builtShape = null;
+  let builtNames = null;
   let after = null;
 
   function say(text) {
@@ -398,6 +410,8 @@ export function openFeaturesDialog(env, opener) {
     }
     return false;
   }
+
+  const nameOf = (feature) => (listOf(project()).find((each) => each.id === feature.id) || feature).name;
 
   function rowFor(feature, index, features) {
     const used = describeFeatureDelete(project(), feature.id);
@@ -435,28 +449,41 @@ export function openFeaturesDialog(env, opener) {
         made.removeAttribute('aria-invalid');
       }
     });
-    fields.set(feature.id, { input: made, set: (name) => {
-      committed = name;
-      if (document.activeElement !== made) made.value = name;
-    } });
+    const named = [bdi(feature.name), bdi(feature.name), bdi(feature.name)];
+    renewals.set(feature.id, (now) => {
+      committed = now.name;
+      made.setAttribute('aria-label', 'Name of ' + now.name);
+      if (document.activeElement !== made) made.value = now.name;
+      named.forEach((each) => {
+        each.textContent = now.name;
+      });
+    });
     return h('li', { class: 'features-row', data: { feature: feature.id } },
       h('div', { class: 'features-row__name' }, made, refusal),
       h('div', { class: 'features-row__buttons' },
-        h('button', { type: 'button', class: 'btn', disabled: index === 0, data: { key: 'up:' + feature.id }, on: { click: () => move(feature, index - 1, 'up') } }, 'Move ', bdi(feature.name), ' up'),
-        h('button', { type: 'button', class: 'btn', disabled: index === features.length - 1, data: { key: 'down:' + feature.id }, on: { click: () => move(feature, index + 1, 'down') } }, 'Move ', bdi(feature.name), ' down'),
-        h('button', { type: 'button', class: 'btn btn--danger', data: { key: 'delete:' + feature.id }, on: { click: (event) => remove(feature, event.currentTarget) } }, 'Delete ', bdi(feature.name), '…'),
+        h('button', { type: 'button', class: 'btn', disabled: index === 0, data: { key: 'up:' + feature.id }, on: { click: () => move(feature, index - 1, 'up') } }, 'Move ', named[0], ' up'),
+        h('button', { type: 'button', class: 'btn', disabled: index === features.length - 1, data: { key: 'down:' + feature.id }, on: { click: () => move(feature, index + 1, 'down') } }, 'Move ', named[1], ' down'),
+        h('button', { type: 'button', class: 'btn btn--danger', data: { key: 'delete:' + feature.id }, on: { click: (event) => remove(feature, event.currentTarget) } }, 'Delete ', named[2], '…'),
       ),
       used && used.rooms > 0 ? h('p', { class: 'features-row__used' }, 'On ' + count(used.rooms, 'room') + '.') : null,
     );
   }
 
+  // the button hides with the empty list, so the focus goes to the first new row's name
+  function addCommon() {
+    if (commit(addCommonFeatures, undefined, 'Added ' + COMMON_FEATURES.length + ' common features.') === null) return;
+    const first = rows.querySelector('[data-key^="name:"]');
+    (first || addInput).focus();
+  }
+
   function move(feature, to, way) {
-    if (commit(moveFeature, { id: feature.id, toIndex: to }, 'Moved ' + feature.name + ' ' + way + '.') === null) return;
+    if (commit(moveFeature, { id: feature.id, toIndex: to }, 'Moved ' + nameOf(feature) + ' ' + way + '.') === null) return;
     // the button just used may be a disabled one now (the top or the bottom): the other one takes the focus
     if (!focusKey(way + ':' + feature.id)) focusKey((way === 'up' ? 'down:' : 'up:') + feature.id);
   }
 
-  async function remove(feature, button) {
+  async function remove(row, button) {
+    const feature = { id: row.id, name: nameOf(row) };
     const info = describeFeatureDelete(project(), feature.id);
     if (!info) return;
     const features = listOf(project());
@@ -480,7 +507,7 @@ export function openFeaturesDialog(env, opener) {
     }
     if (commit(deleteFeature, { id: feature.id }, null) === null) return;
     const words = info.rooms > 0 ? 'Deleted ' + feature.name + ' from ' + count(info.rooms, 'room') : 'Deleted ' + feature.name;
-    say(words + '.');
+    // said once, by the toast (a role="status" host)
     ctx.toast({ text: words, action: { label: 'Undo', run: ctx.undo } });
     showUndo(words);
     settle();
@@ -513,12 +540,20 @@ export function openFeaturesDialog(env, opener) {
       undone.hidden = true;
       undone.replaceChildren();
     }
-    const key = features.map((feature) => feature.id + ':' + feature.name).join('|') + '#' + features.map((feature) => (describeFeatureDelete(project(), feature.id) || { rooms: 0 }).rooms).join(',');
-    if (key === builtKey) return;
-    builtKey = key;
+    const shape = features.map((feature) => feature.id).join('|') + '#' + features.map((feature) => (describeFeatureDelete(project(), feature.id) || { rooms: 0 }).rooms).join(',');
+    const names = features.map((feature) => feature.name).join('|');
+    if (shape === builtShape) {
+      if (names !== builtNames) {
+        builtNames = names;
+        features.forEach((feature) => renewals.get(feature.id)(feature));
+      }
+      return;
+    }
+    builtShape = shape;
+    builtNames = names;
     const active = document.activeElement;
     const had = active && rows.contains(active) ? active.dataset.key : null;
-    fields.clear();
+    renewals.clear();
     rows.replaceChildren(...features.map((feature, index) => rowFor(feature, index, features)));
     if (had && !focusKey(had)) addInput.focus();
   }

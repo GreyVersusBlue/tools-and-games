@@ -590,7 +590,24 @@
 }
 
 .sch-teachers__name {
-  min-width: 12rem;
+  min-width: 8.5rem;
+}
+
+/* The Subject select as wide as its longest subject, and Notes wide enough
+   to read what is typed, so neither is cut short at 1280 px with the
+   inspector open, and the whole row still fits there (Name, Rooms and
+   Part-time give up the room). Narrower, the table scrolls sideways in its
+   box. */
+.sch-teachers__subject > select {
+  min-width: max-content;
+}
+
+.sch-teachers__notes {
+  min-width: 7.5rem;
+}
+
+.sch-teachers .sch-edit-table .picker {
+  min-width: 6.5rem;
 }
 
 .sch-teachers__marks {
@@ -2391,7 +2408,7 @@
    scrolling box, so its content sticks to the left edge and never grows
    wider than the window. */
 .sch-teachers__part {
-  min-width: 9rem;
+  min-width: 6.5rem;
 }
 
 .sch-part__button {

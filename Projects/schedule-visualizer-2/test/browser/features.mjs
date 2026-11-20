@@ -4,11 +4,16 @@
 // as the last option, what Enter takes, the live region, where the focus goes
 // after an add and a removal, "Removed Lab" with its Undo); the Edit the
 // features list… dialog (rows, moves, rename, delete with its confirm and
-// toast, Add common ones on an empty list, the count from 30, the most of 40,
-// the footer pinned at 844 by 390, the rows wrapped at 390); the Rooms tab's
-// Features column sorted by count and its popover; the room list print and
-// the batch pages listing features, and the batch headers reading a custom
-// period word; axe on the dialog in both themes. Driven by pointer and by
+// toast heard once, Add common ones on an empty list with the focus on the
+// first new name, a rename keeping the focus and the next click, the count
+// from 30, the most of 40, the footer pinned at 844 by 390, the rows wrapped
+// at 390); the Rooms tab's Features column sorted by count and its popover
+// named for its room, the dialog from it returning the focus to the cell; the
+// room list print and the batch pages listing features after Shared space,
+// the batch headers reading a custom period word, a part-time teacher's days
+// out on the batch sheet; axe on the dialog, the open combobox and the
+// popover in both themes; the phone's add and remove by tap and by keyboard
+// with 44 px chips, and its popover. Driven by pointer and by
 // keyboard at 1280 by 900 and at 390 by 844 with touch. Every wait is on a
 // state the page sets (the store's features, an announcement, a toast's words,
 // the dialog's rows, the plan at rest with `still`), never on a first paint or
@@ -178,6 +183,11 @@ test('3. near matches come first and Add is last; Enter takes Add only when an a
   await page.keyboard.press('Enter');
   await announced('Sin added');
   assert.deepEqual(await roomHas(), ['Lab', 'Lap', 'Sin']);
+  // a name the room has already: nothing to add, said once with one full stop
+  await page.keyboard.type('Lab');
+  await page.keyboard.press('Enter');
+  await announced('Nothing to add: Lab is on this room already.');
+  await page.$eval('#room-features-add', (el) => { el.value = ''; });
   // Escape shuts the list and keeps what was typed
   await page.keyboard.type('Ki');
   assert.equal(await page.$eval('#room-features-list', (el) => el.hidden), false);
@@ -232,6 +242,10 @@ test('5. the list dialog: rows, moves, rename and its refusal, delete with and w
   await shows(() => !(globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));
   assert.equal(await toastWords(), 'Deleted Sink');
   assert.equal(await text('#features-undo'), 'Deleted Sink · Undo');
+  // heard once: the toast is the live one; neither the announcer nor the dialog's line says it again
+  assert.equal(await page.$eval('#toasts', (el) => el.getAttribute('role')), 'status');
+  assert.doesNotMatch(await text('#announcer'), /Deleted/, 'the announcer does not repeat the toast');
+  assert.equal(await page.$eval('#features-undo', (el) => el.closest('[role="status"], [role="alert"], [aria-live]')), null, 'the way back in the dialog is not a live region');
   assert.match(await activeKey(), /^name:/, 'the focus goes to a name');
   await page.click('#features-undo button');
   await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));
@@ -255,6 +269,23 @@ test('5. the list dialog: rows, moves, rename and its refusal, delete with and w
   await page.click('#features-undo button');
   await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sinks'));
   assert.ok((await roomHas()).includes('Sinks'), 'Undo gave the feature back to the room');
+  // a rename kept on leaving the field does not take the focus or the click with it
+  const lap = await idOf('Lap');
+  const lapAt = (await names()).indexOf('Lap');
+  assert.ok(lapAt > 0 && lapAt < (await names()).length - 1, 'Lap has a row above and below it');
+  await page.click(key('name:' + lap), { clickCount: 3 });
+  await page.keyboard.type('Laps');
+  await page.keyboard.press('Tab');
+  await shows(() => (globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Laps'));
+  assert.equal(await activeKey(), 'up:' + lap, 'Tab after a rename goes on to Move up');
+  assert.match(await text(key('down:' + lap)), /^Move Laps down$/, 'the row says the new name');
+  assert.equal(await page.$eval(key('name:' + lap), (el) => el.getAttribute('aria-label')), 'Name of Laps');
+  await page.click(key('name:' + lap), { clickCount: 3 });
+  await page.keyboard.type('Lapse');
+  await page.click(key('down:' + lap));
+  await shows((at) => (globalThis.sv2.store.project.building.features || [])[at + 1]?.name === 'Lapse', lapAt);
+  assert.ok(!(await names()).includes('Laps'), 'the click both renamed and moved');
+  assert.equal(await activeKey(), 'down:' + lap);
   // Escape closes, and the focus returns to the button that opened it
   await closeDialog();
   assert.equal(await activeKey(), 'feature-edit');
@@ -271,6 +302,8 @@ test('6. an empty list offers the common ones; the count shows from 30; 40 is th
   await shows(() => (globalThis.sv2.store.project.building.features || []).length === 8);
   assert.deepEqual(await names(), ['Lab', 'Sink', 'Projector', 'Computers', 'Stage', 'Kiln', 'Ovens', 'Studio sound']);
   assert.equal(await page.$eval('#features-empty', (el) => el.hidden), true);
+  // the button hid with the empty list: the focus is on the first new name, not lost to the page
+  assert.equal(await activeKey(), 'name:' + await idOf('Lab'), 'after Add common ones the focus goes to the first name');
   for (let n = 9; n <= 29; n += 1) await apply('addFeature', { name: 'Extra ' + n });
   await shows(() => document.querySelectorAll('#features-rows .features-row').length === 29);
   assert.equal(await page.$eval('#features-count', (el) => el.hidden), true, 'no count below 30');
@@ -338,10 +371,23 @@ test('7. the Rooms tab: a Features column that sorts by count, and a popover wit
   await page.keyboard.press('Escape');
   await shows(() => !document.querySelector('#rooms-features-pop').matches(':popover-open'));
   assert.equal(await activeKey(), rooms[0] + ':features', 'the focus returns to the cell');
+  // the popover names its room
+  const roomWords = await page.evaluate((id) => {
+    return document.querySelector('[data-key="' + id + ':features"]').getAttribute('aria-label').replace(/^Features of (.*?): .*$/, '$1');
+  }, rooms[1]);
+  await page.click(key(rooms[1] + ':features'));
+  await shows(() => document.querySelector('#rooms-features-pop')?.matches(':popover-open'));
+  assert.equal(await page.$eval('#rooms-features-pop', (el) => el.getAttribute('aria-label')), 'Features of ' + roomWords);
+  // the list dialog from the popover hides it; on close the focus goes back to that room's cell
+  await page.click('#rooms-features ' + key('feature-edit'));
+  await page.waitForSelector('#features-dialog[open]');
+  assert.equal(await page.$eval('#rooms-features-pop', (el) => el.matches(':popover-open')), false, 'the modal closed the popover');
+  await closeDialog();
+  assert.equal(await activeKey(), rooms[1] + ':features', 'the focus returns to the cell that opened the popover');
   await page.click('#inspector [data-tab="properties"]');
 });
 
-test('8. the room list print and the batch pages list features, and the batch heads read a custom period word', async () => {
+test('8. the room list print and the batch pages list features after Shared space, the batch heads read a custom period word, and a part-time teacher\u2019s sheet shows the days out', async () => {
   const made = await page.evaluate(async () => {
     const roomList = await import('./ui/prints/room-list.js');
     const batch = await import('./ui/prints/batch.js');
@@ -360,7 +406,43 @@ test('8. the room list print and the batch pages list features, and the batch he
     word.settings.periodCustom = { word: 'Lesson', plural: 'Lessons', count: 'number' };
     const teachers = batch.render(word, null, { batch: 'teachers', now }).html;
     const roomsWord = batch.render(word, null, { batch: 'rooms', now }).html;
-    return { list, sorted, rooms, plain, teachers, roomsWord };
+    // a shared room with features: Shared space first, then Features (DESIGN 16.4)
+    const shared = JSON.parse(JSON.stringify(project));
+    const sharedRoom = shared.building.floors.flatMap((floor) => floor.spaces).find((space) => space.kind === 'room' && (space.featureIds || []).length > 0);
+    sharedRoom.shared = true;
+    const sharedFacts = batch.render(shared, null, { batch: 'rooms', now }).html.split('data-id="' + sharedRoom.id + '"')[1].split('batch-sheet__facts">')[1].split('</p>')[0];
+    // a part-time teacher: the first of the full sample school's (invented) teachers, whose
+    // Assembly Day runs as B Day; one sheet, its day tables and its period rows
+    const sample = (await import('./data/sample-school.js')).sampleSchool();
+    const teacherSheet = (copy, teacherId) => {
+      const html = batch.render(copy, null, { batch: 'teachers', now }).html.split('data-id="' + teacherId + '"')[1].split('<section class="batch-sheet')[0];
+      const tables = {};
+      for (const part of html.split('<section class="batch-day">').slice(1)) {
+        const title = part.split('batch-day__name">')[1].split('<')[0];
+        tables[title] = {};
+        for (const row of part.split('<tr>').slice(1)) {
+          const head = row.match(/<th scope="row">([^<]*)/);
+          if (head) tables[title][head[1]] = row.split('</th><td>')[1].split('</td>')[0];
+        }
+      }
+      return tables;
+    };
+    const away = (entries) => {
+      const copy = JSON.parse(JSON.stringify(sample));
+      const teacher = copy.teachers[0];
+      teacher.away = entries;
+      return teacherSheet(copy, teacher.id);
+    };
+    const [dayA, , assembly] = sample.dayTypes.map((dayType) => dayType.id);
+    const partTime = {
+      none: away([]),
+      // sometimes out (Fridays) in one period of Assembly Day only: no period is taken, but the
+      // note is Assembly Day's alone, so it is a kind of day of its own now
+      assemblyOnly: away([{ dayTypeIds: [assembly], weekdays: [4], periods: [3] }]),
+      // out every A Day (the classes still taught stay); out in Period 4 on Fridays, whatever the day type
+      sometimes: away([{ dayTypeIds: [dayA], weekdays: [], periods: [] }, { dayTypeIds: [], weekdays: [4], periods: [3] }]),
+    };
+    return { list, sorted, rooms, plain, teachers, roomsWord, sharedFacts, partTime, names: sample.dayTypes.map((dayType) => dayType.name) };
   });
   assert.match(made.list, /<th scope="col">Features<\/th>/);
   assert.match(made.list, /<td>Lab, &lt;i&gt;Stage&lt;\/i&gt;/);
@@ -370,13 +452,30 @@ test('8. the room list print and the batch pages list features, and the batch he
   assert.doesNotMatch(made.plain, /<th scope="col">Features<\/th>/, 'a school with no features prints no column');
   assert.match(made.rooms, /Features: [^<]*Lab/);
   assert.match(made.rooms, /Features: [^<]*&lt;i&gt;Stage&lt;\/i&gt;/);
+  // Features comes straight after Shared space on a room's sheet
+  assert.match(made.sharedFacts, /Shared space · Features: [^·]+/, 'Shared space, then Features: ' + made.sharedFacts);
+  assert.ok(made.sharedFacts.indexOf('Shared space') < made.sharedFacts.indexOf('Features:'));
+  // a part-time teacher's sheet: the day kinds split on its away entries
+  assert.deepEqual(made.names, ['A Day', 'B Day', 'Assembly Day'], 'the sample\u2019s day types');
+  assert.deepEqual(Object.keys(made.partTime.none), ['A Day', 'B Day and Assembly Day'], 'with no away entry, B Day and Assembly Day are one table');
+  assert.deepEqual(Object.keys(made.partTime.assemblyOnly), ['A Day', 'B Day', 'Assembly Day'], 'a sometimes entry on Assembly Day alone makes it a table of its own');
+  assert.match(made.partTime.assemblyOnly['Assembly Day']['Period 4'], /Not in school in Period 4 on Fridays when it is Assembly Day/);
+  assert.doesNotMatch(made.partTime.assemblyOnly['B Day']['Period 4'], /Not in school/);
+  // out all A Day: a free period reads Not in school, and a period already out has no "sometimes" note on top
+  const aDay = made.partTime.sometimes['A Day'];
+  assert.equal(aDay['Period 1'], 'Not in school', 'A Day: ' + JSON.stringify(aDay));
+  assert.equal(aDay['Period 4'], 'Not in school', 'a period already out has no Fridays note: ' + JSON.stringify(aDay));
+  // the sometimes entry: a quiet note on Period 4 of the other days, and on no other period
+  const other = made.partTime.sometimes['B Day and Assembly Day'];
+  assert.match(other['Period 4'], /<span class="batch-day__quiet">Not in school in Period 4 on Fridays<\/span>/);
+  assert.ok(Object.entries(other).filter(([period]) => period !== 'Period 4').every(([, cell]) => !cell.includes('on Fridays')), 'only Period 4 has the note: ' + JSON.stringify(other));
   assert.match(made.teachers, /<th scope="col">Lesson<\/th>/, 'the batch teacher heads read the custom word');
   assert.match(made.roomsWord, /<th scope="col">Lesson<\/th>/);
   assert.doesNotMatch(made.teachers, /<th scope="col">Period<\/th>/);
 });
 
 for (const theme of ['light', 'dark']) {
-  test('9. axe finds nothing on the features dialog, in the ' + theme + ' theme', async () => {
+  test('9. axe finds nothing on the features dialog, the open combobox or the Rooms popover, in the ' + theme + ' theme', async () => {
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
     await selectRoom(roomId);
     await openDialog();
@@ -388,6 +487,31 @@ for (const theme of ['light', 'dark']) {
     await closeDialog();
     const inspector = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#room-features'), { runOnly: { type: 'tag', values: tags } }), TAGS);
     assert.deepEqual(inspector.violations.map((violation) => violation.id), [], 'the Features part of Properties, ' + theme);
+    const violations = (found) => found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', '));
+    // the combobox with its list open and an option highlighted
+    await page.focus('#room-features-add');
+    await page.keyboard.type('a');
+    await page.keyboard.press('ArrowDown');
+    const highlighted = await page.$eval('#room-features-add', (el) => ({ expanded: el.getAttribute('aria-expanded'), active: el.getAttribute('aria-activedescendant'), options: document.querySelectorAll('#room-features-list [role="option"]').length }));
+    assert.equal(highlighted.expanded, 'true');
+    assert.ok(highlighted.active && highlighted.options >= 1, 'an option is highlighted: ' + JSON.stringify(highlighted));
+    await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+    const open = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#room-features'), { runOnly: { type: 'tag', values: tags } }), TAGS);
+    assert.ok(open.passes.length > 5, 'axe ran very few rules');
+    assert.deepEqual(violations(open), [], 'the combobox with its list open, ' + theme);
+    await page.keyboard.press('Escape');
+    await page.$eval('#room-features-add', (el) => { el.value = ''; });
+    // the Rooms tab's popover, open over the table
+    await page.click('#inspector [data-tab="rooms"]');
+    await page.waitForSelector('#rooms-table .bi-features-cell');
+    await page.click('#rooms-table .bi-features-cell');
+    await shows(() => document.querySelector('#rooms-features-pop')?.matches(':popover-open'));
+    const pop = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#rooms-features-pop'), { runOnly: { type: 'tag', values: tags } }), TAGS);
+    assert.ok(pop.passes.length > 5, 'axe ran very few rules');
+    assert.deepEqual(violations(pop), [], 'the Rooms tab popover, ' + theme);
+    await page.keyboard.press('Escape');
+    await shows(() => !document.querySelector('#rooms-features-pop').matches(':popover-open'));
+    await page.click('#inspector [data-tab="properties"]');
   });
 }
 
@@ -421,6 +545,53 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   assert.ok(heights.length > 0 && heights.every((height) => height >= 43.9), 'options are 44 px: ' + heights.join(', '));
   await p.keyboard.press('Escape');
   await p.$eval('#room-features-add', (el) => { el.value = ''; });
+  const phoneChips = () => p.$$eval('#room-features-chips button', (all) => all.map((el) => el.querySelector('.bi-chip__name').textContent));
+  const phoneSays = (words) => p.waitForFunction((wanted) => document.querySelector('#announcer')?.textContent === wanted, { timeout: 8000 }, words);
+  // add by tap: type, then tap the option
+  await p.tap('#room-features-add');
+  await p.keyboard.type('Lab');
+  await p.waitForSelector('#room-features-list [role="option"]');
+  assert.equal(await p.$eval('#room-features-list [role="option"]', (el) => el.textContent), 'Lab');
+  await p.tap('#room-features-list [role="option"]');
+  await phoneSays('Lab added');
+  assert.deepEqual(await phoneChips(), ['Lab']);
+  // add by keyboard: an arrow, then Enter
+  await p.keyboard.type('Sink');
+  await p.keyboard.press('ArrowDown');
+  await p.keyboard.press('Enter');
+  await phoneSays('Sink added');
+  assert.deepEqual(await phoneChips(), ['Lab', 'Sink']);
+  const chipBoxes = await p.$$eval('#room-features-chips button', (all) => all.map((el) => {
+    const box = el.getBoundingClientRect();
+    return { width: box.width, height: box.height, right: box.right };
+  }));
+  assert.ok(chipBoxes.every((box) => box.height >= 43.9 && box.width >= 43.9 && box.right <= 390), 'the chips are 44 px and fit at 390: ' + JSON.stringify(chipBoxes));
+  // remove by tap, then by keyboard
+  await p.tap('#room-features-chips button');
+  await p.waitForFunction(() => document.querySelectorAll('#room-features-chips button').length === 1, { timeout: 8000 });
+  assert.deepEqual(await phoneChips(), ['Sink']);
+  assert.equal(await p.evaluate(() => document.activeElement?.querySelector?.('.bi-chip__name')?.textContent || null), 'Sink', 'the focus goes to the next chip');
+  await p.keyboard.press('Enter');
+  await p.waitForFunction(() => document.querySelectorAll('#room-features-chips button').length === 0, { timeout: 8000 });
+  assert.equal(await p.evaluate(() => document.activeElement?.id), 'room-features-add', 'no chip left: the focus goes to the field');
+  // the Rooms tab's popover at 390: on screen, with the field focused
+  await p.tap('#inspector [data-tab="rooms"]');
+  await p.waitForSelector('#rooms-table .bi-features-cell');
+  await p.evaluate(() => document.querySelector('#rooms-table .bi-features-cell').scrollIntoView({ block: 'center' }));
+  await p.tap('#rooms-table .bi-features-cell');
+  await p.waitForFunction(() => document.querySelector('#rooms-features-pop')?.matches(':popover-open'), { timeout: 8000 });
+  const popBox = await p.$eval('#rooms-features-pop', (el) => {
+    const box = el.getBoundingClientRect();
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, focus: document.activeElement?.id, field: document.querySelector('#rooms-features-add').getBoundingClientRect().height };
+  });
+  assert.ok(popBox.left >= 0 && popBox.right <= 390 && popBox.top >= 0 && popBox.bottom <= 844, 'the popover is on screen at 390: ' + JSON.stringify(popBox));
+  assert.equal(popBox.focus, 'rooms-features-add');
+  assert.ok(popBox.field >= 43.9, 'its field is 44 px');
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.querySelector('#rooms-features-pop').matches(':popover-open'), { timeout: 8000 });
+  await p.tap('#inspector [data-tab="properties"]');
+  await p.waitForSelector('#room-features-add');
+  await p.evaluate(() => document.querySelector('#room-features-add').scrollIntoView({ block: 'center' }));
   await p.tap(key('feature-edit'));
   await p.waitForSelector('#features-dialog[open]');
   const seen = await p.evaluate(() => ({ features: (globalThis.sv2.store.project.building.features || []).length, rows: document.querySelectorAll('#features-rows li').length, empty: document.querySelector('#features-empty')?.hidden, dialogs: document.querySelectorAll('dialog[open]').length }));

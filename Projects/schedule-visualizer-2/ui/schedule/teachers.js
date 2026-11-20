@@ -73,19 +73,48 @@ function consequence(teacher, list) {
 }
 
 // "Mon/Wed only", "Tuesdays and Thursdays": the weekdays a note names, when
-// they read as part-time days. Days after "not", "off" or "except" are the
-// days away; otherwise they are the days in school.
-const DAY_WORDS = [['mon', 0], ['tue', 1], ['wed', 2], ['thu', 3], ['fri', 4]];
+// they read as part-time days. Only real day words count: the names, their
+// plurals and the usual short forms ("mon", "tues", "weds", "thurs", with or
+// without a full stop), never "monitors", "friendly" or "wedding". Days next
+// to each other ("Mon/Wed", "Tue, Thu and Fri", "Mon-Wed") are one list. A list is the
+// days away when a negation governs it, directly before it ("not in on Fri",
+// "off Thu", "out Mon/Wed", "except Fridays") or directly after it ("Fridays
+// off"); otherwise it is the days in school, and a "not" elsewhere in the
+// note ("Mon/Wed only, not on duties") changes nothing.
+const DAY_WORD = /\b(?:(mon)(?:days?)?|(tue)s?(?:days?)?|(wed)(?:s|nesdays?)?|(thu)(?:rs?)?(?:days?)?|(fri)(?:days?)?)\b\.?/g;
+const DAY_GAP = /^\s*(?:(?:[,/&+]|and|or)\s*)*$/;
+const DAY_RANGE = /^\s*(?:-|–|to|through|thru)\s*$/;
+const AWAY_BEFORE = /\b(?:not|off|except|away|out|never)(?:\s+(?:in|on|at|school|work|working|the|any|of))*\s*:?\s*$/;
+const AWAY_AFTER = /^\s*(?:off|out|away)\b/;
 export function noteDays(notes) {
-  const found = [];
-  for (const match of String(notes).toLowerCase().matchAll(/\b(mon|tue|wed|thu|fri)[a-z]*\b/g)) {
-    const day = DAY_WORDS.find(([word]) => word === match[1])[1];
-    if (!found.includes(day)) found.push(day);
+  const text = String(notes).toLowerCase();
+  const runs = [];
+  for (const match of text.matchAll(DAY_WORD)) {
+    const day = [1, 2, 3, 4, 5].find((group) => match[group] !== undefined) - 1;
+    const last = runs[runs.length - 1];
+    const gap = last ? text.slice(last.end, match.index) : '';
+    if (last && DAY_RANGE.test(gap)) {
+      // "Mon-Wed", "Tuesday to Thursday": every day from one to the other
+      for (let each = last.days[last.days.length - 1] + 1; each <= day; each += 1) last.days.push(each);
+      last.end = match.index + match[0].length;
+    } else if (last && DAY_GAP.test(gap)) {
+      last.days.push(day);
+      last.end = match.index + match[0].length;
+    } else {
+      runs.push({ start: match.index, end: match.index + match[0].length, days: [day] });
+    }
   }
-  if (found.length === 0 || found.length === SCHOOL_DAYS.length) return null;
-  const away = /\b(not|off|except|away|out)\b/i.test(notes);
-  const inSchool = away ? SCHOOL_DAYS.filter((day) => !found.includes(day)) : found;
-  return inSchool.length === 0 ? null : inSchool.sort((a, b) => a - b);
+  if (runs.length === 0) return null;
+  const inDays = new Set();
+  const awayDays = new Set();
+  for (const run of runs) {
+    const away = AWAY_BEFORE.test(text.slice(0, run.start)) || AWAY_AFTER.test(text.slice(run.end));
+    for (const day of run.days) (away ? awayDays : inDays).add(day);
+  }
+  const inSchool = inDays.size > 0
+    ? SCHOOL_DAYS.filter((day) => inDays.has(day) && !awayDays.has(day))
+    : SCHOOL_DAYS.filter((day) => !awayDays.has(day));
+  return inSchool.length === 0 || inSchool.length === SCHOOL_DAYS.length ? null : inSchool;
 }
 
 export function mount(env) {
@@ -126,6 +155,32 @@ export function mount(env) {
   const blankDraft = () => ({ onlyTypes: false, dayTypeIds: [], weekdays: [], periods: [], more: false });
   const draftOf = (entry) => ({ onlyTypes: entry.dayTypeIds.length > 0, dayTypeIds: entry.dayTypeIds.slice(), weekdays: entry.weekdays.slice(), periods: entry.periods.slice(), more: entry.weekdays.some((day) => day >= 5) });
   const stateOf = (teacher) => (view.part && view.part.teacherId === teacher.id ? view.part : null);
+  // The stored list as it is now, to tell whether it changed under an open entry.
+  const stampOf = (teacher) => {
+    const fresh = ctx.store.project.teachers.find((each) => each.id === teacher.id);
+    return JSON.stringify(fresh ? awayList(fresh) : []);
+  };
+  // A refusal is said once: the drawing it first appears in carries
+  // role="alert", and the drawings after it show the same words without, so a
+  // later redraw does not announce it again. A new refusal is said again.
+  function refuse(st, text) {
+    st.refusal = text;
+    st.refusalSaid = false;
+  }
+  function refusalLine(st) {
+    if (!st.refusal) return null;
+    const first = !st.refusalSaid;
+    st.refusalSaid = true;
+    return h('p', { class: 'field__refusal', role: first ? 'alert' : null, data: { refusal: 'part' } }, st.refusal);
+  }
+
+  // An entry put on the form: its draft, and the list it was drawn from.
+  function openEntry(teacher, st, index, draft) {
+    st.editing = index;
+    st.draft = draft;
+    st.base = stampOf(teacher);
+    st.refusal = '';
+  }
 
   // Commit a whole list of entries, or say why not, without a toast: the
   // refusal is shown under the controls (16.12 item 4). Returns the sentence,
@@ -146,10 +201,20 @@ export function mount(env) {
     env.render(partKey(teacher, 'radio:' + view.part.mode));
   }
 
+  // The summary is said once on close (16.12 item 4). The shell's polite
+  // announcer only speaks when its words change, so it is emptied first and
+  // given the words a moment later: closing twice on the same summary says it
+  // twice.
+  let summaryTimer = null;
   function closePart(teacher) {
     const fresh = ctx.store.project.teachers.find((each) => each.id === teacher.id);
     view.part = null;
-    if (fresh) ctx.announce(fresh.name + ': ' + partTimeWords(ctx.store.project, fresh) + '.');
+    if (fresh) {
+      const said = fresh.name + ': ' + partTimeWords(ctx.store.project, fresh) + '.';
+      clearTimeout(summaryTimer);
+      ctx.announce('');
+      summaryTimer = setTimeout(() => ctx.announce(said), 100);
+    }
     env.render(partKey(teacher, 'button'));
   }
 
@@ -178,7 +243,8 @@ export function mount(env) {
         env.focusAfter(partKey(teacher, 'day:' + day));
         // nobody is in school on no day: the engine's own refusal says so
         const refused = tryAway(teacher, next.length === 0 ? [{ dayTypeIds: [], weekdays: ALL_DAYS, periods: [] }] : away.length === 0 ? [] : [{ dayTypeIds: [], weekdays: away, periods: [] }]);
-        st.refusal = refused || '';
+        if (refused) refuse(st, refused);
+        else st.refusal = '';
         if (refused) env.render(partKey(teacher, 'day:' + day));
       } } }, SHORT_DAYS[day], h('span', { class: 'vh' }, WEEKDAY_NAMES[day].slice(3))), partKey(teacher, 'day:' + day));
     });
@@ -196,45 +262,61 @@ export function mount(env) {
     const draft = st.draft;
     const key = (part) => partKey(teacher, 'e' + index + ':' + part);
     const redraw = (focus) => env.render(focus);
+    // a change to the draft answers the refusal: it goes until Done is pressed again
+    const change = (focus) => {
+      st.refusal = '';
+      redraw(focus);
+    };
     const radios = 'part-types-' + teacher.id + '-' + index;
     const every = keyed(h('input', { type: 'radio', name: radios, value: 'all' }), key('types:all'));
     every.checked = !draft.onlyTypes;
     every.addEventListener('change', () => {
       draft.onlyTypes = false;
       draft.dayTypeIds = [];
-      redraw(key('types:all'));
+      change(key('types:all'));
     });
     const only = keyed(h('input', { type: 'radio', name: radios, value: 'some' }), key('types:some'));
     only.checked = draft.onlyTypes;
     only.addEventListener('change', () => {
       draft.onlyTypes = true;
-      redraw(key('types:some'));
+      change(key('types:some'));
     });
     const ticks = draft.onlyTypes ? h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Day types' }, project.dayTypes.map((dayType) => {
       const box = keyed(h('input', { type: 'checkbox' }), key('type:' + dayType.id));
       box.checked = draft.dayTypeIds.includes(dayType.id);
       box.addEventListener('change', () => {
         draft.dayTypeIds = box.checked ? draft.dayTypeIds.concat([dayType.id]) : draft.dayTypeIds.filter((other) => other !== dayType.id);
-        redraw(key('type:' + dayType.id));
+        change(key('type:' + dayType.id));
       });
       return h('label', { class: 'sch-radio' }, box, h('span', null, dayType.name));
     })) : null;
     const days = draft.more || draft.weekdays.some((day) => day >= 5) ? ALL_DAYS : SCHOOL_DAYS;
-    const dayChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Days of the week' }, days.map((day) => {
+    // "Every day" and "The whole day" are choices of their own (DESIGN 16.6):
+    // pressed while no day (no period) is ticked, and pressing one clears the ticks
+    const all = (label, on, clear, part) => keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), data: { all: part }, on: { click: () => {
+      if (on) return;
+      clear();
+      change(key(part));
+    } } }, label), key(part));
+    const dayChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Days of the week' }, all('Every day', draft.weekdays.length === 0, () => {
+      draft.weekdays = [];
+    }, 'days:every'), days.map((day) => {
       const on = draft.weekdays.includes(day);
       return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), on: { click: () => {
         draft.weekdays = on ? draft.weekdays.filter((other) => other !== day) : draft.weekdays.concat([day]);
-        redraw(key('day:' + day));
+        change(key('day:' + day));
       } } }, SHORT_DAYS[day], h('span', { class: 'vh' }, WEEKDAY_NAMES[day].slice(3))), key('day:' + day));
     }), days === ALL_DAYS ? null : keyed(h('button', { type: 'button', class: 'sch-show__chip', on: { click: () => {
       draft.more = true;
-      redraw(key('day:5'));
+      change(key('day:5'));
     } } }, 'More'), key('more')));
-    const periodChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Periods' }, Array.from({ length: project.settings.periods }, (_, period) => {
+    const periodChips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Periods' }, all('The whole day', draft.periods.length === 0, () => {
+      draft.periods = [];
+    }, 'periods:whole'), Array.from({ length: project.settings.periods }, (_, period) => {
       const on = draft.periods.includes(period);
       return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), on: { click: () => {
         draft.periods = on ? draft.periods.filter((other) => other !== period) : draft.periods.concat([period]);
-        redraw(key('period:' + period));
+        change(key('period:' + period));
       } } }, periodName(project.settings, period)), key('period:' + period));
     }));
     const list = awayList(teacher);
@@ -244,7 +326,7 @@ export function mount(env) {
       next[index] = entry;
       const refused = tryAway(teacher, next);
       if (refused) {
-        st.refusal = refused;
+        refuse(st, refused);
         redraw(key('done'));
         return;
       }
@@ -266,9 +348,9 @@ export function mount(env) {
         h('label', { class: 'sch-radio' }, every, h('span', null, 'Every day type')),
         h('label', { class: 'sch-radio' }, only, h('span', null, 'Only these…')), ticks,
         draft.onlyTypes && draft.dayTypeIds.length === 0 ? h('p', { class: 'sch-hint' }, 'Tick a day type. Until one is ticked, this holds on every day type.') : null),
-      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Days of the week (none is every day)'), dayChips),
-      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Periods (none is the whole day)'), periodChips),
-      st.refusal ? h('p', { class: 'field__refusal', role: 'alert', data: { refusal: 'part' } }, st.refusal) : null,
+      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Days of the week'), dayChips),
+      h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Periods'), periodChips),
+      refusalLine(st),
       h('div', { class: 'sch-part__actions' },
         button('Done', done, { primary: true, small: true, key: key('done'), action: 'part-done' }),
         button('Cancel', cancel, { small: true, key: key('cancel'), action: 'part-cancel' })));
@@ -276,31 +358,41 @@ export function mount(env) {
 
   function notEditor(project, teacher, st) {
     const list = awayList(teacher);
-    // nothing saved yet: the first entry is open to fill in
-    if (st.editing === null && list.length === 0) {
-      st.editing = 0;
-      st.draft = blankDraft();
+    // The stored list changed under an open entry (Undo, Redo): the draft was
+    // made for the list as it was, and its place in it may now be another
+    // entry's or a hole, so it is closed rather than written there.
+    if (st.editing !== null && st.base !== JSON.stringify(list)) {
+      const active = document.activeElement;
+      const inside = Boolean(active && active.closest && active.closest('#sch-part-' + teacher.id + ' .sch-part__entry'));
+      st.editing = null;
+      st.draft = null;
+      st.refusal = '';
+      ctx.announce('The times changed, so the entry that was open was closed without saving.');
+      if (inside) env.focusAfter(partKey(teacher, list.length === 0 ? 'e0:types:all' : 'edit:0'));
     }
+    // nothing saved yet: the first entry is open to fill in
+    if (st.editing === null && list.length === 0) openEntry(teacher, st, 0, blankDraft());
     const rows = list.map((entry, index) => {
       if (st.editing === index) return entryForm(project, teacher, st, index);
       const words = describeAway(project, entry) || 'Not in school';
       return h('div', { class: 'sch-part__saved', data: { entry: String(index) } },
         h('span', { class: 'sch-part__words' }, h('bdi', null, words)),
         button('Edit', () => {
-          st.editing = index;
-          st.draft = draftOf(entry);
-          st.refusal = '';
+          openEntry(teacher, st, index, draftOf(entry));
           env.render(partKey(teacher, 'e' + index + ':types:' + (st.draft.onlyTypes ? 'some' : 'all')));
         }, { small: true, key: partKey(teacher, 'edit:' + index), action: 'part-edit', more: ' entry ' + (index + 1) + ' for ' + teacher.name }),
         button('Remove', () => {
           const next = list.filter((_, at) => at !== index);
           const refused = tryAway(teacher, next);
           if (refused) {
-            st.refusal = refused;
+            refuse(st, refused);
             env.render(partKey(teacher, 'remove:' + index));
             return;
           }
           st.refusal = '';
+          // an entry open below the one removed moves up with its row
+          if (st.editing !== null && st.editing > index) st.editing -= 1;
+          if (st.editing !== null) st.base = stampOf(teacher);
           env.render(partKey(teacher, next.length === 0 ? 'radio:not' : 'edit:' + Math.min(index, next.length - 1)));
         }, { small: true, key: partKey(teacher, 'remove:' + index), action: 'part-remove', more: ' entry ' + (index + 1) + ' for ' + teacher.name }));
     });
@@ -309,9 +401,7 @@ export function mount(env) {
     const adding = st.editing !== null && st.editing >= list.length;
     return h('div', { class: 'sch-part__not' }, rows,
       adding ? null : h('div', { class: 'sch-part__actions' }, button('Add another time', () => {
-        st.editing = list.length;
-        st.draft = blankDraft();
-        st.refusal = '';
+        openEntry(teacher, st, list.length, blankDraft());
         env.render(partKey(teacher, 'e' + list.length + ':types:all'));
       }, { small: true, key: partKey(teacher, 'add'), action: 'part-add', more: ' for ' + teacher.name })),
       most ? h('p', { class: 'sch-hint' }, 'A teacher has at most 12 times. Combine some to add another.') : null);
@@ -341,19 +431,22 @@ export function mount(env) {
       h('fieldset', { class: 'sch-fieldset' }, h('legend', null, 'When is ', h('bdi', null, teacher.name), ' in school?'),
         radio('only', 'Only in school on…'), radio('not', 'Not in school…')),
       st.mode === 'only' ? onlyEditor(project, teacher, st) : notEditor(project, teacher, st),
-      st.mode === 'only' && st.refusal ? h('p', { class: 'field__refusal', role: 'alert', data: { refusal: 'part' } }, st.refusal) : null,
+      // under Not in school with an entry open, the refusal is in the entry
+      st.mode === 'only' || st.editing === null ? refusalLine(st) : null,
       h('p', { class: 'sch-part__says', data: { says: 'part' } }, consequence(teacher, list)),
       h('p', { class: 'sch-hint' }, 'Shown in the staff browser.'),
       h('div', { class: 'sch-part__actions' }, button('Close', () => closePart(teacher), { small: true, key: partKey(teacher, 'close'), action: 'part-close' })));
   }
 
-  // Notes that name weekdays are offered once as part-time days (16.12 item 4).
+  // Notes that name weekdays are offered once as part-time days (16.12 item
+  // 4): once for each teacher, whatever the words, taken or not. The offer is
+  // remembered in the section's view, so for as long as the page is open; it
+  // is not stored with the project or on the device.
   function offerFromNotes(teacher, text) {
     const days = noteDays(text);
     const fresh = ctx.store.project.teachers.find((each) => each.id === teacher.id);
-    const once = teacher.id + '\n' + text;
-    if (!days || !fresh || awayList(fresh).length > 0 || view.noteOffers.has(once)) return;
-    view.noteOffers.add(once);
+    if (!days || !fresh || awayList(fresh).length > 0 || view.noteOffers.has(teacher.id)) return;
+    view.noteOffers.add(teacher.id);
     const said = text.trim().length > 40 ? text.trim().slice(0, 40) + '…' : text.trim();
     ctx.toast({ text: 'Notes say ‘' + said + '’. Set it as part-time?', action: { label: 'Set as part-time', run: () => {
       const away = SCHOOL_DAYS.filter((day) => !days.includes(day));
@@ -403,7 +496,7 @@ export function mount(env) {
       h('td', { class: 'sch-teachers__name' }, name.element,
         alike ? h('p', { class: 'sch-finding-line sch-finding-line--warning' }, 'Looks like another name in the list.') : null,
         found.length > 0 ? h('p', { class: 'sch-teachers__marks' }, marksFor(found)) : null),
-      h('td', null, subject),
+      h('td', { class: 'sch-teachers__subject' }, subject),
       h('td', null,
         rooms.length > 0 ? h('div', { class: 'chips' }, rooms.map((room) => h('span', { class: 'chip' }, h('span', null, room.number.trim() === '' ? roomName(room) : room.number), keyed(h('button', {
           type: 'button',
@@ -415,7 +508,7 @@ export function mount(env) {
           } },
         }, icon('close', 14)), key + 'chip:' + room.id)))) : null,
         addRoom.element),
-      h('td', null, notes.element),
+      h('td', { class: 'sch-teachers__notes' }, notes.element),
       h('td', { class: 'sch-teachers__part', data: { label: 'Part-time' } }, partButton(project, teacher)),
       h('td', { class: 'sch-teachers__duties' }, duties(teacher, dutyCounts.get(teacher.id) || 0)),
       h('td', null, button('Route sheet', (opener) => openPrintPreview(ctx, 'route-sheet', { teacherId: teacher.id, opener }), { small: true, key: key + 'route-sheet', action: 'route-sheet', more: ' for ' + teacher.name }), button('Delete', () => {

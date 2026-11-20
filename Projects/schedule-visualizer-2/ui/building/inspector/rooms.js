@@ -51,7 +51,20 @@ export function roomsPanel(env) {
   let popRoom = null;
   let popOpener = null;
   const pop = h('div', { popover: 'auto', class: 'bi-popover', id: 'rooms-features-pop', role: 'dialog', 'aria-label': 'Features of the room' });
-  const popField = featuresField(env, { room: () => (popRoom ? find(popRoom) : null), state: () => state, id: 'rooms-features' });
+  // the list dialog hides the popover (a modal closes auto popovers), so it gives the
+  // focus back to the room's cell, which is still on screen, not to the hidden button
+  const cellOf = (roomId) => host.querySelector('[data-key="' + roomId + ':features"]');
+  const popField = featuresField(env, {
+    room: () => (popRoom ? find(popRoom) : null),
+    state: () => state,
+    id: 'rooms-features',
+    back: () => popOpener,
+    backFallback: () => {
+      const cell = (lastRoom !== null ? cellOf(lastRoom) : null) || host.querySelector('.bi-features-cell');
+      if (cell) cell.focus();
+    },
+  });
+  let lastRoom = null;
   pop.append(popField.element);
   const element = h('div', { class: 'bld-inspector__panel', id: 'inspector-rooms' }, h('h2', { class: 'bld-inspector__title', id: 'rooms-title' }), lead, host, prints, files, pop);
   const hooks = { deliver: null };
@@ -97,7 +110,9 @@ export function roomsPanel(env) {
 
   function openPop(room, opener) {
     popRoom = room.id;
+    lastRoom = room.id;
     popOpener = opener;
+    pop.setAttribute('aria-label', 'Features of ' + roomName(room, true));
     popField.sync();
     pop.showPopover();
     const box = opener.getBoundingClientRect();
