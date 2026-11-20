@@ -27,9 +27,11 @@ const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'st
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-/** The plan the outfit sheet opens on for `stop` (outfit.js): the engine's proposal for the free agent who knows the stop first
-    (then the others) on the road the sheet picks, else the plain suggestion. The page's Send is checked against this one. */
+/** The plan the outfit sheet opens on for `stop` (outfit.js): the first expedition of a game opens on the plain suggestion; after that
+    the engine's proposal for the free agent who knows the stop first (then the others) on the road the sheet picks. The page's Send
+    is checked against this one. */
 const sheetPlan = (s, content, stop) => {
+  if (!s.log.some(e => e.kind === 'outfit')) { const plain = eng.suggestPlan(s, content, stop); if (plain) return plain; }
   const home = content.city.home;
   const free = content.agents.filter(a => s.agents[a.id]?.hired && s.agents[a.id].where === home && !s.expeditions.some(x => x.agent === a.id));
   const knows = a => a.traits?.includes(`knows-${stop}`);
@@ -38,7 +40,7 @@ const sheetPlan = (s, content, stop) => {
     const p = route && eng.proposePlan(s, content, a.id, route);
     if (p) return p;
   }
-  return eng.suggestPlan(s, content, stop);
+  return null;
 };
 
 const PORT = 8190;
@@ -1047,13 +1049,12 @@ try {
       });
     }
 
-    await test(`${how}: the price panel opens on Best known trades, the engine's three, and the full table is one press away (MER-93)`, async () => {
+    await test(`${how}: the price panel opens on Best known trades, and the full table is one press away (MER-93)`, async () => {
+      // in the first season no far letter has come, so the engine has no trade to name and the panel says so in a sentence
       const best = await page.evaluate(() => window.__merchant.view.bestTrades);
-      ok(best.length >= 1 && best.length <= 3, `the engine has ${best.length} best trades`);
+      eq(best, [], 'no news yet, no best trades');
       eq(await page.$eval('#prices-head', e => e.textContent), 'Best known trades');
-      eq(await page.$$eval('#best-trades li', ls => ls.map(l => l.querySelector('strong').textContent)), best.map(t => t.text), 'the page says the engine\'s own lines, in the engine\'s order');
-      const first = await page.$eval('#best-trades li', l => l.textContent);
-      ok(first.includes(best[0].road) && first.includes(best[0].riskWord) && first.includes(best[0].ageWords === 'this season' ? 'from this season' : best[0].ageWords), first);
+      eq(await page.$eval('#best-trades', e => [e.tagName, e.textContent]), ['P', 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.']);
       eq(await page.$('#prices'), null, 'the full table is not on the panel until it is asked for');
       eq(await page.$eval('#btn-all-prices', b => [b.getAttribute('aria-expanded'), b.textContent]), ['false', 'Every price in Damascus']);
       await page.click('#btn-all-prices');
@@ -1085,7 +1086,7 @@ try {
       const plan = sheetPlan(model, nodeContent, 'damascus');
       eq(await page.$eval('#summary-who', e => e.textContent), 'Yusuf (careful, knows Damascus).');
       ok((await page.$eval('#summary-carry', e => e.textContent)).startsWith(`${plan.cargo.linen} loads of linen`), 'cargo is the engine plan');
-      eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry'], 'three sections: the contract is met at the second expedition');
+      eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-back'], 'four sections, carry out and bring back among them: the contract is met at the second expedition');
       eq(await page.$eval('#outfit-send', b => [b.textContent, b.getAttribute('aria-disabled')]), ['Send Yusuf to Damascus', 'false']);
     });
 
@@ -1157,7 +1158,7 @@ try {
       await test('second expedition: four sections, steppers, refusals in words and the qirad written out', async () => {
         await page.click('#btn-outfit');
         await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-        eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-contract']);
+        eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-back', 'outfit-contract']);
         eq(await page.$$eval('.agent', a => a.length) >= 1, true, 'free agents are seal cards');
         // steppers: a group with role spinbutton, minus and plus as buttons, the number as text
         const st = await page.$eval('#step-cargo-linen', e => ({ role: e.getAttribute('role'), kids: [...e.children].map(c => c.tagName), val: e.getAttribute('aria-valuenow'), input: !!e.querySelector('input') }));
@@ -1168,7 +1169,7 @@ try {
         await page.click('#step-cargo-linen-minus');
         eq(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')), String(Number(st.val) + 1), 'the minus button lowers it');
         // nothing carried: a refusal in words, and Send says it cannot
-        for (const id of await page.$$eval('[id^="step-cargo-"][role="spinbutton"]', es => es.map(e => e.id))) { await page.focus(`#${id}`); await page.keyboard.press('Home'); }
+        for (const id of await page.$$eval('[id^="step-cargo-"][role="spinbutton"], #step-purse', es => es.map(e => e.id))) { await page.focus(`#${id}`); await page.keyboard.press('Home'); }
         eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true', 'nothing carried: Send is disabled');
         ok((await page.$eval('#outfit-reasons', e => e.textContent)).includes('Send some goods or some dinars'), await page.$eval('#outfit-reasons', e => e.textContent));
         // a qirad: the share in words, partners as a stepper
@@ -1341,6 +1342,15 @@ try {
       ok(k && want, 'a letter from Damascus has come');
       ok(li.far.includes(`Damascus paid ${withCommas(k.p)}`) && li.far.includes(want.written), li.far);
       eq(li.might, `Linen might sell for about ${withCommas(want.p)} there.`);
+    });
+    await test('MER-93: with news, the panel opens on the engine\'s best known trades, each with its road, the age of the news and the risk in words', async () => {
+      const best = await q.page.evaluate(() => window.__merchant.view.bestTrades);
+      ok(best.length >= 1 && best.length <= 3, `${best.length} best trades`);
+      eq(await q.page.$$eval('#best-trades li strong', ls => ls.map(l => l.textContent)), best.map(t => t.text), 'the engine\'s own lines, in the engine\'s order');
+      const rows = await q.page.$$eval('#best-trades li', ls => ls.map(l => l.textContent));
+      best.forEach((t, i) => ok(rows[i].includes(t.road) && rows[i].includes(`the road is ${t.riskWord}`) && rows[i].includes(t.ageWords === 'this season' ? 'from this season' : t.ageWords), rows[i]));
+      ok(best.every((t, i) => i === 0 || best[i - 1].margin >= t.margin), 'widest margin first');
+      eq(await q.page.$('#prices'), null, 'the table is still one press away');
     });
     await test('MER-72, MER-94: the first season\'s price letter is at most two leads, widest first, each about a road the house can send on now and read from what the house knows', async () => {
       const [paper] = await q.page.evaluate(() => window.__merchant.state.desk.filter(p => p.kind === 'news').map(p => ({ line: p.line, leads: p.leads })));
@@ -2118,7 +2128,7 @@ try {
           const t = p.firstElementChild.getBoundingClientRect(), c = p.querySelector('.change').getBoundingClientRect();
           return { id: p.firstElementChild.id, textRight: t.right, linkLeft: c.left, textTop: t.top, textBottom: t.bottom, linkTop: c.top, linkBottom: c.bottom, line: parseFloat(getComputedStyle(p.firstElementChild).lineHeight) };
         }));
-        eq(rows.map(r => r.id), ['summary-who', 'summary-where', 'summary-carry']);
+        eq(rows.map(r => r.id), ['summary-who', 'summary-where', 'summary-carry', 'summary-back']);
         for (const r of rows) {
           ok(r.linkLeft >= r.textRight - 1, `${r.id}: the link starts at ${r.linkLeft}, the words end at ${r.textRight}`);
           ok(r.linkTop < r.textBottom && r.linkBottom > r.textTop, `${r.id}: the link (${r.linkTop} to ${r.linkBottom}) is not on the words' lines (${r.textTop} to ${r.textBottom})`);

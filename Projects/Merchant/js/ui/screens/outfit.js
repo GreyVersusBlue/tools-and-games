@@ -138,14 +138,18 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     draft.contract = p.contract === 'qirad' ? 'qirad' : 'own';
     draft.partners = p.partners ?? 0; draft.partnersSet = draft.contract === 'qirad';
   }
-  // the free agent who knows the stop first, then the rest, until the engine has a proposal for one
+  // The first expedition of a game stays the one-press sheet on the plain suggestion (DESIGN 4.8): the house has no news of any far
+  // price yet, so a proposal would be a guess at base prices (the estimate would say a loss), and it would send the linen the first
+  // season's neighbour card is about. From the second expedition the sheet opens on the engine's proposal for the road picked.
+  const plain = first ? engine.suggestPlan(app.state, content, stopId) : null;
   const knows = a => a.traits?.includes(`knows-${stopId}`);
   const order = [...freeAgents(app).filter(knows), ...freeAgents(app).filter(a => !knows(a))];
-  for (const a of order) { if (propose(a.id)) { draft.agent = a.id; take(proposed.plan); break; } }
-  // no proposal for anyone (a stop whose goods the house cannot carry or bring back): the first expedition falls back to the plain suggestion
-  const suggestion = !proposed && first ? engine.suggestPlan(app.state, content, stopId) : null;
-  if (suggestion) { draft.agent = suggestion.agent; take(suggestion); propose(suggestion.agent); }
-  else if (!draft.agent) draft.agent = order[0]?.id ?? null;
+  if (plain) { draft.agent = plain.agent; take(plain); propose(plain.agent); }
+  else {
+    // the free agent who knows the stop first, then the rest, until the engine has a proposal for one
+    for (const a of order) { if (propose(a.id)) { draft.agent = a.id; take(proposed.plan); break; } }
+    if (!draft.agent) draft.agent = order[0]?.id ?? null;
+  }
   // a card's `outfit` effect names the agent and the contract (the desk leaves them on app.outfitWith, once, for this stop)
   const asked = app.outfitWith?.stop === stopId ? app.outfitWith : null;
   app.outfitWith = null;
@@ -154,7 +158,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     // the one-press sheet offers no contract choice; it is always the house's own
     if (!first && ['own', 'qirad'].includes(asked.contract)) draft.contract = asked.contract;
   }
-  const onePress = first && (!!proposed || !!suggestion);
+  const onePress = !!plain;
   const expanded = k => !onePress || open.has(k);
 
   const titleId = 'panel-outfit-title';
