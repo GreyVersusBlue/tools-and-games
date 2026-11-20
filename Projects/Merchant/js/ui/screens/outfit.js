@@ -135,7 +135,8 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   /** Puts a plan the engine wrote into the draft. */
   function take(p) {
     draft.cargo = { ...p.cargo }; draft.purse = p.purse ?? 0; draft.buy = [...(p.buy ?? [])];
-    draft.contract = p.contract === 'qirad' ? 'qirad' : 'own';
+    // a qirad only where the city offers one: proposePlan answers an agent who refuses a wage with a qirad even in a city that has none (MER-99 report)
+    draft.contract = p.contract === 'qirad' && content.city.contracts?.qirad?.agentShare ? 'qirad' : 'own';
     draft.partners = p.partners ?? 0; draft.partnersSet = draft.contract === 'qirad';
   }
   // The first expedition of a game stays the one-press sheet on the plain suggestion (DESIGN 4.8): the house has no news of any far
@@ -147,8 +148,9 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   if (plain) { draft.agent = plain.agent; take(plain); propose(plain.agent); }
   else {
     // the free agent who knows the stop first, then the rest, until the engine has a proposal for one
-    for (const a of order) { if (propose(a.id)) { draft.agent = a.id; take(proposed.plan); break; } }
-    if (!draft.agent) draft.agent = order[0]?.id ?? null;
+    for (const a of order) { const p = propose(a.id); if (p && !p.plan.why) { draft.agent = a.id; take(p.plan); break; } }
+    // none has a plan that pays: the first agent's empty plan stays, with the engine's sentence on why (MER-98, MER-99)
+    if (!draft.agent && order[0]) { draft.agent = order[0].id; if (propose(order[0].id)) take(proposed.plan); }
   }
   // a card's `outfit` effect names the agent and the contract (the desk leaves them on app.outfitWith, once, for this stop)
   const asked = app.outfitWith?.stop === stopId ? app.outfitWith : null;
@@ -158,8 +160,10 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     // the one-press sheet offers no contract choice; it is always the house's own
     if (!first && ['own', 'qirad'].includes(asked.contract)) draft.contract = asked.contract;
   }
-  const onePress = !!plain;
-  const expanded = k => !onePress || open.has(k);
+  // every sheet opens as the short summary, one line a section with a Change link (DESIGN 4.8, MER-99)
+  const expanded = k => open.has(k);
+  /** The engine's sentence for a plan that carries nothing, while the draft is still that plan; null once the player builds one. */
+  const whyNone = () => (proposed?.plan.why && !cargoTotal() && !draft.purse && !draft.buy.length ? proposed.plan.why : null);
 
   const titleId = 'panel-outfit-title';
   const dialog = h('dialog', { class: 'paper outfit', id: 'panel-outfit', 'aria-labelledby': titleId });
@@ -379,6 +383,11 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
       kids.push(choice('prepay', 'Pay the wage first',
         `${who} will not go for a wage again, because the house did not pay what it promised before. If the house pays the whole trip's wage now${wage ? `, ${dinars(wage)}` : ''}, ${who} will go. A full return, with nothing owed, wins back some of ${who}'s trust.`));
     }
+    if (!expanded('contract')) {
+      const said = draft.contract === 'qirad' ? `A qirad with partners, who put in ${dinars(Math.min(draft.partnersSet ? draft.partners : Math.floor(out / 2), out))}.`
+        : draft.contract === 'prepay' ? 'The house pays the wage first.' : 'Your own money.';
+      return section('contract', '4. The contract', summary('contract', said, () => { open.add('contract'); render('outfit-contract-h'); }, 'the contract'));
+    }
     const body = [h('div', { class: 'contracts', role: 'radiogroup', 'aria-labelledby': 'outfit-contract-h' }, kids)];
     if (draft.contract === 'qirad') {
       if (!draft.partnersSet) draft.partners = Math.floor(out / 2);
@@ -412,7 +421,9 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const estimate = h('p', { class: 'estimate', id: 'outfit-estimate' }, est ? est.line : 'The estimate comes when the plan can be sent.');
     const reasons = h('div', { class: 'reasons', id: 'outfit-reasons' }, s.ok ? null : s.reasons.map(r => h('p', null, r)));
     // the sheet tells the one-press player what is on it, once
-    const lead = onePress ? h('p', { class: 'lead', id: 'outfit-lead' }, `Everything is filled in. Press Send, or change a line.`) : null;
+    const none = whyNone();
+    const lead = none ? h('p', { class: 'lead why', id: 'outfit-why' }, none)
+      : h('p', { class: 'lead', id: 'outfit-lead' }, `Everything is filled in. Press Send, or change a line.`);
     dialog.replaceChildren(
       h('h2', { id: titleId, tabindex: '-1' }, `Outfit an expedition to ${stop.name}`),
       ...[lead, whoSection(), whereSection(), carrySection(), backSection(), costSheet(quote()), first ? null : contractSection()].filter(Boolean),
