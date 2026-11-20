@@ -570,4 +570,43 @@ test('MER-98 (6) why, no news: "We had no news of Hilltown and guessed 30." in p
   ok(!/the \d+ we had no news/.test(paper.data.why));
 });
 
+// ---- MER-103: a city without a qirad, and the goods the return paper says came home
+
+const refuser = (c, s = game(c)) => { know(s, c, 'hilltown', 'wool', 30); know(s, c, 'hilltown', 'salt', 3); s.agents.mira.memory = [{ kind: 'unfair' }, { kind: 'unfair' }]; return s; };
+
+test('MER-103 proposePlan: in a city with no qirad, an agent who refuses a wage gets no qirad plan, and the plan says so in one sentence', () => {
+  const c = still();
+  eq(c.city.contracts?.qirad, undefined, 'testport has no qirad');
+  const plan = proposePlan(refuser(c), c, 'mira', 'harbour-hilltown');
+  eq(plan.contract, 'own');
+  eq(plan.why, 'Mira will not go for a wage again, because the house did not pay what it promised before.');
+  eq([Object.keys(plan.cargo).length, plan.purse], [0, 0], 'nothing goes');
+  const fine = proposePlan(game(c), c, 'mira', 'harbour-hilltown');
+  eq(fine.why, undefined, 'an agent who will go still gets a real plan');
+});
+
+test('MER-103 proposePlan: in a city with a qirad the refusing agent is still offered one, as before', () => {
+  const c = variant(still(), x => { x.city.contracts = { qirad: { agentShare: [1, 3] } }; });
+  const plan = proposePlan(refuser(c), c, 'mira', 'harbour-hilltown');
+  eq([plan.contract, plan.why], ['qirad', undefined]);
+});
+
+test('MER-103 build: in a city with no qirad the refusal in words does not ask for a qirad share', () => {
+  const c = still();
+  const s = refuser(c);
+  const reasons = checkPlan(s, c, WOOL).reasons.join(' ');
+  ok(/will not go for a wage again/.test(reasons) && !/qirad/.test(reasons), reasons);
+});
+
+test('MER-103 suggestPlan: in a city with no qirad the one-press suggestion passes a refusing agent over for the next', () => {
+  const c = still();
+  const s = refuser(c);
+  s.agents.tobin.hired = true;
+  const plan = R.suggestPlan(s, c, 'hilltown');
+  ok(plan, 'Tobin is free and takes it');
+  eq([plan.agent, plan.contract], ['tobin', 'own']);
+  s.agents.tobin.memory = [{ kind: 'unfair' }, { kind: 'unfair' }];
+  eq(R.suggestPlan(s, c, 'hilltown'), null, 'both refuse and there is no qirad to offer');
+});
+
 await done();

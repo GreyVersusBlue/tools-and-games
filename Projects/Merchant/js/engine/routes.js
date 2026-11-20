@@ -605,6 +605,7 @@ export function suggestPlan(state, content, stopId) {
   const home = homeOf(content);
   const stop = stopOf(content, stopId);
   if (!stop || stopId === home) return null;
+  const hasQirad = !!cityOf(content, 'outfit').contracts?.qirad?.agentShare;
   const free = (content.agents ?? []).filter(a => {
     const r = state.agents[a.id];
     return r?.hired && r.where === home && !state.expeditions.some(x => x.agent === a.id);
@@ -624,8 +625,10 @@ export function suggestPlan(state, content, stopId) {
     const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
       .sort((a, b) => (homePrice(b) - there(b)) - (homePrice(a) - there(a)) || (a < b ? -1 : 1));
     const plan = { agent: agent.id, route: hit.route.id, cargo: { [g]: load }, purse: 0, contract: 'own', sell: [g], buy: back.slice(0, 1) };
-    // an agent who will not go for a wage again is offered a qirad: partners put in a small purse and the house sends no money
-    if (refusesOwn(state, agent)) {
+    // an agent who will not go for a wage again is offered a qirad: partners put in a small purse and the house sends no money;
+    // a city with no qirad has none to offer, so the agent is passed over for the next (MER-103)
+    if (refusesOwn(state, agent, hasQirad)) {
+      if (!hasQirad) return null;
       const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
       Object.assign(plan, { contract: 'qirad', partners: stake, purse: stake });
     }
@@ -721,7 +724,10 @@ export function proposePlan(state, content, agent, route, { check = true, share 
     const cap = Math.max(1, Math.ceil(dest.sells[back.good].depth * DEPTH_SHARE));
     purseOnly = Math.min(budget, Math.ceil(cap * back.there * 1.15));
   }
-  const qirad = refusesOwn(state, a);
+  // a qirad only where the city has one; where it has none, an agent who refuses a wage gets no plan, and the words say why (MER-103)
+  const hasQirad = !!cityOf(content, 'outfit').contracts?.qirad?.agentShare;
+  const refused = refusesOwn(state, a, hasQirad);
+  const qirad = hasQirad && !!refused;
   const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
   /** The plan that carries `loads` out, brings `back` home when `fetch` is set, and sends `money` to buy it with. */
   const shape = (loads, fetch, money) => {
@@ -764,6 +770,7 @@ export function proposePlan(state, content, agent, route, { check = true, share 
     }
   }
   const nothing = why => ({ ...shape({}, false, 0), why });
+  if (refused && !hasQirad) return nothing(refused);
   const empty = !Object.keys(best.loads).length && !best.money;
   if (empty || best.net <= 0) {
     const result = !Number.isFinite(best.net) ? '' : best.net < 0 ? `: the best one would lose about ${coins(content, -best.net)} after the tolls and the wage` : ': the best one would only break even';
