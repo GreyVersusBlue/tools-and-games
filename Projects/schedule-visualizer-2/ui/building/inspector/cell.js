@@ -374,7 +374,8 @@ export function cellPanel(env) {
         input.addEventListener('change', () => {
           if (!input.checked) return;
           const outcome = ed().commit(setStairwellDirection, { well: well.letter, direction: option.value }, { done: (made) => made.text, toast: (made) => made.text });
-          if (outcome === null) input.checked = false;
+          // refused: the choice there was before is ticked again (none where the flights differ)
+          if (outcome === null) for (const each of ways.querySelectorAll('.bi-way__input')) each.checked = each.value === well.way;
         });
         return h('label', { class: 'bi-way__chip' }, input, h('span', { class: 'bi-way__text' }, option.label));
       }));

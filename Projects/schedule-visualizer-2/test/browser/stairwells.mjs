@@ -120,6 +120,17 @@ const setAside = (dialog) => page.$eval(dialog + ' .dialog__buttons .btn--primar
   const note = el.getAttribute('aria-describedby');
   return { aria: el.getAttribute('aria-disabled'), disabled: el.disabled, focusable, dashed: getComputedStyle(el).borderTopStyle === 'dashed', described: Boolean(note && document.getElementById(note) && document.getElementById(note).textContent !== '') };
 });
+// The next change the plan's editor is asked to make is refused, as the engine's
+// refusal is (the editor's commit answers null); the one after goes through.
+const refuseNext = () => page.evaluate(() => {
+  const editor = document.querySelector('.bld').editor;
+  const real = editor.commit;
+  editor.commit = function () {
+    editor.commit = real;
+    return null;
+  };
+});
+const ticked = (selector) => page.$$eval(selector + ' .bi-way__input', (all) => all.filter((input) => input.checked).map((input) => input.value));
 const waitFor = (selector, wanted) => page.waitForFunction((s, w) => { const el = document.querySelector(s); return Boolean(el) && el.textContent === w; }, {}, selector, wanted);
 
 async function undo() {
@@ -211,6 +222,11 @@ test('a stairwell\'s properties: one way for every flight, the Letter field, a r
   const way = await page.$$eval('#inspector-properties [data-way="well"] .bi-way__input', (all) => all.map((input) => [input.value, input.checked]));
   assert.deepEqual(way, [['both', true], ['up', false], ['down', false]]);
   let before = await entries();
+  // a change that is refused ticks the way there was again
+  await refuseNext();
+  await page.click(key('well-way:up'));
+  assert.deepEqual(await ticked('#inspector-properties [data-way="well"]'), ['both'], 'a refused way left the wrong chip ticked');
+  assert.equal(await entries(), before);
   await page.click(key('well-way:up'));
   await waitFor('#well-way-says', 'Stairwell A runs up only. Applied to 2 flights.');
   assert.deepEqual((await building()).connections.map((connection) => connection.direction), ['ab', 'ab']);
@@ -430,6 +446,11 @@ test('the Floor tab lists a stairwell as one row with its letter, floors and way
   const summary = () => text('#inspector-floor [data-part="well-summary"]');
   assert.equal(await summary(), 'Stairwell A · Floor 1 to Floor 3 · both ways');
   const before = await entries();
+  // refused: the way there was is ticked again
+  await refuseNext();
+  await page.click('#inspector-floor [data-well] .bi-way__input[value="up"]');
+  assert.deepEqual(await ticked('#inspector-floor [data-well]'), ['both'], 'a refused way left the wrong chip ticked');
+  assert.equal(await entries(), before);
   await page.click('#inspector-floor [data-well] .bi-way__input[value="up"]');
   await waitFor('#inspector-floor [data-part="well-summary"]', 'Stairwell A · Floor 1 to Floor 3 · up only');
   assert.equal(await entries(), before + 1);
