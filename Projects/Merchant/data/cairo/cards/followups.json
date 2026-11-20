@@ -16,15 +16,15 @@
       {
         "id": "favour",
         "label": "Take the place and do the favour",
-        "hint": "It costs 50 dinars. Abu Bakr is pleased.",
+        "hint": "It costs 5 dinars. Abu Bakr is pleased.",
         "requires": {
           "money": {
-            "gte": 50
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -50
+            "money": -5
           },
           {
             "rep": "partners",
@@ -36,7 +36,7 @@
             "in": 2,
             "do": [
               {
-                "money": 40
+                "money": 7
               }
             ]
           }
@@ -57,7 +57,7 @@
             "in": 2,
             "do": [
               {
-                "money": 40
+                "money": 7
               }
             ]
           }
@@ -169,12 +169,12 @@
         "hint": "It costs money now. Dyers pay well.",
         "requires": {
           "money": {
-            "gte": 60
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -60
+            "money": -5
           },
           {
             "rep": "partners",
@@ -186,7 +186,7 @@
             "in": 2,
             "do": [
               {
-                "money": 50
+                "money": 4
               }
             ]
           }
@@ -202,7 +202,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -227,7 +227,7 @@
       "seal": null
     },
     "title": "Farid's ship never came",
-    "body": "Two seasons ago you lent Farid 150. His ship was lost at sea. He has paid back 100, which is all he has. He asks you to forgive the rest.",
+    "body": "Two seasons ago you lent Farid 6. His ship was lost at sea. He has paid back 4, which is all he has. He asks you to forgive the rest.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -246,7 +246,7 @@
             "in": 4,
             "do": [
               {
-                "money": 20
+                "money": 1
               }
             ]
           }
@@ -267,7 +267,7 @@
             "in": 4,
             "do": [
               {
-                "money": 50
+                "money": 2
               }
             ]
           }
@@ -405,7 +405,7 @@
             "in": 2,
             "do": [
               {
-                "money": 15
+                "money": 4
               }
             ]
           }
@@ -443,12 +443,12 @@
         "hint": "It costs money to fill the order. It may pay.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -4
           }
         ],
         "later": [
@@ -456,7 +456,7 @@
             "in": 2,
             "do": [
               {
-                "money": 60
+                "money": 7
               }
             ]
           }
@@ -516,12 +516,12 @@
         "hint": "It costs money now. It may pay later.",
         "requires": {
           "money": {
-            "gte": 90
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -90
+            "money": -5
           }
         ],
         "later": [
@@ -529,7 +529,7 @@
             "in": 3,
             "do": [
               {
-                "money": 130
+                "money": 11
               }
             ]
           }
@@ -550,7 +550,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -597,7 +597,7 @@
             "in": 4,
             "do": [
               {
-                "money": 25
+                "money": 4
               }
             ]
           }
@@ -613,7 +613,7 @@
             "in": 4,
             "do": [
               {
-                "money": 40
+                "money": 5
               }
             ]
           }
@@ -652,12 +652,12 @@
         "hint": "It costs you. Your name grows.",
         "requires": {
           "money": {
-            "gte": 40
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -40
+            "money": -4
           },
           {
             "rep": "partners",
@@ -669,7 +669,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -678,7 +678,7 @@
       {
         "id": "ledger",
         "label": "Show him the ledger first",
-        "hint": "It may hurt his pride now. You keep 15 dinars, and a fair count is respected later.",
+        "hint": "It may hurt his pride now. You keep 4 dinars, and a fair count is respected later.",
         "now": [
           {
             "rep": "partners",
@@ -694,7 +694,7 @@
                 "by": 1
               },
               {
-                "money": 15
+                "money": 4
               }
             ]
           }
@@ -732,12 +732,12 @@
         "hint": "It costs money now. It may pay.",
         "requires": {
           "money": {
-            "gte": 100
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -100
+            "money": -5
           }
         ],
         "later": [
@@ -745,7 +745,7 @@
             "in": 3,
             "do": [
               {
-                "money": 150
+                "money": 8
               }
             ]
           }
@@ -802,12 +802,12 @@
         "hint": "It costs money. Your agents will be glad.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -5
           },
           {
             "rep": "agents",
@@ -830,7 +830,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -868,12 +868,12 @@
         "hint": "It costs a fee. It makes a steady friend.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -4
           },
           {
             "rep": "partners",
@@ -885,7 +885,7 @@
             "in": 3,
             "do": [
               {
-                "money": 25
+                "money": 4
               }
             ]
           }
@@ -901,7 +901,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -936,12 +936,12 @@
         "hint": "It costs money now. It may pay.",
         "requires": {
           "money": {
-            "gte": 120
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -120
+            "money": -5
           }
         ],
         "later": [
@@ -949,7 +949,7 @@
             "in": 3,
             "do": [
               {
-                "money": 180
+                "money": 8
               }
             ]
           }
@@ -1102,12 +1102,12 @@
         "hint": "It costs a clerk's time. Yusuf feels easier.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -4
           },
           {
             "trust": "yusuf",
@@ -1145,7 +1145,7 @@
             "in": 2,
             "do": [
               {
-                "money": 5
+                "money": 4
               }
             ]
           }
@@ -1214,7 +1214,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -1223,13 +1223,13 @@
       {
         "id": "let-go",
         "label": "Let him go",
-        "hint": "He goes to another house, and pays back 10 coins he owes.",
+        "hint": "He goes to another house, and pays back 3 coins he owes.",
         "now": [
           {
             "dismiss": "samir"
           },
           {
-            "money": 10
+            "money": 3
           },
           {
             "rep": "agents",
@@ -1279,7 +1279,7 @@
                 "by": 1
               },
               {
-                "money": -30
+                "money": -5
               }
             ]
           }
@@ -1288,15 +1288,15 @@
       {
         "id": "fee",
         "label": "Pay him a fee for one more job",
-        "hint": "It costs 15 dinars. He stays free to go.",
+        "hint": "It costs 4 dinars. He stays free to go.",
         "requires": {
           "money": {
-            "gte": 15
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -15
+            "money": -4
           },
           {
             "trust": "matteo",
@@ -1308,7 +1308,7 @@
             "in": 2,
             "do": [
               {
-                "money": 20
+                "money": 6
               }
             ]
           }
@@ -1320,7 +1320,7 @@
         "hint": "He leaves you a small gift.",
         "now": [
           {
-            "money": 10
+            "money": 4
           }
         ]
       }

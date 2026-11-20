@@ -16,15 +16,15 @@
       {
         "id": "help",
         "label": "Send your carter with the goods",
-        "hint": "It costs a day of your carter and 40 dinars. Yehuda will owe you a favour.",
+        "hint": "It costs a day of your carter and 5 dinars. Yehuda will owe you a favour.",
         "requires": {
           "money": {
-            "gte": 40
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -40
+            "money": -5
           },
           {
             "rep": "partners",
@@ -41,14 +41,14 @@
       {
         "id": "decline",
         "label": "Say you are too busy",
-        "hint": "Your carter earns 25 dinars on your own goods. Yehuda will ask someone else.",
+        "hint": "Your carter earns 4 dinars on your own goods. Yehuda will ask someone else.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": 25
+                "money": 4
               }
             ]
           },
@@ -107,12 +107,12 @@
         "hint": "It costs now. He may become a steady friend.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -5
           },
           {
             "rep": "foreign",
@@ -124,7 +124,7 @@
             "in": 3,
             "do": [
               {
-                "money": 20
+                "money": 7
               }
             ]
           }
@@ -140,7 +140,7 @@
             "in": 3,
             "do": [
               {
-                "money": 10
+                "money": 4
               }
             ]
           }
@@ -178,12 +178,12 @@
         "hint": "It costs a little. Your street will hear of it.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -4
           }
         ],
         "later": [
@@ -204,7 +204,7 @@
         "hint": "You are paid. Your neighbours may talk.",
         "now": [
           {
-            "money": 10
+            "money": 4
           }
         ],
         "later": [

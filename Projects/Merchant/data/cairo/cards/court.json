@@ -19,12 +19,12 @@
         "hint": "It costs money. The inspector will see an honest house.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -30
+            "money": -5
           }
         ],
         "later": [
@@ -49,7 +49,7 @@
             "in": 2,
             "do": [
               {
-                "money": -20
+                "money": -4
               },
               {
                 "rep": "court",
@@ -178,12 +178,12 @@
         "hint": "It costs now. Isaac will not forgive it.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -4
           }
         ],
         "later": [
@@ -191,7 +191,7 @@
             "in": 2,
             "do": [
               {
-                "money": 30
+                "money": 9
               },
               {
                 "rep": "partners",
@@ -223,7 +223,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf and the road costs",
-    "body": "Yusuf is home from {to}. He spent 60 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
+    "body": "Yusuf is home from {to}. He spent 5 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
     "when": {
       "trip": {
         "agent": "yusuf",
@@ -235,16 +235,16 @@
     "choices": [
       {
         "id": "pay",
-        "label": "Pay him back the 60 dinars",
+        "label": "Pay him back the 5 dinars",
         "hint": "It costs now. Yusuf will trust you.",
         "requires": {
           "money": {
-            "gte": 60
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -60
+            "money": -5
           },
           {
             "trust": "yusuf",
@@ -282,7 +282,7 @@
             "in": 2,
             "do": [
               {
-                "money": -15
+                "money": -2
               }
             ]
           }
@@ -326,7 +326,7 @@
             "in": 2,
             "do": [
               {
-                "money": 30
+                "money": 5
               }
             ]
           }
@@ -338,12 +338,12 @@
         "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues.",
         "requires": {
           "money": {
-            "gte": 25
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -25
+            "money": -5
           }
         ],
         "later": [
@@ -351,7 +351,7 @@
             "in": 2,
             "do": [
               {
-                "money": 60
+                "money": 11
               },
               {
                 "rep": "partners",
