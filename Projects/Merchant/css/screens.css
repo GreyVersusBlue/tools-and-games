@@ -104,6 +104,7 @@ html.large-text .title-what { display: none; }
 .bar-date .date { font-family: var(--font-paper); font-weight: 700; font-size: var(--step-1); line-height: 1.1; }
 .bar-date .count { font-size: var(--step--1); color: var(--paper-shade); }
 .bar-money { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.bar-money .worth { margin: 0; font-variant-numeric: tabular-nums; }
 .bar-money .money { display: flex; align-items: center; gap: var(--s2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .icon { display: inline-flex; color: var(--brass); }
 .bar-tools { display: flex; align-items: center; gap: var(--s1); }

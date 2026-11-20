@@ -45,7 +45,7 @@ const sheetPlan = (s, content, stop) => {
   const route = eng.routeFor(s, content, stop)?.route.id;
   for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
     const p = route && eng.proposePlan(s, content, a.id, route);
-    if (p) return p;
+    if (p && !p.why) return p;   // a plan with a `why` carries nothing (MER-98): the sheet shows the sentence and the page has nothing to send
   }
   return null;
 };
@@ -106,6 +106,11 @@ const tabOrder = async (page, n) => {
 };
 const setLarge = (page, on) => page.evaluate(v => document.documentElement.classList.toggle('large-text', v), on);
 const hashOf = page => page.evaluate(() => location.hash);
+/** Every sheet opens as the summary (MER-99). Presses each Change link that opens a section in place (not Where, which goes back to the map)
+    so the steppers, the agents and the contracts are on the page. Safe to call on a sheet that is already open. */
+const openAll = async page => {
+  for (const id of ['who', 'carry', 'back', 'contract']) if (await page.$(`#change-${id}`)) { await page.$eval(`#change-${id}`, e => e.scrollIntoView({ block: 'center' })); await page.click(`#change-${id}`); }
+};
 /** The one-press paper (DESIGN 7): Next on a card whose choice said `outfit-first` lands on the map
     table with the outfitting sheet open on the first stop. Send it, then go back to the desk.
     Returns false when Next stayed on the desk, true when a sheet was sent or the map had nothing to send. */
@@ -114,7 +119,8 @@ const sendFromMap = async page => {
   await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
   if (await page.$('#outfit-send')) {
     // the walkers send only the one-press first expedition, which their Node model sends too; a card's outfit effect (MER-77) opens a sheet they leave by Back to the map
-    if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) await page.click('#outfit-cancel');
+    const firstSheet = await page.evaluate(() => !window.__merchant.state.log.some(e => e.kind === 'outfit'));
+    if ((!firstSheet || !(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) await page.click('#outfit-cancel');
     else { await page.click('#outfit-send'); await page.waitForSelector('#map-toast:not([hidden])'); }
   }
   await page.click('#map-desk-top');
@@ -1184,6 +1190,7 @@ try {
       await test('MER-93: the second sheet opens on proposePlan with the estimate line under Send; another agent asks the engine again', async () => {
         await page.click('#btn-outfit');
         await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await openAll(page);
         const st = await engineState(page), route = eng.routeFor(st, nodeContent, 'damascus').route.id;
         const shown = async () => ({
           cargo: Object.fromEntries((await page.$$eval('[id^="step-cargo-"][role="spinbutton"]', es => es.map(e => [e.id.replace('step-cargo-', ''), Number(e.getAttribute('aria-valuenow'))]))).filter(([, n]) => n > 0)),
@@ -1221,6 +1228,7 @@ try {
       await test('second expedition: four sections, steppers, refusals in words and the qirad written out', async () => {
         await page.click('#btn-outfit');
         await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await openAll(page);
         eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-back', 'outfit-contract']);
         eq(await page.$$eval('.agent', a => a.length) >= 1, true, 'free agents are seal cards');
         // steppers: a group with role spinbutton, minus and plus as buttons, the number as text
@@ -1448,7 +1456,7 @@ try {
       eq(await q.page.$$eval('#best-trades li strong', ls => ls.map(l => l.textContent)), best.map(t => t.text), 'the engine\'s own lines, in the engine\'s order');
       const rows = await q.page.$$eval('#best-trades li', ls => ls.map(l => l.textContent));
       best.forEach((t, i) => ok(rows[i].includes(t.road) && rows[i].includes(`the road is ${t.riskWord}`) && rows[i].includes(t.ageWords === 'this season' ? 'from this season' : t.ageWords), rows[i]));
-      ok(best.every((t, i) => i === 0 || best[i - 1].margin >= t.margin), 'widest margin first');
+      ok(best.every((t, i) => i === 0 || best[i - 1].score >= t.score), 'best score first: bestTrades ranks by score since MER-98, not by the price gap');
       eq(await q.page.$('#prices'), null, 'the table is still one press away');
     });
     await test('MER-72, MER-94: the first season\'s price letter is at most two leads, widest first, each about a road the house can send on now and read from what the house knows', async () => {
@@ -1600,7 +1608,8 @@ try {
     const sendByKeys = async () => {
       await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
       if (await page.$('#outfit-send')) {
-        if ((!(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) {
+        const firstSheet = await page.evaluate(() => !window.__merchant.state.log.some(e => e.kind === 'outfit'));
+        if ((!firstSheet || !(await page.$('#outfit-lead')) || await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled') === 'true'))) {
           // a card's outfit effect (MER-77) opens a sheet nothing can send: Back to the map, then the desk by its own button, as the pointer walker does
           await page.focus('#outfit-cancel'); await page.keyboard.press('Enter');
           await backToDesk();
@@ -2218,9 +2227,18 @@ try {
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
       await test('prepay: the sheet offers the wage first in words for an agent who refuses a wage, and sending it charges the engine\'s sum', async () => {
         ok(wage > 0, 'the engine names a wage');
+        await openAll(page);
         await page.click('#agent-yusuf');
         await page.waitForFunction(() => document.getElementById('agent-yusuf')?.getAttribute('aria-checked') === 'true');
-        ok((await page.$$eval('#outfit-reasons p', ps => ps.map(p => p.textContent))).includes(eng.checkPlan(s, noQ, plan).reasons[0]), 'the engine\'s refusal is among the reasons while the own contract stands');
+        // clicking an agent asks the engine for that agent's proposal, which since MER-98 may carry nothing; empty it, so the plan is the one this case
+        // names (linen, no money), a plan the player built
+        for (const id of await page.$$eval('[id^="step-cargo-"][role="spinbutton"], #step-purse', es => es.map(e => e.id))) { await page.focus(`#${id}`); await page.keyboard.press('Home'); }
+        for (const b of await page.$$('.back-pick[aria-checked="true"]')) await b.click();
+        await page.focus('#step-cargo-linen');
+        await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
+        const linen = Number(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')));
+        ok(linen > 0, 'some linen is carried');
+        ok((await page.$$eval('#outfit-reasons p', ps => ps.map(p => p.textContent))).includes(eng.checkPlan(s, noQ, { ...plan, cargo: { linen } }).reasons[0]), 'the engine\'s refusal is among the reasons while the own contract stands');
         eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
         await page.$eval('#contract-prepay', b => b.scrollIntoView({ block: 'center' }));
         const words = await page.$eval('#contract-prepay', e => e.textContent);
@@ -2229,13 +2247,6 @@ try {
         eq(await page.$$eval('#contract-qirad', e => e.length), 0, 'no qirad is offered');
         await page.click('#contract-prepay');
         await page.waitForFunction(() => document.getElementById('contract-prepay')?.getAttribute('aria-checked') === 'true');
-        // clicking an agent asks the engine for that agent's proposal; empty it, so the plan sent is the one this case names (linen, no money)
-        for (const id of await page.$$eval('[id^="step-cargo-"][role="spinbutton"], #step-purse', es => es.map(e => e.id))) { await page.focus(`#${id}`); await page.keyboard.press('Home'); }
-        for (const b of await page.$$('.back-pick[aria-checked="true"]')) await b.click();
-        await page.focus('#step-cargo-linen');
-        await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
-        const linen = Number(await page.$eval('#step-cargo-linen', e => e.getAttribute('aria-valuenow')));
-        ok(linen > 0, 'some linen is carried');
         eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false', 'with the wage paid first, Send is open');
         await page.click('#outfit-send');
         await page.waitForFunction(() => !document.getElementById('panel-outfit'));
@@ -2280,6 +2291,87 @@ try {
           ok(r.linkTop < r.textBottom && r.linkBottom > r.textTop, `${r.id}: the link (${r.linkTop} to ${r.linkBottom}) is not on the words' lines (${r.textTop} to ${r.textBottom})`);
         }
       });
+      await page.close();
+    }
+
+    // ---- MER-99: every sheet is the short summary; a plan with nothing in it says why; the top bar carries the house's worth
+    {
+      const play99 = st => {
+        for (const p of st.desk) {
+          if (p.state !== 'open') continue;
+          const c = nodeChoices(st, nodeContent, p.id).find(x => { try { eng.choose(st, nodeContent, p.id, x.id); return true; } catch { return false; } });
+          st = eng.choose(st, nodeContent, p.id, c.id);
+          if (c.ui === 'outfit-first') { const plan = sheetPlan(st, nodeContent, 'damascus'); if (plan) st = eng.outfit(st, nodeContent, plan); }
+        }
+        return eng.endSeason(st, nodeContent);
+      };
+      const freeOf = st => nodeContent.agents.filter(a => st.agents[a.id]?.hired && st.agents[a.id].where === 'cairo' && !st.expeditions.some(e => e.agent === a.id));
+      // the first season in which a second expedition can be outfitted: one went out before, a hired agent is at home
+      let later = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (let i = 0; i < 60 && !(later.phase === 'desk' && later.t >= 3 && later.log.some(e => e.kind === 'outfit') && freeOf(later).length >= 1 && sheetPlan(later, nodeContent, 'damascus')); i++) {
+        later = later.phase === 'interlude' ? eng.openSeason(later, nodeContent) : play99(later);
+      }
+      const planNow = sheetPlan(later, nodeContent, 'damascus');
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await loadSave(page, later, '#map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await test('MER-99: a later sheet opens as the summary: one line a section with a Change link, the proposal filled in, the engine\'s estimate under Send', async () => {
+        ok(planNow, 'setup: the engine has a proposal for a later trip to Damascus');
+        eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-back', 'outfit-contract']);
+        eq(await page.$$eval('#panel-outfit .step .summary .change', cs => cs.map(c => c.id)), ['change-who', 'change-where', 'change-carry', 'change-back', 'change-contract'], 'each section is one line and one Change link');
+        eq(await page.$$eval('#panel-outfit .stepper, #panel-outfit .agent, #panel-outfit .back-pick, #panel-outfit .contract', es => es.length), 0, 'no stepper, agent card, bring-back pick or contract card is drawn until Change is pressed');
+        ok(await page.$('#outfit-lead'), 'the sheet says everything is filled in');
+        const carry = await page.$eval('#summary-carry', e => e.textContent);
+        ok(carry.startsWith(Object.entries(planNow.cargo).map(([g, n]) => `${n} `)[0]), `the carry line is the engine's proposal: ${carry}`);
+        eq(await page.$eval('#summary-contract', e => e.textContent), 'Your own money.');
+        eq(await page.$eval('#outfit-estimate', e => e.textContent), eng.estimate(later, nodeContent, planNow).line, 'the line under Send is the engine\'s own');
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false');
+      });
+      await test('MER-99: Change opens that one section and leaves the others as lines', async () => {
+        await page.click('#change-carry');
+        ok(await page.$('#step-purse'), 'the carry section is open: the purse stepper is on the page');
+        eq(await page.$$eval('#panel-outfit .agent, #panel-outfit .back-pick, #panel-outfit .contract', es => es.length), 0, 'who, bring back and the contract are still one line each');
+        eq(await page.$$eval('#panel-outfit .step .summary .change', cs => cs.map(c => c.id)), ['change-who', 'change-where', 'change-back', 'change-contract']);
+        await page.click('#change-contract');
+        ok(await page.$('#contract-qirad'), 'the contract section opens on its own press');
+        eq(await page.$eval('#outfit-estimate', e => e.textContent), eng.estimate(later, nodeContent, planNow).line, 'opening a section does not touch the plan');
+        await page.click('#outfit-cancel');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      });
+      await test('MER-99: the top bar shows the house\'s worth beside its cash, from the engine, and the warehouse button is as it was', async () => {
+        await page.goto(GAME + '#desk', { waitUntil: 'load' });
+        await page.waitForSelector('#bar-worth');
+        const w = eng.netWealth(later, nodeContent), held = Object.values(later.stock).reduce((n, x) => n + x, 0);
+        ok(w.net > later.money, `setup: the house holds stock the cash does not count (${w.net} against ${later.money})`);
+        eq(await page.$eval('#bar-worth', e => e.textContent), `· worth about ${withCommas(w.net)}`);
+        eq(await page.$eval('#bar-money', e => e.textContent.trim()), `${withCommas(later.money)} dinars`, 'the cash is unchanged');
+        eq(await page.$eval('#btn-warehouse', e => e.textContent), `${held} ${held === 1 ? 'load' : 'loads'} in the warehouse`);
+      });
+      // nothing pays: the house has no money and one load of linen, and the engine's plan for every free agent carries nothing and says why
+      const poor = structuredClone(later); poor.money = 0; poor.stock = { linen: 1 };
+      const poorWhy = eng.proposePlan(poor, nodeContent, freeOf(poor)[0].id, eng.routeFor(poor, nodeContent, 'damascus').route.id).why;
+      await test('MER-99: when the engine\'s plan carries nothing the sheet shows its sentence and Send is shut until the player builds a plan', async () => {
+        ok(freeOf(poor).every(a => eng.proposePlan(poor, nodeContent, a.id, eng.routeFor(poor, nodeContent, 'damascus').route.id).why), 'setup: no free agent has a plan that pays');
+        ok(poorWhy && poorWhy.length > 20, `setup: the engine says why: ${poorWhy}`);
+        await loadSave(page, poor, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        eq(await page.$eval('#outfit-why', e => e.textContent), poorWhy, 'the sentence is the engine\'s, whole');
+        eq(await page.$('#outfit-lead'), null, 'it does not say everything is filled in');
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true', 'nothing to send');
+        await page.click('#change-carry');
+        await page.focus('#step-cargo-linen'); await page.keyboard.press('ArrowUp');
+        await page.waitForFunction(() => !document.getElementById('outfit-why'));
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false', 'a plan the player built can be sent');
+        ok(/^If prices hold: about -/.test(await page.$eval('#outfit-estimate', e => e.textContent)), 'the estimate says what the built plan would lose');
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('#outfit-why');
+        eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true', 'taken out again, the plan is empty and the sentence returns');
+      });
+      await test('MER-99: the sheet pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
 
@@ -2631,6 +2723,11 @@ try {
       const label = await page.$eval('#outfit-send', b => b.textContent);
       eq(label, 'Send Ali to Alexandria', 'the agent and the stop are the card\'s');
       eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(st, content77, 'p9-0', 'go'))), 'nothing is sent, and nothing is paid, before Send');
+      // the engine has no plan for Ali on this road that pays (MER-98): the sheet says why and Send waits for a plan the player builds
+      ok(await page.$('#outfit-why'), 'the sheet says why it has no plan');
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
+      await page.click('#change-carry');
+      await page.focus('#step-cargo-linen'); await page.keyboard.press('ArrowUp');
       await page.click('#outfit-send');
       await page.waitForSelector('#map-toast:not([hidden])');
       const sent = JSON.parse(await page.evaluate(() => localStorage.getItem('merchant-save')));
@@ -2643,6 +2740,8 @@ try {
       await page.click('#choice-p9-0-go');
       await page.waitForSelector(BACK);
       await page.click('#btn-next');
+      await page.waitForSelector('#change-contract');
+      await openAll(page);
       await page.waitForSelector('#contract-qirad');
       eq(await page.$eval('#contract-qirad', b => b.getAttribute('aria-checked')), 'true');
       eq(await page.$eval('#contract-own', b => b.getAttribute('aria-checked')), 'false');
@@ -2902,6 +3001,61 @@ try {
       eq(got.trust, 'Ali trusts the house less.');
       eq(got.said, 'The house is open.');
       eq(got.plain, 'Nothing changed at once.');
+    });
+    await test('MER-99: a drop in a group\'s standing never runs into a bare good one: "Still, they speak well of you."', async () => {
+      const got = await page.evaluate(async () => {
+        const { happened } = await import('./js/ui/screens/paper.js');
+        const c = { agents: [] }, at = words => ({ view: () => ({ rep: { partners: { words }, agents: { words } } }) });
+        return {
+          well: happened(c, [{ rep: 'partners', by: -1 }], at('They speak well of you')),
+          first: happened(c, [{ rep: 'partners', by: -1 }], at('They come to you first')),
+          warily: happened(c, [{ rep: 'partners', by: -1 }], at('They deal with you warily')),
+          up: happened(c, [{ rep: 'agents', by: 1 }], at('They speak well of you')),
+        };
+      });
+      eq(got.well, 'Your partners think less of the house. Still, they speak well of you.');
+      eq(got.first, 'Your partners think less of the house. Still, they come to you first.');
+      eq(got.warily, 'Your partners think less of the house. They deal with you warily.');
+      eq(got.up, 'Your agents think better of the house. They speak well of you.', 'a rise keeps the bare words');
+    });
+    await test('MER-99: a return whose goods came home unsold says so in its headline, in one sentence, with the price at home', async () => {
+      const st = askingReturn(), r = st.desk[0];
+      r.data.account.find(x => x.label === 'Back home').text = '14 loads of wool cloth (worth 880 dinars in Cairo now), 880 dinars in all';
+      await load(st);
+      const said = '14 loads of wool cloth are in the warehouse, worth about 880 at Cairo\'s price.';
+      const title = await page.$eval('.sheet-title', e => e.textContent);
+      ok(title.startsWith(`${r.data.headline} ${said}`), title);
+      eq(title.split(said).length, 2, 'said once');
+      const lines = await page.evaluate(async () => {
+        const { unsoldLine } = await import('./js/ui/screens/paper.js');
+        const row = text => ({ account: [{ label: 'Back home', text }] });
+        return [unsoldLine(row('1 load of wool cloth (worth 63 dinars in Cairo now), 63 dinars in all')),
+          unsoldLine(row('3 loads of linen, 2 loads of silk (worth 1,240 dinars in Cairo now) and 50 dinars, 1,290 dinars in all')),
+          unsoldLine(row('50 dinars, 50 dinars in all')), unsoldLine({ account: [] }), unsoldLine(null)];
+      });
+      eq(lines, ['1 load of wool cloth is in the warehouse, worth about 63 at Cairo\'s price.',
+        '3 loads of linen, 2 loads of silk are in the warehouse, worth about 1,240 at Cairo\'s price.', null, null, null]);
+    });
+    await test('MER-99: a return paper the engine wrote with goods home reads in the engine\'s own words (the sentence is cut from its account row)', async () => {
+      const { unsoldLine } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
+      let st = eng.newGame(content80, { seed: SEED, length: 'acts', house: 'spice' }), seen = 0;
+      for (let i = 0; i < 60 && seen < 1; i++) {
+        if (st.phase !== 'desk' && st.phase !== 'interlude') break;
+        if (st.phase === 'interlude') st = eng.openSeason(st, content80);
+        else {
+          // the engine's own proposals are sent every season, so trips come home with goods bought on the road
+          for (const p of st.desk) if (p.state === 'open') { const c = firstOpen(st, p.id); st = eng.choose(st, content80, p.id, c.id); if (c.ui === 'outfit-first') { const first = sheetPlan(st, content80, 'damascus'); if (first) st = eng.outfit(st, content80, first); } }
+          const plan = st.log.some(e => e.kind === 'outfit') ? sheetPlan(st, content80, 'damascus') : null;
+          if (plan) { try { st = eng.outfit(st, content80, plan); } catch { /* a plan the house cannot afford this season */ } }
+          st = eng.endSeason(st, content80);
+        }
+        for (const p of st.desk) if (p.kind === 'return' && (p.data.account.find(x => x.label === 'Back home')?.text ?? '').includes('(worth')) {
+          seen++;
+          const line = unsoldLine(p.data);
+          ok(line && / (is|are) in the warehouse, worth about [\d,]+ at Cairo's price\.$/.test(line), `${p.data.account.find(x => x.label === 'Back home').text} -> ${line}`);
+        }
+      }
+      ok(seen >= 1, 'no return with goods home in sixty seasons');
     });
     await test('the MER-80 pages: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.close();

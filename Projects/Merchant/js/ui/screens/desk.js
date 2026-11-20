@@ -2,7 +2,7 @@
 // The engine owns every rule. This file asks it (view, canEndSeason, paperChoices, choose,
 // endSeason) and draws the answer. What lives here is only what a reload may forget: which
 // paper is raised, which back is being read, whether a flip is under way.
-import { h, qs } from '../dom.js';
+import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { leftHow } from '../../engine/agents.js';
 import { front, back, record, edge, paperTitle, happened, num, dinars, RECORD_KINDS } from './paper.js';
@@ -115,6 +115,7 @@ export function createDesk(app) {
         h('p', { class: 'count', id: 'bar-count' }, `Season ${app.state.t + 1} of ${total} · Act ${WORDS[v.act - 1] ?? v.act}`)),
       h('div', { class: 'bar-money' },
         h('p', { class: 'money', id: 'bar-money' }, icon(ICONS.coin), h('span', null, dinars(v.money))),
+        h('p', { class: 'worth', id: 'bar-worth' }, `· worth about ${num(engine.netWealth(app.state, content).net)}`),
         h('button', { class: 'bar-btn loads', type: 'button', id: 'btn-warehouse', 'aria-haspopup': 'dialog',
           onclick: e => openBook('ledger', e.currentTarget, 'warehouse') }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
       h('div', { class: 'bar-tools' },
@@ -185,7 +186,14 @@ export function createDesk(app) {
     if (!sheet || getComputedStyle(box).overflowY !== 'auto') return;
     const target = qs('.choice, #btn-next', sheet);
     if (!target) return;
-    const need = target.getBoundingClientRect().bottom + 6 - box.getBoundingClientRect().bottom;
+    const boxRect = box.getBoundingClientRect();
+    let need = target.getBoundingClientRect().bottom + 6 - boxRect.bottom;
+    // a return's or loss's paper ends by asking, often two choices: the last one is brought clear of the End the season bar
+    // too, as far as the first still stays in view (MER-99)
+    if (/\bkind-(return|lost)\b/.test(sheet.className)) {
+      const last = qsa('.choice', sheet).at(-1);
+      if (last && last !== target) need = Math.max(need, Math.min(last.getBoundingClientRect().bottom + 6 - boxRect.bottom, target.getBoundingClientRect().top - boxRect.top));
+    }
     if (need > 0) box.scrollTop += need;   // the head may scroll off: the choice is the part a player cannot do without
     const at = box.scrollTop;
     // the sheet rises into place for 220 ms, and a font may arrive: measure once more when it lies still

@@ -8,7 +8,7 @@
       ]
     },
     "title": "A bonus for {agent}?",
-    "body": "{agent} is home from {to} after {seasons}, and the house made money.",
+    "body": "{agent} is home from {to} after {seasons}, and the trip ended in a profit.",
     "choices": [
       {
         "id": "bonus",
