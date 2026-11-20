@@ -646,7 +646,10 @@ test('the Checks tab lists what the building checks found, worst first, in sente
   assert.equal(unnumbered.text, 'Warning: A room on Floor 2 has no number. Give it one so that groups can be scheduled into it.');
   const problems = found.filter((finding) => finding.severity === 'problem').length;
   const warnings = found.filter((finding) => finding.severity === 'warning').length;
-  assert.equal(await text('#checks-lead'), 'The building checks found ' + problems + (problems === 1 ? ' problem' : ' problems') + ' and ' + warnings + (warnings === 1 ? ' warning' : ' warnings') + '.');
+  // SV2-135 moved this line: the sample's dead ends add three notes, so the lead names notes too
+  const notes = found.filter((finding) => finding.severity === 'note').length;
+  assert.equal(notes, 3, 'the sample has three notes: its halls end in dead ends');
+  assert.equal(await text('#checks-lead'), 'The building checks found ' + problems + (problems === 1 ? ' problem' : ' problems') + ', ' + warnings + (warnings === 1 ? ' warning' : ' warnings') + ' and ' + notes + (notes === 1 ? ' note' : ' notes') + '.');
 });
 
 test('"Show me" goes to the floor the finding is on, brings the place to the middle and marks it', async () => {

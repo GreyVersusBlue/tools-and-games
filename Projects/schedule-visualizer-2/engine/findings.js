@@ -95,6 +95,9 @@ export const KIND_SEVERITY = {
   'teacher-walk': 'warning',
   'group-walk': 'warning',
   'duty-clash': 'warning',
+  // always on, so not in CHECK_KINDS; a warning, or a note when the entry
+  // names weekdays only (checks.js sets that one finding's own severity)
+  'teacher-away': 'warning',
   'room-missing': 'warning',
   'empty-period': 'note',
   'teacher-multi-room': 'note',
@@ -145,11 +148,19 @@ export function makeFinding(kind, parts, text, where, about) {
 // a severity the order of spec 5.7's table; then by day type as the school
 // lists them, by period, and last by id so the order never depends on the
 // order groups, teachers or rooms happen to be stored in.
+// Where a kind sits in the table's order. teacher-away is not one of
+// CHECK_KINDS (it cannot be switched off), so it is placed by hand: just after
+// duty-clash, among the warnings, before room-missing.
+export function kindRank(kind) {
+  if (kind === 'teacher-away') return CHECK_KINDS.indexOf('duty-clash') + 0.5;
+  return CHECK_KINDS.indexOf(kind);
+}
+
 export function sortFindings(findings, project) {
   const dayOrder = new Map(project.dayTypes.map((dayType, index) => [dayType.id, index]));
   const rank = (finding) => [
     SEVERITIES.indexOf(finding.severity),
-    CHECK_KINDS.indexOf(finding.kind),
+    kindRank(finding.kind),
     finding.where.dayTypeId === null ? -1 : dayOrder.get(finding.where.dayTypeId),
     finding.where.period === null ? -1 : finding.where.period,
   ];

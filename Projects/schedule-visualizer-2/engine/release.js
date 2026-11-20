@@ -18,14 +18,15 @@
 // bell" is a grade entry of 120 and a groups entry of 0, and 7-1 gets 0.
 //
 // A day type matches an entry when the entry names it, or names the own day
-// type it is the same as (ARCHITECTURE 17.2). A grade matches ignoring case
-// and surrounding spaces. A wing is the wing of the room the group is
-// leaving, `fromRoomId`, matched the same way; a group leaving a room with no
-// wing, or no room, matches no wing entry.
+// type it is the same as (ARCHITECTURE 17.2). A grade matches as a mark's
+// does (ARCHITECTURE 22.13), ignoring case and every space, so "Grade 7" and
+// "Grade7" are one grade. A wing is the wing of the room the group is
+// leaving, `fromRoomId`, matched ignoring case and surrounding spaces; a
+// group leaving a room with no wing, or no room, matches no wing entry.
 //
 // Pure: the project in, a whole number of seconds out. Nothing is cached.
 
-import { releaseOf, findRoom, nameKey, RELEASE_WHO_KINDS } from './schema.js';
+import { releaseOf, findRoom, nameKey, spacelessKey, RELEASE_WHO_KINDS } from './schema.js';
 import { effectiveDayType } from './day-types.js';
 
 // Which kind of entry this is, 'groups', 'grade' or 'wing', or null when it
@@ -55,7 +56,7 @@ export function releaseDelay(project, groupId, dayTypeId, period, fromRoomId) {
   const list = releaseOf(project);
   if (list.length === 0) return 0;
   const group = project.groups.find((candidate) => candidate.id === groupId);
-  const grade = group && typeof group.grade === 'string' ? nameKey(group.grade) : '';
+  const grade = group && typeof group.grade === 'string' ? spacelessKey(group.grade) : '';
   let wing = null;
   if (typeof fromRoomId === 'string') {
     const room = findRoom(project, fromRoomId);
@@ -70,7 +71,7 @@ export function releaseDelay(project, groupId, dayTypeId, period, fromRoomId) {
     if (!releaseAfter(entry, period) || !releaseOnDay(project, entry, dayTypeId)) continue;
     let matches = false;
     if (kind === 'groups') matches = Array.isArray(entry.who.groups) && entry.who.groups.includes(groupId);
-    else if (kind === 'grade') matches = grade !== '' && typeof entry.who.grade === 'string' && nameKey(entry.who.grade) === grade;
+    else if (kind === 'grade') matches = grade !== '' && typeof entry.who.grade === 'string' && spacelessKey(entry.who.grade) === grade;
     else matches = wing !== null && wing !== '' && typeof entry.who.wing === 'string' && nameKey(entry.who.wing) === wing;
     if (!matches) continue;
     if (RANK[kind] > rank) {

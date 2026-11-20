@@ -60,7 +60,8 @@ export const roomView = {
     if (!room) return missingPage('room');
     const floor = school.floorOfRoom(room.id);
     const teachers = (room.teacherIds || []).map((id) => school.teacher(id)).filter(Boolean);
-    const features = [];
+    // the room's own features first, then the shared space and the wing
+    const features = school.featuresOf(room).map((feature) => typed(feature.name));
     if (room.shared) features.push('Shared space');
     if (room.wing) features.push(h('span', null, 'Wing: ', typed(room.wing)));
 

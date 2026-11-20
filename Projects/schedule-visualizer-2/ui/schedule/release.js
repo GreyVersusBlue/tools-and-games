@@ -44,19 +44,21 @@ import { count, list, periodWords } from '../components/words.js';
 import { periodName } from '../../engine/bells.js';
 import { formatDuration } from '../../engine/findings.js';
 import { ownDayTypes, effectiveDayType } from '../../engine/day-types.js';
-import { allRooms, releaseOf, nameKey, RELEASE_SECONDS } from '../../engine/schema.js';
+import { allRooms, releaseOf, nameKey, spacelessKey, RELEASE_SECONDS } from '../../engine/schema.js';
 import { releaseKind, releaseOnDay, releaseAfter } from '../../engine/release.js';
 import { keyed, collator } from './common.js';
 
 const DEFAULT_SECONDS = 120;
 const STEP = 15;
 
-// The grades the groups are in, once each as first typed, in order.
+// The grades the groups are in, once each as first typed, in order. Grades
+// are told apart as a mark and the crowd tell them apart (spacelessKey):
+// "Grade 7" and "Grade7" are one.
 export function gradesOf(project) {
   const seen = new Map();
   for (const group of project.groups) {
     if (typeof group.grade !== 'string' || group.grade.trim() === '') continue;
-    const key = nameKey(group.grade);
+    const key = spacelessKey(group.grade);
     if (!seen.has(key)) seen.set(key, group.grade.trim());
   }
   return Array.from(seen.values()).sort(collator.compare);
@@ -85,11 +87,11 @@ function wingWords(wing) {
 }
 
 // The groups of a grade, matched as the crowd model matches them (engine/release.js
-// releaseDelay): ignoring case and surrounding spaces, so "Grade 7" and "Grade7"
-// are two grades here as they are in Movement's picker.
+// releaseDelay) and as a mark does: ignoring case and every space, so "Grade 7"
+// and "Grade7" are one grade, and the card lists every group the rule holds for.
 function groupsOfGrade(project, grade) {
-  const wanted = nameKey(grade);
-  return project.groups.filter((group) => typeof group.grade === 'string' && group.grade.trim() !== '' && nameKey(group.grade) === wanted);
+  const wanted = spacelessKey(grade);
+  return project.groups.filter((group) => typeof group.grade === 'string' && group.grade.trim() !== '' && spacelessKey(group.grade) === wanted);
 }
 
 function groupName(project, id) {
@@ -358,12 +360,12 @@ export function releaseEditor(options) {
         } }, icon('close', 14)), key('group:' + group.id)))), add.element));
     } else if (draft.kind === 'grade') {
       const grades = gradesOf(project);
-      if (draft.grade.trim() !== '' && !grades.some((other) => nameKey(other) === nameKey(draft.grade))) grades.push(draft.grade.trim());
+      if (draft.grade.trim() !== '' && !grades.some((other) => spacelessKey(other) === spacelessKey(draft.grade))) grades.push(draft.grade.trim());
       who.push(grades.length === 0
         ? h('p', { class: 'sch-hint sch-markedit__nogrades' }, 'No group has a grade yet. A rule for a grade takes the groups whose Grade field matches it, so give groups a grade on the Groups tab first.')
         : h('div', { class: 'sch-markedit__chips', role: 'group', 'aria-label': 'Grades' }, grades.map((grade) => {
-          const pressed = nameKey(grade) === nameKey(draft.grade);
-          return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(pressed), data: { grade }, on: { click: () => change({ grade: pressed ? '' : grade }, key('grade:' + nameKey(grade))) } }, gradeWords(grade).replace(/^./, (letter) => letter.toUpperCase())), key('grade:' + nameKey(grade)));
+          const pressed = spacelessKey(grade) === spacelessKey(draft.grade);
+          return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(pressed), data: { grade }, on: { click: () => change({ grade: pressed ? '' : grade }, key('grade:' + spacelessKey(grade))) } }, gradeWords(grade).replace(/^./, (letter) => letter.toUpperCase())), key('grade:' + spacelessKey(grade)));
         })));
     } else {
       const wings = wingsOf(project);

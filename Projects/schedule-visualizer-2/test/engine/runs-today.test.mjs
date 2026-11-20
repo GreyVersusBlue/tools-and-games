@@ -94,16 +94,20 @@ function scenarioSchool() {
   return project;
 }
 
+// SV2-135's dead-end check moved the five hashes of the pipeline's whole result (it holds the building's findings, and the
+// sample's halls end in dead ends): `pipeline`, `a one-slot edit kept and packed`, `passing time, head count and margin edits`,
+// `B Day same as A Day` and `one teacher walking with 7A`. The engines one by one, the walks, loads, routes and the
+// schedule's findings did not move; the other five cases are the old hashes.
 const RECORDED = {
-  'sample school: pipeline': '3b94c7e25c526dff85ef9d97ad17cd3e1b2ccc5393a514ef366cd1f36001fb03',
+  'sample school: pipeline': '79ac14d7371a0aef04e095116d6cb52133b8771786eb2773a95f49a1ba523e7b',
   'sample school: engines one by one': '6f02c8f356ab12d008203c5edd9632326e91b6dcd393260b2d379688e0552587',
   'sample school: one transition and one day': '16099535543cb3c911be672a5e9365a46549db860e883e94b1d1163855a27138',
-  'sample school: a one-slot edit kept and packed': '4acf3cc5b5537a459a5dc3edd3d43b104a13d1e45c14d2daa0e3c8aa00ddfe69',
-  'sample school: passing time, head count and margin edits kept and packed': 'cd0744edc9227d6b120f78a57702855a150b92f9aa35194824bbf8c9ae81dd00',
+  'sample school: a one-slot edit kept and packed': '97d2501b932061155e4d6860e7124c2bf39437a605d4b1132de92c91d85d097e',
+  'sample school: passing time, head count and margin edits kept and packed': 'db0035a76834930823ba6a9eee7105d8e26222479bbd985363c5a4e9ac7849a9',
   'sample school: scenario lane and comparison': 'e205ecbb5d5caf96ae0d43e17f6ce08d0f32e5d2e3331c2f2afc69b6bbb5b9aa',
   'sample school: suggestions for the double booking and the long walk': 'ad893b0e9a33abf9fc109dce9cc3761bb88714df3aba3bebcd2a3aeaa5033f1d',
-  'B Day same as A Day, as an older file says it: pipeline': '7e7f1e67dcdc181db1870837951337ad7bd15d12a8c28716fd74617632967e93',
-  'one teacher walking with 7A: pipeline': '8de729e30399103cedb72463d193b32d40406ff96f592055ae08d49925a9a9eb',
+  'B Day same as A Day, as an older file says it: pipeline': 'bf4b9e5309118ceda595e4a116d347aed84c934a2a8f7e74cc99ec9705df5353',
+  'one teacher walking with 7A: pipeline': 'ac788981a2fb531353430504b5b34e2fb5744b972fafc613c6d390de6bdd0ee0',
   'the 3.13 fixture: pipeline': '2a90267044e9a1fb28c426e67fd48620c43e2d0d58d5034ff352200d5f65be78',
 };
 

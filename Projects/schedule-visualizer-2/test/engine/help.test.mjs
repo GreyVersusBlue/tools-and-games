@@ -416,6 +416,8 @@ const SHOWN = {
   elevatorWaitSeconds: [75, '75 seconds (the default is 30 seconds)'],
   elevatorSecondsPerFloor: [13, '13 seconds (the default is 6 seconds)'],
   elevatorPeoplePerTrip: [10, '10 people (the default is 8 people)'],
+  // SV2-135: the dead-end check reads it, and Help says so
+  cellScale: [{ unit: 'feet', length: 3 }, '3 feet to a cell (the default is not set)'],
 };
 
 function withSetting(dotted, value) {

@@ -56,6 +56,7 @@ export const GROUPS = {
     'engine/building.test.mjs', // SV2-04
     'engine/graph.test.mjs', // SV2-04
     'engine/building-checks.test.mjs', // SV2-04
+    'engine/dead-ends.test.mjs', // SV2-135
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/w7-rules.test.mjs', // SV2-125
     'engine/w7-actions.test.mjs', // SV2-127
@@ -201,6 +202,7 @@ export const GROUPS = {
     'browser/staff-pictures.mjs', // SV2-32e
     'browser/staff-calendar.mjs', // SV2-81
     'browser/staff-duties.mjs', // SV2-86
+    'browser/staff-w7.mjs', // SV2-133
     'browser/publish.mjs', // SV2-24
     'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
@@ -335,6 +337,7 @@ export const BROWSER_SECONDS = {
   'browser/draw-touch.mjs': 6,
   'browser/difference.mjs': 6,
   'browser/staff-duties.mjs': 5,
+  'browser/staff-w7.mjs': 12,
   'browser/calendar-faults.mjs': 5,
   'browser/doors-stairs.mjs': 5,
   'browser/elevators.mjs': 6,
