@@ -33,31 +33,20 @@
             "trust": "yusuf",
             "by": 1
           }
-        ],
-        "later": [
-          {
-            "in": 3,
-            "do": [
-              {
-                "trust": "yusuf",
-                "by": 1
-              }
-            ]
-          }
         ]
       },
       {
         "id": "not-yet",
         "label": "Not yet",
-        "hint": "Without an agent you cannot send anyone out.",
+        "hint": "Without an agent you cannot send anyone out. Partners like a house that waits.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "rep": "agents",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }

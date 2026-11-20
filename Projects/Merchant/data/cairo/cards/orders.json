@@ -118,12 +118,8 @@
           "stock": "linen",
           "gte": 10
         },
-        "hint": "It costs 5 dinars to keep them safe. Far away they may sell for 20 dinars more.",
-        "now": [
-          {
-            "money": -5
-          }
-        ],
+        "hint": "Nothing now. Far away they may sell for 20 dinars more.",
+        "now": [],
         "later": [
           {
             "in": 3,
