@@ -736,8 +736,12 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   // bring-back good is kept only if it adds; otherwise the plan brings nothing back and sends no purse.
   const sizes = n => [...new Set([0, Math.ceil(n / 3), Math.ceil(n * 2 / 3), n])];
   let loads = { ...cargo }, fetch = true, top = worth(shape(loads, true, 0));
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < 4; pass++) {
     let moved = false;
+    if (back) {   // the bring-back good stays only while it adds (a tie drops it: no purse, nothing to carry back)
+      const w = worth(shape(loads, !fetch, 0));
+      if (w > top || (w === top && fetch)) { top = w; fetch = !fetch; moved = true; }
+    }
     for (const g of Object.keys(cargo)) {
       for (const n of sizes(cargo[g])) {
         if (n === (loads[g] ?? 0)) continue;
@@ -893,7 +897,7 @@ export function estimate(state, content, plan) {
     ok: true, net, gross, stake: stakedHouse, tolls: tollsAll, wage, upkeep, shares: { agent: shares.agent, partners: shares.partners }, seasons: proj.seasons,
     age, ageWords, news: old, risk: chance, riskWord: riskWord(chance),
     line: `If prices hold: about ${sign}${commas(Math.abs(net))} ${cityOf(content, 'expeditions').currency ?? 'coins'}. ${old}; the road is ${riskWord(chance)}.`,
-    pricesSell, pricesBuy, pricesHome, impact,
+    pricesSell, pricesBuy, pricesHome, impact, back: goodsBack,
   };
 }
 
@@ -1208,7 +1212,8 @@ export function gapCauses(s, content, x, r) {
     if (!depth) return;
     const free = seen.p / (1 - (seen.glut ?? 0));
     const end = side === 'sell' ? Math.min(M.GLUT_MAX, (seen.glut ?? 0) + e.q / depth) : Math.max(M.GLUT_MIN, (seen.glut ?? 0) - e.q / depth);
-    note('own', actual - (hope.impact?.[e.good] ?? 0), { stop: e.stop, good: e.good, side, q: e.q, from: seen.p, to: Math.max(1, Math.round(free * (1 - end))) });
+    if (!hope.impact) return;   // a trip sent before the estimate recorded its own impact allowed for it all the same: no gap to name
+    note('own', actual - (hope.impact[e.good] ?? 0), { stop: e.stop, good: e.good, side, q: e.q, from: seen.p, to: Math.max(1, Math.round(free * (1 - end))) });
   };
   for (const e of book.sold ?? []) {
     const seen = seenAt(e.stop, e.good), pH = hope.sell?.[e.good];
@@ -1419,7 +1424,7 @@ function settledLine(s, content, x, out, r) {
 }
 
 /** Settles `x` (settle, then bring it home or write it off). Returns its line. */
-function settleAndClose(s, content, x, elapsed, { paper = false } = {}) {
+function settleAndClose(s, content, x, elapsed, { papers = null } = {}) {
   const out = settle(s, content, x);
   if (out.result === 'lost') {
     out.fate = out.loss.survived ? 'survived' : 'died';
@@ -1430,7 +1435,7 @@ function settleAndClose(s, content, x, elapsed, { paper = false } = {}) {
   const r = bringHome(s, content, x, { elapsed });
   // a trip that came home while the years passed leaves its paper for the first desk after the interlude (MER-98), with
   // what the sheet hoped and one sentence for the gap, besides the line the interlude page gives it
-  if (paper) put(s, returnPaper(s, content, r));
+  if (papers) papers.push(returnPaper(s, content, r));
   return settledLine(s, content, x, out, r);
 }
 
@@ -1453,13 +1458,14 @@ export function jump(s, content) {
   const entry = { at: to, kind: 'jump', from, to, years, settled: [], loans: [], agents: [], events: [] };
 
   // 1. every expedition on the road is settled
+  const papers = [];   // the return papers of the ones that came home, put on the desk once step 3 has said who is still in the house's service
   // The years pass while it finishes, so an expedition still out is charged the wage of its whole road
   // (every leg's seasons, there and back), not of the seasons it had ridden when the jump came (MER-51b).
   for (const x of s.expeditions) {
     norm(x);
     const road = routeOf(content, x.route) ? wholeRoad(content, x) : 0;
     x.out = Math.max(x.out, road);
-    entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out), { paper: true }));
+    entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out), { papers }));
     close(s, content, x, to);
   }
   s.expeditions = [];
@@ -1481,6 +1487,12 @@ export function jump(s, content) {
     if (r.trust <= -2) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'trust' }); continue; }
     r.trust = Math.trunc(r.trust / 2);
     if (chance(s, jumpChances(content).retires)) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'retired' }); }
+  }
+
+  // a paper left for the first desk (MER-98): an agent who left or retired at the jump is not asked about again, and gets no bonus
+  for (const paper of papers) {
+    if (!s.agents[paper.agent]?.hired) Object.assign(paper.data, askOf(content, null, paper.data.trip));
+    put(s, paper);
   }
 
   // 4. markets reset to the new act's base prices, with no glut

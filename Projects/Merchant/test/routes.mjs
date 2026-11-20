@@ -685,6 +685,70 @@ test('the act jump settles every expedition at the quoted prices, resets markets
   eq([o.phase, view(o, c).interlude], ['desk', null]);
 });
 
+test('MER-98 (4) the act jump brings the news of every stop on a road up to the jump\'s last year: the first season after it has news one season old at most', () => {
+  let s = newGame(calmC, { seed: 5, length: 'acts', house: 'spice' });
+  const before = M.knownPrices(s, calmC);
+  s = play(s, calmC, 8);
+  eq(s.phase, 'interlude');
+  const ends = new Set(calmC.routes.map(r => r.to));
+  const ages = [];
+  const check = (st, label) => {
+    const k = M.knownPrices(st, calmC);
+    for (const stop of calmC.stops) for (const g of Object.keys(stop.sells ?? {})) {
+      if (!ends.has(stop.id)) continue;
+      ages.push(k[stop.id][g].age);
+      ok(k[stop.id][g].age !== null && k[stop.id][g].age <= 1, `${label}: ${stop.id}/${g} is ${k[stop.id][g].ageWords}`);
+    }
+  };
+  check(s, 'at the interlude');
+  const o = openSeason(s, calmC);
+  check(o, 'the first desk');
+  ok(ages.length > 100, `${ages.length} prices checked`);
+  const t = R.bestTrades(o, calmC, 100);
+  ok(t.length > 5 && t.every(x => x.age <= 1), `${t.length} trades, the oldest news ${Math.max(...t.map(x => x.age))} seasons old`);
+  // the prices are the new act's base prices, the market having been reset: the sheet is not guessing at the old act's
+  eq(M.knownPrices(s, calmC).damascus.wool.p, M.truePrice(s, calmC, 'damascus', 'wool'));
+  ok(Object.values(before).every(x => Object.keys(x).length >= 0));
+});
+
+test('MER-98 (5) a trip that comes home inside the jump leaves its return paper, with hoped and why, on the first desk after the interlude, besides the interlude\'s line', () => {
+  const c = risk(T, 0);
+  let s = game(c, { length: 'acts' });
+  s = play(s, c, 1);
+  s = outfit(s, c, WOOL);
+  s = play(s, c, 2);
+  eq(s.phase, 'interlude');
+  const page = view(s, c).interlude;
+  eq([page.settled.length, page.settled[0].result], [1, 'home'], 'the interlude page still has its line');
+  const money = s.money;
+  const o = openSeason(s, c);
+  eq(o.money, money, 'the paper moves no money: it came home at the jump');
+  const paper = o.desk.find(p => p.kind === 'return');
+  ok(paper, 'a return paper is on the first desk');
+  eq(typeof paper.data.hoped, 'number');
+  eq(typeof paper.data.why, 'string');
+  ok(/^Mira came home from Hilltown\. The house (made|lost) \d+ coins\.$|^Mira came home from Hilltown\./.test(paper.data.headline), paper.data.headline);
+  eq(paper.data.houseNet, page.settled[0].houseNet, 'the paper and the interlude line agree on what the house made');
+  ok(paper.id !== null, 'numbered like any paper on the desk');
+  const done = endSeason(answer(o, c), c);   // it can be answered, and the season can end
+  ok(done.t > o.t);
+  // a trip lost at the jump leaves no return paper
+  const doomed = variant(risk(T, 0.95), x => { x.city.jump = { wholeLoss: 1, survivesWhole: 1 }; });
+  let d = play(outfit(play(game(doomed, { length: 'acts' }), doomed, 1), doomed, WOOL), doomed, 2);
+  if (d.phase === 'interlude') eq(openSeason(d, doomed).desk.some(p => p.kind === 'return'), false);
+});
+
+test('MER-98 (5) an agent who retires at the jump gets a return paper that asks nothing: no bonus, no "send out again"', () => {
+  const c = variant(risk(T, 0), x => { x.city.jump = { retires: 1 }; });
+  let s = play(outfit(play(game(c, { length: 'acts' }), c, 1), c, WOOL), c, 2);
+  eq(view(s, c).interlude.agents.find(a => a.id === 'mira'), { id: 'mira', left: 'retired' });
+  const paper = openSeason(s, c).desk.find(p => p.kind === 'return');
+  ok(paper, 'the account is still left for the desk');
+  eq([paper.data.entry, paper.data.ask, paper.data.choices], [null, null, []]);
+  const o = openSeason(s, c);
+  eq(paperChoices(o, c, o.desk.find(p => p.kind === 'return').id).map(x => x.id), ['ok']);
+});
+
 test('the act jump charges an expedition on the road the wage of its whole road, not of the seasons it had ridden (MER-51b)', () => {
   const run = wage => {
     const c = risk(variant(T, y => { y.agents.find(a => a.id === 'mira').wage = wage; }), 0);

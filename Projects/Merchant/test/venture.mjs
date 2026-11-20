@@ -406,4 +406,168 @@ test('view().venture on the real game: a draft the engine takes, at a stop with 
   ok(seen > 3, `${seen} seasons had a draft`);
 });
 
+// ---- MER-98: proposals that pay
+
+/** A real game played `n` seasons on the first choice of every paper. */
+const seasoned = (seed, n) => { let s = newGame(C, { seed, length: 'acts', house: C.houses[0].id }); for (let i = 0; i < n; i++) s = step(s, C); return s; };
+
+test('MER-98 (1) proposePlan: the plan it returns pays after tolls, each good it carries adds to the estimate, and the bring-back good is kept only while it adds', () => {
+  let plans = 0, nothing = 0;
+  for (const seed of [3, 5, 9]) {
+    const s = seasoned(seed, 5);
+    for (const d of R.destinations(s, C)) {
+      const plan = proposePlan(s, C, 'yusuf', d.route, { check: false });
+      if (plan.why) { nothing++; continue; }
+      plans++;
+      const e = estimate(s, C, plan);
+      ok(e.net > 0, `${seed}/${d.route}: the estimate is ${e.net}`);
+      for (const g of Object.keys(plan.cargo)) {
+        const { [g]: gone, ...cargo } = plan.cargo;
+        const less = estimate(s, C, { ...plan, cargo, sell: plan.sell.filter(x => x !== g) }).net;
+        ok(less < e.net, `${seed}/${d.route}: carrying ${g} adds ${e.net - less}`);
+      }
+      if (plan.buy.length) {
+        const bare = estimate(s, C, { ...plan, buy: [], purse: 0, ...(plan.contract === 'qirad' ? { partners: 0 } : {}) }).net;
+        ok(bare < e.net, `${seed}/${d.route}: bringing ${plan.buy[0]} back adds ${e.net - bare}`);
+      }
+    }
+  }
+  ok(plans > 10, `${plans} plans were checked (${nothing} roads had none that pays)`);
+});
+
+test('MER-98 (1) proposePlan: a good the far end pays barely more for stays at home when its extra loads sell lower than they cost', () => {
+  // salt: 10 at home, 11 in Hilltown, depth 40 at both. The first load makes 1; each next one is dearer to buy and cheaper to sell.
+  const c = still();
+  const s = game(c);
+  know(s, c, 'hilltown', 'wool', 30); know(s, c, 'hilltown', 'salt', 11);
+  const plan = proposePlan(s, c, 'mira', 'harbour-hilltown');
+  ok(!plan.why && plan.cargo.wool > 0, JSON.stringify(plan));
+  const e = estimate(s, c, plan);
+  const all = estimate(s, c, { ...plan, cargo: { ...plan.cargo, salt: 8 }, sell: [...plan.sell, 'salt'] }).net;
+  ok(all <= e.net, `eight loads of salt would not add: ${all} against ${e.net}`);
+  ok((plan.cargo.salt ?? 0) < 8, `salt: ${plan.cargo.salt ?? 0} loads`);
+});
+
+test('MER-98 (1) proposePlan: the bring-back good that adds nothing is left out, and the plan sends no purse for it', () => {
+  const c = still();
+  const s = game(c);
+  know(s, c, 'hilltown', 'wool', 30);
+  know(s, c, 'hilltown', 'salt', 10);   // as dear there as at home, and dearer with every load the house buys
+  const plan = proposePlan(s, c, 'mira', 'harbour-hilltown');
+  eq([plan.buy, plan.purse], [[], 0], JSON.stringify(plan));
+  ok(plan.sell.includes('wool'), 'the wool still goes');
+  const withIt = estimate(s, c, { ...plan, buy: ['salt'] }).net;
+  ok(estimate(s, c, plan).net > withIt, `bringing salt would take it from ${estimate(s, c, plan).net} to ${withIt}`);
+  const q = variant(still(), x => { x.city.contracts = { qirad: { agentShare: [1, 3] } }; });
+  const t = game(q);
+  know(t, q, 'hilltown', 'wool', 30); know(t, q, 'hilltown', 'salt', 10);
+  t.agents.mira.memory = [{ kind: 'unfair' }, { kind: 'unfair' }];
+  const own = proposePlan(t, q, 'mira', 'harbour-hilltown');
+  eq([own.contract, own.buy, own.purse, own.partners], ['qirad', [], 0, 0], 'a qirad with nothing to bring back puts no partner money in either');
+});
+
+test('MER-98 (1) proposePlan: with no plan that pays it carries nothing and says why in one sentence, and the view has no draft (not a losing one)', () => {
+  const c = variant(still(), x => { x.agents.find(a => a.id === 'mira').wage = 60; });
+  const s = know(game(c), c, 'hilltown', 'wool', 30);
+  const plan = proposePlan(s, c, 'mira', 'harbour-hilltown');
+  eq([plan.cargo, plan.purse, plan.sell, plan.buy], [{}, 0, [], []]);
+  ok(/^No plan the house knows of pays on the road to Hilltown: the best one would lose about \d+ coins after the tolls and the wage\.$/.test(plan.why), plan.why);
+  eq(proposePlan(s, c, 'mira', 'harbour-hilltown', { check: false }).why, plan.why, 'unchecked, the same');
+  eq(view(s, c).venture, null, 'the sheet opens on no losing draft');
+  ok(view(s, c).bestTrades.every(t => t.expected > 0), 'and best trades names none that loses either');
+  // a stop that buys nothing the house sells and sells nothing it wants at home has nothing to say but that
+  const bare = variant(still(), x => { x.stops.find(z => z.id === 'hilltown').sells = { lamps: { base: 15, depth: 10 } }; });
+  eq(proposePlan(game(bare), bare, 'mira', 'harbour-hilltown').why, 'Hilltown buys nothing the house sells and sells nothing the house wants at home.');
+});
+
+test('MER-98 (2) estimate: 14 loads bought at the far end are priced load by load, as the trade prices them, not at the one price the news gave', () => {
+  const c = still(x => { x.stops.find(z => z.id === 'hilltown').sells.salt = { base: 20, depth: 20 }; });
+  const s = know(game(c), c, 'hilltown', 'salt', 20);
+  // what 14 loads cost on the market itself: each dearer than the one before (market.js notePurchase)
+  const sim = { ...s, market: structuredClone(s.market) };
+  let cost = 0;
+  for (let k = 0; k < 14; k++) { cost += M.buyPrice(sim, c, 'hilltown', 'salt'); M.notePurchase(sim, c, 'hilltown', 'salt', 1); }
+  ok(cost > 14 * 20 + 50, `14 loads cost ${cost}, well over the 280 a flat price gives`);
+  const plan = { agent: 'mira', route: 'harbour-hilltown', cargo: {}, purse: cost + 5, contract: 'own', sell: [], buy: ['salt'] };   // 5 is the toll on the way out
+  const e = estimate(s, c, plan);
+  eq(e.back, { salt: 14 }, 'the purse buys exactly what the market sells for it');
+  eq(e.impact.salt, cost - 14 * 20, 'and the estimate says what the house\'s own buying cost it');
+  // the trade does the same
+  const out = toReturn(outfit(s, c, plan), c).s;
+  ok(out.log.some(l => l.kind === 'return'), 'the trip came home');
+});
+
+test('MER-98 (3) bestTrades: ranks by dinars a season, not by margin: a thin margin on a near road beats a wide one on a far road', () => {
+  const c = still(x => { for (const l of x.routes.find(r => r.id === 'harbour-hilltown').legs) l.seasons *= 2; });   // Hilltown is twice as far
+  const s = game(c);
+  know(s, c, 'hilltown', 'salt', 2);        // back: 10 over 2, +400%, nine seasons there and back
+  know(s, c, 'saltmarsh', 'salt', 5);       // back: 10 over 5, +100%, three seasons
+  const t = bestTrades(s, c);
+  eq(t.map(x => x.stop), ['saltmarsh', 'hilltown']);
+  ok(t[0].margin < t[1].margin, 'the first has the narrower margin');
+  ok(t[0].perSeason > t[1].perSeason, `${t[0].perSeason} a season against ${t[1].perSeason}`);
+  eq(t.map(x => x.seasons), [3, 9]);
+  ok(t.every(x => x.loads > 0 && x.expected > 0 && x.road && x.ageWords && x.riskWord));
+});
+
+test('MER-98 (3) bestTrades: a road that cannot come home before the game ends is left out', () => {
+  const c = still();
+  const last = playedLast(c);
+  const at = back => { const s = game(c); s.t = last - back; return know(s, c, 'saltmarsh', 'salt', 5); };
+  eq(bestTrades(at(3), c).map(x => x.stop), ['saltmarsh'], 'three seasons left and three there and back: it can');
+  eq(bestTrades(at(2), c), [], 'two seasons left: it cannot, however wide the margin');
+});
+const playedLast = c => { const g = game(c); let n = 0; for (const a of c.calendar.lengths.full.acts) n += a.to - a.from + 1; return n - 1; };
+
+test('MER-98 (3) bestTrades: news older than about eight seasons ranks below fresh news, even for the better trade', () => {
+  const c = still();
+  const s = game(c);
+  know(s, c, 'hilltown', 'salt', 1, 9);     // the better trade on paper, news nine seasons old
+  know(s, c, 'saltmarsh', 'salt', 5, 0);    // fresh
+  const t = bestTrades(s, c);
+  eq(t.map(x => x.stop), ['saltmarsh', 'hilltown']);
+  ok(t[1].perSeason > t[0].perSeason, `the old one makes ${t[1].perSeason} a season to the fresh one's ${t[0].perSeason}`);
+  ok(t[1].score < t[0].score);
+  const same = (age) => { const u = game(c); know(u, c, 'saltmarsh', 'salt', 5, age); return bestTrades(u, c)[0].score; };
+  ok(same(0) > same(4) && same(4) > same(8) && same(8) > same(16), 'and the older, the less it is worth');
+  eq(Math.round(same(8) / same(0) * 100), 50, 'half after eight seasons');
+});
+
+// ---- MER-98 (6): the why
+
+test('MER-98 (6) why, the house\'s own buying: named with the loads and the price before and after when it is the largest cause', () => {
+  const c = still(x => { x.stops.find(z => z.id === 'hilltown').sells.salt = { base: 20, depth: 20 }; });
+  let s = know(know(game(c), c, 'hilltown', 'wool', 30), c, 'hilltown', 'salt', 20);
+  const plan = { ...WOOL, cargo: { wool: 3 }, purse: 300, buy: ['salt'] };
+  s = outfit(s, c, plan);
+  const x = s.expeditions[0], flat = Object.values(x.hope.impact).reduce((a, b) => a + b, 0);
+  ok(x.hope.impact.salt > x.hope.impact.wool, `the estimate allowed ${JSON.stringify(x.hope.impact)} for the house's own loads`);
+  // a sheet that priced every load at the one price: the gap is the house's own loads, the buying the larger part
+  x.hope.impact = {}; x.hope.net += flat; x.hoped += flat;
+  const { paper } = toReturn(s, c);
+  ok(/^Buying \d+ loads pushed the price of salt in Hilltown up from 20 to \d+\.$/.test(paper.data.why), paper.data.why);
+});
+
+test('MER-98 (6) why, the house\'s own selling: named the same way, and a sheet that allowed for it says "about as hoped"', () => {
+  const c = still();
+  let s = know(game(c), c, 'hilltown', 'wool', 30);
+  s = outfit(s, c, WOOL);
+  const sound = structuredClone(s);
+  eq(toReturn(sound, c).paper.data.why, 'The trip went about as hoped.', 'ten loads sold lower with each load, and the sheet knew');
+  const x = s.expeditions[0], flat = Object.values(x.hope.impact).reduce((a, b) => a + b, 0);
+  ok(flat > 40);
+  x.hope.impact = {}; x.hope.net += flat; x.hoped += flat;
+  const why = toReturn(s, c).paper.data.why;
+  ok(/^Selling 10 loads pushed the price of wool in Hilltown down from 30 to \d+\.$/.test(why), why);
+});
+
+test('MER-98 (6) why, no news: "We had no news of Hilltown and guessed 30." in plain English, not "the 30 we had no news and guessed"', () => {
+  const c = still();
+  const s = game(c);
+  s.market.hilltown.wool.f = 0.5;     // the stop pays 15; the house, with no news, guessed the base price
+  const { paper } = toReturn(outfit(s, c, WOOL), c);
+  eq(paper.data.why, 'Hilltown paid 15 for wool when Mira arrived. We had no news of Hilltown and guessed 30.');
+  ok(!/the \d+ we had no news/.test(paper.data.why));
+});
+
 await done();
