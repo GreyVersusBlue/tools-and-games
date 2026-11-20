@@ -227,22 +227,48 @@ export function paperTitle(content, paper, cards) {
   return cards?.[paper.id]?.title ?? sourceOf(content, paper).title ?? 'A paper';
 }
 
-/** The headline on an opened return (DESIGN 2.2 rule 2): the engine's sentence, then what the sheet hoped for at sending and
-    the one reason for the gap. A save from before `hoped` was kept (both null) reads as it always did. */
+/** The headline on an opened return (DESIGN 2.2 rule 2): only the engine's first sentences, who came home and what the house
+    made. What the sheet hoped for, the one reason for the gap and any unsold goods follow in body type (`returnLead`). */
 export function returnHeadline(content, paper) {
-  const d = paper.data ?? {}, head = paperTitle(content, paper);
-  if (paper.kind !== 'return') return head;
-  const held = unsoldLine(d);
-  if (!Number.isFinite(d.hoped) || !d.why) return held ? `${head} ${held}` : head;
-  const hoped = d.hoped >= 0 ? `We hoped for about ${dinars(d.hoped)}.` : `We expected to lose about ${dinars(-d.hoped)}.`;
-  return `${head} ${held ? `${held} ` : ''}${hoped} ${d.why}`;
+  return paperTitle(content, paper);
 }
 
-/** One sentence for goods that came home unsold, from the account's "Back home" row (the engine writes it
-    "14 loads of wool cloth (worth 880 dinars in Cairo now), 880 dinars in all"): "14 loads of wool cloth are in the
-    warehouse, worth about 880 at Cairo's price." Null when nothing came home but money. The row is the only place
-    the paper carries the goods, so this reads its words; if the engine changes them the sentence goes (journey pins it). */
-export function unsoldLine(d) {
+/** The body-type lead under a return's headline: the unsold goods, then what the sheet hoped for at sending and the one reason
+    for the gap. Null when there is nothing to say. A save from before `hoped` was kept (both null) says only the unsold goods. */
+export function returnLead(content, paper) {
+  if (paper.kind !== 'return') return null;
+  const d = paper.data ?? {}, held = unsoldLine(d, content);
+  if (!Number.isFinite(d.hoped) || !d.why) return held;
+  const hoped = d.hoped >= 0 ? `We hoped for about ${dinars(d.hoped)}.` : `We expected to lose about ${dinars(-d.hoped)}.`;
+  return `${held ? `${held} ` : ''}${hoped} ${d.why}`;
+}
+
+const goodOf = (content, id) => (content.goods ?? []).find(g => g.id === id);
+
+/** Goods as a spoken list: '7 loads of sugar, 3 of wool cloth, 4 of pepper and 2 of linen'. The unit is said once, by the first
+    good, and again only where a good's unit differs; one good is '4 loads of pepper', one load is '1 load of pepper'. */
+export function goodsList(content, goods) {
+  const items = Object.entries(goods ?? {}).filter(([, n]) => n > 0);
+  const first = goodOf(content, items[0]?.[0])?.unit ?? 'load';
+  const parts = items.map(([g, n], i) => {
+    const unit = goodOf(content, g)?.unit ?? 'load', name = (goodOf(content, g)?.name ?? g).toLowerCase();
+    return i && unit === first ? `${n} of ${name}` : `${n} ${n === 1 ? unit : `${unit}s`} of ${name}`;
+  });
+  return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/** One sentence for goods that came home unsold: "14 loads of wool cloth are in the warehouse, worth about 880 at Cairo's
+    price." Null when nothing came home but money. It reads the paper's `goodsBack` and `cargoValue` (MER-103); a paper saved
+    before those fields reads the account's "Back home" row instead ("14 loads of wool cloth (worth 880 dinars in Cairo now),
+    880 dinars in all"), and if the engine changes those words the fallback goes quiet (journey pins it). */
+export function unsoldLine(d, content = null) {
+  if (d?.goodsBack && content) {
+    const n = Object.values(d.goodsBack).filter(q => q > 0);
+    if (!n.length) return null;
+    const home = content.city?.home, place = (content.stops ?? []).find(x => x.id === home)?.name ?? home;
+    const one = n.length === 1 && n[0] === 1;
+    return `${cap(goodsList(content, d.goodsBack))} ${one ? 'is' : 'are'} in the warehouse, worth about ${num(d.cargoValue ?? 0)} at ${place}'s price.`;
+  }
   const row = (d?.account ?? []).find(r => r.label === 'Back home');
   const m = /^(.+?) \(worth ([\d,]+)(?: [^)]*?)? in ([^)]+?) now\)/.exec(row?.text ?? '');
   if (!m) return null;
@@ -428,6 +454,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
     head(app, senderOf(content, paper)),
     slot,
     h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, returnHeadline(content, paper)),
+    paper.kind === 'return' && returnLead(content, paper) ? h('p', { class: 'return-lead' }, returnLead(content, paper)) : null,
     ...body,
     asking ? null : h('button', { class: 'button next', type: 'button', id: 'btn-next', onclick: onDone }, paper.kind === 'return' ? 'Into the ledger' : 'Noted'));
 }

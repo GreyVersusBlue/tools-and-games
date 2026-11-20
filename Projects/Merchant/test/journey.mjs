@@ -27,12 +27,14 @@ const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'st
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-/** The headline an opened return paper wears (DESIGN 2.2 rule 2): the engine's sentence, then what was hoped for and the one reason for the gap.
-    A paper from before `hoped` was kept (hoped and why null) reads as its engine headline alone. */
+/** The headline an opened return paper wears (MER-104): the engine's first sentences only, who came home and what the house made.
+    What was hoped for, the one reason for the gap and the unsold goods sit under it in body type (`leadOf`). */
 const dinarsOf = n => `${withCommas(n)} ${Math.abs(n) === 1 ? 'dinar' : 'dinars'}`;
-const headlineOf = p => (Number.isFinite(p.data.hoped) && p.data.why
-  ? `${p.data.headline} ${p.data.hoped >= 0 ? `We hoped for about ${dinarsOf(p.data.hoped)}.` : `We expected to lose about ${dinarsOf(-p.data.hoped)}.`} ${p.data.why}`
-  : p.data.headline);
+const headlineOf = p => p.data.headline;
+/** The hoped and why sentences of an opened return (DESIGN 2.2 rule 2), without the unsold sentence. */
+const hopedWhyOf = p => (Number.isFinite(p.data.hoped) && p.data.why
+  ? `${p.data.hoped >= 0 ? `We hoped for about ${dinarsOf(p.data.hoped)}.` : `We expected to lose about ${dinarsOf(-p.data.hoped)}.`} ${p.data.why}`
+  : null);
 
 /** The plan the outfit sheet opens on for `stop` (outfit.js): the first expedition of a game opens on the plain suggestion; after that
     the engine's proposal for the free agent who knows the stop first (then the others) on the road the sheet picks. The page's Send
@@ -482,7 +484,7 @@ try {
     const got = await screenOf(page), want = expected(s);
     eq([got.date, got.count, got.money, got.left], [want.date, want.count, want.money, want.left], `${label}: bar and counter`);
     if (want.open.length) {
-      // an opened return wears its longer headline (hoped and why, MER-93); the same paper's edge, and every other paper, its short title
+      // an opened return wears its engine headline (hoped and why sit under it, MER-104); the same paper's edge, and every other paper, its short title
       const open = s.desk.filter(p => p.state === 'open');
       const names = open.map(p => (p.id === got.paper && p.kind === 'return' ? headlineOf(p) : titleOf(s, p)));
       eq([got.raised, ...got.edges].sort(), [...names].sort(), `${label}: papers on the desk`);
@@ -888,14 +890,22 @@ try {
     };
     let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
     let sawReturn = null;
-    await test('MER-93: a return from a save that kept no hoped and why reads as it did before; one that kept them says the hope and the reason', async () => {
-      const { returnHeadline } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
+    await test('MER-93: a return from a save that kept no hoped and why reads as it did before; one that kept them says the hope and the reason (MER-104: under the headline)', async () => {
+      const { returnHeadline, returnLead } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
       const head = 'Yusuf came home from Damascus. The house made 12 dinars.';
-      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: null, why: null } }), head, 'both null');
-      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head } }), head, 'neither written');
-      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: 340, why: null } }), head, 'a hope with no reason is not half said');
-      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: 340, why: 'Damascus had too much linen.' } }), `${head} We hoped for about 340 dinars. Damascus had too much linen.`);
-      eq(returnHeadline(nodeContent, { kind: 'return', data: { headline: head, hoped: -20, why: 'The trip went about as hoped.' } }), `${head} We expected to lose about 20 dinars. The trip went about as hoped.`);
+      for (const data of [{ headline: head, hoped: null, why: null }, { headline: head }, { headline: head, hoped: 340, why: null }, { headline: head, hoped: 340, why: 'Damascus had too much linen.' }]) {
+        eq(returnHeadline(nodeContent, { kind: 'return', data }), head, 'the headline is the engine\'s sentences, whatever the paper kept');
+      }
+      eq(returnLead(nodeContent, { kind: 'return', data: { headline: head, hoped: null, why: null } }), null, 'both null');
+      eq(returnLead(nodeContent, { kind: 'return', data: { headline: head } }), null, 'neither written');
+      eq(returnLead(nodeContent, { kind: 'return', data: { headline: head, hoped: 340, why: null } }), null, 'a hope with no reason is not half said');
+      eq(returnLead(nodeContent, { kind: 'return', data: { headline: head, hoped: 340, why: 'Damascus had too much linen.' } }), 'We hoped for about 340 dinars. Damascus had too much linen.');
+      eq(returnLead(nodeContent, { kind: 'return', data: { headline: head, hoped: -20, why: 'The trip went about as hoped.' } }), 'We expected to lose about 20 dinars. The trip went about as hoped.');
+    });
+    await test('MER-104: the unsold sentence leads the body lines, after the headline and before the hope', async () => {
+      const { returnLead } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
+      const lead = returnLead(nodeContent, { kind: 'return', data: { headline: 'x', hoped: 36, why: 'Prices moved.', goodsBack: { linen: 2 }, cargoValue: 120 } });
+      ok(lead.startsWith('2 loads of linen are in the warehouse, worth about 120 at ') && lead.endsWith(' We hoped for about 36 dinars. Prices moved.'), lead);
     });
     await test('play to the first return: the page matches the engine every season, and the return paper leads with its sentence', async () => {
       for (let season = 1; season <= 10 && !sawReturn; season++) {
@@ -912,7 +922,8 @@ try {
             await page.waitForFunction(h => document.querySelector('.sheet-title')?.textContent === h, {}, headlineOf(ret));
           // MER-93: the headline names what the sheet hoped for at sending and why the house made more or less
           ok(Number.isFinite(ret.data.hoped) && ret.data.why, `the return carries hoped and why: ${JSON.stringify([ret.data.hoped, ret.data.why])}`);
-          ok((await page.$eval('.sheet-title', e => e.textContent)).startsWith(`${ret.data.headline} We `) && (await page.$eval('.sheet-title', e => e.textContent)).endsWith(ret.data.why), 'the headline is the sentence, then the hope, then the reason');
+          eq(await page.$eval('.sheet-title', e => e.textContent), ret.data.headline, 'MER-104: the headline is the engine\'s sentences and nothing more');
+          { const lead = await page.$eval('.sheet-title + .return-lead', e => e.textContent); ok(lead.endsWith(hopedWhyOf(ret)), `the hope and the reason follow in body type: ${lead}`); }
           eq(await page.$eval('.sheet', e => e.dataset.kind), 'return');
           eq(await page.$eval('.account', d => d.open), false, 'the account is folded shut on the first return of a game');
           ok((await page.$eval('.account summary', e => e.textContent)) === 'Show the account');
@@ -2349,6 +2360,32 @@ try {
         eq(await page.$eval('#bar-money', e => e.textContent.trim()), `${withCommas(later.money)} dinars`, 'the cash is unchanged');
         eq(await page.$eval('#btn-warehouse', e => e.textContent), `${held} ${held === 1 ? 'load' : 'loads'} in the warehouse`);
       });
+      await test('MER-104: what they carry out reads with commas and one "and": one good, two goods, three or more', async () => {
+        const rich = structuredClone(later); rich.money = 100000;
+        await loadSave(page, rich, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.click('#change-carry'); await page.waitForSelector('#step-purse');
+        const ids = await page.$$eval('[id^="step-cargo-"][role="spinbutton"]', es => es.map(e => e.id.replace('step-cargo-', '')));
+        ok(ids.length >= 3, `setup: three goods to carry: ${ids}`);
+        for (const g of ids) { await page.focus(`#step-cargo-${g}`); await page.keyboard.press('Home'); }
+        const good = g => nodeContent.goods.find(x => x.id === g), unit = (g, n) => `${good(g).unit ?? 'load'}${n === 1 ? '' : 's'}`;
+        const want = cargo => {
+          const e = Object.entries(cargo), first = good(e[0][0]).unit ?? 'load';
+          const parts = e.map(([g, n], i) => (i && (good(g).unit ?? 'load') === first ? `${n} of ${good(g).name.toLowerCase()}` : `${n} ${unit(g, n)} of ${good(g).name.toLowerCase()}`));
+          return parts.length < 2 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+        };
+        const cargo = {}, n = [4, 2, 3];
+        for (let i = 0; i < 3; i++) {
+          cargo[ids[i]] = n[i];
+          await page.focus(`#step-cargo-${ids[i]}`); for (let k = 0; k < n[i]; k++) await page.keyboard.press('ArrowUp');
+          eq(await page.$eval('#outfit-total', e => e.textContent), `In all: ${want(cargo)}.`, `${i + 1} good(s)`);
+        }
+        ok(!/ and .* and /.test(await page.$eval('#outfit-total', e => e.textContent)), 'three goods chain one and');
+        await page.click('#outfit-cancel');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      });
       // nothing pays: the house has no money and one load of linen, and the engine's plan for every free agent carries nothing and says why
       const poor = structuredClone(later); poor.money = 0; poor.stock = { linen: 1 };
       const poorWhy = eng.proposePlan(poor, nodeContent, freeOf(poor)[0].id, eng.routeFor(poor, nodeContent, 'damascus').route.id).why;
@@ -3021,11 +3058,13 @@ try {
     await test('MER-99: a return whose goods came home unsold says so in its headline, in one sentence, with the price at home', async () => {
       const st = askingReturn(), r = st.desk[0];
       r.data.account.find(x => x.label === 'Back home').text = '14 loads of wool cloth (worth 880 dinars in Cairo now), 880 dinars in all';
+      delete r.data.goodsBack; delete r.data.cargoValue;   // a paper saved before MER-103 kept the goods only in its account row
       await load(st);
       const said = '14 loads of wool cloth are in the warehouse, worth about 880 at Cairo\'s price.';
-      const title = await page.$eval('.sheet-title', e => e.textContent);
-      ok(title.startsWith(`${r.data.headline} ${said}`), title);
-      eq(title.split(said).length, 2, 'said once');
+      const title = await page.$eval('.sheet-title', e => e.textContent), lead = await page.$eval('.sheet-title + .return-lead', e => e.textContent);
+      eq(title, r.data.headline, 'MER-104: the headline does not carry the unsold sentence');
+      ok(lead.startsWith(said), lead);
+      eq(lead.split(said).length, 2, 'said once');
       const lines = await page.evaluate(async () => {
         const { unsoldLine } = await import('./js/ui/screens/paper.js');
         const row = text => ({ account: [{ label: 'Back home', text }] });
@@ -3035,6 +3074,21 @@ try {
       });
       eq(lines, ['1 load of wool cloth is in the warehouse, worth about 63 at Cairo\'s price.',
         '3 loads of linen, 2 loads of silk are in the warehouse, worth about 1,240 at Cairo\'s price.', null, null, null]);
+    });
+    await test('MER-104: unsoldLine reads goodsBack and cargoValue when the paper has them, and the page shows that sentence', async () => {
+      const st = askingReturn(), r = st.desk[0];
+      r.data.goodsBack = { linen: 7, wool: 3 }; r.data.cargoValue = 1234;
+      r.data.account.find(x => x.label === 'Back home').text = '99 loads of silk (worth 5 dinars in Nowhere now), 5 dinars in all';   // the row must not be what is read
+      await load(st);
+      const lead = await page.$eval('.sheet-title + .return-lead', e => e.textContent);
+      const names = await page.evaluate(() => window.__merchant.content.goods.filter(g => ['linen', 'wool'].includes(g.id)).map(g => g.name.toLowerCase()));
+      ok(lead.startsWith(`7 loads of ${names[0]} and 3 of ${names[1]} are in the warehouse, worth about 1,234 at Cairo's price.`), lead);
+      const got = await page.evaluate(async () => {
+        const { unsoldLine } = await import('./js/ui/screens/paper.js');
+        const c = window.__merchant.content;
+        return [unsoldLine({ goodsBack: { linen: 1 }, cargoValue: 63 }, c), unsoldLine({ goodsBack: {}, cargoValue: 0, account: [{ label: 'Back home', text: '1 load of linen (worth 63 dinars in Cairo now)' }] }, c)];
+      });
+      eq(got, [`1 load of ${names[0]} is in the warehouse, worth about 63 at Cairo's price.`, null], 'one load is singular; an empty goodsBack is nothing home, whatever the row says');
     });
     await test('MER-99: a return paper the engine wrote with goods home reads in the engine\'s own words (the sentence is cut from its account row)', async () => {
       const { unsoldLine } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
