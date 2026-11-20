@@ -290,7 +290,7 @@ function lostPaper(s, content, x, loss, leg) {
   }
   const idx = seasonIndex(s, content);
   // an order the loss overtook says what became of it, in one sentence (MER-88)
-  const line = orderLine(content, x, seasonIndex(s, content));
+  const line = orderLine(content, x, seasonIndex(s, content), leg);
   if (line) lines.push({ label: 'Your order', text: line });
   const trip = tripFacts(content, x.agent, route, leg.to, mainGoodOf(x.book?.cargo ?? x.cargo), idx + 1 - x.sent, x.id);
   const entry = pickEntry(s, content, 'loss', { by: leg.by, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
@@ -338,33 +338,40 @@ const placeText = (content, p) => `${p.standing === false ? 'on the road to' : '
 
 /** One sentence for a return or a loss whose orders changed what the expedition did, or whose answer could not (DESIGN 2.1
     rule 5), or null. The last order that acted is told first (`decide`, letters.js, wrote what the agent did and whether the
-    agent would have done it unasked); failing that, the last answer that did not act: one that had not reached the agent
-    when the trip ended, or reached it between decision points after the last one, "too late", and where (MER-88). A turn-back
-    answer is never lost without a word: it turns the agent back or this line says why it did not. */
-export function orderLine(content, x, idx) {
-  const o = (x.book?.orders ?? []).filter(e => e.changed).at(-1);
+    agent would have done it unasked); failing that, the last turn-back answer that did not act. A turn-back answer is never
+    lost without a word: it turns the agent back, or this line says why it did not (MER-88): there was no road home from the
+    stop it was used at, the agent was already on the way home, it reached the agent after the last stop where it could
+    turn, or the trip ended (`lostOn`, the leg a loss struck) before it reached the agent or before the next stop. */
+export function orderLine(content, x, idx, lostOn = null) {
   const name = agentOf(content, x.agent)?.name ?? x.agent;
   const route = routeOf(content, x.route);
+  const partyAt = stop => `the ${VESSEL[route?.legs?.find(l => l.from === stop && l.by)?.by] ?? 'party'}`;
+  const noTurn = e => (e.beyond
+    ? `You told ${name} to turn back at ${stopName(content, e.stop)}, but ${partyAt(e.stop)} was already on the road home, so there was nowhere to turn back to.`
+    : `Because you told ${name} to turn back at ${stopName(content, e.stop)}, ${partyAt(e.stop)} would have, but no road leads home from there, so it went on.`);
+  const o = (x.book?.orders ?? []).filter(e => e.changed).at(-1);
   if (o) {
-    const at = stopName(content, o.stop);
-    const by = route?.legs?.find(l => l.from === o.stop && l.by)?.by;
-    const party = `the ${VESSEL[by] ?? 'party'}`;
+    const at = stopName(content, o.stop), party = partyAt(o.stop);
     if (o.did === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited a season there before going on.`;
-    if (o.did === HOME) {
-      if (x.book.turned === o.stop) return `Because you told ${name} to turn back at ${at}, ${party} came home from there.`;
-      return `Because you told ${name} to turn back at ${at}, ${party} would have, but no road leads home from there, so it went on.`;
-    }
+    if (o.did === HOME) return x.book.turned === o.stop ? `Because you told ${name} to turn back at ${at}, ${party} came home from there.` : noTurn(o);
     if (o.go === WAIT) return `Because you told ${name} to wait at ${at}, ${party} waited as long as a trip may, then went on.`;
     return `Because you told ${name} to go on from ${at}, ${party} did not wait there.`;
   }
-  // an order used where the agent was already on the way home, or that could not turn it back
+  // an order used where the agent would have gone home unasked, or already was: it did not turn either
   const home = (x.book?.orders ?? []).filter(e => e.go === HOME && e.did === HOME && x.book.turned !== e.stop).at(-1);
-  if (home) return `You told ${name} to turn back at ${stopName(content, home.stop)}, but ${home.beyond ? `${name} was already on the road home` : 'no road leads home from there'}, so ${name} went on.`;
+  if (home) return noTurn(home);
   const late = (x.orders ?? []).filter(e => !e.used && e.go === HOME).at(-1);
   if (!late) return null;
   const what = `You told ${name} to turn back`;
-  if (late.at === undefined || (idx !== undefined && late.at > idx)) return `${what}, but the answer had not reached ${name} when the trip ended.`;
-  return `${what}, but the answer arrived too late: ${name} was ${late.place ? placeText(content, late.place) : 'on the road'} by then and had passed the last place to turn.`;
+  const reached = late.at !== undefined && (idx === undefined || late.at <= idx);
+  const wayOf = leg => `${stopName(content, leg.from)} to ${stopName(content, leg.to)}`;
+  if (lostOn) {
+    if (route && route.legs.indexOf(lostOn) > outEnd(route)) return `${what}, but ${name} was already on the road home when the ${VESSEL[lostOn.by] ?? 'party'} was lost on the way from ${wayOf(lostOn)}, so there was nowhere to turn back to.`;
+    if (!reached) return `${what}, but the answer had not reached ${name} when the ${VESSEL[lostOn.by] ?? 'party'} was lost on the way from ${wayOf(lostOn)}.`;
+    return `${what}, and the answer reached ${name} ${late.place ? placeText(content, late.place) : 'on the road'}, but the ${VESSEL[lostOn.by] ?? 'party'} was lost on the way from ${wayOf(lostOn)} before there was a stop to turn back at.`;
+  }
+  if (!reached) return `${what}, but the answer had not reached ${name} when the trip ended.`;
+  return `${what}, but the answer arrived too late: ${name} was ${late.place ? placeText(content, late.place) : 'on the road'} by then, past the last stop where the party could turn.`;
 }
 
 /** What a loss costs each party under the contract: the capital bears it in proportion to stake. */
@@ -858,17 +865,19 @@ function returnPaper(s, content, r) {
   const seasons = r.elapsed;
   const trip = { ...tripFacts(content, x.agent, route, x.book.turned ?? route.to, mainGoodOf(book.cargo), seasons, x.id), orders: (book.orders ?? []).map(o => ({ ...o })) };
   const line = orderLine(content, x, seasonIndex(s, content));
+  // "Sell the linen now?" is about the good that came home, not the one that went out (MER-88): the facts and the words
+  // read the main good of what came back, and `brought` says something did. A trip that sold everything it carried asks nothing about it.
+  const homeGood = mainGoodOf(r.goodsBack);
+  const asking = { ...trip, good: homeGood ?? trip.good };
   const entry = pickEntry(s, content, 'return', {
-    outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even', agent: x.agent, to: trip.to, good: trip.good, seasons, orders: !!line,
-    contract: x.contract.kind, lost: Object.keys(book.lost ?? {}).length > 0,
-    // the trip's main good came home in the cargo: "Sell the linen now?" is asked only of a trip that brought some (MER-88)
-    brought: (r.goodsBack[trip.good] ?? 0) > 0,
+    outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even', agent: x.agent, to: trip.to, good: asking.good, seasons, orders: !!line,
+    contract: x.contract.kind, lost: Object.keys(book.lost ?? {}).length > 0, brought: homeGood !== null,
   });
   return {
     kind: 'return', ref: 'return', agent: x.agent, expedition: x.id,
     data: {
       headline: line ? `${line} ${headline}` : headline,
-      orderLine: line, trip, ...askOf(content, entry, trip),
+      orderLine: line, trip, ...askOf(content, entry, asking),
       route: `${homeName} to ${dest} and back, ${words(seasons)} ${plural(seasons, 'season', 'seasons')}`,
       account: rows, houseNet: n, outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even',
       shares: { agent: r.shares.agent, partners: r.shares.partners, house: r.shares.house },

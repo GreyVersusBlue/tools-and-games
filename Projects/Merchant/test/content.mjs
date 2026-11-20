@@ -487,4 +487,19 @@ test('data.js: returns.json is loaded by the page\'s loader (fetch as well as fs
   eq((await loadContent('testport', { fetch: serve(/returns\.json$/), base: root })).returns, [], 'a city with no returns.json reads an empty list');
 });
 
+test('validate: a choice may carry its own result text (MER-88); on a card or a letter it may not use a slot, and it must be a string', () => {
+  const withResult = (v, where = 'cards') => variant(c => { c[where][0].choices[0].result = v; });
+  eq(problemsOf(withResult('You paid the broker and he left content.')), [], 'a plain result passes');
+  ok(problemsOf(withResult('')).some(p => /non-empty string/.test(p.message)), 'an empty one is refused');
+  ok(problemsOf(withResult(7)).some(p => /non-empty string/.test(p.message)), 'a number is refused');
+  ok(problemsOf(withResult('{agent} paid the broker.')).some(p => /result.*may not use/.test(`${p.path} ${p.message}`)), 'a card\'s result with a slot is refused');
+  ok(problemsOf(withResult('{agent} waits.', 'letters')).some(p => /result.*may not use/.test(`${p.path} ${p.message}`)), 'and so is a letter\'s');
+});
+test('validate: returns.json facts include brought, a true-or-false key on a return entry and not on a loss entry (MER-88)', () => {
+  const edit = (paper, facts) => variant(c => { c.returns = [{ id: 'fact-probe', paper, facts, title: 'Home', body: 'Home again.', choices: [{ id: 'ok', label: 'Fine', now: [] }], note: 'An invented entry for testing.' }]; });
+  eq(problemsOf(edit('return', { brought: true })), [], 'a return entry may name it');
+  ok(problemsOf(edit('return', { brought: 'yes' })).length > 0, 'it is true or false');
+  ok(problemsOf(edit('loss', { brought: true })).some(p => /no fact "brought"/.test(p.message)), 'a loss entry has no such fact');
+});
+
 await done();

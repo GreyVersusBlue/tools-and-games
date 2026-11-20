@@ -662,4 +662,56 @@ test(`a cairo measure: ${GAMES} three-act games, at least 80 percent of answered
   eq(m.stranded, 0, 'no report left in the post at the game\'s end');
 });
 
+test('(MER-88) a later effect set by a letter\'s answer is named on the Accounts paper by the letter and the answer', () => {
+  const c = writing(trek(calm), question('q1', at('s2'), { title: 'The wind at Stop 2', choices: choicesOf().map(ch => (ch.id === 'on' ? { ...ch, later: [{ in: 1, do: [{ money: 5 }] }] } : ch)) }));
+  const seed = seedFor(c, st => st.some(s => s.desk.some(p => p.ref === 'q1')), { n: 8 });
+  const states = play(c, seed, { choices: { q1: 'on' }, n: 10 });
+  const items = states.flatMap(s => s.desk).filter(p => p.kind === 'accounts').flatMap(p => p.items);
+  const item = items.find(i => i.from === 'q1/on');
+  ok(item, 'the effect fired onto the Accounts paper');
+  eq([item.card, item.choice], ['The wind at Stop 2', 'Go on']);
+});
+
+// ---- MER-88: a turn-back answer turns the agent back, or the paper says in one sentence why it did not
+const lossy = (risk, stop) => writing(variant(trek(calm, { risk }), x => { x.city.jump = { wholeLoss: 1 }; }), question('q1', at(stop)));
+const lostOf = states => states.flatMap(s => s.desk).find(p => p.kind === 'lost');
+test('(MER-88) a loss that overtook a turn-back answer says the answer had not reached the agent, and where the loss struck', () => {
+  const c = lossy({ 4: 1 }, 's2');
+  const seed = seedFor(c, st => /had not reached/.test(lostOf(st)?.data.orderLine ?? ''), { choices: { q1: 'home' }, n: 10 });
+  const p = lostOf(play(c, seed, { choices: { q1: 'home' }, n: 10 }));
+  eq(p.data.orderLine, 'You told Tobin to turn back, but the answer had not reached Tobin when the mule train was lost on the way from Stop 4 to Stop 5.');
+  ok(p.data.lines.some(l => l.label === 'Your order' && l.text === p.data.orderLine), 'the paper prints it as a line');
+});
+test('(MER-88) a loss on the leg after the answer reached the agent says where the answer found it', () => {
+  const c = lossy({ 3: 1 }, 's1');
+  const seed = seedFor(c, st => /before there was a stop to turn back at/.test(lostOf(st)?.data.orderLine ?? ''), { choices: { q1: 'home' }, n: 10 });
+  const p = lostOf(play(c, seed, { choices: { q1: 'home' }, n: 10 }));
+  eq(p.data.orderLine, 'You told Tobin to turn back, and the answer reached Tobin at Stop 3, but the mule train was lost on the way from Stop 3 to Stop 4 before there was a stop to turn back at.');
+});
+test('(MER-88) an answer that reached an agent already on the road home says there was nowhere to turn back to', () => {
+  const c = lossy({ 3: 1 }, 's2');
+  const seed = seedFor(c, st => /already on the road home/.test(lostOf(st)?.data.orderLine ?? ''), { choices: { q1: 'home' }, n: 10 });
+  const p = lostOf(play(c, seed, { choices: { q1: 'home' }, n: 10 }));
+  ok(/^You told Tobin to turn back at Stop \d, but the mule train was already on the road home, so there was nowhere to turn back to\.$|was already on the road home when the mule train was lost/.test(p.data.orderLine), p.data.orderLine);
+});
+test('(MER-88) over sixty games, every turn-back answer given to a living expedition ends in a turn or a sentence on its paper', () => {
+  let checked = 0, turned = 0;
+  for (const risk of [{}, { 3: 0.5 }]) for (const stop of ['s1', 's2', 's3']) {
+    const c = lossy(risk, stop);
+    for (let seed = 1; seed <= 10; seed++) {
+      const states = play(c, seed, { choices: { q1: 'home' }, n: 14 });
+      const answered = states.find(s => s.desk.some(p => p.ref === 'q1' && s.expeditions.some(x => x.id === p.expedition)));
+      if (!answered) continue;
+      const paper = states.flatMap(s => s.desk).find(p => (p.kind === 'return' || p.kind === 'lost') && p.expedition === answered.desk.find(q => q.ref === 'q1').expedition);
+      if (!paper) continue;
+      checked++;
+      const line = paper.data.orderLine;
+      ok(typeof line === 'string' && /turn back/.test(line), `seed ${seed}, ${JSON.stringify(risk)}, ${stop}: a ${paper.kind} paper with no word on the turn-back answer (${line})`);
+      if (/came home from there/.test(line)) turned++;
+    }
+  }
+  ok(checked >= 20, `only ${checked} games gave a turn-back answer to a living expedition`);
+  ok(turned >= 1, 'some of them turned');
+});
+
 await done();
