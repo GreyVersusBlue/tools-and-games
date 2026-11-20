@@ -238,6 +238,16 @@ test('once a trip has written, its chance falls back to the plain one, however q
   const late = tripsOf(everyStop(), 800, 4).filter(st => !wroteAt(st, 2) && wroteAt(st, 3)), again = late.filter(st => wroteAt(st, 4)).length;
   ok(late.length > 200 && again / late.length > 0.38 && again / late.length < 0.62, `${again} of ${late.length} trips that wrote at their second opening wrote again at the third (half expected)`);
 });
+test('(MER-82) a trip with a single writing opening writes there for sure the first time, whatever the seed', () => {
+  // one stop: the expedition stands at s1 in season 2, the only opening it has; a half chance would miss it about every other game
+  const c = writing(trek(calm, { n: 1 }), report('r1', at('s1'), { repeat: true }));
+  for (let seed = 1; seed <= 60; seed++) ok(wroteAt(play(c, seed, { n: 4 }), 2), `seed ${seed}: no letter at the only opening`);
+});
+test('(MER-82) the sure opening is the last one a trip has: with a later opening the first stays a draw', () => {
+  const trips = tripsOf(everyStop(), 400, 2);
+  const wrote = trips.filter(st => wroteAt(st, 2)).length;
+  ok(wrote > 160 && wrote < 240, `${wrote} of 400 first openings of a five-stop trek wrote; only the last opening is sure`);
+});
 test('never at home: a letter that wants Harbour is never written, however many seeds', () => {
   const c = writing(trek(calm), report('r1', at('harbour'), { repeat: true }));
   for (let seed = 1; seed <= 40; seed++) for (const s of play(c, seed, { n: 12 })) eq(s.post, [], `seed ${seed}`);
