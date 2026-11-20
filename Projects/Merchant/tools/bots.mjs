@@ -257,10 +257,12 @@ function plan(bot, state, content, agent, roll) {
 // pays back later. The price is its temperament, drawn once per game and group (its own dice), so no card has one
 // answer for every greedy game. It is a flat price and does not scale with any money the house holds (DECISIONS 2026-11-20 17:2x). It also draws how much of a follow-up card's pay it counts on (0 to all of it). The draw is per group (partners, court, foreign,
 // agents, trust), so one greedy house cares for the court's good opinion and not its partners', and the next the reverse. List order breaks a full tie. random shuffles.
-// The range of that price, in dinars a point, drawn log-uniform. Card money runs about 2 to 10 dinars a choice, so a price from near 1 to 30
+// The range of that price, in dinars a point, drawn log-uniform. Card money runs about 2 to 10 dinars a choice, so a price from a quarter to 30
 // straddles it: in some games a card's money outweighs a point of standing and in others the point outweighs the money. A price that shrank
-// with the house's money or sat in the tens for every game (MER-101) left greedy taking the standing side of most cards.
-export const STANDING_PRICE = [1, 30];
+// with the house's money or sat in the tens for every game (MER-101) left greedy taking the standing side of most cards. The floor is a
+// quarter, not 1, because several cards set a point of standing against 1 to 4 dinars (kamil-boat-arrived, tamer-title, muhtasib-fine):
+// from a floor of 1 the money side of those won in 0 to 15 percent of games and the card went over 90 (300 games, MER-101b).
+export const STANDING_PRICE = [0.25, 30];
 export const priceDraw = u => STANDING_PRICE[0] * (STANDING_PRICE[1] / STANDING_PRICE[0]) ** u;
 export function worthOf(state, content, choice, follow = 1, depth = 0) {
   const home = cityOf(content, 'bots').home;
