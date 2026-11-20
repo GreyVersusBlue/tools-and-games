@@ -2,8 +2,10 @@
 //
 // A stairwell is stairs joined through three or more floors under one letter
 // (SPEC 4.5's wish, ARCHITECTURE 22.4 and 22.17, DESIGN 16.7 and 16.12). This
-// file walks every control of it by pointer, by keys alone, and at 390 px with
-// a finger: the stair's properties for a chain ("Make one stairwell" and its
+// file walks every control of it by pointer and by keys alone, and at 390 px
+// by keys and with a finger (Stairwell through floors…, Connect another floor…
+// and a tap on the stairs, the menu's Remove, Split and Disconnect, the
+// properties' Make one stairwell and Disconnect): the stair's properties for a chain ("Make one stairwell" and its
 // sentence naming every letter that changes, with the Letter field), for a
 // stairwell (Which way for the whole well, the Letter field, a row a stop with
 // Show and Remove from stairwell, Disconnect on two stops, Connect another
@@ -773,7 +775,70 @@ test('at 844 by 390 the footers of both dialogs are pinned: the buttons are on s
 
 // ---------------------------------------------------------------- 390 px, with a finger
 
-test('at 390 px: Stairwell through floors… by a finger, rows and buttons 44 px, no sideways scroll, and a stop added by a tap', async () => {
+// A finger at 390 px: touches sent to the page as a phone's are (CDP touch
+// events), on an element's middle once it is scrolled into view, or on a cell.
+async function tapOn(box) {
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(box.x), y: Math.round(box.y), id: 1, radiusX: 4, radiusY: 4, force: 1 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+const tap = async (x, y) => tapOn(await point(page, x, y));
+async function tapElement(selector) {
+  await page.waitForFunction((s) => { const el = document.querySelector(s); return el && el.getBoundingClientRect().height > 0; }, {}, selector);
+  await tapOn(await page.$eval(selector, (el) => {
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const box = el.getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  }));
+}
+// The cell's menu, as a long press opens it, and one of its items by a tap: the item's height too.
+async function tapMenu(label) {
+  await page.evaluate(async () => {
+    const editor = document.querySelector('.bld').editor;
+    const { openCellMenu } = await import('./ui/building/menu.js');
+    openCellMenu(editor, 14 + 10 * 40, editor.canvas);
+  });
+  await page.waitForSelector('.menu[role="menu"]');
+  const item = await page.evaluate((wanted) => {
+    const found = Array.from(document.querySelectorAll('.menu [role="menuitem"]')).find((each) => each.textContent.trim() === wanted);
+    if (!found) return { missing: Array.from(document.querySelectorAll('.menu [role="menuitem"]'), (each) => each.textContent.trim()) };
+    const box = found.getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2, height: box.height };
+  }, label);
+  assert.ok(!item.missing, 'the menu has no "' + label + '": ' + (item.missing || []).join(' | '));
+  // a finger's size, to the pixel the layout rounds to
+  assert.ok(Math.round(item.height) >= 44, 'the menu item "' + label + '" is ' + item.height + ' px tall');
+  await tapOn(item);
+  await page.waitForFunction(() => !document.querySelector('.menu[role="menu"]'));
+}
+// The cell's menu by keys: Shift+F10 on the plan, ArrowDown to the item, Enter.
+async function keyMenu(label) {
+  await page.focus('#plan');
+  await page.evaluate(() => document.querySelector('.bld').editor.cursor.moveTo(14, 10, true));
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('F10');
+  await page.keyboard.up('Shift');
+  await page.waitForSelector('.menu[role="menu"]', { timeout: 5000 }).catch(async () => {
+    const where = await page.evaluate(() => ({ active: document.activeElement && (document.activeElement.id || document.activeElement.className), dialogs: Array.from(document.querySelectorAll('dialog[open]'), (d) => d.id) }));
+    throw new Error('no menu: ' + JSON.stringify(where));
+  });
+  for (let tries = 0; tries < 20; tries += 1) {
+    if (await page.evaluate((wanted) => document.activeElement && document.activeElement.textContent.trim() === wanted, label)) break;
+    await page.keyboard.press('ArrowDown');
+  }
+  assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), label, 'the keys did not reach "' + label + '"');
+  await page.keyboard.press('Enter');
+}
+const noSideways = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+// the stair's Properties at 390 px, by a tap on the menu's item
+async function phoneProperties(floorName) {
+  await showFloor(floorName);
+  await tapMenu('Properties of this cell');
+  await page.waitForFunction(() => { const t = document.querySelector('#inspector-properties #inspector-title'); return Boolean(t) && t.textContent !== '' && t.getBoundingClientRect().height > 0; });
+}
+
+test('at 390 px by keys alone: Stairwell through floors… and Make one stairwell, each from the menu, Space, Tab and Enter', async () => {
+  // first of the 390 px cases: the keys before any touch, since the plan takes a
+  // menu key as a finger's long press once a touch was the last pointer (input.js)
   await session.close();
   session = await openPlanner({ theme: 'light', width: 390, height: 844, mobile: true });
   page = session.page;
@@ -783,35 +848,52 @@ test('at 390 px: Stairwell through floors… by a finger, rows and buttons 44 px
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
   }
   await planReady(page);
-  const tapOn = async (box) => {
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(box.x), y: Math.round(box.y), id: 1, radiusX: 4, radiusY: 4, force: 1 }] });
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  };
-  const tap = async (x, y) => tapOn(await point(page, x, y));
-  const tapElement = async (selector) => {
-    await page.waitForFunction((s) => { const el = document.querySelector(s); return el && el.getBoundingClientRect().height > 0; }, {}, selector);
-    await tapOn(await page.$eval(selector, (el) => { const box = el.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; }));
-  };
+  await floors(4, [2], { corridor: [4] });
+  await showFloor('Floor 2');
+  await keyMenu('Stairwell through floors…');
+  await dialogOpen('stairwell-through-dialog');
+  assert.equal(await page.evaluate(() => document.activeElement.closest('label').textContent), 'Floor 3: empty, will become stairs');
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Join Floors 1 to 3 as Stairwell A');
+  // the button is on screen, at the foot of the dialog
+  assert.equal(await page.evaluate(() => { const box = document.activeElement.getBoundingClientRect(); return box.top >= 0 && box.bottom <= window.innerHeight; }), true);
+  await page.keyboard.press('Enter');
+  await dialogGone('stairwell-through-dialog');
+  assert.deepEqual((await wells()).map((each) => each[1]), ['A', 'A']);
+  assert.equal((await state(page)).focus, 'plan', 'the focus went back to the plan');
+  // Make one stairwell, by keys: Properties from the menu, Tab to the button, Enter, a letter, Enter
+  await floors(3, [1, 2, 3], { flights: [[1, 2], [2, 3]] });
+  await showFloor('Floor 2');
+  await keyMenu('Properties of this cell');
+  await page.waitForFunction(() => { const t = document.querySelector('#inspector-properties #inspector-title'); return Boolean(t) && t.textContent === 'Stairs A and B'; });
+  await page.focus(key('stairs-connect'));
+  for (let tries = 0; tries < 10; tries += 1) {
+    if (await page.evaluate(() => document.activeElement.dataset.key === 'well-make')) break;
+    await page.keyboard.press('Tab');
+  }
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'well-make', 'Tab did not reach Make one stairwell');
+  await page.keyboard.press('Enter');
+  await dialogOpen('stairwell-make-dialog');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'stairwell-letter');
+  await page.keyboard.type('North');
+  await waitFor('#stairwell-note', '');
+  await page.keyboard.press('Enter');
+  await dialogGone('stairwell-make-dialog');
+  assert.deepEqual(await wells(), [['A', 'North'], ['B', 'North']]);
+  assert.equal(await page.evaluate(() => Boolean(document.activeElement) && document.activeElement !== document.body), true, 'the focus fell to the page');
+});
+
+test('at 390 px: Stairwell through floors… by a finger, rows and buttons 44 px, no sideways scroll', async () => {
   await floors(4, [2, 4], { corridor: [] });
   await showFloor('Floor 2');
-  // the dialog is opened through the cell's menu, which a long press opens
-  await page.evaluate(async () => {
-    const editor = document.querySelector('.bld').editor;
-    const { openCellMenu } = await import('./ui/building/menu.js');
-    openCellMenu(editor, 14 + 10 * 40, editor.canvas);
-  });
-  await page.waitForSelector('.menu[role="menu"]');
-  const item = await page.evaluate(() => {
-    const found = Array.from(document.querySelectorAll('.menu [role="menuitem"]')).find((each) => each.textContent.trim() === 'Stairwell through floors…');
-    const box = found.getBoundingClientRect();
-    return { x: box.left + box.width / 2, y: box.top + box.height / 2, height: box.height };
-  });
-  assert.ok(item.height >= 44, 'the menu item is ' + item.height + ' px tall');
-  await tapOn(item);
+  await tapMenu('Stairwell through floors…');
   await dialogOpen('stairwell-through-dialog');
   const sizes = await page.$$eval('#stairwell-through-dialog label, #stairwell-through-dialog .dialog__buttons button', (all) => all.map((each) => Math.round(each.getBoundingClientRect().height)));
   assert.deepEqual(sizes.filter((height) => height < 44), [], 'a row or button under 44 px: ' + sizes);
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'the dialog scrolls sideways');
+  assert.equal(await noSideways(), true, 'the dialog scrolls sideways');
   // tick Floor 1 and Floor 3 with a finger; Floor 4's row is a stairs cell and may be ticked too
   const ticks = await page.$$eval('#stairwell-floors input', (all) => all.map((input) => ({ floor: input.dataset.floor, disabled: input.disabled })));
   assert.equal(ticks.filter((tick) => !tick.disabled).length, 3);
@@ -821,4 +903,91 @@ test('at 390 px: Stairwell through floors… by a finger, rows and buttons 44 px
   await dialogGone('stairwell-through-dialog');
   assert.deepEqual((await wells()).map((each) => each[1]), ['A', 'A', 'A']);
   assert.equal((await building()).floors.map((floor) => floor.cells[CELL]).join(''), 'SSSS');
+});
+
+test('at 390 px by a finger: Connect another floor… and a tap on the stairs, the menu\'s Remove, Split and Disconnect', async () => {
+  await floors(4, [1, 2, 3, 4], { flights: [[1, 2], [2, 3]] });
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const { makeStairwell } = await import('./engine/stairwells.js');
+    store.apply(makeStairwell, { connectionId: store.project.building.connections[0].id });
+  });
+  // Connect another floor…: from the menu on Floor 3, then the tab and the stairs on Floor 4, each by a tap
+  await showFloor('Floor 3');
+  let before = await entries();
+  await tapMenu('Connect another floor to Stairwell A…');
+  await page.waitForFunction(() => !document.getElementById('connect-banner').hidden);
+  assert.equal(await text('#connect-text'), 'Adding a floor to Stairwell A from Floor 3: click its stairs on another floor. Esc cancels.');
+  assert.equal(await noSideways(), true, 'the banner scrolls sideways');
+  const tab = await page.evaluate(() => {
+    const found = Array.from(document.querySelectorAll('.bld-floors__tab')).find((each) => each.textContent.includes('Floor 4'));
+    found.scrollIntoView({ block: 'nearest', inline: 'center' });
+    const box = found.getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  await tapOn(tab);
+  await floorIs(page, 'Floor 4');
+  await still(page);
+  await wholeFloor(page);
+  await tap(14, 10);
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.length === 3);
+  assert.equal(await entries(), before + 1);
+  assert.equal((await state(page)).label, 'Add Floor 4 to Stairwell A');
+  assert.deepEqual((await wells()).map((each) => each[1]), ['A', 'A', 'A']);
+  assert.equal(await page.$eval('#connect-banner', (el) => el.hidden), true);
+  // the menu's Remove Floor 2 from Stairwell A, by a tap
+  await showFloor('Floor 2');
+  before = await entries();
+  await tapMenu('Remove Floor 2 from Stairwell A');
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.length === 2);
+  assert.equal((await state(page)).label, 'Remove Floor 2 from Stairwell A');
+  assert.equal(await entries(), before + 1);
+  await undo();
+  // Split, by a tap
+  await tapMenu('Split Stairwell A into separate stairs');
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.every((connection) => !connection.well));
+  assert.equal(await toastText(), 'Stairs A, B and C are separate again.');
+  await undo();
+  // a stairwell of two stops: the menu's Disconnect Stairwell A, by a tap
+  await showFloor('Floor 3');
+  await tapMenu('Remove Floor 3 from Stairwell A');
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.length === 2);
+  await showFloor('Floor 4');
+  await tapMenu('Remove Floor 4 from Stairwell A');
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.length === 1);
+  await showFloor('Floor 2');
+  before = await entries();
+  await tapMenu('Disconnect Stairwell A');
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.length === 0);
+  assert.equal(await entries(), before + 1);
+  assert.equal(await noSideways(), true);
+});
+
+test('at 390 px by a finger: the stair\'s properties, Make one stairwell and its dialog, the stairwell\'s Disconnect', async () => {
+  await floors(3, [1, 2, 3], { flights: [[1, 2], [2, 3]] });
+  await phoneProperties('Floor 2');
+  assert.equal(await title(), 'Stairs A and B');
+  assert.ok(Math.round(await page.$eval(key('well-make'), (el) => el.getBoundingClientRect().height)) >= 44, 'Make one stairwell is under 44 px');
+  await tapElement(key('well-make'));
+  await dialogOpen('stairwell-make-dialog');
+  const sizes = await page.$$eval('#stairwell-make-dialog .dialog__buttons button, #stairwell-letter', (all) => all.map((each) => Math.round(each.getBoundingClientRect().height)));
+  assert.deepEqual(sizes.filter((height) => height < 44), [], 'a field or button under 44 px: ' + sizes);
+  assert.equal(await noSideways(), true, 'the dialog scrolls sideways');
+  const before = await entries();
+  await tapElement('#stairwell-make-dialog .btn--primary');
+  await dialogGone('stairwell-make-dialog');
+  assert.deepEqual(await wells(), [['A', 'A'], ['B', 'A']]);
+  assert.equal(await entries(), before + 1);
+  await waitFor('#inspector-properties #inspector-title', 'Stairwell A');
+  // two stops: the stairwell's own Disconnect, by a tap
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const { removeStairwellStop } = await import('./engine/stairwells.js');
+    store.apply(removeStairwellStop, { well: 'A', floorId: store.project.building.floors[2].id });
+  });
+  await phoneProperties('Floor 2');
+  assert.equal(await title(), 'Stairwell A');
+  await tapElement(key('disconnect-well'));
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.length === 0);
+  assert.equal(await entries(), before + 3);
 });
