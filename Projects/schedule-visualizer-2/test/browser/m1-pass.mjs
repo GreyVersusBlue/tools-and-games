@@ -449,7 +449,7 @@ test('on a 390 px phone the Building section is the plan: every tool on screen i
   for (const [short, fits] of counts) assert.ok(fits, '"' + short + '" is cut off in the status line');
 });
 
-test('SV2-142: at 360 and 390 px the status counts are whole under the hint, none of them cut or under it, however wide the font', async () => {
+test('SV2-142: at 360 and 390 px the status counts are whole under the hint, none of them cut or under it, however large the reader\'s font', async () => {
   const p = phone.page;
   const below = () => p.evaluate(() => {
     const hint = document.querySelector('.bld-status__hint').getBoundingClientRect();
@@ -466,11 +466,16 @@ test('SV2-142: at 360 and 390 px the status counts are whole under the hint, non
     await frames(p);
     assert.deepEqual(await below(), { clear: true, whole: true, within: true }, 'at ' + width + ' px the counts are cut or under the hint');
   }
-  // a wider font than the design's: the counts still fit the line they have
-  await p.addStyleTag({ content: '.bld-status { font-size: 1.05rem !important; }' });
+  // a larger font, as a reader's browser setting gives it (font size "Large", 20 px
+  // instead of 16): every rem grows, so at 390 px the counts need a third row too
+  // (SV2-142b: a font size on .bld-status alone changed nothing, the counts being
+  // rem-sized, so that test could not fail)
+  await p.evaluate(() => { document.documentElement.style.fontSize = '20px'; });
   await frames(p);
-  assert.deepEqual(await below(), { clear: true, whole: true, within: true }, 'with a wider font the counts are cut or under the hint');
-  await p.evaluate(() => document.querySelector('style:last-of-type')?.remove());
+  const rows = await p.$$eval('#plan-counts li', (all) => new Set(all.map((li) => Math.round(li.getBoundingClientRect().top))).size);
+  assert.equal(rows, 3, 'the larger font does not wrap the counts to a third row, so it tests nothing');
+  assert.deepEqual(await below(), { clear: true, whole: true, within: true }, 'with a larger font the counts are cut or under the hint');
+  await p.evaluate(() => { document.documentElement.style.fontSize = ''; });
   await frames(p);
 });
 
