@@ -418,15 +418,32 @@ const isCount = n => Number.isInteger(n) && n >= 0;
 /** The way back is open only where there is no qirad to offer instead. */
 const canPrepay = city => !city.contracts?.qirad?.agentShare;
 
-/** The wage for the whole trip, paid up front: the return opens `seasons` ahead and the paper counts the trip as that
-    many seasons (MER-88), so the agent is paid for `seasons` of them, at the agent's wage. */
-const tripWage = (agent, proj) => proj.seasons * (agent.wage ?? 0);
+/** The seasons of wage a trip sent now is charged, and where the road ends (MER-116): the one count the sheet's estimate, the
+    prepay and the return all use. A trip that comes home before the next jump is charged the seasons its return paper counts
+    (`elapsed`, `out + 1`), which is `proj.seasons`. One that cannot is settled by `jump` when the years pass, which charges the
+    seasons its whole road takes (`wholeRoad`, no waits, no season for sending) or the closings it had been away if more.
+    { seasons, settled, at, out, leg }: `settled` says `jump` settles it, `at` is the season index of the jump, `out` the
+    closings away when it comes and `leg` the leg the party is on then (what `settle` finds in `x.leg`). */
+function wageCount(s, content, route, agent, proj) {
+  const played = playedSeasons(content.calendar, s.length);
+  for (let j = s.t + 1; j <= s.t + proj.seasons && j < played.length; j++) {
+    if (played[j] - played[j - 1] <= 1) continue;   // the closing turn.js runs `jump` after: the played seasons skip years
+    const out = j - 1 - s.t;
+    let leg = 0;
+    for (const l of proj.legs) if (l.startK <= j - s.t) leg = l.i;
+    return { seasons: Math.max(1, out, roadSeasons(agent, route)), settled: true, at: played[j], out, leg };
+  }
+  return { seasons: proj.seasons, settled: false };
+}
+
+/** The wage for the whole trip, at the agent's wage, for the seasons `wageCount` says. */
+const tripWage = (agent, count) => count.seasons * (agent.wage ?? 0);
 
 /** What the house would pay up front for `agentId` on `routeId`, in coins, or 0 when the road does not project. */
 export function prepayCost(state, content, routeId, agentId) {
   const route = routeOf(content, routeId), agent = agentOf(content, agentId);
   const proj = route && agent ? project(state, content, route, agent) : null;
-  return proj?.ok ? tripWage(agent, proj) : 0;
+  return proj?.ok ? tripWage(agent, wageCount(state, content, route, agent, proj)) : 0;
 }
 
 /** Checks `plan` against `s` and, when it holds, applies it to `s` (a clone). Returns
@@ -508,7 +525,7 @@ function build(s, content, plan) {
   const wants = agent && kind === 'own' ? refusesOwn(s, agent, !!city.contracts?.qirad?.agentShare) : null;
   if (wants && !(prepay && canPrepay(city))) no(wants);
   else if (prepay && agent && !wants) no(`${agent.name} has no reason to ask for the wage first.`);
-  const wagePaid = prepay && proj?.ok ? tripWage(agent, proj) : 0;
+  const wagePaid = prepay && proj?.ok ? tripWage(agent, wageCount(s, content, route, agent, proj)) : 0;
 
   // selling and buying at the far end
   const carried = new Set(Object.keys(cargo));
@@ -930,8 +947,12 @@ export function estimate(state, content, plan, memo = null) {
   const stakedHouse = stockValue + buyCost + purse - partners;
   const far = outEnd(route);
   let ages = [], guessed = false;
+  // a road that cannot come home inside its act is settled by `jump` (MER-116): at the prices the party left with, if it has not
+  // yet reached the far end when the act ends (a party past it traded in play, and only its way home is settled)
+  const count = wageCount(state, content, route, agent, proj);
+  const atQuote = count.settled && count.leg <= far;
   // at the far end: sell, then buy with the purse and the proceeds, less the tolls that came first
-  const tollsBefore = route.legs.slice(0, far).reduce((n, l) => n + l.toll, 0);
+  const tollsBefore = route.legs.slice(0, atQuote ? count.leg : far).reduce((n, l) => n + l.toll, 0);
   const tollsAll = route.legs.reduce((n, l) => n + l.toll, 0);
   const pricesSell = {}, pricesBuy = {}, pricesHome = {};
   const impact = {};   // dinars each good's price moved against the house's own loads there (what a flat price would have paid, less what the loads fetched)
@@ -953,7 +974,16 @@ export function estimate(state, content, plan, memo = null) {
     return books[g];
   };
   const glutOf = {};   // the mark the estimate expected on each price when the party arrives
+  const quoted = g => M.truePrice(state, content, dest.id, g);   // `x.quote`: the far price today, no mark on it
   for (const g of sell) {
+    if (atQuote) {
+      const p = quoted(g), cut = bargain(agent, dest.id, 'sell');
+      if (p === null || p === undefined) continue;
+      pricesSell[g] = p; glutOf[g] = 0; impact[g] = 0; ages.push(0);
+      money += cargo[g] * Math.round(p * cut);
+      delete goodsBack[g];
+      continue;
+    }
     const b = bookOf(g), cut = bargain(agent, dest.id, 'sell');
     pricesSell[g] = b.free; glutOf[g] = b.glut;
     const first = Math.round(M.sellPrice(b.m, content, dest.id, g) * cut);
@@ -962,8 +992,15 @@ export function estimate(state, content, plan, memo = null) {
     money += got;
     delete goodsBack[g];
   }
-  const live = buy.filter(g => M.truePrice(state, content, home, g) !== null);
+  const live = buy.filter(g => atQuote ? quoted(g) : M.truePrice(state, content, home, g) !== null);
   live.forEach((g, i) => {
+    if (atQuote) {
+      const cut = bargain(agent, dest.id, 'buy'), p = Math.max(1, Math.round(quoted(g) * cut));
+      const q = Math.floor(Math.floor(money / (live.length - i)) / p);
+      pricesBuy[g] = quoted(g); glutOf[g] = 0; ages.push(0);
+      if (q) { money -= q * p; goodsBack[g] = (goodsBack[g] ?? 0) + q; impact[g] = 0; }
+      return;
+    }
     const b = bookOf(g), cut = bargain(agent, dest.id, 'buy');
     pricesBuy[g] = b.free; glutOf[g] = b.glut;
     const first = Math.max(1, Math.round(M.buyPrice(b.m, content, dest.id, g) * cut));
@@ -982,7 +1019,7 @@ export function estimate(state, content, plan, memo = null) {
   const gross = money + goodsValue - (tollsAll - tollsBefore) - Math.max(0, tollsBefore - purse) - upkeep;
   const share = cityOf(content, 'expeditions').contracts?.qirad?.agentShare ?? [0, 1];
   const shares = split({ kind, agentShare: share[0], of: share[1] }, { house: stakedHouse, partners }, gross);
-  const wage = kind === 'own' ? tripWage(agent, proj) : 0;
+  const wage = kind === 'own' ? tripWage(agent, count) : 0;
   const net = shares.house - stakedHouse - wage;
   const age = ages.length ? Math.max(...ages) : null;
   const ageWords = guessed || age === null ? 'no news' : M.ageWords(age);
@@ -990,7 +1027,8 @@ export function estimate(state, content, plan, memo = null) {
   const sign = net >= 0 ? '+' : '-';
   const old = guessed || age === null ? 'The house has no news of the prices there' : `The news of the prices is ${ageWords === 'this season' ? 'from this season' : ageWords}`;
   return {
-    ok: true, net, gross, stake: stakedHouse, tolls: tollsAll, wage, upkeep, shares: { agent: shares.agent, partners: shares.partners }, seasons: proj.seasons,
+    ok: true, net, gross, stake: stakedHouse, tolls: tollsAll, wage, upkeep, shares: { agent: shares.agent, partners: shares.partners }, seasons: proj.seasons, wageSeasons: count.seasons,
+    settledAtJump: count.settled, ...(count.settled ? { jumpAt: count.at } : {}),
     age, ageWords, news: old, risk: chance, riskWord: riskWord(chance),
     line: `If prices hold: about ${sign}${commas(Math.abs(net))} ${cityOf(content, 'expeditions').currency ?? 'coins'}. ${old}; the road is ${riskWord(chance)}.`,
     pricesSell, pricesBuy, pricesHome, impact, glut: glutOf, back: goodsBack,
@@ -1552,10 +1590,8 @@ function settleAndClose(s, content, x, elapsed, { papers = null } = {}) {
 // The act jump (ARCHITECTURE 4.7)
 
 /** The seasons of every leg of the expedition's road, there and back, at its agent's pace. */
-export function wholeRoad(content, x) {
-  const agent = agentOf(content, x.agent);
-  return routeOf(content, x.route).legs.reduce((n, l) => n + legSeasons(agent, l), 0);
-}
+export function wholeRoad(content, x) { return roadSeasons(agentOf(content, x.agent), routeOf(content, x.route)); }
+const roadSeasons = (agent, route) => route.legs.reduce((n, l) => n + legSeasons(agent, l), 0);
 
 /** Closing step "jump": the years between acts. Called after `t` has advanced to the first
     season of the next act. Writes one log entry, kind "jump", which the interlude page reads

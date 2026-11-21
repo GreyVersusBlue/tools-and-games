@@ -10,7 +10,7 @@ const ruled = fn => () => { const was = R.RULES.refuseUnspentMoney; R.RULES.refu
 import { steps } from '../js/engine/turn.js';
 import { WAIT } from '../js/engine/letters.js';
 import * as M from '../js/engine/market.js';
-import { seasonIndex } from '../js/engine/calendar.js';
+import { seasonIndex, playedSeasons } from '../js/engine/calendar.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, proposePlan, estimate, bestTrades, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
@@ -660,35 +660,110 @@ function longRoadStates(road, { seeds, ns, marks }) {
 }
 const errors = rows => ({ mean: rows.reduce((a, r) => a + Math.abs(r.est - r.made), 0) / rows.length, worst: Math.max(...rows.map(r => Math.abs(r.est - r.made))), rel: Math.max(...rows.map(r => Math.abs(r.est - r.made) / r.stake)) });
 
-test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 8 dinars and 16 at worst, and on the marked-home trips a mean of at most 6.5', () => {
+test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 6 dinars and 13 at worst, and on the marked-home trips a mean of at most 6', () => {
   // The same 32 trips (2 seeds, 3 starts, both agents, three homes), measured before and after MER-115: mean 7.88 before, 6.88
   // after; worst 16 both; the 22 marked-home trips 7.36 before and 5.91 after, which is what the last line holds (the carried
   // home price is worth about 1.5 dinars a trip here, as the home price barely moves in four seasons). What is left is not the
-  // home price: the estimate charges the wage of 5 seasons (`tripWage`, proj.seasons counts the season after sending) and the trip
-  // pays for 4, 8 dinars on Aleppo, and the unmarked trips are all of it. A trip ending across the act jump (start 3) is settled by
-  // `jump`, which values the goods at home's price after the closing into the new act: the estimate stops its carry there.
+  // home price: a trip ending across the act jump (start 3) is settled by `jump`, which values the goods at home's price after the
+  // closing into the new act (the estimate stops its carry there) and charges the wage of the whole road, 4 seasons, where the
+  // estimate charged 5. MER-116 counts the wage as `jump` does (wageCount) and the four start-3 trips that were 8 or 9 dinars
+  // high on the wage alone are exact on it: the same 32 trips now read mean 5.81, worst 13, 1.46 percent of the stake, and 5.91 on
+  // the marked-home trips (6.88, 16, 2.1 and 5.91 before). The 13 is on the start-3 trips with the highest estimates (194 against 181 and 190 against 177); its cause
+  // was not traced.
   const { rows, lossy } = longRoadStates('cairo-aleppo', { seeds: [1, 2], ns: [0, 2, 3], marks: [[1, 0], [1.5, 0.2], [0.7, -0.1]] });
   ok(rows.length >= 30, `${rows.length} trips compared, ${lossy} left out for a loss`);
   for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
   const all = errors(rows);
-  ok(all.mean <= 8, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
-  ok(all.worst <= 16, `worst error ${all.worst} dinars`);
-  ok(all.rel <= 0.025, `worst error ${(all.rel * 100).toFixed(1)} percent of the stake`);
+  ok(all.mean <= 6, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
+  ok(all.worst <= 13, `worst error ${all.worst} dinars`);
+  ok(all.rel <= 0.015, `worst error ${(all.rel * 100).toFixed(1)} percent of the stake`);
   const marked = errors(rows.filter(r => !r.at.includes('/1/')));
-  ok(marked.mean <= 6.5, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
+  ok(marked.mean <= 6, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
 });
 
-test('MER-115 (3) estimate on Samarkand (12 seasons): every trip ends across an act jump, which the estimate does not model, so the sign is held and the error is stated: it understates by about 75 dinars on average, 92 at worst, 14 percent of the stake', () => {
+test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an act jump, which the estimate settles as `jump` does (the quotes it left with, the wage of the whole road): a mean error of at most 5 dinars, 12 at worst, 2.5 percent of the stake', () => {
   // No Samarkand trip comes home inside an act (the road is 12 seasons, an act 8), so every one is settled by `jump`: at the far
-  // prices the party left with (`x.quote`, not the market it arrives to) and the wage of the whole road. Measured before and after
-  // MER-115 on these 10 trips (4 seeds, 2 starts, both agents, home unmarked): mean 74.4, worst 92, 14.2 percent of the stake both
-  // times, since home's price does not move in them. The bands below are a ceiling on that, not a promise: if `estimate` ever models
-  // the jump they should tighten to Aleppo's. The seeded road risk loses 4 of every 14 of these trips, which are left out.
+  // prices the party left with (`x.quote`, not the market it arrives to) and the wage of the whole road. MER-115 measured these 10
+  // trips (4 seeds, 2 starts, both agents, home unmarked) at mean 74.4, worst 92, 14.2 percent of the stake, because the estimate
+  // priced the arrival and charged the wage of the road's waits. MER-116 reads mean 4.8, worst 12, 2.1 percent. What is left is
+  // 12 dinars on four of the ten trips (seeds 1 and 3 for Yusuf and Ali, start 0), the estimate high each time; its cause was not
+  // traced. The seeded road risk loses 4 of every 14 of these trips, which are left out.
   const { rows, lossy } = longRoadStates('cairo-samarkand', { seeds: [1, 2, 3, 4], ns: [0, 2], marks: [[1, 0]] });
   ok(rows.length >= 8, `${rows.length} trips compared, ${lossy} left out for a loss`);
   for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
   const { mean, worst, rel } = errors(rows);
-  ok(mean <= 90 && worst <= 120 && rel <= 0.2, `mean ${mean.toFixed(1)}, worst ${worst} dinars, ${(rel * 100).toFixed(1)} percent of the stake`);
+  ok(mean <= 5, `mean ${mean.toFixed(1)} dinars over ${rows.length} trips`);
+  ok(worst <= 12, `worst ${worst} dinars`);
+  ok(rel <= 0.025, `${(rel * 100).toFixed(1)} percent of the stake`);
+});
+
+/** The wage the sheet charged and the wage the return paper shows, for every proposal on `road` from seeded states, own or prepaid
+    (a city with no qirad and an agent with two unfair memories, the case that pays first). A trip that lost anything is left out,
+    as in `longRoadStates`. { rows: [{ at, sheet, paid, prepay, jumped, said }], lossy }: `jumped` is whether a jump came while
+    the party was out, read from the log, `said` what the estimate says about it. */
+function playedWages(road, { seeds, ns, prepaid, tamper = 0 }) {
+  const c = variant(C, x => {
+    for (const g of x.goods) g.sigma = 0;
+    if (prepaid) delete x.city.contracts.qirad;
+  });
+  const rows = []; let lossy = 0;
+  for (const seed of seeds) for (const n of ns) for (const agent of ['yusuf', 'ali']) {
+    let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+    for (let i = 0; i < n; i++) s = step(s, c);
+    s.agents.ali.hired = true; s.agents.ali.where = 'cairo'; s.agents.yusuf.where = 'cairo';
+    const plan = proposePlan(s, c, agent, road);   // before the memories: a proposal is never made for one who refuses a wage
+    if (!plan || plan.why) continue;
+    if (prepaid) { s.agents[agent].memory.push({ at: 0, kind: 'unfair' }, { at: 1, kind: 'unfair' }); plan.prepay = true; }
+    const e = estimate(s, c, plan), prepay = R.prepayCost(s, c, road, agent), seen = new Set(s.desk.map(p => p.id)), sent = seasonIndex(s, c);
+    let w = outfit(structuredClone(s), c, plan), paper;
+    if (!w.expeditions.length) continue;
+    if (tamper) w.expeditions[0].book.wagePaid += tamper;
+    for (let i = 0; i < 30 && !paper && w.phase !== 'recall' && w.phase !== 'ended'; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+    if (!paper) continue;
+    if (/^The road took/.test(paper.data.why ?? '')) { lossy++; continue; }
+    const row = paper.data.account.find(r => /wage/.test(r.label));
+    rows.push({ at: `${seed}/${n}/${agent}`, sheet: e.wage, paid: -row.amount, prepay, jumped: w.log.some(l => l.kind === 'jump' && l.at > sent), said: e.settledAtJump, text: row.text });
+  }
+  return { rows, lossy };
+}
+
+test('MER-116 (1) the wage is one count: the estimate\'s wage, the prepay sum and the wage on the return paper are the same dinars on every played trip, own and prepaid, on the road that comes home inside its act and the one that crosses the jump', () => {
+  // MER-115 found the sheet one season high on Aleppo (5 seasons against 4, 8 dinars) and 3 seasons high on Samarkand (19
+  // against 16): the return paper counts the closings the party was away for, or, when `jump` settles it, the seasons of its whole road.
+  let inAct = 0, crossed = 0;
+  for (const prepaid of [false, true]) for (const [road, seeds, ns] of [['cairo-aleppo', [1, 2], [0, 2, 3]], ['cairo-samarkand', [1, 2, 3, 4], [0, 2]]]) {
+    const { rows } = playedWages(road, { seeds, ns, prepaid });
+    ok(rows.length >= 6, `${rows.length} ${road} trips (prepaid ${prepaid})`);
+    for (const r of rows) {
+      const where = `${road} ${r.at} prepaid ${prepaid}`;
+      eq(r.sheet, r.paid, `${where}: the sheet said ${r.sheet} and the paper paid ${r.paid} (${r.text})`);
+      if (prepaid) eq(r.prepay, r.paid, `${where}: the prepay sum was ${r.prepay} and the paper paid ${r.paid}`);
+      eq(r.said, r.jumped, `${where}: the estimate says it is settled at the jump: ${r.said}; a jump came while it was out: ${r.jumped}`);
+      if (r.jumped) crossed++; else inAct++;
+    }
+  }
+  ok(inAct >= 8 && crossed >= 20, `${inAct} trips home inside their act and ${crossed} across the jump were compared`);
+});
+
+test('MER-116 (2) estimate says when `jump` settles the trip, and in which season: a field the sheet can word, and none where the trip comes home in its act', () => {
+  const c = variant(C, x => { for (const g of x.goods) g.sigma = 0; });
+  let s = newGame(c, { seed: 1, length: 'acts', house: c.houses[0].id });
+  s.agents.yusuf.where = 'cairo';
+  const short = estimate(s, c, proposePlan(s, c, 'yusuf', 'cairo-aleppo'));
+  eq([short.settledAtJump, 'jumpAt' in short, short.wageSeasons, short.seasons], [false, false, 5, 5]);
+  const long = estimate(s, c, proposePlan(s, c, 'yusuf', 'cairo-samarkand'));
+  eq(long.settledAtJump, true);
+  const played = playedSeasons(c.calendar, 'acts');
+  eq(long.jumpAt, played.find((q, i) => i && q - played[i - 1] > 1), 'the first played season after the years skip');
+  eq(long.wageSeasons, 16, 'the whole road: 16 seasons by yusuf\'s pace, where the 22 the return opens in count its waits and the sending season');
+  eq(long.wage, 16 * c.agents.find(a => a.id === 'yusuf').wage);
+});
+
+test('MER-116 (1) a prepaid expedition already on the road keeps the wage it paid: the return shows the sum written at outfitting, not a recount', () => {
+  // an old save carries `book.wagePaid` from the count it was sent under: bringHome reads it and never recomputes
+  const { rows } = playedWages('cairo-aleppo', { seeds: [1], ns: [0, 3], prepaid: true, tamper: 7 });
+  ok(rows.length >= 2, `${rows.length} trips`);
+  for (const r of rows) eq(r.paid, r.prepay + 7, `${r.at}: prepaid ${r.prepay}, paper paid ${r.paid}`);
 });
 
 test('MER-98 (1) proposePlan: a good the far end pays barely more for stays at home when its extra loads sell lower than they cost', () => {
