@@ -451,6 +451,44 @@ test('MER-98 (1) proposePlan: the plan it returns pays after tolls, each good it
   ok(plans > 10, `${plans} plans were checked (${nothing} roads had none that pays)`);
 });
 
+test('MER-112 (3) proposePlan: the best trade the map knows for the road goes in the plan when it raises the estimate inside the stake (play 2 trip 3: pepper at 187 against 132, left out)', () => {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  const s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.money = 1719; s.stock = { wool: 8, copper: 1, linen: 5 };
+  for (const [g, p] of [['pepper', 187], ['wool', 100], ['copper', 48], ['linen', 80]]) know(s, c, 'damascus', g, p);
+  const best = bestTrades(s, c, 10).find(t => t.route === 'cairo-damascus');
+  eq([best.good, best.direction], ['pepper', 'out'], 'the map names pepper first for the road');
+  const plan = proposePlan(s, c, 'yusuf', 'cairo-damascus');
+  ok(!plan.why && plan.cargo.pepper > 0, `the plan carries pepper: ${JSON.stringify(plan.cargo)}`);
+  const { pepper, ...rest } = plan.cargo;
+  const without = estimate(s, c, { ...plan, cargo: rest, sell: plan.sell.filter(g => g !== 'pepper') }).net;
+  ok(estimate(s, c, plan).net > without + 100, `pepper adds ${estimate(s, c, plan).net - without}`);
+  const cost = checkPlan(s, c, plan).cost.bought;
+  ok(cost <= s.money / 2, `bought ${cost}, inside the half of ${s.money} the sheet stakes`);
+  eq(checkPlan(s, c, plan).ok, true, 'and the engine takes it');
+  // a pepper that does not raise the estimate stays out: nothing to gain at 125 against 120 at home once the loads sell lower
+  const flat = structuredClone(s); know(flat, c, 'damascus', 'pepper', 125);
+  ok(!(proposePlan(flat, c, 'yusuf', 'cairo-damascus').cargo?.pepper > 0), 'a thin margin is left out');
+});
+
+test('MER-112 (4) no proposal the engine makes is expected to lose, over seeded states at several seasons, as offered with the engine\'s own check', () => {
+  let offered = 0, refused = 0;
+  for (const seed of [1, 3, 5, 8, 13, 21]) {
+    for (const seasons of [1, 4, 8]) {
+      const s = seasoned(seed, seasons);
+      for (const d of R.destinations(s, C)) {
+        const plan = proposePlan(s, C, 'yusuf', d.route);
+        if (!plan || plan.why) { refused++; continue; }
+        offered++;
+        const e = estimate(s, C, plan);
+        ok(e.net > 0, `${seed}/${seasons}/${d.route}: offered at ${e.net}`);
+        eq(checkPlan(s, C, plan).ok, true, `${seed}/${seasons}/${d.route}: the engine takes what it offers`);
+      }
+    }
+  }
+  ok(offered > 15, `${offered} proposals checked, ${refused} roads with none`);
+});
+
 test('MER-98 (1) proposePlan: a good the far end pays barely more for stays at home when its extra loads sell lower than they cost', () => {
   // salt: 10 at home, 11 in Hilltown, depth 40 at both. The first load makes 1; each next one is dearer to buy and cheaper to sell.
   const c = still();

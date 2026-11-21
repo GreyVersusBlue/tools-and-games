@@ -696,9 +696,13 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   const homeP = g => M.truePrice(state, content, home, g);
   // goods that sell better at the far end than at home, widest margin first
   // (a good the house has no news of is guessed at the stop's base price, and the estimate says so)
+  // the trades the map names for this road (best a season first) come before the rest, so the stake reaches the best one
+  // before the wider margins on thin markets have spent it (MER-112)
+  const known = bestTrades(state, content, Infinity, r.id);
+  const rank = g => { const i = known.findIndex(t => t.direction === 'out' && t.good === g); return i < 0 ? Infinity : i; };
   const out = Object.keys(dest.sells ?? {}).map(g => ({ g, far: farPrice(state, content, dest.id, g) ?? { p: M.baseOf(state, content, dest.id, g) }, at: homeP(g) }))
     .filter(e => e.far && e.at !== null && e.far.p > e.at)
-    .sort((x, y) => y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
+    .sort((x, y) => rank(x.g) - rank(y.g) || y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
   const carried = out.map(e => e.g);
   const back = bringBack(state, content, dest, carried);
   const budget = Math.floor(state.money * share);
@@ -954,15 +958,15 @@ function bestLoads(s, content, out, home, far, cap) {
     margin on the loads a plan could move (up to DEPTH_SHARE of the thinner market, each load priced as the last one moved the
     price), less the tolls and the wage, over the seasons out and back, and then by how old the news is, halved every
     NEWS_HALF_LIFE seasons. A road that cannot come home before the game ends is left out, and so is a trade that loses.
-    Each row keeps its road, the age of the news in words and the road's risk word. `n` of them; reads only what the house knows. */
-export function bestTrades(state, content, n = 3) {
+    Each row keeps its road, the age of the news in words and the road's risk word. `n` of them, or those of the one route `road` names; reads only what the house knows. */
+export function bestTrades(state, content, n = 3, road = null) {
   const home = homeOf(content), homeStop = stopOf(content, home);
   const left = playedSeasons(content.calendar, state.length).length - 1 - state.t;
   const hired = (content.agents ?? []).filter(a => state.agents[a.id]?.hired);
   const wage = Math.min(...(hired.length ? hired : content.agents ?? []).map(a => a.wage ?? 0), Infinity);
   const rows = [];
   for (const d of destinations(state, content)) {
-    if (d.seasons > left) continue;
+    if (d.seasons > left || (road && d.route !== road)) continue;
     const route = routeOf(content, d.route), dest = stopOf(content, d.stop);
     const chance = roadRisk(content, undefined, route, undefined);
     const fixed = route.legs.reduce((k, l) => k + l.toll, 0) + (Number.isFinite(wage) ? wage * d.seasons : 0);
