@@ -82,21 +82,28 @@ function numberedRooms(floor) {
 }
 
 // The renumbering rule. Returns { possible, reason, rooms: [{ id, from, to }] }.
-// `reason` is why not, in the words of a sentence's tail: "Floor 2's numbers do
-// not all start with 2".
+// `reason` is why not, in the words of a sentence's tail, naming the number that
+// stops it: '"1-01" begins with 1 digit, too few to hold the level, 1, and a
+// room's own digits after it: that needs at least 3'.
 function renumbering(building, source, newLevel) {
   const numbered = numberedRooms(source);
   const none = { possible: false, reason: 'none', rooms: [] };
   if (numbered.length === 0) return none;
   const level = String(source.level);
-  const notLike = { possible: false, reason: source.name + '\'s numbers do not all start with ' + level, rooms: [] };
-  if (!(source.level >= 1)) return { ...notLike, reason: source.name + ' is not on a level of 1 or more, and numbers carry the level only from there' };
+  const not = (reason) => ({ possible: false, reason, rooms: [] });
+  const quoted = (room) => '"' + room.number.trim() + '"';
+  const digits = (n) => plural(n, 'digit', 'digits');
+  if (!(source.level >= 1)) return not(source.name + ' is not on a level of 1 or more, and numbers carry the level only from there');
   const runs = numbered.map((room) => /^[0-9]+/.exec(room.number.trim()));
-  if (runs.some((run) => run === null)) return notLike;
+  const bare = runs.findIndex((run) => run === null);
+  if (bare !== -1) return not(quoted(numbered[bare]) + ' does not begin with a digit');
   const length = runs[0][0].length;
-  if (runs.some((run) => run[0].length !== length)) return notLike;
-  if (length < level.length + 2) return notLike;
-  if (runs.some((run) => !run[0].startsWith(level))) return notLike;
+  const other = runs.findIndex((run) => run[0].length !== length);
+  if (other !== -1) return not(quoted(numbered[0]) + ' begins with ' + digits(length) + ' and ' + quoted(numbered[other]) + ' with ' + runs[other][0].length + ', and the level carries over only when every number has as many');
+  const least = level.length + 2;
+  if (length < least) return not(quoted(numbered[0]) + ' begins with ' + digits(length) + ', too few to hold the level, ' + level + ', and a room\'s own digits after it: that needs at least ' + least);
+  const off = runs.findIndex((run) => !run[0].startsWith(level));
+  if (off !== -1) return not(quoted(numbered[off]) + ' does not begin with ' + level + ', ' + source.name + '\'s level');
   const fresh = String(newLevel);
   if (fresh.length !== level.length) return { possible: false, reason: 'the new floor\'s level, ' + fresh + ', has a different number of digits from ' + level, rooms: [] };
   const used = new Set();

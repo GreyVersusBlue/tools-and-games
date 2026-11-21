@@ -212,7 +212,7 @@ test('numbers that cannot carry over are one line, not two rows; a floor with no
   await build(page, { numbers: ['A-1', 'B-2'], flight: false });
   await openDialogByButton(page);
   assert.equal(await page.$eval('#duplicate-numbers', (el) => el.hidden), true);
-  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers (Floor 2\'s numbers do not all start with 2), so 2 rooms will need one.');
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers ("A-1" does not begin with a digit), so 2 rooms will need one.');
   assert.equal(await page.$eval('#duplicate-join-block', (el) => el.hidden), true, 'nothing is connected, so nothing to join');
   await page.keyboard.press('Escape');
   await dialogGone(page);

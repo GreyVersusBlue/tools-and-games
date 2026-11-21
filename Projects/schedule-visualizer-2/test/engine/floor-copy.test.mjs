@@ -365,8 +365,8 @@ test('numbers: refused to renumber, never quietly blanked: numbers that do not s
   const { project, floor } = numbered(2, ['501', '502']);
   const info = describeFloorDuplicate(project, floor.id);
   assert.equal(info.renumber.possible, false);
-  assert.match(info.renumber.reason, /Floor 2's numbers do not all start with 2/);
-  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber', /Floor 2's numbers do not all start with 2.*without numbers/);
+  assert.equal(info.renumber.reason, '"501" does not begin with 2, Floor 2\'s level');
+  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber', /"501" does not begin with 2, Floor 2's level\. Leave the copies without numbers/);
   const after = run(project, { floorId: floor.id });
   assert.ok(roomsOf(newest(after)).every((room) => room.number === ''), 'asked for nothing, the default is blank');
 });
@@ -381,6 +381,25 @@ test('numbers: not renumbered when the digits are fewer than the level\'s plus t
   assert.equal(describeFloorDuplicate(numbered(2, ['21', '22']).project, 'fsample002').renumber.possible, false);
   assert.equal(describeFloorDuplicate(numbered(2, ['B-201', 'B-202']).project, 'fsample002').renumber.possible, false);
   assert.equal(describeFloorDuplicate(numbered(2, ['201', 'Gym']).project, 'fsample002').renumber.possible, false, 'one number with no digits spoils it for all');
+});
+
+test('numbers: the refusal gives the true reason, naming the number: too few digits ("1-01", "10"), not the level ("0101"), lengths apart, no digit', () => {
+  const reason = (level, numbers) => describeFloorDuplicate(numbered(level, numbers).project, 'fsample00' + level).renumber.reason;
+  assert.equal(reason(1, ['1-01']), '"1-01" begins with 1 digit, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
+  assert.equal(reason(1, ['10', '11', '12', '13', '14']), '"10" begins with 2 digits, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
+  assert.equal(reason(1, ['0101', '0102', '0103', '0104', '0105']), '"0101" does not begin with 1, Floor 1\'s level');
+  assert.equal(reason(2, ['201', '2014']), '"201" begins with 3 digits and "2014" with 4, and the level carries over only when every number has as many');
+  assert.equal(reason(2, ['201', 'Gym']), '"Gym" does not begin with a digit');
+  const { project } = numbered(1, ['1-01']);
+  refused(project, { floorId: 'fsample001', numbers: 'level' }, 'cannot-renumber', /^The numbers cannot carry over: "1-01" begins with 1 digit, too few/);
+});
+
+test('numbers: "1001" on level 1 carries over as 22.17 says, the level\'s one digit replaced: "4001" on level 4', () => {
+  const { project } = numbered(1, ['1001', '1002', '1003', '1004', '1005']);
+  const info = describeFloorDuplicate(project, 'fsample001');
+  assert.equal(info.newLevel, 4);
+  assert.equal(info.renumber.possible, true);
+  assert.deepEqual(info.renumber.examples, [{ from: '1001', to: '4001' }, { from: '1002', to: '4002' }]);
 });
 
 test('numbers: not renumbered when the new level has another number of digits (level 9 to 10)', () => {
