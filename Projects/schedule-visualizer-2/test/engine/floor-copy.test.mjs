@@ -12,6 +12,7 @@ import * as actions from '../../engine/actions.js';
 import { createStore } from '../../engine/store.js';
 import { duplicateFloor, describeFloorDuplicate } from '../../engine/floor-copy.js';
 import { collectIds, isId } from '../../engine/ids.js';
+import { checkSchedule } from '../../engine/checks.js';
 import { newFloor, newRoom, newOtherSpace, stairwells, stairsLetter, elevatorCars, isLiftCell, ELEVATOR_KIND } from '../../engine/schema.js';
 import { school, emptyProject, ctx, clock, makeIds, assertValid, clone } from './helpers.mjs';
 
@@ -278,7 +279,61 @@ test('numbers: renumbered for the new level when every one starts with the sourc
     const twin = copy.spaces[source.spaces.indexOf(room)];
     assert.equal(twin.number, '4' + room.number.slice(1), room.number + ' becomes ' + twin.number);
   }
-  assert.equal(describeFloorDuplicate(project, 'fsample002').notes, info.renumber.count, 'each numbered copy raises two notes in the checks, counted once here');
+});
+
+// the sample's own day types cut to n, or grown to n with own copies of the last
+// (each group's days going and coming with them)
+function withDayTypes(project, n) {
+  while (project.dayTypes.length > n) {
+    const gone = project.dayTypes.pop();
+    for (const group of project.groups) delete group.days[gone.id];
+  }
+  while (project.dayTypes.length < n) {
+    const last = project.dayTypes[project.dayTypes.length - 1];
+    const id = 'dsample00' + String.fromCharCode(97 + project.dayTypes.length);
+    project.dayTypes.push({ ...clone(last), id, name: String.fromCharCode(65 + project.dayTypes.length) + ' Day', own: true });
+    for (const group of project.groups) if (group.days[last.id]) group.days[id] = clone(group.days[last.id]);
+  }
+  return project;
+}
+
+test('notes: counted by the checks themselves, one "room no group uses" a numbered copy for each day type (1, 2 and 3), and none for a teacher', () => {
+  for (const days of [1, 2, 3]) {
+    const project = withDayTypes(tidy(clone(school())), days);
+    const rooms = roomsOf(project.building.floors[1]).length;
+    const info = describeFloorDuplicate(project, 'fsample002');
+    assert.equal(info.notes, rooms * days, days + ' day types: ' + rooms + ' copies, each a room no group uses on each day type');
+    assert.deepEqual(info.noteCounts, { 'room-unused': rooms * days }, 'no room-no-teacher: a copy has no group in it');
+    // the count is the checks' own: the copy made and checked says the same
+    const after = run(project, { floorId: 'fsample002', join: false });
+    const copied = new Set(newest(after).spaces.map((space) => space.id));
+    const raised = checkSchedule(after).findings.filter((finding) => copied.has(finding.where.roomId));
+    assert.equal(raised.length, info.notes, days + ' day types: the Checks tab gets the notes the dialog counts');
+    assert.equal(info.notesText, 'The ' + rooms + ' numbered copies will add ' + rooms * days + ' notes to the Checks tab: ' + rooms * days + ' for a room no group uses' + (days > 1 ? ' (one for each of the ' + days + ' day types)' : '') + '.');
+  }
+});
+
+test('notes: a copy of a room with no subject adds "a room with no subject"; a day type the same as another, or a check turned off, adds none', () => {
+  const project = withDayTypes(tidy(clone(school())), 1);
+  const rooms = roomsOf(project.building.floors[1]);
+  delete rooms[0].subjectId;
+  project.dayTypes.push({ id: 'dsample00z', name: 'Z Day', sameAs: 'dsample00a' });
+  const info = describeFloorDuplicate(project, 'fsample002');
+  assert.deepEqual(info.noteCounts, { 'room-unused': rooms.length, 'room-no-subject': 1 });
+  assert.equal(info.notesText, 'The ' + rooms.length + ' numbered copies will add ' + (rooms.length + 1) + ' notes to the Checks tab: ' + rooms.length + ' for a room no group uses and 1 for a room with no subject.');
+  // a project is never changed in place, and the dialog's count is kept per project: a new one
+  const quiet = clone(project);
+  quiet.settings.checks = { ...quiet.settings.checks, off: ['room-unused', 'room-no-subject'] };
+  const off = describeFloorDuplicate(quiet, 'fsample002');
+  assert.equal(off.notes, 0);
+  assert.equal(off.notesText, '');
+});
+
+test('notes: copies left without numbers raise none', () => {
+  const info = describeFloorDuplicate(school(), 'fsample002');
+  assert.equal(info.renumber.possible, false);
+  assert.equal(info.notes, 0);
+  assert.equal(info.notesText, '');
 });
 
 test('numbers: a letter after the digits stays ("214B" becomes "414B"), and a room with no number stays without one', () => {

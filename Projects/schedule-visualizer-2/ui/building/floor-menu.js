@@ -198,7 +198,7 @@ export function floorMenu(ed) {
       left.textContent = 'Not copied: ' + info.notCopied + '.';
       const level = info.renumber.possible && keepRadio.checked && info.notes > 0;
       notes.hidden = !level;
-      notes.textContent = level ? count(info.notes, 'numbered copy', 'numbered copies') + ' will show in the Checks tab as a room no group uses and no teacher is in: ' + count(info.notes * 2, 'note') + '.' : '';
+      notes.textContent = level ? info.notesText : '';
     }
 
     function reread() {

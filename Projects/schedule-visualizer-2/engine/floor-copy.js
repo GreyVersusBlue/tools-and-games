@@ -32,6 +32,7 @@
 import { action, ActionError, GEOMETRY, BUILDING, SCHEDULE, reporting } from './actions.js';
 import { connectStairs } from './building.js';
 import { collectIds, isId } from './ids.js';
+import { checkSchedule } from './checks.js';
 import { nameKey, nextConnectionLabel, roomNumberKey, elevatorCars, isLiftCell, stairwells, stairsLetter, textLength, ELEVATOR_KIND } from './schema.js';
 
 function refuse(message, code) {
@@ -204,10 +205,77 @@ function joinsFor(building, source, top) {
 //   { floorId, name, newName, newLevel, topName,
 //     rooms, otherSpaces, namedCorridors, zones, refuges,
 //     numbered, renumber: { possible, reason, examples: [{ from, to }], count },
-//     unnumbered, notes,
+//     unnumbered, notes, noteCounts: { <check kind>: n }, notesText,
 //     joins: [{ type, cell, text }], joinText, separateText,
 //     copied, notCopied, sentence }
 export function describeFloorDuplicate(project, floorId, options) {
+  const info = describeCopy(project, floorId, options);
+  if (!info) return null;
+  const notes = info.renumber.possible ? copyNotes(project, floorId) : NO_NOTES;
+  return { ...info, notes: notes.count, noteCounts: notes.kinds, notesText: notes.text };
+}
+
+// ---------------------------------------------------------------- the notes
+
+// What the numbered copies raise in the Checks tab, from the checks themselves:
+// the copy is made (renumbered, not joined, ids of its own) and the schedule
+// checked before and after; every new finding about a copied room is counted,
+// by kind. A copy has no teacher and no group, so it is "a room no group uses"
+// once for each day type the checks read, and "a room with no subject" when
+// its source has none. Kept per project and floor: the dialog asks again on
+// every key typed in the name, and a project is never changed in place.
+const NO_NOTES = { count: 0, kinds: {}, text: '' };
+const notesKept = new WeakMap();
+
+const NOTE_WORDS = {
+  'room-unused': 'a room no group uses',
+  'room-no-subject': 'a room with no subject',
+  'room-no-teacher': 'a room with groups and no teacher',
+};
+
+function copyNotes(project, floorId) {
+  let kept = notesKept.get(project);
+  if (!kept) {
+    kept = new Map();
+    notesKept.set(project, kept);
+  }
+  if (!kept.has(floorId)) kept.set(floorId, countCopyNotes(project, floorId));
+  return kept.get(floorId);
+}
+
+function countCopyNotes(project, floorId) {
+  let n = 0;
+  const ids = (prefix) => prefix + 'note' + String((n += 1)).padStart(5, '0');
+  let after;
+  try {
+    after = duplicateFloor(project, { floorId, numbers: 'level', join: false }, { ids });
+  } catch (error) {
+    if (error instanceof ActionError) return NO_NOTES;
+    throw error;
+  }
+  const copy = after.building.floors[after.building.floors.length - 1];
+  const copied = new Set(copy.spaces.map((space) => space.id));
+  const before = new Set(checkSchedule(project).findings.map((finding) => finding.id));
+  const kinds = {};
+  const days = new Set();
+  for (const finding of checkSchedule(after).findings) {
+    if (before.has(finding.id) || finding.severity !== 'note' || !copied.has(finding.where.roomId)) continue;
+    kinds[finding.kind] = (kinds[finding.kind] || 0) + 1;
+    if (finding.kind === 'room-unused' && finding.where.dayTypeId) days.add(finding.where.dayTypeId);
+  }
+  const total = Object.values(kinds).reduce((sum, each) => sum + each, 0);
+  if (total === 0) return NO_NOTES;
+  const rooms = copy.spaces.filter((space) => space.kind === 'room' && space.number.trim() !== '').length;
+  const parts = Object.keys(kinds).map((kind) => {
+    const words = kinds[kind] + ' for ' + (NOTE_WORDS[kind] || kind);
+    return kind === 'room-unused' && days.size > 1 ? words + ' (one for each of the ' + days.size + ' day types)' : words;
+  });
+  const text = 'The ' + plural(rooms, 'numbered copy', 'numbered copies') + ' will add ' + plural(total, 'note', 'notes') + ' to the Checks tab: ' + list(parts) + '.';
+  return { count: total, kinds, text };
+}
+
+// describeFloorDuplicate without the notes, which the action itself does not need.
+function describeCopy(project, floorId, options) {
   const building = project.building;
   const source = building.floors.find((floor) => floor.id === floorId);
   if (!source) return null;
@@ -247,8 +315,6 @@ export function describeFloorDuplicate(project, floorId, options) {
       count: renumber.rooms.length,
       examples: renumber.rooms.slice(0, 2).map((room) => ({ from: room.from, to: room.to })),
     },
-    // every numbered copy is a room no group uses and no teacher is based in
-    notes: renumber.possible ? renumber.rooms.length : 0,
     joins,
     joinText: joins.length === 0 ? '' : joins.map((join) => join.text).join('; ') + '.',
     separateText: separate.length === 0 ? '' : separate.map((join) => 'Stairs ' + list(join.letters) + ' stay separate stairs; Make one stairwell is in the stair\'s properties.').join(' '),
@@ -289,7 +355,8 @@ function idMaker(project, ids) {
 //   name     the new floor's name; left out, the default of describeFloorDuplicate
 //   id       the new floor's id, as addFloor takes one
 // The outcome (scheduleOutcome) says what was done:
-//   { text, floorId, newName, rooms, renumbered, blanked, joins, notes }
+//   { text, floorId, newName, rooms, renumbered, blanked, joins }
+// (the notes the copies raise are describeFloorDuplicate's, from the checks)
 export const duplicateFloor = action(
   {
     label: (before, payload, after) => 'Duplicate ' + ((before.building.floors.find((floor) => floor.id === payload.floorId) || { name: 'a floor' }).name) + ' as ' + (after.building.floors[after.building.floors.length - 1].name),
@@ -300,7 +367,7 @@ export const duplicateFloor = action(
     const data = payload || {};
     const building = project.building;
     const source = needFloor(project, data.floorId);
-    const info = describeFloorDuplicate(project, source.id, { name: data.name });
+    const info = describeCopy(project, source.id, { name: data.name });
     const top = topFloor(building);
     const makeId = idMaker(project, ctx.ids);
 
@@ -386,7 +453,7 @@ export const duplicateFloor = action(
     }
 
     const joinsMade = info.joins.filter((join) => made.some((entry) => entry.cell === join.cell));
-    const notes = numbers === 'level' ? toNumber.size : 0;
+    const renumbered = numbers === 'level' ? toNumber.size : 0;
     const blanked = numbers === 'blank' ? numberedRooms(source).length : 0;
     const text = 'Duplicated ' + source.name + ' as ' + name + (joinsMade.length > 0 ? ': ' + joinsMade.map((join) => join.text).join('; ') + '.' : '.');
     const outcome = {
@@ -395,10 +462,9 @@ export const duplicateFloor = action(
       newName: name,
       rooms: info.rooms,
       otherSpaces: info.otherSpaces,
-      renumbered: notes,
+      renumbered,
       blanked,
       joins: joinsMade.map((join) => ({ type: join.type, cell: join.cell, text: join.text })),
-      notes,
     };
     return reporting(project, { ...project, building: next }, outcome);
   },
