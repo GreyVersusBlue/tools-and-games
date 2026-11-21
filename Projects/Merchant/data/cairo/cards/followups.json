@@ -1027,10 +1027,10 @@
       {
         "id": "fee",
         "label": "Ask him to pay for the two poor bales",
-        "hint": "You win back 30 dinars. Brokers talk now, and trust a house that checks later.",
+        "hint": "You win back 20 dinars. Brokers talk now, and trust a house that checks later.",
         "now": [
           {
-            "money": 30
+            "money": 20
           },
           {
             "rep": "partners",
