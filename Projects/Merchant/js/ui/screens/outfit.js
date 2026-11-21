@@ -331,6 +331,13 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
         homeP ? h('span', { class: 'might' }, `${homeStop.name} pays about ${num(homeP)} for it now.`) : null,
         g === proposed?.plan.buy?.[0] ? h('span', { class: 'suggested' }, 'The house suggests this one.') : null));
     });
+    // MER-113: "Nothing" is a choice with a button of its own, last in the list, which clears every pick. Its class is not
+    // `back-pick`, so a press on the first good never lands on it.
+    if (goods.length) rows.push(h('li', { class: 'good back-good' },
+      h('button', { class: 'back-none', type: 'button', role: 'checkbox', id: 'back-nothing', dataset: { key: 'back-nothing' }, 'aria-checked': chosen.length ? 'false' : 'true',
+        onclick: () => { draft.buy = []; render('back-nothing'); } },
+      h('strong', null, 'Nothing'),
+      h('span', { class: 'far' }, 'Whatever the goods sell for comes home as money.'))));
     return section('back', 'What they bring back',
       goods.length ? h('ul', { class: 'goods', id: 'outfit-back-goods' }, rows) : h('p', { class: 'none', id: 'outfit-back-none' }, `${stop.name} sells nothing ${homeStop.name} trades in, so what the goods fetch comes home as money.`),
       h('p', { class: 'total', id: 'outfit-back-total' }, line),

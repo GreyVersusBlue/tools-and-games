@@ -20,8 +20,12 @@ const signed = n => (n > 0 ? `+${num(n)}` : n < 0 ? `${MINUS}${num(-n)}` : '0');
 /** The changes in the house's money over the last four seasons that closed, newest last, from the
     log's `season` entries ({ kind: 'season', at, change }). [] when the log has none. */
 export function moneyTrail(content, log) {
-  return (log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4)
-    .map(e => ({ at: e.at, season: writeSeason(content, e.at), change: e.change }));
+  const four = (log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4);
+  // `gap` is the whole years the jump between acts skipped, on the entry that comes after it (0 when the seasons run on).
+  return four.map((e, i) => ({
+    at: e.at, season: writeSeason(content, e.at), change: e.change,
+    gap: i && e.at - four[i - 1].at > 1 ? Math.max(1, Math.round((e.at - four[i - 1].at - 1) / 4)) : 0,
+  }));
 }
 
 function whereIsExpedition(app, x) {
@@ -65,8 +69,10 @@ function money(app) {
       : h('p', { class: 'ledger-line', id: 'ledger-loans' }, 'The house owes nothing.'),
     h('h4', null, 'The last four seasons'),
     trail.length
-      ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, trail.map(t => h('li', { dataset: { change: String(t.change) } },
-        h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`))))
+      ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, trail.flatMap(t => [
+        ...(t.gap ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.gap) } }, `${t.gap === 1 ? 'A year' : `${t.gap} years`} passed before ${t.season}.`)] : []),
+        h('li', { dataset: { change: String(t.change) } },
+          h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`))]))
       : h('p', { class: 'ledger-line', id: 'ledger-trail' }, 'No season has been closed in the books yet.'));
 }
 
