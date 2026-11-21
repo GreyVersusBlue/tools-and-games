@@ -289,7 +289,7 @@
       {
         "id": "widen",
         "label": "Let him go further if the price is better",
-        "hint": "He may do better. A longer road costs 4 dinars more, later, and you carry the risk.",
+        "hint": "He may do better. A longer road costs 4 dinars now, and you carry the risk. He trusts you more in three seasons.",
         "now": [
           {
             "trust": "yusuf",
@@ -298,6 +298,9 @@
           {
             "flag": "yusuf-widened",
             "set": "now"
+          },
+          {
+            "money": -4
           }
         ],
         "later": [
@@ -305,11 +308,17 @@
             "in": 3,
             "do": [
               {
-                "money": -4
+                "trust": "yusuf",
+                "by": 1
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        }
       },
       {
         "id": "keep",
@@ -396,7 +405,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        }
       },
       {
         "id": "wage",

@@ -297,12 +297,19 @@
       "seal": null
     },
     "title": "Ali and the price",
-    "body": "Ali is home from {to}. Your clerk thinks Ali sold too cheaply, and says the house lost about 12 dinars. Ali says the prices were fair and that he did it for the house.",
+    "body": "Ali is home from {to}. Your clerk thinks Ali sold too cheaply. The house made less than the sheet hoped. Ali says the prices were fair and that he did it for the house.",
     "when": {
-      "trip": {
-        "agent": "ali",
-        "is": "home"
-      }
+      "all": [
+        {
+          "trip": {
+            "agent": "ali",
+            "is": "home"
+          }
+        },
+        {
+          "flag": "ali-undersold"
+        }
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -365,7 +372,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        }
       }
     ],
     "note": "In the Geniza papers contracts said where an agent could trade. An agent who went beyond them and lost money paid the whole loss himself.",

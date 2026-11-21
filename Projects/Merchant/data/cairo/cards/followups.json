@@ -306,7 +306,7 @@
           "stock": "gold",
           "gte": 2
         },
-        "hint": "Jamil pays 164 dinars, a little under what Cairo pays today. The gold leaves your warehouse, and your partners think well of you in two seasons.",
+        "hint": "Jamil pays 164 dinars for the two chests, 82 for each. Before the Malians came, a chest sold for 100. The gold leaves your warehouse, and your partners think well of you in two seasons.",
         "now": [
           {
             "money": 164
@@ -807,7 +807,7 @@
         "hint": "It costs 8 dinars now and 2 more later. Your agents will be glad.",
         "requires": {
           "money": {
-            "gte": 8
+            "gte": 10
           }
         },
         "now": [
@@ -1304,7 +1304,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        }
       },
       {
         "id": "fee",
