@@ -1857,7 +1857,7 @@ const SV2_136 = [
   { id: 'w7-help-results-phone', hash: '#building', viewport: PHONE, open: w7Help('stairs', false, 'Help with results, at 390') },
   { id: 'w7-help-opened', hash: '#building', open: w7Help('dead end', true, 'Help with a result opened') },
   { id: 'w7-help-opened-phone', hash: '#building', viewport: PHONE, open: w7Help('dead end', true, 'Help with a result opened, at 390') },
-  { id: 'w7-help-none-sideways', hash: '#building', viewport: { width: 844, height: 390, mobile: true }, open: w7Help('kiln', false, 'Help with no results, on its side') },
+  { id: 'w7-help-none-sideways', hash: '#building', viewport: { width: 844, height: 390, mobile: true }, open: w7Help('qqqzz', false, 'Help with no results, on its side') },
 ];
 
 export const SCREENS = [

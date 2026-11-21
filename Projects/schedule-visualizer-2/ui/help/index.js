@@ -172,7 +172,7 @@ export function openHelp(ctx, options) {
     h('ul', null, parts.map((each) => {
       const title = each.querySelector('.help__title');
       return h('li', null, h('button', { type: 'button', class: 'btn btn--quiet', data: { jump: each.dataset.part }, on: { click: () => {
-        title.scrollIntoView({ block: 'start' });
+        bringToTop(title);
         title.focus({ preventScroll: true });
       } } }, title.textContent));
     })));
@@ -223,6 +223,7 @@ export function openHelp(ctx, options) {
   function showBody() {
     unland();
     scroller.setAttribute('aria-label', 'Help');
+    scroller.tabIndex = 0;
     scroller.replaceChildren(...bodyNodes);
   }
 
@@ -231,6 +232,8 @@ export function openHelp(ctx, options) {
     unland();
     current = found;
     scroller.setAttribute('aria-label', 'Search results');
+    // the results are the Tab stops; the box itself is not one
+    scroller.removeAttribute('tabindex');
     if (found.results.length === 0) {
       scroller.replaceChildren(h('p', { class: 'help__none' }, announcement(0, found.query)));
     } else {
@@ -273,8 +276,18 @@ export function openHelp(ctx, options) {
     target.setAttribute('tabindex', '-1');
     target.dataset.landed = 'true';
     landed = target;
-    target.scrollIntoView({ block: 'start' });
+    bringToTop(target);
     target.focus({ preventScroll: true });
+  }
+
+  // Scrolls the one box that scrolls (the body, or under 500 px of height the
+  // dialog) and nothing else: scrollIntoView would also move the dialog's own
+  // hidden overflow and push the title and the field out of the window.
+  function bringToTop(target) {
+    const box = scroller.scrollHeight > scroller.clientHeight + 1 ? scroller : dialog.element;
+    const frame = box.getBoundingClientRect();
+    const pinned = box === scroller ? 0 : bar.getBoundingClientRect().height;
+    box.scrollTop += target.getBoundingClientRect().top - frame.top - pinned - 12;
   }
 
   // What the field says now: nothing under MIN_CHARS characters is searched.
