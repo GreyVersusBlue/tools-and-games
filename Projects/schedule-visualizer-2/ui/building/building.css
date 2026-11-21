@@ -297,6 +297,7 @@
 
   .bld-status__counts {
     align-content: center;
+    gap: 0 var(--s-2);
     height: calc(var(--row) * 2);
     white-space: normal;
   }
@@ -322,6 +323,15 @@
     min-width: 0;
     overflow: hidden;
     clip-path: inset(50%);
+  }
+}
+
+/* A narrow phone (390 px and under, with a wider font than the design's): the
+   five counts need three lines, and two lines would clip the first under the
+   hint (SV2-142). The line keeps its height whatever the counts say. */
+@container (max-width: 400px) {
+  .bld-status__counts {
+    height: calc(var(--row) * 3);
   }
 }
 

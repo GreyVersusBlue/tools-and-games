@@ -431,7 +431,8 @@ test('on a 390 px phone the Building section is the plan: every tool on screen i
   assert.ok(at.strip.top >= at.tabs.bottom - 1 && at.strip.bottom <= at.stage.top + 1, 'the strip is not between the floor tabs and the plan');
   assert.equal(at.stage.width, 390, 'the plan is not the width of the phone');
   assert.ok(at.stage.height >= 380, 'the plan is ' + at.stage.height + ' px high');
-  assert.ok(at.status.top >= at.stage.bottom - 1 && at.status.height <= 120, 'the status line is ' + at.status.height + ' px high');
+  // SV2-142: 120 became 130, the counts' line keeping a third row at 400 px and under so none is cut under the hint
+  assert.ok(at.status.top >= at.stage.bottom - 1 && at.status.height <= 130, 'the status line is ' + at.status.height + ' px high');
   assert.ok(at.rail.top >= at.inspector.bottom - 1 && at.inspector.top >= at.status.bottom - 1, 'the sheet\'s handle is not between the plan and the bottom bar');
   assert.equal(at.inspectorBody, null, 'the sheet starts shut');
   assert.deepEqual(await p.evaluate(() => {
@@ -446,6 +447,31 @@ test('on a 390 px phone the Building section is the plan: every tool on screen i
   }));
   assert.equal(counts.length, 5);
   for (const [short, fits] of counts) assert.ok(fits, '"' + short + '" is cut off in the status line');
+});
+
+test('SV2-142: at 360 and 390 px the status counts are whole under the hint, none of them cut or under it, however wide the font', async () => {
+  const p = phone.page;
+  const below = () => p.evaluate(() => {
+    const hint = document.querySelector('.bld-status__hint').getBoundingClientRect();
+    const host = document.getElementById('plan-counts');
+    const box = host.getBoundingClientRect();
+    return {
+      clear: Array.from(host.children).every((li) => li.getBoundingClientRect().top >= hint.bottom - 1),
+      whole: host.scrollHeight <= host.clientHeight,
+      within: Array.from(host.children).every((li) => li.getBoundingClientRect().bottom <= box.bottom + 1 && li.getBoundingClientRect().top >= box.top - 1),
+    };
+  });
+  for (const [width, height] of [[360, 740], [390, 844]]) {
+    await p.setViewport({ width, height, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    await frames(p);
+    assert.deepEqual(await below(), { clear: true, whole: true, within: true }, 'at ' + width + ' px the counts are cut or under the hint');
+  }
+  // a wider font than the design's: the counts still fit the line they have
+  await p.addStyleTag({ content: '.bld-status { font-size: 1.05rem !important; }' });
+  await frames(p);
+  assert.deepEqual(await below(), { clear: true, whole: true, within: true }, 'with a wider font the counts are cut or under the hint');
+  await p.evaluate(() => document.querySelector('style:last-of-type')?.remove());
+  await frames(p);
 });
 
 test('on the phone a new project\'s empty-floor card fits the plan whole, with Getting started folded to a line above it', async () => {
