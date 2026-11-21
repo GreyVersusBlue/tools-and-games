@@ -213,7 +213,7 @@ test("presetFor gives the ten presets in order, then the turned set, then round 
 
 const COLOUR_TOKENS = [
   "--paper", "--card", "--ink", "--ink-2", "--line", "--line-strong", "--accent", "--accent-ink", "--accent-soft", "--focus",
-  "--problem", "--warning", "--note", "--grid", "--corridor", "--corridor-edge", "--stairs", "--room-default",
+  "--problem", "--warning", "--note", "--mark-bg", "--mark-ink", "--grid", "--corridor", "--corridor-edge", "--stairs", "--room-default",
 ];
 
 test("every colour token of DESIGN 3 is defined in the light theme and in both dark blocks", () => {

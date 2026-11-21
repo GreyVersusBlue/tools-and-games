@@ -35,6 +35,7 @@
     | --problem       | --paper --card --accent-soft --stairs                                    | 4.5 | problems, as text and in a selected row; the "!" badge  |
     | --warning       | --paper --card --accent-soft                                             | 4.5 | warnings, as text and in a selected row                 |
     | --note          | --paper --card --accent-soft                                             | 4.5 | notes, as text and in a selected row                    |
+    | --mark-ink      | --mark-bg                                                                | 4.5 | a matched word in Help's search results                 |
     | --focus         | --paper --card --accent-soft --grid --corridor --stairs --room-default   | 3   | the focus ring, and the keyboard cursor on the plan     |
     | --accent        | --grid --corridor --stairs --room-default                                | 3   | the selection outline and the exit dash on the plan     |
     | --line-strong   | --paper --card                                                           | 3   | the edge of a field, a checkbox, a switch               |
@@ -217,6 +218,9 @@
   --warning: #925d00;
   --note: #3b5b8a;
 
+  --mark-bg: #ffe08a;               /* a matched word in Help's search results */
+  --mark-ink: #1f2328;              /* its text, 4.5:1 on --mark-bg */
+
   --grid: #e8e3d8;                  /* the empty cell */
   --corridor: #ffffff;              /* corridor cells */
   --corridor-edge: var(--line);     /* their hairline */
@@ -246,6 +250,9 @@
   --problem: #ff8a80;
   --warning: #ffc86b;
   --note: #8fb4ea;
+
+  --mark-bg: #5c4a0e;
+  --mark-ink: #fff3cc;
 
   --grid: #1a1e23;
   --corridor: #2a2f36;
@@ -278,6 +285,9 @@
     --problem: #ff8a80;
     --warning: #ffc86b;
     --note: #8fb4ea;
+
+    --mark-bg: #5c4a0e;
+    --mark-ink: #fff3cc;
 
     --grid: #1a1e23;
     --corridor: #2a2f36;
