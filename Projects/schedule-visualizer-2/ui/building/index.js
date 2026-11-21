@@ -73,8 +73,10 @@ function stylesheet() {
 //
 // Auto-number's view state is here too (ARCHITECTURE 22.5, DESIGN 16.12 item 5), never
 // saved and never undone: `autoNext` is the next number per floor, and `autoStack`
-// the numbers it assigned, newest last, so Undo of a drawn room steps the next back.
-const memory = { projectId: null, floorId: null, toolId: null, view: null, fitBox: null, clip: null, autoNext: new Map(), autoStack: [] };
+// the numbers it assigned, newest last, so Undo of a drawn room steps the next back;
+// `autoUndone` holds what Undo took off, newest last, so Redo of the room puts it back
+// and the next steps on again.
+const memory = { projectId: null, floorId: null, toolId: null, view: null, fitBox: null, clip: null, autoNext: new Map(), autoStack: [], autoUndone: [] };
 
 const HEADLINE = 'This is the building.';
 const FIRST = 'Draw a corridor, then rooms along it. Give each room its number, and mark the stairs and the exits.';
@@ -446,9 +448,12 @@ export const section = {
       //   options.toast(outcome)   the message to show, or null for none. By
       //                            default one is shown when something was replaced.
       // Returns what engine/building.js reported (cells, loss, spaceId), or null.
-      // While Auto-number is on, a room drawn gets the next number in the same step.
+      // While Auto-number is on and the Room tool in hand, a room drawn gets the
+      // next number in the same step.
       commit(action, payload, options) {
-        if (action === placeRoom && autoSwitch.checked && payload && payload.number === undefined) return commitNumbered(payload, options);
+        // only while the Room tool is in hand, where the switch is seen: the cell
+        // menu's "Place a room here" under another tool places a room with no number
+        if (action === placeRoom && tool && tool.id === 'room' && autoSwitch.checked && payload && payload.number === undefined) return commitNumbered(payload, options);
         return commitPlain(action, payload, options);
       },
       // A new room is selected; its number field takes the focus unless a
@@ -615,7 +620,9 @@ function commitPlain(action, payload, options) {
         },
       });
       if (outcome === null) return null;
-      memory.autoStack.push({ floorId: floor.id, roomId: outcome.spaceId, number, previous: before });
+      memory.autoStack.push({ floorId: floor.id, roomId: outcome.spaceId, number, previous: before, following: info.following });
+      // a new room drawn: what was undone can no longer be redone
+      memory.autoUndone = [];
       memory.autoNext.set(floor.id, info.following);
       status.setHint('Room ' + number + ' drawn. Next: ' + info.following + '.');
       showOptions();
@@ -637,6 +644,7 @@ function commitPlain(action, payload, options) {
           if (typed !== top.number && roomNumberKey(typed) !== roomNumberKey(top.number) && splitNumber(typed) !== null) {
             top.number = typed;
             const following = nextRoomNumber(project, typed) || plainNext(typed) || '';
+            top.following = following;
             memory.autoNext.set(top.floorId, following);
             status.setHint('Next: ' + following + '.');
             say('Next: ' + following + '.');
@@ -644,8 +652,20 @@ function commitPlain(action, payload, options) {
           }
           break;
         }
-        stack.pop();
+        memory.autoUndone.push(stack.pop());
         if (each) memory.autoNext.set(top.floorId, top.previous);
+        changed = true;
+      }
+      // Redo: a room Undo took away is back, with its number; it goes on the
+      // stack again and the next is the one that followed it
+      const undone = memory.autoUndone;
+      while (undone.length > 0) {
+        const last = undone[undone.length - 1];
+        const each = project.building.floors.find((candidate) => candidate.id === last.floorId);
+        const room = each ? each.spaces.find((space) => space.id === last.roomId) : null;
+        if (!room || roomNumberKey(room.number) !== roomNumberKey(last.number)) break;
+        stack.push(undone.pop());
+        memory.autoNext.set(last.floorId, last.following);
         changed = true;
       }
       if (changed && floor && !options.hidden) showOptions();
@@ -1028,6 +1048,7 @@ function commitPlain(action, payload, options) {
       memory.clip = null;
       memory.autoNext = new Map();
       memory.autoStack = [];
+      memory.autoUndone = [];
       floor = floors[0];
       selection = [];
       needsFit = true;

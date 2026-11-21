@@ -136,7 +136,7 @@ test('drawing three rooms by pointer: each has the next number, one undo step, t
   assert.deepEqual(await numbers(page), expected);
 });
 
-test('Undo of a drawn room takes its number out and steps Next back; Redo does not move it', async () => {
+test('Undo of a drawn room takes its number out and steps Next back; Redo puts it back and steps Next on again', async () => {
   await page.evaluate(() => globalThis.sv2.store.undo());
   await entriesAre(page, (await state(page)).entries);
   assert.deepEqual(await numbers(page), ['101', '102']);
@@ -144,17 +144,60 @@ test('Undo of a drawn room takes its number out and steps Next back; Redo does n
   await page.evaluate(() => globalThis.sv2.store.undo());
   assert.equal(await value(page, '#next-number'), '102');
   assert.deepEqual(await numbers(page), ['101']);
-  await page.evaluate(() => { globalThis.sv2.store.redo(); globalThis.sv2.store.redo(); });
+  await page.evaluate(() => globalThis.sv2.store.redo());
+  assert.deepEqual(await numbers(page), ['101', '102']);
+  assert.equal(await value(page, '#next-number'), '103', 'Redo of 102 steps Next on to 103');
+  await page.evaluate(() => globalThis.sv2.store.redo());
   assert.deepEqual(await numbers(page), ['101', '102', '103']);
-  assert.equal(await value(page, '#next-number'), '102', 'the sequence is the user\'s to move: a redone room does not advance it');
-  // it carries on from where it is, skipping the numbers that are taken
+  assert.equal(await value(page, '#next-number'), '104', 'and of 103, to 104');
+  // the next room drawn is 104, with no word of a number taken
   await clickCell(16, 3);
   assert.deepEqual((await numbers(page)).slice(-1), ['104']);
-  assert.match(await state(page).then((s) => s.said), /^102 is taken; this is 104\. Room 104 drawn\. Next: 105\.$/);
-  assert.equal(await state(page).then((s) => s.toast), '102 is taken; this is 104', 'a skip is in the toast as well');
+  assert.match(await state(page).then((s) => s.said), /^Room 104 drawn\. Next: 105\.$/, 'its own number is not "taken"');
   assert.equal(await value(page, '#next-number'), '105');
   await page.keyboard.press('Enter');
   await clearToast(page);
+  // Undo and Redo of 104 again: back to 104, then on to 105
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  assert.equal(await value(page, '#next-number'), '104');
+  await page.evaluate(() => globalThis.sv2.store.redo());
+  assert.equal(await value(page, '#next-number'), '105');
+});
+
+test('a Next number that is taken is skipped, and said in the status line and the toast', async () => {
+  await setField(page, '#next-number', '102');
+  await page.focus('#plan');
+  await clickCell(16, 6);
+  assert.deepEqual((await numbers(page)).slice(-1), ['105']);
+  assert.match(await state(page).then((s) => s.said), /^102 is taken; this is 105\. Room 105 drawn\. Next: 106\.$/);
+  assert.equal(await state(page).then((s) => s.toast), '102 is taken; this is 105', 'a skip is in the toast as well');
+  assert.equal(await value(page, '#next-number'), '106');
+  await page.keyboard.press('Enter');
+  await clearToast(page);
+  // the room is undone, so the next test's numbers are as they were
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  assert.equal(await value(page, '#next-number'), '102', 'Undo puts back the Next that was typed');
+  await setField(page, '#next-number', '105');
+  await page.focus('#plan');
+});
+
+test('under another tool, the cell menu\'s "Place a room here" places a room with no number, the switch on or not, and Next stays', async () => {
+  assert.equal(await page.$eval('#auto-number', (el) => el.checked), true);
+  await page.click('[data-tool="select"]');
+  await page.waitForFunction(() => document.querySelector('.bld').editor.tool.id === 'select');
+  const at = await point(page, 36, 12);
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  await page.waitForSelector('.menu[role="menu"]');
+  const before = (await state(page)).entries;
+  await page.evaluate(() => Array.from(document.querySelectorAll('.menu [role="menuitem"]')).find((each) => each.textContent.trim() === 'Place a room here').click());
+  await entriesAre(page, before + 1);
+  assert.deepEqual((await numbers(page)).slice(-1), [''], 'no number: the switch is not on screen');
+  assert.match(await state(page).then((s) => s.said), /^Placed a room, 1 by 1\. Type its number\.$/);
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await pressRoomTool(page);
+  assert.equal(await value(page, '#next-number'), '105', 'Next has not moved');
+  await page.focus('#plan');
 });
 
 test('typing a number into the room just drawn re-seats the sequence; typing into another room never does', async () => {
