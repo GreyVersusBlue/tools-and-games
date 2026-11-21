@@ -1385,8 +1385,16 @@ kbd {
   pointer-events: none;
 }
 
-/* a message raised over a modal dialog: in the top layer, in the free space
-   beside it (ui/components/toast.js) */
+/* a message raised over a modal dialog: inside the dialog (its own status
+   region there, out of the dialog's flow), shown in the top layer in the free
+   space beside it (ui/components/toast.js) */
+.toasts-over {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: visible;
+}
+
 .toast.toast--over {
   position: fixed;
   inset: auto;
@@ -1394,9 +1402,7 @@ kbd {
   border: 0;
   max-width: min(34rem, calc(100vw - var(--s-4) * 2));
   overflow: visible;
-  /* the page behind a modal is inert, so its buttons cannot be pressed anyway: the
-     dialog has its own way back, and the message is whole again when it closes */
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .toast {
