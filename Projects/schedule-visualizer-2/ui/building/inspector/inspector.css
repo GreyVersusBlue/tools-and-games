@@ -251,6 +251,109 @@
   text-align: right;
 }
 
+.bi-cell__label {
+  display: none;
+}
+
+/* The Rooms tab in a panel narrower than its five columns (287 px at 1280,
+   DESIGN 16.4): each room stacks into a card, Room and Seats side by side,
+   then Teacher, Subject and Features each on a line of its own, every cell
+   naming itself. Nothing is cut and nothing hides past a sideways scroll. The
+   headings stay as one wrapping row of sort buttons. */
+
+#rooms-table {
+  container-type: inline-size;
+}
+
+@container (max-width: 30rem) {
+  #rooms-table .table,
+  #rooms-table thead,
+  #rooms-table tbody,
+  #rooms-table th,
+  #rooms-table td {
+    display: block;
+  }
+
+  #rooms-table .table {
+    min-width: 0;
+  }
+
+  #rooms-table thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-3);
+    padding-bottom: var(--s-2);
+  }
+
+  #rooms-table th {
+    padding: var(--s-1) 0;
+    text-align: left;
+  }
+
+  #rooms-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--s-1) var(--s-2);
+    padding: var(--s-2) 0;
+    border-top: var(--border);
+  }
+
+  #rooms-table tbody td {
+    min-width: 0;
+    padding: 0;
+    border-top: 0;
+    text-align: left;
+  }
+
+  /* Room, Teacher, Subject, Seats, Features: Seats goes up beside Room,
+     as wide as three digits, and the room's number or name has the rest */
+  #rooms-table tbody td:nth-child(2),
+  #rooms-table tbody td:nth-child(3),
+  #rooms-table tbody td:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+
+  #rooms-table tbody td:nth-child(4) {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  #rooms-table .bi-cell {
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  #rooms-table tbody td:nth-child(4) .bi-cell {
+    grid-template-columns: auto 4rem;
+  }
+
+  #rooms-table .bi-cell__label {
+    display: block;
+    color: var(--ink-2);
+    font-size: var(--t-xs);
+    font-weight: var(--w-semibold);
+  }
+
+  #rooms-table .bi-cell > :last-child,
+  #rooms-table td.table__num .field__input,
+  #rooms-table .bi-select,
+  #rooms-table .bi-features-cell {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  #rooms-table td.table__num .field__input {
+    text-align: left;
+  }
+
+  #rooms-table .bi-features-cell {
+    justify-content: flex-start;
+  }
+}
+
 /* ---------- The checks ---------- */
 
 .bi-finding {

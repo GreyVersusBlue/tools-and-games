@@ -32,6 +32,12 @@ import { selectField, wholeOrEmpty, keepFocus } from './controls.js';
 
 const NONE = '';
 
+// A cell's own word, shown only when the panel is too narrow for the table's
+// columns and each row stacks into a card (inspector.css, DESIGN 16.4): the
+// heading is then not above the cell, so the cell says what it is. Hidden from
+// the accessibility tree: each control already has its own name.
+const labelled = (word, node) => h('div', { class: 'bi-cell' }, h('span', { class: 'bi-cell__label', 'aria-hidden': 'true' }, word), node);
+
 // roomsPanel(env) -> { element, update(state) }
 export function roomsPanel(env) {
   const { store, ctx } = env;
@@ -147,7 +153,7 @@ export function roomsPanel(env) {
         made.input.dataset.key = room.id + ':number';
         made.input.setAttribute('aria-label', 'Room number');
         handle(room.id).number = made;
-        return made.element;
+        return labelled('Room', made.element);
       },
     },
     {
@@ -170,7 +176,7 @@ export function roomsPanel(env) {
           },
         });
         handle(room.id).teacher = made;
-        return made.element;
+        return labelled('Teacher', made.element);
       },
     },
     {
@@ -188,7 +194,7 @@ export function roomsPanel(env) {
           commit: (value) => store.apply(setRoomFields, { roomId: room.id, subjectId: value === NONE ? null : value }),
         });
         handle(room.id).subject = made;
-        return made.element;
+        return labelled('Subject', made.element);
       },
     },
     {
@@ -209,7 +215,7 @@ export function roomsPanel(env) {
         made.input.dataset.key = room.id + ':capacity';
         made.input.setAttribute('aria-label', 'Capacity, in seats');
         handle(room.id).capacity = made;
-        return made.element;
+        return labelled('Seats', made.element);
       },
     },
     {
@@ -224,7 +230,7 @@ export function roomsPanel(env) {
           if (now) openPop(now, button);
         } } }, featuresText(room));
         handle(room.id).features = button;
-        return button;
+        return labelled('Features', button);
       },
     },
   ];

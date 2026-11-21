@@ -214,6 +214,29 @@ test('5. the list dialog: rows, moves, rename and its refusal, delete with and w
   assert.equal(await page.$$eval('#features-rows .features-row', (all) => all.length), 5);
   assert.equal(await page.$eval(key('up:' + first), (el) => el.disabled), true, 'the top row cannot move up');
   assert.match(await text(key('down:' + first)), /^Move Lab down$/);
+  // the row buttons read as words: "Move Lab up", "Delete Lab…", one space apart, no gap
+  // before the ellipsis, and each accessible name starts with the visible words
+  const words = await page.$$eval('#features-rows .features-row:first-child .features-row__buttons .btn', (all) => all.map((button) => {
+    const size = parseFloat(getComputedStyle(button).fontSize);
+    const boxes = [];
+    const walk = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+    for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) if (rect.width > 0) boxes.push(rect);
+    }
+    boxes.sort((a, b) => a.left - b.left);
+    let widest = 0;
+    for (let at = 1; at < boxes.length; at += 1) widest = Math.max(widest, boxes[at].left - boxes[at - 1].right);
+    return { seen: button.innerText, name: button.getAttribute('aria-label') || button.textContent, gap: widest / size, line: new Set(boxes.map((rect) => Math.round(rect.top))).size };
+  }));
+  assert.deepEqual(words.map((each) => each.seen), ['Move Lab up', 'Move Lab down', 'Delete Lab…'], 'the words on the buttons');
+  for (const each of words) {
+    assert.ok(each.gap < 0.4, '"' + each.seen + '" has a gap of ' + each.gap.toFixed(2) + ' em between its words');
+    assert.equal(each.line, 1, '"' + each.seen + '" is on one line');
+    assert.ok(each.name.startsWith(each.seen.replace(/…$/, '')), 'the name "' + each.name + '" starts with the visible words');
+  }
+  assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), false, 'a fine pointer, where the first name keeps the focus');
   // move Lab down: the list and the focus
   await page.click(key('down:' + first));
   await shows(() => globalThis.sv2.store.project.building.features[0].name === 'Sink');
@@ -596,6 +619,15 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   await p.waitForSelector('#features-dialog[open]');
   const seen = await p.evaluate(() => ({ features: (globalThis.sv2.store.project.building.features || []).length, rows: document.querySelectorAll('#features-rows li').length, empty: document.querySelector('#features-empty')?.hidden, dialogs: document.querySelectorAll('dialog[open]').length }));
   assert.ok(seen.rows > 0, 'the dialog lists the features: ' + JSON.stringify(seen));
+  // a coarse pointer: no text field takes the focus, so the phone's keyboard does not rise over the list
+  const focused = await p.evaluate(() => {
+    const el = document.activeElement;
+    return { coarse: matchMedia('(pointer: coarse)').matches, tag: el?.tagName, type: el?.type || null, key: el?.dataset?.key || null, inDialog: !!el?.closest('#features-dialog') };
+  });
+  const firstFeature = await p.evaluate(() => globalThis.sv2.store.project.building.features[0].id);
+  assert.equal(focused.coarse, true, 'the phone has a coarse pointer');
+  assert.ok(focused.inDialog && focused.tag !== 'INPUT' && focused.tag !== 'TEXTAREA', 'the focus is in the dialog, not in a text field: ' + JSON.stringify(focused));
+  assert.equal(focused.key, 'down:' + firstFeature, 'the first control that is not a text field: the first row\u2019s Move down');
   const row = await p.$eval('#features-rows .features-row', (el) => {
     const name = el.querySelector('.features-row__name').getBoundingClientRect();
     const buttons = Array.from(el.querySelectorAll('.features-row__buttons .btn')).map((b) => b.getBoundingClientRect());

@@ -367,19 +367,24 @@ test('a school with no features has no chips and no empty heading on Free right 
 
 // ---------------------------------------------------------------- the Room page
 
-test('the Room page lists the room\'s features before the shared space and the wing, as typed', async () => {
+test('the Room page lists the room\'s features before the shared space, as typed, and the wing on a line of its own', async () => {
   const session = await openPage();
   try {
     const { page } = session;
     await goto(page, files.w7, '#/room/rsample103');
-    assert.equal(await one(page, '.facts div:nth-child(4) dd'), 'Lab, Sink and Wing: West');
+    const facts = () => page.evaluate(() => Array.from(document.querySelectorAll('.facts > div'), (line) => [line.children[0].textContent, line.children[1].textContent]));
+    // Room 103: "Features: Lab and Sink", then "Wing: West" as its own fact (DESIGN 16.9), never in the features
+    assert.equal(await one(page, '.facts div:nth-child(4) dd'), 'Lab and Sink');
+    assert.deepEqual((await facts()).filter(([term]) => term === 'Features' || term === 'Wing'), [['Features', 'Lab and Sink'], ['Wing', 'West']]);
+    assert.equal(await page.evaluate(() => Array.from(document.querySelectorAll('.facts > div'), (line) => line.children[0].textContent).indexOf('Wing') - Array.from(document.querySelectorAll('.facts > div'), (line) => line.children[0].textContent).indexOf('Features')), 1, 'the wing comes right after the features');
     await goto(page, files.w7, '#/room/rsample301');
-    assert.match(await one(page, '.facts div:nth-child(4) dd'), /^Lab, /, 'the features come first, in the school\'s order');
+    assert.match(await one(page, '.facts div:nth-child(4) dd'), /^Lab(,| and) /, 'the features come first, in the school\'s order');
     assert.ok((await one(page, '.facts div:nth-child(4) dd')).includes(HOSTILE));
     assert.equal(await count(page, '.facts img'), 0, 'a feature named as markup is text');
     assert.equal(await page.evaluate(() => globalThis.__pwned), undefined);
     await goto(page, files.plain, '#/room/rsample103');
-    assert.equal(await one(page, '.facts div:nth-child(4) dd'), 'Wing: West');
+    assert.equal(await one(page, '.facts div:nth-child(4) dd'), 'None listed', 'a room with only a wing lists no features');
+    assert.deepEqual((await facts()).find(([term]) => term === 'Wing'), ['Wing', 'West']);
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();

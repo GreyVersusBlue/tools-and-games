@@ -449,6 +449,8 @@ export function openFeaturesDialog(env, opener, options) {
         made.removeAttribute('aria-invalid');
       }
     });
+    // each button's words are one span: a button lays out its children as flex items,
+    // which would set "Move", the name and "up" apart by the gap and drop the spaces
     const named = [bdi(feature.name), bdi(feature.name), bdi(feature.name)];
     renewals.set(feature.id, (now) => {
       committed = now.name;
@@ -461,9 +463,9 @@ export function openFeaturesDialog(env, opener, options) {
     return h('li', { class: 'features-row', data: { feature: feature.id } },
       h('div', { class: 'features-row__name' }, made, refusal),
       h('div', { class: 'features-row__buttons' },
-        h('button', { type: 'button', class: 'btn', disabled: index === 0, data: { key: 'up:' + feature.id }, on: { click: () => move(feature, index - 1, 'up') } }, 'Move ', named[0], ' up'),
-        h('button', { type: 'button', class: 'btn', disabled: index === features.length - 1, data: { key: 'down:' + feature.id }, on: { click: () => move(feature, index + 1, 'down') } }, 'Move ', named[1], ' down'),
-        h('button', { type: 'button', class: 'btn btn--danger', data: { key: 'delete:' + feature.id }, on: { click: (event) => remove(feature, event.currentTarget) } }, 'Delete ', named[2], '…'),
+        h('button', { type: 'button', class: 'btn', disabled: index === 0, data: { key: 'up:' + feature.id }, on: { click: () => move(feature, index - 1, 'up') } }, h('span', null, 'Move ', named[0], ' up')),
+        h('button', { type: 'button', class: 'btn', disabled: index === features.length - 1, data: { key: 'down:' + feature.id }, on: { click: () => move(feature, index + 1, 'down') } }, h('span', null, 'Move ', named[1], ' down')),
+        h('button', { type: 'button', class: 'btn btn--danger', data: { key: 'delete:' + feature.id }, on: { click: (event) => remove(feature, event.currentTarget) } }, h('span', null, 'Delete ', named[2], '…')),
       ),
       used && used.rooms > 0 ? h('p', { class: 'features-row__used' }, 'On ' + count(used.rooms, 'room') + '.') : null,
     );
@@ -601,7 +603,20 @@ export function openFeaturesDialog(env, opener, options) {
   });
   dialog.closed.then(stop);
   sync();
-  // the first field takes the focus: the first name, or the Add field of an empty list
+  // the first field takes the focus: the first name, or the Add field of an empty list. On a
+  // touch screen a text field would raise the keyboard over the list, so the focus goes to
+  // the first control that is not one (the first row's Move down, or Add common ones; never
+  // a Delete), else the dialog itself
+  if (matchMedia('(pointer: coarse)').matches) {
+    const control = Array.from(body.querySelectorAll('button')).find((each) => !each.disabled && !each.classList.contains('btn--danger') && each.getClientRects().length > 0);
+    if (control) {
+      control.focus();
+    } else {
+      if (!dialog.element.hasAttribute('tabindex')) dialog.element.setAttribute('tabindex', '-1');
+      dialog.element.focus();
+    }
+    return dialog;
+  }
   const first = dialog.element.querySelector('[data-key^="name:"]');
   (first || (listOf(project()).length === 0 ? dialog.element.querySelector('[data-key="common"]') : addInput)).focus();
   return dialog;

@@ -314,6 +314,51 @@ test('the list sorts by any column, and the room list prints in the order on scr
   await page.click('#rooms-table th:first-child .table__sort');
 });
 
+test('at 1280 the Rooms tab fits its panel: no sideways scroll, no cell cut, and Features in view (DESIGN 16.4)', async () => {
+  assert.equal(await page.evaluate(() => window.innerWidth), 1280);
+  const room = await findRoom('101');
+  await page.evaluate(async (id) => {
+    const w7 = await import('./engine/w7-actions.js');
+    const store = globalThis.sv2.store;
+    store.apply(w7.addCommonFeatures, undefined);
+    store.apply(w7.setRoomFeatures, { roomId: id, featureIds: store.project.building.features.slice(0, 4).map((feature) => feature.id) });
+  }, room.id);
+  await page.waitForFunction((id) => document.querySelector('[data-key="' + id + ':features"]')?.textContent === 'Lab, Sink, Projector, Computers', {}, room.id);
+  const seen = await page.evaluate(() => {
+    const host = document.querySelector('#rooms-table');
+    const box = host.getBoundingClientRect();
+    const ruler = document.createElement('canvas').getContext('2d');
+    const cut = [];
+    for (const row of host.querySelectorAll('tbody tr')) {
+      for (const td of row.children) {
+        const cell = td.getBoundingClientRect();
+        if (cell.left < box.left - 0.5 || cell.right > box.right + 0.5) cut.push(row.dataset.key + ': a cell past the panel, ' + Math.round(cell.left) + ' to ' + Math.round(cell.right));
+      }
+      for (const select of row.querySelectorAll('select')) {
+        const style = getComputedStyle(select);
+        ruler.font = style.font;
+        const words = select.selectedOptions[0]?.textContent || '';
+        // the text, its padding and the arrow (about 20 px) inside the box
+        const room = select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 20;
+        if (ruler.measureText(words).width > room) cut.push(row.dataset.key + ': "' + words + '" cut in its ' + select.name + ' menu');
+      }
+      for (const control of row.querySelectorAll('input, .bi-features-cell')) {
+        if (control.scrollWidth > control.clientWidth + 1) cut.push(row.dataset.key + ': ' + (control.name || control.textContent) + ' cut');
+      }
+    }
+    const features = host.querySelector('.bi-features-cell').getBoundingClientRect();
+    return { scroll: host.scrollWidth, width: host.clientWidth, panel: Math.round(box.width), cut, features: { left: features.left, right: features.right, width: features.width }, box: { left: box.left, right: box.right } };
+  });
+  assert.ok(seen.panel < 400, 'the panel is the narrow one this is about: ' + seen.panel);
+  assert.ok(seen.scroll <= seen.width + 1, 'the table scrolls sideways: ' + seen.scroll + ' in ' + seen.width);
+  assert.deepEqual(seen.cut, [], 'every column is whole');
+  assert.ok(seen.features.width > 0 && seen.features.left >= seen.box.left && seen.features.right <= seen.box.right + 0.5, 'Features is in view without a sideways scroll: ' + JSON.stringify(seen));
+  // each stacked cell says what it is, and the headings still sort
+  const row = '#rooms-table tr[data-key="' + room.id + '"] ';
+  assert.deepEqual(await page.$$eval(row + '.bi-cell__label', (all) => all.map((el) => getComputedStyle(el).display === 'none' ? null : el.textContent)), ['Room', 'Teacher', 'Subject', 'Seats', 'Features']);
+  assert.equal(await page.$eval(row + '.bi-cell__label', (el) => el.getAttribute('aria-hidden')), 'true', 'the controls keep their own names');
+});
+
 test('a floor with no rooms says what to do, and the list follows the floor on screen', async () => {
   await page.click('#add-floor');
   await floorIs(page, 'Floor 4');
