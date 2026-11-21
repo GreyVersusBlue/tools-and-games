@@ -76,9 +76,16 @@ test('nothing under two characters is searched; whitespace and punctuation alone
     assert.deepEqual(found.results, []);
   }
   assert.equal(search(index, 'fl').short, false);
-  const odd = search(index, '--');
-  assert.equal(odd.short, false);
-  assert.deepEqual(odd.results, [], 'a query of no letters or digits matches nothing');
+  // only letters and digits count toward the two: punctuation is not a character of the search
+  for (const query of ['--', 'f.', '.f', 'f-', '“f”', 'f ?', '–—']) {
+    const found = search(index, query);
+    assert.equal(found.short, true, JSON.stringify(query) + ' has one letter or none, and was searched');
+    assert.deepEqual(found.results, []);
+  }
+  assert.equal(search(index, 'f l').short, false, 'two letters, apart, are two');
+  assert.equal(search(index, 'f f').short, false, 'the same letter twice is two');
+  assert.equal(search(index, 'fl.').short, false);
+  assert.deepEqual(search(index, 'fl.').results.map((r) => r.entry.title), ['Floor']);
 });
 
 test('a match in the title ranks before one only in the text; ties keep Help’s own order', () => {

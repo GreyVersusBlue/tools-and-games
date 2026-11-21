@@ -290,7 +290,8 @@ export function openHelp(ctx, options) {
     box.scrollTop += target.getBoundingClientRect().top - frame.top - pinned - 12;
   }
 
-  // What the field says now: nothing under MIN_CHARS characters is searched.
+  // What the field says now: nothing with under MIN_CHARS letters and digits is
+  // searched.
   function settle() {
     typing = 0;
     if (dialog) delete dialog.element.dataset.pending;

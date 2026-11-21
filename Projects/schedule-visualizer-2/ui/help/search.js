@@ -19,8 +19,8 @@
 // accents. A query word matches a word of the entry that begins with it ("stair"
 // finds stairwell; "end" finds ends but not "bend"). Words are runs of letters
 // and digits, so "dead-end" and "dead end" are the same query. The title counts
-// too, and a match in it ranks first. Nothing under MIN_CHARS characters is
-// searched.
+// too, and a match in it ranks first. Nothing with fewer than MIN_CHARS letters
+// and digits is searched.
 
 export const MIN_CHARS = 2;
 // A shown sentence is cut to about this many characters, around its first match.
@@ -175,9 +175,9 @@ function snippetOf(each, tokens) {
 // only in the text, a whole word before a start of one, then Help's own order.
 export function search(entries, query) {
   const typed = String(query === undefined || query === null ? '' : query).trim();
-  if ([...typed].length < MIN_CHARS) return { query: typed, tokens: [], short: true, results: [] };
+  // only letters and digits count toward the minimum: "a." is one character
+  if (wordsOf(fold(typed).folded).reduce((sum, w) => sum + [...w.word].length, 0) < MIN_CHARS) return { query: typed, tokens: [], short: true, results: [] };
   const tokens = queryTokens(typed);
-  if (tokens.length === 0) return { query: typed, tokens, short: false, results: [] };
   const results = [];
   for (const each of entries) {
     const all = [...each.titleWords, ...each.words];
