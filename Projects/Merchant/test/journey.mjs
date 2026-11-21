@@ -2950,7 +2950,7 @@ try {
     const entry = g.log.find(e => e.kind === 'jump');
     const { page, consoleErrors } = await open(FRAMES[0]);
     await test('the page between acts lists each settled trip, the money from trips, who left and why, before the history', async () => {
-      ok(entry.settled.length > 0 && entry.agents.length > 0, 'the seeded jump settles a trip and loses an agent, or this case checks nothing');
+      ok(entry.settled.length > 0 && entry.agents.some(a => a.id === 'yusuf' && a.left === 'trust'), 'the jump settles a trip and loses Yusuf by trust, or this case checks nothing');
       await page.goto(GAME, { waitUntil: 'load' });
       await page.evaluate((st, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...st, __v: v })); }, JSON.parse(JSON.stringify(g)), SAVE_VERSION);
       await page.goto(GAME + '#desk', { waitUntil: 'load' });
