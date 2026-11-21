@@ -860,15 +860,15 @@
       {
         "id": "meet",
         "label": "Meet the Persian merchant",
-        "hint": "It costs a gift. It may pay.",
+        "hint": "It costs a gift of 8 dinars. In three seasons the Persian pays you 12.",
         "requires": {
           "money": {
-            "gte": 7
+            "gte": 8
           }
         },
         "now": [
           {
-            "money": -7
+            "money": -8
           }
         ],
         "later": [
@@ -876,7 +876,7 @@
             "in": 3,
             "do": [
               {
-                "money": 14
+                "money": 12
               }
             ]
           }
@@ -885,13 +885,8 @@
       {
         "id": "decline",
         "label": "Turn him down",
-        "hint": "Yusuf will be glad of a safe road.",
-        "now": [
-          {
-            "trust": "yusuf",
-            "by": 1
-          }
-        ],
+        "hint": "Yusuf is glad of a safe road. Your other agents hear of it in two seasons.",
+        "now": [],
         "later": [
           {
             "in": 2,
@@ -906,6 +901,9 @@
       }
     ],
     "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
+    "unlocks": [
+      "term-dinar"
+    ],
     "sources": [
       {
         "src": "ibn-battuta-1958",

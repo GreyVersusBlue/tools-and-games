@@ -16,7 +16,9 @@
 // 8 the direction of trade: each gradient in city.json lists stops cheapest first, and the base price of
 //   its good at a stop is never below that of an earlier stop, in every act (MER-51b)
 // 10 no choice's later effect list adds money and removes stock together: a later stock change clamps at
-//   zero, so goods already sold would still pay (MER-102b, DECISIONS 2026-11-20 18:4x)
+//   zero, so goods already sold would still pay (MER-102b, DECISIONS 2026-11-20 18:4x); and no choice that
+//   changes no stock has money only in its later effects when another choice on the card sells a good (removes
+//   stock and adds money now): holding would pay as well as selling and the bots read it as free (MER-107)
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -24,6 +26,11 @@ import { loadContent } from '../js/data.js';
 import { validateContent } from '../js/engine/content.js';
 import { tripLeaf } from '../js/engine/conditions.js';
 
+// Rule 10's second half found four choices already in the data that it refuses (MER-107). Two are Cairo cards
+// (cloth-for-the-east/keep pays 40 later for linen it keeps, bales-middling/lesson pays 25 later beside a sale), two
+// are testport's. MER-107 may change neither file, so they are listed here and each should be rewritten under the
+// same rule as gold-price-falls, then deleted from this list. A card not listed here is refused.
+const HOLD_PAYS_LATER_LISTED = ['cloth-for-the-east/keep', 'bales-middling/lesson', 'salt-order/keep-salt', 'wool-due/keep'];
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const DATA = path.join(ROOT, 'data');
@@ -210,6 +217,15 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
       const list = l.do ?? [];
       if (list.some(e => typeof e.money === 'number' && e.money > 0) && list.some(e => 'stock' in e && e.by < 0)) {
         fail(10, `${where}.choices[${x.id}]`, 'a later effect adds money and removes stock together; the stock may be gone by then and the money would still come');
+      }
+    }
+    const sells = ch.some(y => (y.now ?? []).some(e => typeof e.money === 'number' && e.money > 0) && (y.now ?? []).some(e => 'stock' in e && e.by < 0));
+    if (sells) for (const x of ch) {
+      const effects = [...(x.now ?? []), ...(x.later ?? []).flatMap(l => l.do ?? [])];
+      const laterMoney = (x.later ?? []).some(l => (l.do ?? []).some(e => typeof e.money === 'number' && e.money > 0));
+      const nowMoney = (x.now ?? []).some(e => typeof e.money === 'number' && e.money !== 0);
+      if (laterMoney && !nowMoney && !effects.some(e => 'stock' in e) && !HOLD_PAYS_LATER_LISTED.includes(`${c.id}/${x.id}`)) {
+        fail(10, `${where}.choices[${x.id}]`, 'this choice keeps the stock and pays only later, while another choice on the card sells it: holding would pay as well as selling');
       }
     }
     if (exempt.includes(c.id)) continue;
