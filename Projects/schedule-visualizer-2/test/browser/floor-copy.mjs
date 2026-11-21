@@ -236,8 +236,58 @@ test('numbers that cannot carry over are one line, not two rows; a floor with no
   await build(page, { numbers: ['A-1', 'B-2'], flight: false });
   await openDialogByButton(page);
   assert.equal(await page.$eval('#duplicate-numbers', (el) => el.hidden), true);
-  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers ("A-1" does not begin with a digit), so 2 rooms will need one.');
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers (‘A-1’ does not begin with a digit, and the numbers carry over only when every one can), so both numbered rooms lose their numbers on the copy and will need one each.');
   assert.equal(await page.$eval('#duplicate-join-block', (el) => el.hidden), true, 'nothing is connected, so nothing to join');
+  await page.keyboard.press('Escape');
+  await dialogGone(page);
+});
+
+test('one room numbered with a word stops the numbers for all, as 22.8 and 22.17 say, and the line says how many rooms lose theirs and why (SV2-139)', async () => {
+  await build(page, { numbers: ['201', '202', 'Library'], flight: false });
+  await openDialogByButton(page);
+  assert.equal(await page.$eval('#duplicate-numbers', (el) => el.hidden), true);
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers (‘Library’ does not begin with a digit, and the numbers carry over only when every one can), so all 3 numbered rooms lose their numbers on the copy and will need one each.');
+  await page.keyboard.press('Escape');
+  await dialogGone(page);
+  await build(page, { numbers: ['201', 'Library', ''], flight: false });
+  await openDialogByButton(page);
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers (‘Library’ does not begin with a digit, and the numbers carry over only when every one can), so 2 numbered rooms lose their numbers on the copy, and 3 rooms will need one.');
+  await page.keyboard.press('Escape');
+  await dialogGone(page);
+});
+
+test('stairs of the source that cannot join (the floor below the copy has none there) are named, with why, and are left unconnected (SV2-139)', async () => {
+  await build(page, { flight: false });
+  await page.evaluate(async (cell) => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    const floors = () => store.project.building.floors;
+    for (const n of [0, 1]) store.apply(actions.placeStairs, { floorId: floors()[n].id, cells: [cell] });
+    store.apply(actions.connectStairs, { a: { floorId: floors()[0].id, cell }, b: { floorId: floors()[1].id, cell } });
+  }, CELL);
+  await openDialogByButton(page);
+  assert.equal(await page.$eval('#duplicate-unjoined', (el) => el.hidden), false);
+  assert.equal(await text(page, '#duplicate-unjoined'), 'Stairs A is copied but not joined: Floor 3 has no stairs in the same row and column. The building checks will list its copy on Floor 4 as not connected until you connect it.');
+  assert.equal(await page.$eval('#duplicate-join-block', (el) => el.hidden), true, 'nothing joins, so no checkbox');
+  await page.evaluate(() => document.querySelector('#duplicate-floor-dialog .dialog__buttons button').click());
+  await dialogGone(page);
+  await floorIs(page, 'Floor 4');
+  const after = await building(page);
+  assert.equal(after.connections.length, 1, 'no flight was made');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await build(page);
+  await openDialogByButton(page);
+  assert.equal(await page.$eval('#duplicate-unjoined', (el) => el.hidden), true, 'every connected stair joins: nothing to say');
+  await page.keyboard.press('Escape');
+  await dialogGone(page);
+});
+
+test('a fine pointer (not coarse): the dialog opens with the Name field focused and its text selected (SV2-139)', async () => {
+  await build(page);
+  assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), false, 'the desktop page has no coarse pointer');
+  await openDialogByButton(page);
+  assert.equal(await focusLabel(page), 'duplicate-name');
+  assert.deepEqual(await page.$eval('#duplicate-name', (el) => [el.selectionStart, el.selectionEnd, el.value.length]), [0, 4 + 3, 7]);
   await page.keyboard.press('Escape');
   await dialogGone(page);
 });
@@ -304,6 +354,10 @@ test('on a phone at 390 px: the ⋯ button is 44 px, the dialog fits with no sid
   await menuOpen(p);
   await p.evaluate(() => Array.from(document.querySelectorAll('.menu [role="menuitem"]')).find((item) => item.textContent.includes('Duplicate floor')).click());
   await dialogOpen(p);
+  // a coarse pointer: no keyboard raised over the dialog, the focus on its first
+  // control that is not a text field (SV2-139)
+  assert.equal(await p.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the phone page has a coarse pointer');
+  assert.equal(await focusLabel(p), 'duplicate-numbers-level', 'the first radio, not the Name field');
   const fit = await p.evaluate(() => {
     const dialog = document.querySelector('#duplicate-floor-dialog').getBoundingClientRect();
     const buttons = Array.from(document.querySelectorAll('#duplicate-floor-dialog .dialog__buttons button'), (button) => button.getBoundingClientRect());
@@ -328,4 +382,18 @@ test('on a phone at 390 px: the ⋯ button is 44 px, the dialog fits with no sid
   assert.ok(short.buttons.every(([top, bottom]) => top >= 0 && bottom <= short.height), 'at 844 by 390 both buttons are on screen: ' + JSON.stringify(short));
   await p.keyboard.press('Escape');
   await dialogGone(p);
+});
+
+test('on a phone, a dialog with no radio or checkbox to show takes the focus itself, never the Name field; Escape still gives it back (SV2-139)', async () => {
+  const p = phone.page;
+  await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+  await build(p, { numbers: ['A-1'], flight: false });
+  await p.click('#floor-actions');
+  await menuOpen(p);
+  await p.evaluate(() => Array.from(document.querySelectorAll('.menu [role="menuitem"]')).find((item) => item.textContent.includes('Duplicate floor')).click());
+  await dialogOpen(p);
+  assert.equal(await p.evaluate(() => document.activeElement === document.querySelector('#duplicate-floor-dialog')), true, 'the dialog itself');
+  await p.keyboard.press('Escape');
+  await dialogGone(p);
+  assert.equal(await focusLabel(p), 'floor-actions');
 });

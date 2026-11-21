@@ -15,6 +15,7 @@ import { collectIds, isId } from '../../engine/ids.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { newFloor, newRoom, newOtherSpace, stairwells, stairsLetter, elevatorCars, isLiftCell, ELEVATOR_KIND } from '../../engine/schema.js';
 import { school, emptyProject, ctx, clock, makeIds, assertValid, clone } from './helpers.mjs';
+import { sampleSchool } from '../../data/sample-school.js';
 
 const { ActionError, GEOMETRY, BUILDING, SCHEDULE, scheduleOutcome } = actions;
 const CELL = 332;
@@ -350,6 +351,10 @@ test('numbers: a letter after the digits stays ("214B" becomes "414B"), and a ro
 test('the sample\'s Floor 2 has a room numbered "Library", so its numbers cannot carry over and the default is blank', () => {
   const info = describeFloorDuplicate(school(), 'fsample002');
   assert.equal(info.renumber.possible, false);
+  // all or nothing, as 22.8 and 22.17 say ("every numbered room"): the reason names
+  // the one number, quoted as the tool quotes, and the count is every numbered room
+  assert.equal(info.renumber.reason, '‘Library’ does not begin with a digit');
+  assert.equal(info.numbered, roomsOf(school().building.floors[1]).length);
   assert.ok(roomsOf(newest(run(school(), { floorId: 'fsample002' }))).every((room) => room.number === ''));
 });
 
@@ -365,8 +370,8 @@ test('numbers: refused to renumber, never quietly blanked: numbers that do not s
   const { project, floor } = numbered(2, ['501', '502']);
   const info = describeFloorDuplicate(project, floor.id);
   assert.equal(info.renumber.possible, false);
-  assert.equal(info.renumber.reason, '"501" does not begin with 2, Floor 2\'s level');
-  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber', /"501" does not begin with 2, Floor 2's level\. Leave the copies without numbers/);
+  assert.equal(info.renumber.reason, '‘501’ does not begin with 2, Floor 2\'s level');
+  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber', /‘501’ does not begin with 2, Floor 2's level\. Leave the copies without numbers/);
   const after = run(project, { floorId: floor.id });
   assert.ok(roomsOf(newest(after)).every((room) => room.number === ''), 'asked for nothing, the default is blank');
 });
@@ -385,13 +390,13 @@ test('numbers: not renumbered when the digits are fewer than the level\'s plus t
 
 test('numbers: the refusal gives the true reason, naming the number: too few digits ("1-01", "10"), not the level ("0101"), lengths apart, no digit', () => {
   const reason = (level, numbers) => describeFloorDuplicate(numbered(level, numbers).project, 'fsample00' + level).renumber.reason;
-  assert.equal(reason(1, ['1-01']), '"1-01" begins with 1 digit, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
-  assert.equal(reason(1, ['10', '11', '12', '13', '14']), '"10" begins with 2 digits, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
-  assert.equal(reason(1, ['0101', '0102', '0103', '0104', '0105']), '"0101" does not begin with 1, Floor 1\'s level');
-  assert.equal(reason(2, ['201', '2014']), '"201" begins with 3 digits and "2014" with 4, and the level carries over only when every number has as many');
-  assert.equal(reason(2, ['201', 'Gym']), '"Gym" does not begin with a digit');
+  assert.equal(reason(1, ['1-01']), '‘1-01’ begins with 1 digit, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
+  assert.equal(reason(1, ['10', '11', '12', '13', '14']), '‘10’ begins with 2 digits, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
+  assert.equal(reason(1, ['0101', '0102', '0103', '0104', '0105']), '‘0101’ does not begin with 1, Floor 1\'s level');
+  assert.equal(reason(2, ['201', '2014']), '‘201’ begins with 3 digits and ‘2014’ with 4, and the level carries over only when every number has as many');
+  assert.equal(reason(2, ['201', 'Gym']), '‘Gym’ does not begin with a digit');
   const { project } = numbered(1, ['1-01']);
-  refused(project, { floorId: 'fsample001', numbers: 'level' }, 'cannot-renumber', /^The numbers cannot carry over: "1-01" begins with 1 digit, too few/);
+  refused(project, { floorId: 'fsample001', numbers: 'level' }, 'cannot-renumber', /^The numbers cannot carry over: ‘1-01’ begins with 1 digit, too few/);
 });
 
 test('numbers: "1001" on level 1 carries over as 22.17 says, the level\'s one digit replaced: "4001" on level 4', () => {
@@ -564,6 +569,49 @@ test('join: a cell that is stairs on the source but corridor on the old top floo
   project.building.connections.pop();
   const info = describeFloorDuplicate(project, 'fsample002');
   assert.equal(info.joins.length, 0);
+});
+
+test('join: the full sample\'s Floor 2: B and D join, and the dialog names Stairs A and C, copied but not joined, and why (SV2-139)', () => {
+  const info = describeFloorDuplicate(sampleSchool(), 'fsample002');
+  assert.deepEqual(info.joins.map((join) => join.type), ['well-new', 'elevator']);
+  assert.equal(info.unjoinedText, 'Stairs A and C are copied but not joined: Floor 3 has no stairs in the same row and column. The building checks will list their copies on Floor 4 as not connected until you connect them.');
+  const typed = describeFloorDuplicate(sampleSchool(), 'fsample002', { name: 'Annex' });
+  assert.match(typed.unjoinedText, /their copies on Annex as not connected/, 'the name typed is the name it uses');
+  // and it is so: the copies of A and C have no flight
+  const after = run(sampleSchool(), { floorId: 'fsample002' });
+  const copy = newest(after);
+  for (const cell of [328, 332]) {
+    assert.equal(copy.cells[cell], 'S');
+    assert.ok(after.building.connections.every((connection) => !(connection.a.floorId === copy.id && connection.a.cell === cell) && !(connection.b.floorId === copy.id && connection.b.cell === cell)), 'cell ' + cell + ' is unconnected');
+  }
+});
+
+test('join: every connected stair or stop that is not joined is named with its own reason; all joined, or the sizes apart, say nothing here', () => {
+  assert.equal(describeFloorDuplicate(chain(3), 'fsample003').unjoinedText, '', 'the top floor\'s stairs join');
+  assert.equal(describeFloorDuplicate(chain(3), 'fsample001').unjoinedText, '', 'flight A is not joined, but B at the same cell is: that cell joins');
+  const corridor = chain(3);
+  corridor.building.floors[2].cells = corridor.building.floors[2].cells.slice(0, CELL) + '#' + corridor.building.floors[2].cells.slice(CELL + 1);
+  corridor.building.connections.pop();
+  assert.equal(describeFloorDuplicate(corridor, 'fsample002').unjoinedText, 'Stairs A is copied but not joined: Floor 3 has no stairs in the same row and column. The building checks will list its copy on Floor 4 as not connected until you connect it.');
+  const loose = chain(3);
+  loose.building.connections.pop();
+  assert.match(describeFloorDuplicate(loose, 'fsample002').unjoinedText, /^Stairs A is copied but not joined: Floor 3's stairs there are not connected to any floor\./);
+  const liftAbove = chain(3);
+  liftAbove.building.floors[2].lifts = [CELL];
+  liftAbove.building.connections.pop();
+  assert.match(describeFloorDuplicate(liftAbove, 'fsample002').unjoinedText, /^Stairs A is copied but not joined: Floor 3 has an elevator stop there, not stairs\./);
+  const car = lift(3);
+  car.building.connections.pop();
+  car.building.floors[2].cells = car.building.floors[2].cells.slice(0, CELL) + '#' + car.building.floors[2].cells.slice(CELL + 1);
+  assert.match(describeFloorDuplicate(car, 'fsample002').unjoinedText, /^Elevator D is copied but not joined: Floor 3 has no elevator stop in the same row and column\./);
+  const apart = chain(2);
+  const top = newFloor('fsample002', 'Floor 2', 2, 40, 15);
+  top.cells = top.cells.slice(0, CELL) + 'S' + top.cells.slice(CELL + 1);
+  apart.building.floors[1] = top;
+  assert.equal(describeFloorDuplicate(apart, 'fsample001').unjoinedText, '', 'notJoinedText says it for all of them');
+  const bare = chain(3);
+  bare.building.connections = [];
+  assert.equal(describeFloorDuplicate(bare, 'fsample002').unjoinedText, '', 'a stair with no connection on the source is not named');
 });
 
 test('join: stairs at the source and an elevator stop at the top floor do not join, nor the other way round', () => {
