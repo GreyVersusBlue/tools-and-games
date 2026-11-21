@@ -65,6 +65,15 @@ test('trip home: holds only on the opening the agent came back, and not before o
   const later = step(back, calm);
   ok(!later.desk.some(p => p.kind === 'return') && !holds(leaf('home'), later, calm), 'the season after');
 });
+test('trip home: an agent who retires with a return paper on the desk, or is gone, has no homecoming', () => {
+  const back = homeState();
+  ok(holds(leaf('home'), back, calm), 'baseline: hired and home');
+  const retired = variant(back, x => { x.agents.mira.hired = false; });
+  ok(retired.desk.some(p => p.kind === 'return' && p.agent === 'mira'), 'the return paper is still on the desk');
+  eq(tripOf(retired, calm, 'mira', 'home'), null, 'a retired agent: the leaf does not hold');
+  const gone = variant(back, x => { x.agents.mira.where = 'gone'; });
+  eq(tripOf(gone, calm, 'mira', 'home'), null, 'a gone agent: the leaf does not hold');
+});
 test('trip out: holds while an expedition of that agent is on the road, and not at home', () => {
   const s = game();
   ok(!holds(leaf('out'), s, calm), 'nothing sent');

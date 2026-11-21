@@ -85,7 +85,7 @@
       "seal": null
     },
     "title": "A neighbour wants your linen",
-    "body": "Abu Bakr makes sails and needs cloth today. He offers Cairo's price for ten loads of your linen. He will pay in coin at once.",
+    "body": "Abu Bakr makes sails and needs cloth today. He offers a little over Cairo's price for ten loads of your linen, 455 dinars in coin at once.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -96,10 +96,10 @@
           "stock": "linen",
           "gte": 10
         },
-        "hint": "Abu Bakr will remember a good neighbour.",
+        "hint": "You get 455 dinars today, 5 more than Cairo pays. The linen leaves your warehouse.",
         "now": [
           {
-            "money": 450
+            "money": 455
           },
           {
             "stock": "linen",
@@ -120,14 +120,15 @@
           "stock": "linen",
           "gte": 10
         },
-        "hint": "Nothing now. Far away they may sell for 90 dinars more.",
+        "hint": "Nothing now. The linen stays in your warehouse for your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
         "now": [],
         "later": [
           {
             "in": 3,
             "do": [
               {
-                "money": 90
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -310,17 +311,9 @@
       {
         "id": "pass",
         "label": "Wish her luck and pass",
-        "hint": "Your 140 dinars go into your own goods and earn 40 dinars. Amina will find another buyer.",
+        "hint": "You keep your 140 dinars. Amina will find another buyer, and she will not forget it.",
         "now": [],
         "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "money": 40
-              }
-            ]
-          },
           {
             "in": 3,
             "do": [
@@ -433,15 +426,15 @@
       {
         "id": "alone",
         "label": "Let Salih buy it alone",
-        "hint": "It is quick, but some bales may be poor. Six loads is a venture, so the sum is large.",
+        "hint": "It is quick, but some bales may be poor. Salih keeps a bigger share, so the six loads cost 215 dinars.",
         "requires": {
           "money": {
-            "gte": 180
+            "gte": 215
           }
         },
         "now": [
           {
-            "money": -180
+            "money": -215
           },
           {
             "stock": "linen",
@@ -500,7 +493,8 @@
     "note": "A Geniza letter asked a merchant in a flax town to watch a broker. Flax is the plant that linen is made from. He was not to let the broker buy middling flax for the writer. He was also not to pay the broker in debased coins, so the broker would not turn against the writer.",
     "unlocks": [
       "term-broker",
-      "term-load"
+      "term-load",
+      "term-dinar"
     ],
     "sources": [
       {

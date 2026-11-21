@@ -142,7 +142,7 @@
       {
         "id": "sail",
         "label": "Buy four loads of sugar and ship them",
-        "hint": "A boatload is a venture, so it costs a lot. The first boats sell first, and other owners will grumble.",
+        "hint": "Four loads cost 220 dinars, and the boat brings back 230 in two seasons. The first boats sell first, and other owners will grumble.",
         "requires": {
           "money": {
             "gte": 220
@@ -162,7 +162,7 @@
             "in": 2,
             "do": [
               {
-                "money": 260
+                "money": 230
               }
             ],
             "card": "kamil-boat-arrived"
@@ -193,6 +193,9 @@
         "src": "sato-2006",
         "at": "p. 150; al-Maqrizi on the Alexandria canal and the flood"
       }
+    ],
+    "unlocks": [
+      "term-dinar"
     ]
   },
   {

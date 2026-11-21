@@ -15,6 +15,8 @@
 // 7 no em dash or en dash, no web address, no TODO
 // 8 the direction of trade: each gradient in city.json lists stops cheapest first, and the base price of
 //   its good at a stop is never below that of an earlier stop, in every act (MER-51b)
+// 10 no choice's later effect list adds money and removes stock together: a later stock change clamps at
+//   zero, so goods already sold would still pay (MER-102b, DECISIONS 2026-11-20 18:4x)
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -45,6 +47,7 @@ export const RULES = {
   7: 'text rules',
   8: 'the direction of trade',
   9: 'a card that tells of a trip is bound to one',
+  10: 'no later pay for stock',
 };
 
 // Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
@@ -202,6 +205,12 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
     if (!ch.some(x => (x.later ?? []).length)) fail(3, where, 'no choice has a later effect');
     for (const x of ch) {
       if (!(x.now ?? []).length && !(x.later ?? []).length) fail(3, `${where}.choices[${x.id}]`, 'choice has no effect');
+    }
+    for (const x of ch) for (const l of x.later ?? []) {
+      const list = l.do ?? [];
+      if (list.some(e => typeof e.money === 'number' && e.money > 0) && list.some(e => 'stock' in e && e.by < 0)) {
+        fail(10, `${where}.choices[${x.id}]`, 'a later effect adds money and removes stock together; the stock may be gone by then and the money would still come');
+      }
     }
     if (exempt.includes(c.id)) continue;
     if (ch.length < 2) { fail(4, where, 'a card with one choice has no trade-off'); continue; }
