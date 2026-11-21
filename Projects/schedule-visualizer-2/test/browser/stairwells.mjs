@@ -374,30 +374,49 @@ test('Connect another floor… adds a stop from a stop: the banner names the sta
   assert.equal(await page.$eval('#connect-banner', (el) => el.hidden), true);
 });
 
-test('SV2-142: at 390 px the connect banner is docked: the plan starts under it, so it covers no cell, and the plan is whole again when it goes', async () => {
+test('SV2-142, SV2-142b: the connect banner is docked (the plan starts under it, so it covers no cell), and at 1280 and 390 every cell stays where it was on screen and the zoom holds as it comes and goes', async () => {
   await floors(3, [1, 2, 3], { flights: [[1, 2]] });
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-  await still(page);
   const rects = () => page.evaluate(() => {
     const banner = document.getElementById('connect-banner').getBoundingClientRect();
     const plan = document.getElementById('plan').getBoundingClientRect();
     const stage = document.querySelector('.bld-stage').getBoundingClientRect();
-    return { bannerBottom: Math.round(banner.bottom), planTop: Math.round(plan.top), planBottom: Math.round(plan.bottom), stageTop: Math.round(stage.top), stageBottom: Math.round(stage.bottom), hidden: document.getElementById('connect-banner').hidden };
+    return { bannerBottom: Math.round(banner.bottom), planTop: Math.round(plan.top), planBottom: Math.round(plan.bottom), stageTop: Math.round(stage.top), stageBottom: Math.round(stage.bottom), zoom: document.querySelector('.bld').editor.view.zoom };
   });
-  await showFloor('Floor 3');
+  for (const size of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewport({ ...size, deviceScaleFactor: 1 });
+    await still(page);
+    await showFloor('Floor 3');
+    const before = { ...(await rects()), cell: await point(page, 5, 10) };
+    await menuOn(14, 10);
+    await choose('Connect these stairs…');
+    await page.waitForFunction(() => !document.getElementById('connect-banner').hidden);
+    await still(page);
+    const open = { ...(await rects()), cell: await point(page, 5, 10) };
+    assert.ok(open.planTop > before.planTop, size.width + ' px: the banner shows above the plan');
+    assert.ok(open.planTop >= open.bannerBottom - 1, size.width + ' px: the plan starts at ' + open.planTop + ' under a banner that ends at ' + open.bannerBottom);
+    assert.equal(open.planBottom, open.stageBottom, size.width + ' px: the plan runs to the bottom of its stage');
+    assert.ok(Math.abs(open.cell.x - before.cell.x) <= 1 && Math.abs(open.cell.y - before.cell.y) <= 1, size.width + ' px: the cell stays at ' + JSON.stringify(before.cell) + ' when the banner shows, not ' + JSON.stringify(open.cell));
+    assert.equal(open.zoom, before.zoom, size.width + ' px: the zoom holds when the banner shows');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
+    await still(page);
+    const shut = { ...(await rects()), cell: await point(page, 5, 10) };
+    assert.equal(shut.planTop, shut.stageTop, size.width + ' px: the plan is the whole stage once the banner is gone');
+    assert.ok(Math.abs(shut.cell.x - before.cell.x) <= 1 && Math.abs(shut.cell.y - before.cell.y) <= 1, size.width + ' px: the cell is back at ' + JSON.stringify(before.cell) + ' when the banner goes, not ' + JSON.stringify(shut.cell));
+    assert.equal(shut.zoom, before.zoom, size.width + ' px: the zoom holds when the banner goes');
+  }
+  await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
+  await still(page);
+  // printed while connecting: no banner, and no blank band where it was
   await menuOn(14, 10);
   await choose('Connect these stairs…');
   await page.waitForFunction(() => !document.getElementById('connect-banner').hidden);
-  await still(page);
-  const open = await rects();
-  assert.ok(open.planTop >= open.bannerBottom - 1, 'the plan starts at ' + open.planTop + ' under a banner that ends at ' + open.bannerBottom);
-  assert.equal(open.planBottom, open.stageBottom, 'the plan runs to the bottom of its stage');
+  await page.emulateMediaType('print');
+  const printed = await page.evaluate(() => ({ plan: document.getElementById('plan').getBoundingClientRect().top, stage: document.querySelector('.bld-stage').getBoundingClientRect().top, banner: getComputedStyle(document.getElementById('connect-banner')).display }));
+  await page.emulateMediaType(null);
+  assert.deepEqual([printed.plan, printed.banner], [printed.stage, 'none'], 'in print the plan starts at the top of its stage');
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
-  await still(page);
-  const shut = await rects();
-  assert.equal(shut.planTop, shut.stageTop, 'the plan is the whole stage once the banner is gone');
-  await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
   await still(page);
 });
 

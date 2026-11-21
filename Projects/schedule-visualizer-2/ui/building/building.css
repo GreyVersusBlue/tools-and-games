@@ -814,8 +814,15 @@
 @media print {
   .bld-strip,
   .bld-status,
-  .bld-empty {
+  .bld-empty,
+  .bld-connect {
     display: none;
+  }
+
+  /* the connect banner's docking is set inline on the stage; a print has no
+     banner, so no band above the plan either (SV2-142b) */
+  .bld-stage {
+    --bld-connect: 0px !important;
   }
 }
 
