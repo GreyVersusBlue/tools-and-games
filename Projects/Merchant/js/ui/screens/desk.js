@@ -5,7 +5,7 @@
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { leftHow } from '../../engine/agents.js';
-import { front, back, record, edge, paperTitle, happened, num, dinars, RECORD_KINDS } from './paper.js';
+import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, RECORD_KINDS } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
@@ -237,6 +237,8 @@ export function createDesk(app) {
         ...(gap?.settled ?? []).flatMap(x => [
           h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text),
           ...(cargoLine(x.cargo) ? [h('p', { class: 'sheet-body', id: `cargo-${x.expedition}` }, cargoLine(x.cargo))] : []),
+          // what the sheet hoped and the one reason for the gap, as the return paper will say it (MER-119)
+          ...(x.why ? [h('p', { class: 'sheet-body', id: `hoped-${x.expedition}` }, returnLead(content, { kind: 'return', data: { hoped: x.hoped, why: x.why } }))] : []),
         ]),
         ...(gap?.settled?.length ? [h('p', { class: 'sheet-body', id: 'interlude-trips' }, tripsLine(gap.settled))] : []),
         ...(gap?.agents ?? []).map(g => {

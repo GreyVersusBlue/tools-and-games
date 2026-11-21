@@ -421,6 +421,12 @@ function pictureSlot(app) {
 }
 
 const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v));
+/** An account row for a return: label, words, and the signed dinars when the row is one of the sums. */
+const sumRow = r => {
+  const sum = Number.isFinite(r.amount) && !r.detail;
+  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, r.text),
+    sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
+};
 
 /** The engine's own papers (DESIGN 4.6, 2): a return, a loss, price letters and the folded
     Accounts paper. Each is read and set aside with one press. `open` says whether a return's
@@ -435,12 +441,13 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
     if (d.route && paper.kind === 'return') body.push(h('p', { class: 'route' }, d.route));
     const rows = paper.kind === 'return' ? (d.account ?? []) : (d.lines ?? []);
     if (rows.length) {
-      const table = h('table', { class: 'accounts-table' }, h('tbody', null, rows.map(r => row(r.label, r.text))));
+      // a return's rows that are sums (an `amount`, no `detail`) show it in a last column, so what a child reads adds up to the
+      // Profit row to the dinar (MER-119); the road's detail rows say what happened, and their money is inside the next sum
+      const table = h('table', { class: 'accounts-table' }, h('tbody', null, rows.map(r => paper.kind === 'return' ? sumRow(r) : row(r.label, r.text))));
       body.push(paper.kind === 'return'
         ? h('details', { class: 'account', open: open ? true : null }, h('summary', null, 'Show the account'), table)
         : table);
     }
-    if (d.agentLine) body.push(h('p', { class: 'agent-line' }, d.agentLine));
     // DESIGN 2.1 rules 3 and 4: the paper ends by asking, when returns.json has an entry for the trip
     const choices = choicesOf(app, paper);
     if (choices.some(c => c.id !== 'ok')) {
