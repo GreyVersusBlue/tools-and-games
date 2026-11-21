@@ -627,3 +627,15 @@ test('Help says blocked stairs do not change the Step-free view; only blocked ex
   assert.ok(/only blocked exits and corridors do/.test(text), 'exits and corridors do');
   if (STAIRS_UNCHANGED) assert.ok(STAIRS_UNCHANGED.toLowerCase().includes('never uses stairs'));
 });
+
+test('Help names the staff browser’s free-rooms view as its tab and title label it', () => {
+  // the tab (staff/clock.js) and the page's title (staff/views/free.js)
+  const tab = read('staff', 'clock.js').match(/\['free', '([^']+)'/);
+  assert.ok(tab, 'staff/clock.js has no free tab to read the label from');
+  const title = read('staff', 'views', 'free.js').match(/pageOf\('([^']+)'/);
+  assert.ok(title, 'staff/views/free.js has no pageOf(title, …) to read the title from');
+  assert.equal(tab[1], title[1], 'the free view\'s tab and title differ');
+  const staff = SECTION_HELP.staff.parts.join(' ');
+  assert.ok(staff.includes('In the staff browser, ' + tab[1] + ' shows the features'), 'Help does not call the view ' + tab[1]);
+  assert.ok(!/Free rooms/.test(JSON.stringify(SECTION_HELP)), 'Help names a view Free rooms; the staff browser labels it ' + tab[1]);
+});

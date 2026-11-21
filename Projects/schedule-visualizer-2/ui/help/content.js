@@ -90,7 +90,7 @@ export const SECTION_HELP = {
     first: 'Look at the preview, set a passcode, read Before you publish, then press Publish a file. Send the file to staff by mail or a shared drive: the planner sends nothing anywhere.',
     more: 'What is in it chooses the views the file carries. Below the form, batch printing makes every teacher’s schedule or every door sign at once.',
     parts: [
-      'In the staff browser, Free rooms shows the features the published rooms have as toggle chips under the seats field, each with the number of empty rooms it would give with the others chosen, as Lab (4); a chip that would give none is disabled, and with no features published there are no chips. The count line names the chips picked, such as 3 empty rooms have Lab and Sink · 2 other empty rooms lack one of them, and the chips are kept with the view’s other choices. A room’s page lists its features before Shared space and Wing. A part-time teacher’s page says when they are not in school, and their day cards show Not in school in those periods.',
+      'In the staff browser, Free right now shows the features the published rooms have as toggle chips under the seats field, each with the number of empty rooms it would give with the others chosen, as Lab (4); a chip that would give none is disabled, and with no features published there are no chips. The count line names the chips picked, such as 3 empty rooms have Lab and Sink · 2 other empty rooms lack one of them, and the chips are kept with the view’s other choices. A room’s page lists its features before Shared space and Wing. A part-time teacher’s page says when they are not in school, and their day cards show Not in school in those periods.',
     ],
   },
   project: {
