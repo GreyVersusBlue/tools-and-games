@@ -1394,6 +1394,33 @@ try {
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
     });
 
+    await test('MER-113: bring back has a Nothing button, by pointer and by keyboard, which clears the picked good', async () => {
+      await goMap(page);
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await page.click('#change-back'); await page.waitForSelector('.back-pick');
+      const checked = () => page.$$eval('.back-pick[aria-checked="true"]', bs => bs.length);
+      eq(await page.$eval('#back-nothing', b => [b.tagName, b.type, b.getAttribute('role'), b.getAttribute('aria-checked')]), ['BUTTON', 'button', 'checkbox', 'true'], 'a real button, chosen while no good is');
+      eq(await page.$eval('#outfit-back-goods li:last-child #back-nothing', b => b.id), 'back-nothing', 'last in the list, so the first press on a good never lands on it');
+      await page.click('.back-pick');
+      eq(await checked(), 1, 'setup: a good is picked');
+      eq(await page.$eval('#back-nothing', b => b.getAttribute('aria-checked')), 'false', 'Nothing is not chosen while a good is');
+      await page.click('#back-nothing');
+      eq(await checked(), 0, 'the pointer press clears the pick');
+      eq(await page.$eval('#back-nothing', b => b.getAttribute('aria-checked')), 'true');
+      eq(await page.$eval('#outfit-back-total', e => e.textContent.startsWith('Nothing')), true, 'the line says so');
+      await page.click('.back-pick');
+      eq(await checked(), 1, 'setup again');
+      await page.focus('#back-nothing'); await page.keyboard.press('Enter');
+      eq(await checked(), 0, 'Enter on the focused button clears the pick');
+      eq(await page.evaluate(() => document.activeElement.id), 'back-nothing', 'focus stays on the button after the sheet redraws');
+      await page.click('.back-pick');
+      await page.focus('#back-nothing'); await page.keyboard.press('Space');
+      eq(await checked(), 0, 'Space clears it too');
+      await page.click('#outfit-cancel');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+    });
+
     await test('MER-72: the purse moves by 50 a press, 10 with Shift, and a typed amount is taken, commas and all', async () => {
       await goMap(page);
       await page.click('#btn-outfit');
@@ -1921,6 +1948,23 @@ try {
           'The court They come to you first +3', 'Foreign merchants They deal with you as with anyone 0']);
       });
 
+      await test(`${how}: the ledger says the years passed where the last four seasons span the jump between acts`, async () => {
+        const jumped = structuredClone(book), base = nodeContent.calendar.base, names = ['Spring', 'Summer', 'Autumn', 'Winter'];
+        const say = i => `${names[i % 4]} ${base + Math.floor(i / 4)}`;
+        jumped.log = jumped.log.filter(e => e.kind !== 'season');
+        for (const [at, change] of [[6, 10], [7, 20], [44, -281], [45, 30]]) jumped.log.push({ at, kind: 'season', change, money: 1000 });
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((st, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...st, __v: v })); }, JSON.parse(JSON.stringify(jumped)), SAVE_VERSION);
+        await page.goto(GAME + '#ledger', { waitUntil: 'load' });
+        await opened(page, 'ledger');
+        eq(await texts(page, '#ledger-trail li'), [`${say(6)} +10 dinars`, `${say(7)} +20 dinars`, `9 years passed before ${say(44)}.`, `${say(44)} −281 dinars`, `${say(45)} +30 dinars`], 'the four that closed last, with a line where the jump sits');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), ['10', '20', '-281', '30']);
+        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), ['9']);
+        await loadBook(page, '#desk');
+        await openBy('ledger', 'l');
+        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 0, 'seasons that run on say nothing of years');
+      });
+
       await test(`${how}: Esc, Back and Close each close the ledger, step the hash back and return focus to its button`, async () => {
         await closeBy('ledger', 'Esc');
         eq([await hashOf(page), await focusId(page)], ['#desk', 'btn-ledger'], 'Esc');
@@ -2383,6 +2427,19 @@ try {
         eq(await page.$eval('#bar-worth', e => e.textContent), `· worth about ${withCommas(w.net)}`);
         eq(await page.$eval('#bar-money', e => e.textContent.trim()), `${withCommas(later.money)} dinars`, 'the cash is unchanged');
         eq(await page.$eval('#btn-warehouse', e => e.textContent), `${held} ${held === 1 ? 'load' : 'loads'} in the warehouse`);
+      });
+      await test('MER-113: the bar\'s worth does not fall when a venture is sent with only warehouse goods', async () => {
+        const before = structuredClone(later);
+        before.stock = { ...before.stock, linen: 20 }; before.known = { ...before.known, cairo: { ...(before.known?.cairo ?? {}), linen: { p: 45, at: before.t } } };
+        const plan = { ...planNow, cargo: { linen: 3 }, sell: ['linen'], buy: [], purse: 0, contract: 'own' };
+        ok(eng.checkPlan(before, nodeContent, plan).ok, 'setup: the engine takes three loads of linen from the warehouse');
+        const after = eng.outfit(structuredClone(before), nodeContent, plan);
+        const wb = eng.netWealth(before, nodeContent), wa = eng.netWealth(after, nodeContent);
+        eq(after.money, before.money, 'setup: nothing was bought and no purse sent, so the cash did not move');
+        ok(wa.net < wb.net && wa.onRoad.loads === wb.onRoad.loads + 3, `setup: net alone falls (${wb.net} to ${wa.net}) and three loads are on the road`);
+        const barOf = async st => { await loadSave(page, st, '#desk'); await page.waitForSelector('#bar-worth'); return page.$eval('#bar-worth', e => e.textContent); };
+        eq(await barOf(before), `· worth about ${withCommas(wb.net + wb.onRoad.total)}`);
+        eq(await barOf(after), `· worth about ${withCommas(wb.net + wb.onRoad.total)}`, 'sent: the same figure, with the goods on the road counted');
       });
       await test('MER-104: what they carry out reads with commas and one "and": one good, two goods, three or more', async () => {
         const rich = structuredClone(later); rich.money = 100000;

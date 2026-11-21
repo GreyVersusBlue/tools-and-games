@@ -146,6 +146,25 @@ test('score: the wealth part carries cash, stock with its loads, loans and what 
   ok(/3 loads of it with no known price and counted for nothing/.test(part(unknown, 'wealth').reason), part(unknown, 'wealth').reason);
 });
 
+test('score: goods on the road (MER-113) are onRoad, at the home price, and move neither net nor the score', () => {
+  const g = testport.goods[0].id, h2 = testport.goods[1].id;
+  const s = bare({ money: 500 });
+  s.known = { [home]: { [g]: { p: 50, at: 0 } } };
+  const before = { net: netWealth(s, testport).net, total: score(s, testport).total };
+  eq(netWealth(s, testport).onRoad, { loads: 0, value: 0, unpriced: 0, money: 0, goods: [], total: 0 }, 'nothing out, nothing on the road');
+  s.expeditions = [{ id: 'x1', cargo: { [g]: 10, [h2]: 4 }, purse: 120 }, { id: 'x2', cargo: { [g]: 2 }, purse: 0 }];
+  const w = netWealth(s, testport);
+  eq(w.onRoad.loads, 16);
+  eq(w.onRoad.value, 600, '12 loads at 50; the good with no known home price is not valued');
+  eq(w.onRoad.unpriced, 4, 'unpriced loads are counted as unpriced');
+  eq(w.onRoad.money, 120);
+  eq(w.onRoad.total, 720);
+  eq(w.onRoad.goods, [{ good: g, loads: 12, price: 50 }, { good: h2, loads: 4, price: null }]);
+  eq(w.net, before.net, 'net does not move');
+  eq(score(s, testport).total, before.total, 'the score does not move');
+  ok(/16 loads more are on the road, worth 600 at those prices, not counted here\.$/.test(part(s, 'wealth').reason), part(s, 'wealth').reason);
+});
+
 test('recall: the engine says each person\'s odds in words, on the road and at home, from the numbers it rolls with', () => {
   const c = structuredClone(testport);
   c.city.recall = { reach: { start: 0.9, perSeason: 0, floor: 0 }, recalledKeeps: 0.5, recalledSurvives: 0.9, stayedSurvives: 0.5, homeSurvives: 0.6, byStop: {} };
