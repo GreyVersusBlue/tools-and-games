@@ -584,7 +584,11 @@ try {
               const bar = document.querySelector('.topbar');
               if (!bar || !bar.checkVisibility()) return { missing: true };
               const r = bar.getBoundingClientRect();
-              const under = [...document.querySelectorAll('.sheet')].filter(e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom - 0.5 && b.bottom > r.top + 0.5; }).length;
+              // the part of a paper a player can see: its box cut down by every ancestor that clips or scrolls
+              const seen = e => { const q = e.getBoundingClientRect(); const v = { top: q.top, bottom: q.bottom, left: q.left, right: q.right };
+                for (let x = e.parentElement; x && x !== document.body; x = x.parentElement) { if (getComputedStyle(x).overflowY !== 'visible') { const c = x.getBoundingClientRect(); v.top = Math.max(v.top, c.top); v.bottom = Math.min(v.bottom, c.bottom); } }
+                return v; };
+              const under = [...document.querySelectorAll('.sheet')].filter(e => { const b = seen(e); return b.right - b.left > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom - 0.5 && b.bottom > r.top + 0.5; }).length;
               const bg = getComputedStyle(bar).backgroundColor.match(/[\d.]+/g).map(Number);
               const tops = [0.2, 0.5, 0.8].map(f => { const e = document.elementFromPoint(r.left + r.width * f, r.top + r.height / 2); return !!e && (e === bar || bar.contains(e)); });
               return { under, alpha: bg.length > 3 ? bg[3] : 1, tops, scrollY: Math.round(scrollY) };
