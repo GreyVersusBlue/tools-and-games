@@ -1050,7 +1050,7 @@ test('(MER-88) seed 1324\'s first return: the headline profit is the account\'s 
   const said = (headline[1] === 'made' ? 1 : -1) * numberIn(headline[2]);
   eq(said, d.houseNet, 'the headline says houseNet');
   const profit = d.account.at(-1);
-  eq([profit.label, profit.amount, (profit.label === 'Loss' ? -1 : 1) * numberIn(profit.text)], ['Profit', d.houseNet, d.houseNet], 'the last row is the profit, and its words are the headline\'s number');
+  eq([profit.label, profit.amount, (profit.label === 'Loss' ? -1 : 1) * numberIn(profit.text)], [d.houseNet < 0 ? 'Loss' : 'Profit', d.houseNet, d.houseNet], 'the last row is the profit, and its words are the headline\'s number');
   const total = d.account.filter(r => r.amount !== undefined && !r.detail && r !== profit).reduce((n, r) => n + r.amount, 0);
   eq(total, d.houseNet, 'every row that is a sum adds up to the headline');
   // money on the desk: what the house held before the opening's returns step and after it. The goods that came home count at the price the paper values them at.
@@ -1109,12 +1109,16 @@ test('(MER-88) the same holds on a road that waits for its season: the estimate 
   ok(checked >= 3, `only ${checked} roads came home inside the search`);
 });
 
-/** Two loads of pepper go to Damascus with `purse` dinars and the buying list `buy`, calm roads; the return paper that comes home. */
+/** Two loads of pepper go to Damascus with `purse` dinars and the buying list `buy`, calm roads; the return paper that comes home.
+    MER-111b: the cases below need a trip that pays (they ask what the house does with goods that came home), and Damascus's pepper
+    is 144 in the data now, not 164: two loads no longer cover the wage and the tolls once the proceeds are spent on sugar. So the trip
+    runs on the same city with Damascus's pepper at the old 164, `dearC`. */
+const dearC = variant(calmC, x => { x.stops.find(s => s.id === 'damascus').sells.pepper.base = 164; });
 const tripOfPepper = ({ purse = 0, buy = [], sell = ['pepper'], stock = {} } = {}) => {
-  const s = cairo();
+  const s = newGame(dearC, { seed: 7, length: 'full', house: 'spice' });
   Object.assign(s.stock, { pepper: 4, ...stock });
-  let st = outfit(s, calmC, { agent: 'yusuf', route: 'cairo-damascus', cargo: { pepper: 2 }, purse, contract: 'own', sell, buy });
-  for (let i = 0; i < 8 && !st.desk.some(p => p.kind === 'return'); i++) st = step(st, calmC);
+  let st = outfit(s, dearC, { agent: 'yusuf', route: 'cairo-damascus', cargo: { pepper: 2 }, purse, contract: 'own', sell, buy });
+  for (let i = 0; i < 8 && !st.desk.some(p => p.kind === 'return'); i++) st = step(st, dearC);
   return { st, paper: st.desk.find(p => p.kind === 'return') };
 };
 test('(MER-88) "Sell the sugar now?" is asked of a trip that brought sugar home, and says sugar, not the pepper that went out', () => {
