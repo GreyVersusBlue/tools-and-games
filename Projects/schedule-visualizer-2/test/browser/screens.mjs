@@ -1766,6 +1766,21 @@ const w7SplitStairwell = (what) => async (page) => {
   await fitsInWindow(page, what);
 };
 
+// SV2-136b: the building checks with the sample's dead ends (a warning, on
+// Floor 2, and notes), the warning's Show me pressed, so its run is marked on the plan
+const w7DeadEnd = (what) => async (page) => {
+  await planReady(page);
+  await inspectorOpen(page);
+  await page.click('#inspector [data-tab="checks"]');
+  await page.waitForSelector('#building-findings li[data-kind="dead-end"].bi-finding--warning [data-action="show"]');
+  await page.waitForFunction(() => document.querySelectorAll('#building-findings li[data-kind="dead-end"].bi-finding--note').length > 0);
+  await page.click('#building-findings li[data-kind="dead-end"].bi-finding--warning [data-action="show"]');
+  await page.waitForFunction(() => { const marked = document.querySelector('.bld').editor.finder.marked; return Boolean(marked && marked.cells && marked.cells.length > 0); });
+  await inspectorOpen(page);
+  await page.waitForSelector('#building-findings li[data-kind="dead-end"]');
+  await fitsInWindow(page, what);
+};
+
 const w7DayOtherWord = (what) => async (page) => {
   await scheduleDrawn(page);
   await page.evaluate(() => {
@@ -1847,6 +1862,8 @@ const SV2_136 = [
   { id: 'w7-make-stairwell-phone', hash: '#building', viewport: PHONE, open: w7MakeStairwell('the Make one stairwell dialog, at 390') },
   { id: 'w7-split-stairwell', hash: '#building', open: w7SplitStairwell('the checks with a split stairwell') },
   { id: 'w7-split-stairwell-phone', hash: '#building', viewport: PHONE, open: w7SplitStairwell('the checks with a split stairwell, at 390') },
+  { id: 'w7-dead-end', hash: '#building', open: w7DeadEnd('the checks with dead ends, one shown') }, // SV2-136b
+  { id: 'w7-dead-end-phone', hash: '#building', viewport: PHONE, open: w7DeadEnd('the checks with dead ends, one shown, at 390') }, // SV2-136b
   { id: 'w7-day-other-word', hash: '#schedule/day', open: w7DayOtherWord('the Day tab with Other word') },
   { id: 'w7-day-other-word-phone', hash: '#schedule/day', viewport: PHONE, open: w7DayOtherWord('the Day tab with Other word, at 390') },
   { id: 'w7-day-names', hash: '#schedule/day', open: w7DayNames('the Day tab with Name periods open') },
