@@ -257,7 +257,10 @@ export function choose(state, content, paperId, choiceId) {
     if (!choice) throw new Error(`choose: card "${card.id}" has no choice "${choiceId}"`);
     // what a later effect of this choice is called when it fires: the card (or letter, or the return or loss entry) and the
     // choice, in the words the player saw (MER-88), so the Accounts paper can name the choice that set it
-    const via = { from: `${paper.kind === 'return' || paper.kind === 'lost' ? (paper.data?.entry ?? paper.ref) : card.id}/${choice.id}`, card: (paper.kind === 'return' || paper.kind === 'lost' ? paper.data?.ask?.title : card.title) ?? null, choice: choice.label ?? null };
+    // A card that tells of a trip is filled by `describeTrips`, the code view().cards uses, so the record holds the words the player saw
+    // and not '{agent} is home' (MER-109). A return or loss paper's ask and choices are filled already.
+    const seen = paper.kind === 'card' ? describeTrips(s, content)[paper.id] : null;
+    const via = { from: `${paper.kind === 'return' || paper.kind === 'lost' ? (paper.data?.entry ?? paper.ref) : card.id}/${choice.id}`, card: (paper.kind === 'return' || paper.kind === 'lost' ? paper.data?.ask?.title : (seen?.title ?? card.title)) ?? null, choice: (seen?.choices[choice.id]?.label ?? choice.label) ?? null };
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
     const ctx = { agent: paper.agent, expedition: paper.expedition };
     const refuse = e => new Error(`choose: "${choice.label}" on card "${card.id}" is refused: ${e.message}`);
