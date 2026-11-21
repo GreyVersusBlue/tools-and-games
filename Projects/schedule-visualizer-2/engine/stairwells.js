@@ -457,7 +457,9 @@ export const removeStairwellStop = action(
     const above = well.stops.filter((other) => lowerFirst(building, other, stop) > 0);
     const gone = new Set(touching.map((flight) => flight.id));
     let connections = building.connections.filter((connection) => !gone.has(connection.id));
-    let text = floor.name + ' is out of Stairwell ' + well.letter + '; its stairs stay, not connected.';
+    // every sentence ends alike: the stairs left behind and what Checks will say (SV2-142b)
+    const left = 'the stairs on ' + floor.name + ' stay, connected to nothing, so Checks will warn about them until you connect or remove them.';
+    let text = floor.name + ' is out of Stairwell ' + well.letter + ', and ' + left;
     if (below.length > 0 && above.length > 0) {
       const low = below[below.length - 1];
       const high = above[0];
@@ -466,7 +468,7 @@ export const removeStairwellStop = action(
       if (already && !hasWell(already)) {
         // a plain flight already joins the stop below and the stop above: it takes the well
         connections = connections.map((connection) => (connection.id === already.id ? { ...already, well: well.letter, direction: directionForWay(building, already, way) } : connection));
-        text = floor.name + ' is out of Stairwell ' + well.letter + ': stairs ' + stairsLetter(already) + ' already joined ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ', so it joins the stairwell, and the stairs on ' + floor.name + ' stay, not connected.';
+        text = floor.name + ' is out of Stairwell ' + well.letter + ': stairs ' + stairsLetter(already) + ' already joined ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ', so that flight is now part of Stairwell ' + well.letter + ' (no new flight, no new letter), and ' + left;
       } else if (!already) {
         // the joining flight takes the label of the lowest flight it replaces, so a
         // removal uses up no new letter (ARCHITECTURE 22.4); it shows the well's letter
@@ -475,7 +477,7 @@ export const removeStairwellStop = action(
         const joinedFlight = { id: freshId(building, ctx), label: lowest ? lowest.label : nextConnectionLabel(lettersInUse(building)), well: well.letter, a: { floorId: low.floorId, cell: low.cell }, b: { floorId: high.floorId, cell: high.cell }, direction: 'both' };
         joinedFlight.direction = directionForWay(building, joinedFlight, way);
         connections = connections.concat([joinedFlight]);
-        text = floor.name + ' is out of Stairwell ' + well.letter + ': ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ' are joined directly by one flight that is still Stairwell ' + well.letter + ' (no new letter), and the stairs on ' + floor.name + ' stay, connected to nothing, so Checks will warn about them until you connect or remove them.';
+        text = floor.name + ' is out of Stairwell ' + well.letter + ': ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ' are joined directly by one flight that is still Stairwell ' + well.letter + ' (no new letter), and ' + left;
       }
     }
     const next = { ...building, connections };
