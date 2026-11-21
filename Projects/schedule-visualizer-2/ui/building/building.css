@@ -364,11 +364,13 @@
   min-width: 0;
 }
 
+/* The tabs wrap onto another line rather than scroll: on a phone, with the ⋯
+   and + buttons beside them, a scrolled row hid the last tab behind them. */
 .bld-floors__list {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   min-width: 0;
-  overflow-x: auto;
 }
 
 .bld-floors__tab {

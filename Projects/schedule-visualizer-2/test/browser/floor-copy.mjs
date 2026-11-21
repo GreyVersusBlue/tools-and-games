@@ -284,6 +284,22 @@ test('on a phone at 390 px: the ⋯ button is 44 px, the dialog fits with no sid
   await build(p);
   const more = await p.$eval('#floor-actions', (el) => { const r = el.getBoundingClientRect(); return [r.width, r.height]; });
   assert.ok(more[0] >= 44 && more[1] >= 44, 'a finger-sized button: ' + more.join(' x '));
+  // no tab is hidden: each, brought into view as the focus brings it, is whole on
+  // screen, inside the row and clear of the ⋯ and + buttons
+  for (const name of ['Floor 1', 'Floor 2', 'Floor 3']) {
+    const seen = await p.evaluate((wanted) => {
+      const tab = Array.from(document.querySelectorAll('.bld-floors__tab')).find((each) => each.textContent.includes(wanted));
+      tab.focus();
+      const box = (el) => { const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+      const t = box(tab);
+      const list = box(tab.closest('.bld-floors__list'));
+      const buttons = ['#floor-actions', '#add-floor'].map((selector) => box(document.querySelector(selector)));
+      const overlaps = buttons.some((b) => t.left < b.right && b.left < t.right && t.top < b.bottom && b.top < t.bottom);
+      const atPoint = document.elementFromPoint((t.left + t.right) / 2, (t.top + t.bottom) / 2);
+      return { tab: t, list, overlaps, inside: t.left >= list.left - 1 && t.right <= list.right + 1 && t.left >= 0 && t.right <= window.innerWidth, hit: tab.contains(atPoint) };
+    }, name);
+    assert.ok(seen.inside && !seen.overlaps && seen.hit, name + '\'s tab is whole and on top at 390 px: ' + JSON.stringify(seen));
+  }
   await p.click('#floor-actions');
   await menuOpen(p);
   await p.evaluate(() => Array.from(document.querySelectorAll('.menu [role="menuitem"]')).find((item) => item.textContent.includes('Duplicate floor')).click());
