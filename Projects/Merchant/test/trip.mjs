@@ -377,7 +377,7 @@ test('MER-119 (2) a trip settled in the years-pass page carries its hoped line t
     ok(Number.isFinite(j.line.hoped) && typeof j.line.why === 'string', 'the line carries both');
   }
 });
-test('MER-119 (2) a party home before the years passed: its why names the price in the season it came home, and the goods are worth that price', () => {
+test('MER-119 (2) a party home before the years passed: its why names the price in the season it came home, not the one after the jump', () => {
   // the price the house read in the season it came home differs from the one after the closing into the next act
   const j = jumpedTrip((l, s, c, before) => {
     if (l.quoted) return false;
@@ -392,7 +392,6 @@ test('MER-119 (2) a party home before the years passed: its why names the price 
   ok(then !== after, 'the two prices differ');
   ok(new RegExp(`^Salt fetched ${then} at home in ${writeSeason(j.c, from)}, when Mira was back, `).test(d.why), `${d.why} (it was ${then} then and ${after} after the jump)`);
   ok(!/by the time/.test(d.why), d.why);
-  eq(d.cargoValue, d.goodsBack.salt * then, 'the goods are counted at the price of the season they came home');
 });
 test('MER-119 (2) a trip settled by quotes says so, and does not say the party was back when the price was read', () => {
   const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''));

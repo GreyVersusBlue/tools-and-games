@@ -115,12 +115,16 @@ const states = {
   // engine's proposal with every section open, a bring-back good named and an estimate line under Send
   second: playUntil(x => x.phase === 'desk' && x.t >= 3 && x.log.some(e => e.kind === 'outfit') && eng.view(x, content).bestTrades.length === 3
     && content.agents.filter(a => x.agents[a.id]?.hired && x.agents[a.id].where === 'cairo' && !x.expeditions.some(e => e.agent === a.id)).length >= 2),
-  // a house with an expedition out, stock, a loan and several notebook entries, and the `season` log
-  // entries the ledger's money trail reads (ledger.js: { kind: 'season', at, change }); the engine does not write them yet
+  // a house with an expedition out, stock, a loan and several notebook entries, and four closed seasons: the `season` log entries
+  // the ledger's money trail reads (ledger.js) are the engine's own (turn.js writes one at each closing), so the shot shows four
+  // different seasons, not made-up ones clamped to season 0 (MER-119)
   book: (() => {
-    const s = playUntil(x => x.phase === 'desk' && x.t >= 2 && x.expeditions.length > 0 && x.notebook.length >= 6);
+    const seasons = x => new Set(x.log.filter(e => e.kind === 'season').map(e => e.at)).size;
+    // four closings in, then a party sent out so the ledger has an expedition on the road (the engine's own plan, as withLetter sends one)
+    const at = playUntil(x => x.phase === 'desk' && x.notebook.length >= 6 && seasons(x) >= 4 && !x.expeditions.length && !!eng.suggestPlan(x, content, 'damascus'));
+    const s = eng.outfit(at, content, eng.suggestPlan(at, content, 'damascus'));
+    if (seasons(s) < 4 || !s.expeditions.length) throw new Error('layout.mjs: the book fixture has fewer than four seasons of its own, or no party out');
     s.loans.push({ id: 'nell-1', from: 'nell', principal: 100, due: s.t + 4, rate: 0.1 });
-    for (let i = 4; i >= 1; i--) s.log.push({ at: Math.max(0, s.t - i), kind: 'season', change: i % 2 ? 140 * i : -60 * i });
     return s;
   })(),
 };
@@ -302,6 +306,9 @@ const SCREENS = [
       await load(p, '#desk', { state: states.book, large: f.large });
       await openBook(p, 'ledger');
       await p.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+      // the shot's money trail is four different seasons, the engine's own (MER-119), not one season four times
+      const seasons = await p.$$eval('#ledger-trail li[data-change] span', n => n.map(e => e.textContent));
+      if (seasons.length !== 4 || new Set(seasons).size !== 4) throw new Error(`layout.mjs: the ledger shot shows ${JSON.stringify(seasons)}, not four different seasons`);
     } },
   { name: 'notebook', modal: 'dialog[open]',
     go: async (p, f) => {

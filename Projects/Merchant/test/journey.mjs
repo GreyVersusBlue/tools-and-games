@@ -953,6 +953,14 @@ try {
           await page.click('.account summary');
           const rows = await page.$$eval('.account tr', trs => trs.map(t => t.textContent));
           ok(rows.length >= 3 && rows.some(r => r.includes('Profit') || r.includes('Back home')), rows.join(' | '));
+          // MER-119: the rows a child reads add up. Each sum row shows its dinars, and the ones before the last come to the last,
+          // which is the headline's number: 'Sent out' (what the goods and money cost), 'Back home', the wage, then Profit
+          { const sums = await page.$$eval('.account tr.sum', trs => trs.map(t => [t.querySelector('th').textContent, t.querySelector('.amount').textContent]));
+            const n = s => Number(s.replace('\u2212', '-').replace(/[^\d+-]/g, ''));
+            ok(sums.length >= 3 && sums[0][0] === 'Sent out' && n(sums[0][1]) < 0, JSON.stringify(sums));
+            ok(/^(Profit|Loss)$/.test(sums.at(-1)[0]), JSON.stringify(sums));
+            eq(sums.slice(0, -1).reduce((m, r) => m + n(r[1]), 0), n(sums.at(-1)[1]), `the rows on the page add up to the last: ${JSON.stringify(sums)}`);
+            eq(n(sums.at(-1)[1]), ret.data.houseNet, 'and the last is the headline\'s number'); }
           // MER-80: a return that asks shows the engine's choices in place of Next; one that does not keeps Into the ledger
           const asks = eng.paperChoices(model, nodeContent, rid).some(c => c.id !== 'ok');
           const lastButton = asks ? '.sheet .choice:last-child' : '#btn-next';
