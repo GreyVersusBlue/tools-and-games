@@ -276,6 +276,19 @@ const SCREENS = [
       await p.waitForSelector('#step-purse');
       await p.waitForSelector('#contract-own');
     } },
+  // MER-117: the same sheet with only the carry list opened. The bring-back summary and its Change link sit below it, where the sticky Send bar
+  // used to cover the link at some frames, so a pointer press on it landed on the bar.
+  { name: 'outfit-second-carry', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      await p.click('#btn-outfit');
+      await p.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await p.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
+      await p.click('#change-carry');
+      await p.waitForSelector('#step-purse');
+      await p.waitForSelector('#change-back');
+    } },
   { name: 'price-board-news',
     go: async (p, f) => {
       await load(p, '#map', { state: states.second, large: f.large });
@@ -613,6 +626,34 @@ try {
             ok(!got.missing, 'End the season or the last choice is not on the desk');
             ok(!got.covers || got.alpha === 1, `the bar that sticks over the papers is ${got.alpha} opaque, so the papers under it show through`);
             ok(!got.overlap, `the bar (${got.row}) covers the last choice (${got.last})`);
+          });
+        }
+        if (screen.name === 'outfit-second-carry') {
+          // elementFromPoint at the link's centre is the link, wherever the scroll puts it by a press, a focus or a scroll-into-view; then a real pointer press opens the section
+          await test(`${tag}: #change-back is clear of the Send bar and a pointer press on it opens the bring-back section`, async () => {
+            const got = await page.evaluate(() => {
+              const dlg = document.querySelector('dialog[open]'), link = document.getElementById('change-back');
+              if (!link || !dlg.querySelector('.send-row')) return { missing: true };
+              const probe = how => {
+                const r = link.getBoundingClientRect(), d = dlg.getBoundingClientRect(), y = r.top + r.height / 2;
+                if (y < d.top || y > d.bottom) return null;   // scrolled out of the dialog: nothing covers it, nothing can press it
+                const e = document.elementFromPoint(r.left + r.width / 2, y);
+                return e && link.contains(e) ? null : `${how}: the point at ${Math.round(y)} is ${e ? (e.id || e.className || e.tagName) : 'nothing'}, the bar is ${Math.round(dlg.querySelector('.send-row').getBoundingClientRect().top)} down`;
+              };
+              const bad = [];
+              const run = (how, f) => { f(); const m = probe(how); if (m) bad.push(m); };
+              run('as the carry press left it', () => {});
+              run('at the top', () => { dlg.scrollTop = 0; });
+              run('scrolled into view from the top', () => { dlg.scrollTop = 0; link.scrollIntoView({ block: 'nearest' }); });
+              run('scrolled into view from the foot', () => { dlg.scrollTop = dlg.scrollHeight; link.scrollIntoView({ block: 'nearest' }); });
+              run('focused from the top', () => { dlg.scrollTop = 0; link.focus(); });
+              return { bad };
+            });
+            ok(!got.missing, 'the link or the Send bar is not on the sheet');
+            ok(!got.bad.length, got.bad.join('; '));
+            await page.evaluate(() => { document.querySelector('dialog[open]').scrollTop = 0; });
+            await page.click('#change-back');
+            await page.waitForSelector('#back-nothing', { timeout: 3000 });
           });
         }
         if (screen.name === 'desk-return' && frame.name === 'board') {

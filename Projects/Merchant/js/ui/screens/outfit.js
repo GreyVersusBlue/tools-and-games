@@ -441,6 +441,11 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
       ...[lead, whoSection(), whereSection(), carrySection(), backSection(), costSheet(quote()), first ? null : contractSection()].filter(Boolean),
       h('div', { class: 'send-row' }, estimate, reasons, h('div', { class: 'panel-actions' },
         h('button', { class: 'button', type: 'button', id: 'outfit-cancel', onclick: () => onCancel() }, 'Back to the map'), send)));
+    // MER-117: the Send bar sticks over the foot of the scroll, and scrolling a link into view stops it at `scroll-padding-bottom`. The bar is
+    // taller than the stylesheet's fixed padding on a phone (a wrapped estimate and two refusals), so the padding is the bar's own height.
+    const bar = qs('.send-row', dialog), clear = () => { dialog.style.scrollPaddingBottom = `${bar.offsetHeight + 8}px`; };
+    clear();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(clear).observe(bar);
     if (focusKey) {
       const el = document.getElementById(focusKey) ?? qs(`[data-key="${focusKey}"]`, dialog);
       el?.focus();
