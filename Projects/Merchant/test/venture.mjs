@@ -491,13 +491,13 @@ test('bestTrades: the trades with their road, the news age and the risk word, be
   know(s, c, 'saltmarsh', 'salt', 5, 1);      // back: 10 over 5, +100%
   know(s, c, 'saltmarsh', 'lamps', 1, 0);     // the house does not trade lamps at home: never a trade
   const t = bestTrades(s, c);
-  eq(t.map(x => [x.stop, x.good, x.direction]), [['saltmarsh', 'salt', 'back'], ['hilltown', 'salt', 'back'], ['hilltown', 'wool', 'out']], 'by dinars a season with the age of the news counted: the nearer road with the fresher news and less margin goes first');
-  eq(t.map(x => Math.round(x.margin * 100)), [100, 233, 50]);
-  eq([t[0].ageWords, t[1].ageWords, t[2].ageWords], ['one season old', 'three seasons old', 'this season']);
+  eq(t.map(x => [x.stop, x.good, x.direction]), [['hilltown', 'wool', 'out'], ['hilltown', 'salt', 'back'], ['saltmarsh', 'salt', 'back']], 'by dinars a season of the plan the sheet would open on for the road (MER-121), the age of the news counted: the road whose plan makes most a season goes first, and its trades in the order of what each makes alone');
+  eq(t.map(x => Math.round(x.margin * 100)), [50, 233, 100]);
+  eq([t[0].ageWords, t[1].ageWords, t[2].ageWords], ['this season', 'three seasons old', 'one season old']);
   eq([t[1].riskWord, t[1].road, t[1].route], ['safe', 'Harbour to Hilltown', 'harbour-hilltown']);
   eq(bestTrades(s, c, 2).length, 2);
   eq(bestTrades(game(c), c), [], 'no news, no trade to name');
-  eq(t[2].text, 'Hilltown pays 30 for wool. Harbour pays 20.');
+  eq(t[0].text, 'Hilltown pays 30 for wool. Harbour pays 20.');
 });
 
 test('bestTrades: a road that is closed to the house now is not offered', () => {
@@ -783,7 +783,7 @@ test('MER-98 (1) proposePlan: a good the far end pays barely more for stays at h
   const plan = proposePlan(s, c, 'mira', 'harbour-hilltown');
   ok(!plan.why && plan.cargo.wool > 0, JSON.stringify(plan));
   const e = estimate(s, c, plan);
-  const all = estimate(s, c, { ...plan, cargo: { ...plan.cargo, salt: 8 }, sell: [...plan.sell, 'salt'] }).net;
+  const all = estimate(s, c, { ...plan, cargo: { ...plan.cargo, salt: 8 }, sell: [...new Set([...plan.sell, 'salt'])] }).net;
   ok(all <= e.net, `eight loads of salt would not add: ${all} against ${e.net}`);
   ok((plan.cargo.salt ?? 0) < 8, `salt: ${plan.cargo.salt ?? 0} loads`);
 });
@@ -838,7 +838,8 @@ test('MER-98 (2) estimate: 14 loads bought at the far end are priced load by loa
 });
 
 test('MER-98 (3) bestTrades: ranks by dinars a season, not by margin: a thin margin on a near road beats a wide one on a far road', () => {
-  const c = still(x => { for (const l of x.routes.find(r => r.id === 'harbour-hilltown').legs) l.seasons *= 2; });   // Hilltown is twice as far
+  // Hilltown is twice as far, and its wool is no better than home's, so the only trade on either road is salt bought for the purse (the plan the sheet writes, MER-121, otherwise sells wool there and buys salt with that too)
+  const c = still(x => { for (const l of x.routes.find(r => r.id === 'harbour-hilltown').legs) l.seasons *= 2; x.stops.find(z => z.id === 'hilltown').sells.wool.base = 15; });
   const s = game(c);
   know(s, c, 'hilltown', 'salt', 2);        // back: 10 over 2, +400%, nine seasons there and back
   know(s, c, 'saltmarsh', 'salt', 5);       // back: 10 over 5, +100%, three seasons

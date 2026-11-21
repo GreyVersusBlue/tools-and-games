@@ -721,20 +721,26 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   // (a good the house has no news of is guessed at the stop's base price, and the estimate says so)
   // the trades the map names for this road (best a season first) come before the rest, so the stake reaches the best one
   // before the wider margins on thin markets have spent it (MER-112)
-  const known = bestTrades(state, content, Infinity, r.id);
+  const known = tradeRows(state, content, r.id);
   const rank = g => { const i = known.findIndex(t => t.direction === 'out' && t.good === g); return i < 0 ? Infinity : i; };
+  // a good the warehouse holds that the last trip bought at this very stop does not go straight back to it (MER-121)
+  const boughtAt = {};
+  for (const e of state.log) if (e.kind === 'brought') Object.assign(boughtAt, e.from);
   const out = Object.keys(dest.sells ?? {}).map(g => ({ g, far: farPrice(state, content, dest.id, g) ?? { p: M.baseOf(state, content, dest.id, g) }, at: homeP(g) }))
-    .filter(e => e.far && e.at !== null && e.far.p > e.at)
+    .filter(e => e.far && e.at !== null && e.far.p > e.at && !((state.stock[e.g] ?? 0) > 0 && boughtAt[e.g] === dest.id))
     .sort((x, y) => rank(x.g) - rank(y.g) || y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
   const carried = out.map(e => e.g);
-  const back = bringBack(state, content, dest, carried, known);
+  // the goods to bring back that the plan tries, one at a time, the best three the map keeps for the road (MER-121), or the old pick where it keeps none
+  const backs = known.filter(t => t.direction === 'back' && t.stop === dest.id && !carried.includes(t.good)).slice(0, 3)
+    .map(t => ({ good: t.good, there: t.there, home: t.here, ratio: t.here / t.there, age: t.age, ageWords: t.ageWords, guess: false }));
+  if (!backs.length) { const b = bringBack(state, content, dest, carried, known); if (b) backs.push(b); }
   const budget = Math.floor(state.money * share);
-  const cargo = {};
+  const cargo = {}, caps = {};
   // buying now at home moves the home price: price each load after the one before it
-  const sim = { ...state, market: { [home]: structuredClone(state.market[home]) } };
+  const sim = { ...state, market: { [home]: thin(state.market[home]) } };
   let left = budget;
   for (const e of out) {
-    const cap = Math.max(1, Math.ceil(Math.min(homeStop.sells?.[e.g]?.depth ?? Infinity, dest.sells[e.g].depth) * DEPTH_SHARE));
+    const cap = caps[e.g] = Math.max(1, Math.ceil(Math.min(homeStop.sells?.[e.g]?.depth ?? Infinity, dest.sells[e.g].depth) * DEPTH_SHARE));
     const held = Math.min(state.stock[e.g] ?? 0, cap);
     let n = held;
     while (n < cap) {
@@ -745,59 +751,73 @@ export function proposePlan(state, content, agent, route, { check = true, share 
     }
     if (n) cargo[e.g] = n;
   }
-  // money alone, when no good goes out: to buy the good that is the whole point of the trip
-  let purseOnly = 0;
-  if (back) {
-    const cap = Math.max(1, Math.ceil(dest.sells[back.good].depth * DEPTH_SHARE));
-    purseOnly = Math.min(budget, Math.ceil(cap * back.there * 1.15));
-  }
   // a qirad only where the city has one; where it has none, an agent who refuses a wage gets no plan, and the words say why (MER-103)
   const hasQirad = !!cityOf(content, 'outfit').contracts?.qirad?.agentShare;
   const refused = refusesOwn(state, a, hasQirad);
   const qirad = hasQirad && !!refused;
   const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
   /** The plan that carries `loads` out, brings `back` home when `fetch` is set, and sends `money` to buy it with. */
-  const shape = (loads, fetch, money) => {
+  const shape = (back, loads, fetch, money) => {
     const buy = fetch && back ? [back.good] : [];
     const p = { agent: a.id, route: r.id, cargo: loads, purse: buy.length ? money : 0, contract: 'own', sell: Object.keys(loads).filter(g => dest.sells?.[g]), buy };
     if (qirad) Object.assign(p, { contract: 'qirad', partners: buy.length ? stake : 0, purse: buy.length ? Math.max(money, stake) : 0 });
     return p;
   };
-  const memo = new Map();   // the far markets carried to arrival, once for all the plans priced here (state does not change inside this call)
-  const worth = p => estimate(state, content, p, memo)?.net ?? -Infinity;
+  const memo = new Map();   // the far markets carried to arrival once for all the plans priced here (state does not change inside this call)
+  const priced = new Map();   // the search meets the same plan again on each pass
+  const worth = p => {
+    const key = JSON.stringify([p.buy, p.cargo, p.purse, p.partners]);
+    if (!priced.has(key)) priced.set(key, estimate(state, content, p, memo)?.net ?? -Infinity);
+    return priced.get(key);
+  };
+  // a plan the house can pay for out of the share of its money the sheet stakes, goods bought now priced load by load as `build` does
+  const affordable = p => homeStake(state, content, p.cargo).buyCost + (p.purse ?? 0) - (p.partners ?? 0) <= budget;
   // DESIGN 2.2 rule 1 (MER-98): only a plan that pays. Each good goes out only if it adds to the estimate after tolls, in the
   // size that adds most (a bigger load sells lower and buys dearer, so the most loads is not always the most money), and the
-  // bring-back good is kept only if it adds; otherwise the plan brings nothing back and sends no purse.
-  const sizes = n => [...new Set([0, Math.ceil(n / 3), Math.ceil(n * 2 / 3), n])];
-  let loads = { ...cargo }, fetch = true, top = worth(shape(loads, true, 0));
-  for (let pass = 0; pass < 4; pass++) {
-    let moved = false;
-    if (back) {   // the bring-back good stays only while it adds (a tie drops it: no purse, nothing to carry back)
-      const w = worth(shape(loads, !fetch, 0));
-      if (w > top || (w === top && fetch)) { top = w; fetch = !fetch; moved = true; }
-    }
-    for (const g of Object.keys(cargo)) {
-      for (const n of sizes(cargo[g])) {
-        if (n === (loads[g] ?? 0)) continue;
-        const trial = { ...loads, [g]: n };
-        if (!n) delete trial[g];
-        for (const f of back ? [true, false] : [false]) {
-          const w = worth(shape(trial, f, 0));
-          if (w > top || (w === top && n < (loads[g] ?? 0) && f === fetch)) { top = w; loads = trial; fetch = f; moved = true; }
+  // bring-back good is kept only if it adds; otherwise the plan brings nothing back and sends no purse. The search runs over every
+  // good that sells better there, not only the ones the first fill of the budget reached, and moves a load at a time once the
+  // coarse sizes stop helping, so that adding or taking away one load of any good the plan could carry does not raise the
+  // estimate (MER-121, play items 2 and 3).
+  const sizes = (c, cur) => [...new Set([0, Math.ceil(c / 3), Math.ceil(c * 2 / 3), c, cur - 1, cur + 1])].filter(n => n >= 0 && n <= c && n !== cur);
+  const solve = back => {
+    let loads = { ...cargo }, fetch = true, top = worth(shape(back, loads, true, 0));
+    for (let pass = 0; pass < 10; pass++) {
+      let moved = false;
+      if (back) {   // the bring-back good stays only while it adds (a tie drops it: no purse, nothing to carry back)
+        const w = worth(shape(back, loads, !fetch, 0));
+        if (w > top || (w === top && fetch)) { top = w; fetch = !fetch; moved = true; }
+      }
+      for (const g of carried) {
+        for (const n of sizes(caps[g], loads[g] ?? 0)) {
+          const trial = { ...loads, [g]: n };
+          if (!n) delete trial[g];
+          for (const f of back ? [true, false] : [false]) {
+            const p = shape(back, trial, f, 0);
+            if (!affordable(p)) continue;
+            const w = worth(p);
+            if (w > top || (w === top && n < (loads[g] ?? 0) && f === fetch)) { top = w; loads = trial; fetch = f; moved = true; }
+          }
         }
       }
+      if (!moved) break;
     }
-    if (!moved) break;
-  }
-  let best = { loads, fetch, money: 0, net: top };
-  if (back) {
-    for (const f of [0.25, 0.5, 0.75, 1]) {
-      const money = Math.floor(purseOnly * f);
-      const w = worth(shape({}, true, money));
-      if (money && w > best.net) best = { loads: {}, fetch: true, money, net: w };
+    let best = { back, loads, fetch, money: 0, net: top };
+    // money alone, when no good goes out: to buy the good that is the whole point of the trip
+    if (back) {
+      const capBack = Math.max(1, Math.ceil(dest.sells[back.good].depth * DEPTH_SHARE));
+      const purseOnly = Math.min(budget, Math.ceil(capBack * back.there * 1.15));
+      for (const f of [0.25, 0.5, 0.75, 1]) {
+        const money = Math.floor(purseOnly * f);
+        const w = worth(shape(back, {}, true, money));
+        if (money && w > best.net) best = { back, loads: {}, fetch: true, money, net: w };
+      }
     }
-  }
-  const nothing = why => ({ ...shape({}, false, 0), why });
+    return best;
+  };
+  let best = null;
+  for (const back of backs.length ? backs : [null]) { const b = solve(back); if (!best || b.net > best.net) best = b; }
+  const back = best.back;
+  const nothing = why => ({ ...shape(back, {}, false, 0), why });
   if (refused && !hasQirad) return nothing(refused);
   const empty = !Object.keys(best.loads).length && !best.money;
   if (empty || best.net <= 0) {
@@ -806,12 +826,12 @@ export function proposePlan(state, content, agent, route, { check = true, share 
       ? `${dest.name} buys nothing the house sells and sells nothing the house wants at home.`
       : `No plan the house knows of pays on the road to ${dest.name}${result}.`);
   }
-  const base = shape(best.loads, best.fetch, best.money);
+  const base = shape(back, best.loads, best.fetch, best.money);
   if (!check) return base;
   // shrink until the engine takes it (money, wage, rules in words), as the outfit sheet would, and the estimate still pays
   for (const f of [1, 0.7, 0.5, 0.35, 0.25, 0.15]) {
     const loadsNow = Object.fromEntries(Object.entries(best.loads).map(([g, n]) => [g, Math.floor(n * f)]).filter(([, n]) => n > 0));
-    const p = shape(loadsNow, best.fetch, Math.floor(best.money * f));
+    const p = shape(back, loadsNow, best.fetch, Math.floor(best.money * f));
     if (p.contract === 'qirad') p.partners = Math.max(0, Math.min(p.partners, p.purse + 1));
     if (!Object.keys(p.cargo).length && !p.purse) continue;
     if (worth(p) <= 0) continue;
@@ -881,12 +901,21 @@ function buyRun(m, content, stop, good, cut, budget) {
   }
 }
 
+/** A copy of one city's market that `notePurchase` can move without moving the state's, for `goods` (all by default): it changes only
+    an entry's `glut`, so those entries are copied one level deep (the price history inside is shared) and the rest are read through
+    from the original. A deep clone of the whole market was most of what a plan cost to price (MER-121). */
+const thin = (market, goods = Object.keys(market ?? {})) => {
+  const m = Object.create(market ?? {});
+  for (const g of goods) if (market?.[g]) m[g] = { ...market[g] };
+  return m;
+};
+
 /** Loads of each good in `cargo` with their price at home now, the part drawn from the warehouse and the part to buy:
     { stockValue, buyCost, market }, the second priced load by load as `build` prices it, `market` home's market once it is bought
     (what `build` leaves there). */
 function homeStake(s, content, cargo) {
   const home = homeOf(content);
-  const sim = { ...s, market: { [home]: structuredClone(s.market[home]) } };   // only home's prices move here
+  const sim = { ...s, market: { [home]: thin(s.market[home], Object.keys(cargo)) } };   // only home's prices move here
   let stockValue = 0, buyCost = 0;
   for (const [g, n] of Object.entries(cargo)) {
     const fromStock = Math.min(s.stock[g] ?? 0, n);
@@ -1056,13 +1085,13 @@ function bestLoads(s, content, out, home, far, cap) {
   return best;
 }
 
-/** The trades worth a road, for the map's "Best known trades" (DESIGN 2.2 rule 3, 4.7): a good that sells for more at the far
+/** The trades the news says are worth a road, before the house's money, goods and agents are counted (`bestTrades` does that, and `proposePlan` reads this to rank its goods): a good that sells for more at the far
     end than at home (carry it out) or for less (bring it back), ranked by the dinars a season it should make (MER-98): the
     margin on the loads a plan could move (up to DEPTH_SHARE of the thinner market, each load priced as the last one moved the
     price), less the tolls and the wage, over the seasons out and back, and then by how old the news is, halved every
     NEWS_HALF_LIFE seasons. A road that cannot come home before the game ends is left out, and so is a trade that loses.
-    Each row keeps its road, the age of the news in words and the road's risk word. `n` of them, or those of the one route `road` names; reads only what the house knows. */
-export function bestTrades(state, content, n = 3, road = null) {
+    Each row keeps its road, the age of the news in words and the road's risk word. All of them, best a season first, or those of the one route `road` names; reads only what the house knows. */
+function tradeRows(state, content, road = null) {
   const home = homeOf(content), homeStop = stopOf(content, home);
   const left = playedSeasons(content.calendar, state.length).length - 1 - state.t;
   const hired = (content.agents ?? []).filter(a => state.agents[a.id]?.hired);
@@ -1094,7 +1123,77 @@ export function bestTrades(state, content, n = 3, road = null) {
     }
   }
   rows.sort((a, b) => b.score - a.score || b.margin - a.margin || (a.stop < b.stop ? -1 : a.stop > b.stop ? 1 : a.good < b.good ? -1 : 1));
-  return rows.slice(0, n);
+  return rows;
+}
+
+/** The agents who can go now: hired, in the home city, with no expedition (the outfit sheet's `freeAgents`, which cannot be imported here). */
+const freeAgents = (state, content) => (content.agents ?? []).filter(a => {
+  const r = state.agents[a.id];
+  return r?.hired && r.where === homeOf(content) && !state.expeditions.some(x => x.agent === a.id);
+});
+
+/** The plan the outfit sheet opens on for the road to `route`: the free agent who knows the stop first, then the rest, until the
+    engine has a plan that pays for one, as outfit.js asks. { agent, plan, est } or null (nobody free, or no plan pays).
+    `check` is `proposePlan`'s: the map prices every road and leaves the check against the whole state, which clones it, to the
+    few roads it lists. */
+function ventureFor(state, content, route, free, check = true) {
+  const stopId = routeOf(content, route).to;
+  const knows = a => a.traits?.includes(`knows-${stopId}`);
+  for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
+    const plan = proposePlan(state, content, a, route, { check });
+    if (plan && !plan.why) return { agent: a.id, plan, est: estimate(state, content, plan) };
+  }
+  return null;
+}
+
+/** The rows of `bestTrades` for one state, best first, before the check against the whole state: the work of pricing a plan for every
+    road, which `view` asks for twice (the map's three and the sheet's draft) and the page for on every redraw. Kept for the last few
+    states asked about, by what they hold (the states are plain data), so it is done once a state. */
+const kept = new WeakMap();
+function ranked(state, content, road) {
+  const key = JSON.stringify([road, RULES, state]);
+  const byKey = kept.get(content) ?? kept.set(content, new Map()).get(content);
+  if (byKey.has(key)) return byKey.get(key);
+  const free = freeAgents(state, content);
+  const ventures = new Map(), rows = [];
+  if (free.length) {
+    for (const t of tradeRows(state, content, road)) {
+      if (!ventures.has(t.route)) ventures.set(t.route, ventureFor(state, content, t.route, free, false));
+      const v = ventures.get(t.route);
+      if (!v) continue;
+      const loads = t.direction === 'out' ? v.plan.cargo[t.good] ?? 0 : v.plan.buy.includes(t.good) ? v.est.back[t.good] ?? 0 : 0;
+      if (!loads) continue;
+      const perSeason = v.est.net / v.est.seasons;
+      rows.push({ ...t, loads, expected: Math.round(v.est.net), perSeason: Math.round(perSeason * 10) / 10, score: perSeason * Math.pow(0.5, t.age / NEWS_HALF_LIFE),
+        agent: v.agent, seasons: v.est.seasons, risk: v.est.risk, riskWord: v.est.riskWord, news: v.est.ageWords, tradeGain: t.expected });
+    }
+    rows.sort((a, b) => b.score - a.score || b.tradeGain - a.tradeGain || b.margin - a.margin || (a.stop < b.stop ? -1 : a.stop > b.stop ? 1 : a.good < b.good ? -1 : 1));
+  }
+  const entry = { rows, ventures, fits: new Map() };
+  byKey.set(key, entry);
+  if (byKey.size > 6) byKey.delete(byKey.keys().next().value);
+  return entry;
+}
+
+/** The trades for the map's "Best known trades" (DESIGN 2.2 rule 3, 4.7), from the same calculation as the sheet (MER-121): a trade is
+    listed only if the house can make it now, which is to say the plan `proposePlan` writes for the road, for the free agent the sheet
+    would pick, carries it (a good out in its cargo, a good back in its `buy`), the engine takes that plan, and its estimate is above 0.
+    The figure on a row is that plan's estimate, the one the line under Send shows, so a road on the map opens a sheet that says the
+    same. Ranked by dinars a season of that estimate, and then by how old the news is (halved every NEWS_HALF_LIFE seasons); the
+    rows of one road follow each other in the order of what each makes alone. With nobody free, or no plan that pays, there are none.
+    Rows are those of `tradeRows` (road, good, the news age of that good) with `expected` and `perSeason` from the estimate,
+    `tradeGain` what the trade alone made in `tradeRows`, `loads` what the plan moves of the good, `agent` whose plan it is, the
+    estimate's `seasons`, `risk` and `riskWord` for that agent, and `news`, the age words of everything the plan counts on.
+    `n` of them, or those of the one route `road` names. */
+export function bestTrades(state, content, n = 3, road = null) {
+  const { rows, ventures, fits } = ranked(state, content, road);
+  const out = [];
+  for (const t of rows) {
+    if (out.length >= n) break;
+    if (!fits.has(t.route)) fits.set(t.route, build(structuredClone(state), content, ventures.get(t.route).plan).problems.length === 0);
+    if (fits.get(t.route)) out.push({ ...t });
+  }
+  return out;
 }
 
 /** The outfit draft view() carries (DESIGN 2.2 rule 1): the road of the widest known margin that a free agent can ride now
@@ -1103,18 +1202,11 @@ export function bestTrades(state, content, n = 3, road = null) {
     or nobody is free; the sheet then builds its draft from `proposePlan` for the stop the player picks. One plan is built
     here, not one for every road: `proposePlan` checks the plan against the whole state, which is not cheap. */
 export function draftVenture(state, content, trades = bestTrades(state, content, 8)) {
-  const home = homeOf(content);
-  const free = (content.agents ?? []).filter(a => {
-    const r = state.agents[a.id];
-    return r?.hired && r.where === home && !state.expeditions.some(x => x.agent === a.id);
-  });
+  const free = freeAgents(state, content);
   if (!free.length) return null;
   for (const t of trades) {
-    const order = [...free.filter(a => a.traits?.includes(`knows-${t.stop}`)), ...free.filter(a => !a.traits?.includes(`knows-${t.stop}`))];
-    for (const a of order) {
-      const plan = proposePlan(state, content, a, t.route);
-      if (plan && !plan.why) return { agent: a.id, route: t.route, stop: t.stop, plan, estimate: estimate(state, content, plan) };
-    }
+    const hit = ventureFor(state, content, t.route, free);
+    if (hit) return { agent: hit.agent, route: t.route, stop: t.stop, plan: hit.plan, estimate: hit.est };
   }
   return null;
 }
@@ -1318,6 +1410,9 @@ function bringHome(s, content, x, { elapsed, at = null }) {
   const value = x.purse + cargoValue;
   const shares = split(x.contract, x.staked, value);
   for (const [g, n] of Object.entries(x.cargo)) addStock(s, g, n);
+  // where each good that came home was bought, for `proposePlan`, which does not send it straight back there (MER-121)
+  const from = Object.fromEntries((x.book.bought ?? []).filter(e => x.cargo[e.good] > 0).map(e => [e.good, e.stop]));
+  if (Object.keys(from).length) s.log.push({ at: seasonIndex(s, content), kind: 'brought', ref: x.id, from });
   s.money += x.purse;
   const partnersShort = pay(s, content, shares.partners), agentShort = pay(s, content, shares.agent);
   const short = partnersShort + agentShort;
