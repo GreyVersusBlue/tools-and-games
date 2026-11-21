@@ -87,6 +87,11 @@ test('a match in the title ranks before one only in the text; ties keep Help’s
   assert.deepEqual(titlesOf(search(index, 'cells')), ['Cell', 'Floor'], 'cells is not the start of cell’s other forms, and Cell’s text has cells');
 });
 
+test('a title that starts with the word outranks a text that has the whole word', () => {
+  const index = indexOf(['Room', 'A space in a cell of its own.'], ['Cells', 'Everything on a floor.']);
+  assert.deepEqual(titlesOf(search(index, 'cell')), ['Cells', 'Room']);
+});
+
 test('the matched words come back marked as text segments, which join to the sentence exactly', () => {
   const index = indexOf(['Dead end', 'A corridor that ends. Many fire codes limit dead-end corridors. Check your local code.']);
   const [result] = search(index, 'dead corridors').results;
