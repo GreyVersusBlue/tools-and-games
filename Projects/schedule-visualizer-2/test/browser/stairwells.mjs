@@ -250,9 +250,10 @@ test('a stairwell\'s properties: one way for every flight, the Letter field, a r
   await page.keyboard.press('Enter');
   await waitFor('#inspector-properties #inspector-title', 'Stairwell West');
   assert.deepEqual(await wells(), [['A', 'West'], ['B', 'West']]);
-  assert.equal(await said(), 'Stairwell A is now Stairwell West on every floor.');
-  // SV2-142: Enter says the result in a toast too, as the other fields do
+  // SV2-142, SV2-142b: Enter says the result once, in the toast (with Undo), as the
+  // other fields do; the announcer does not say it again
   assert.equal(await toastText(), 'Stairwell A is now Stairwell West on every floor.');
+  assert.doesNotMatch(await said(), /Stairwell West/, 'heard twice: the announcer says it too');
   // a row for each of the three stops, each with Show; Remove from stairwell on all
   const rows = await page.$$eval('#well-stops li', (all) => all.map((li) => [li.querySelector('.bi-row__text').textContent, Array.from(li.querySelectorAll('button')).map((b) => b.textContent)]));
   assert.deepEqual(rows, [['Floor 1', ['Show', 'Remove from stairwell']], ['Floor 2 (this stop)', ['Show', 'Remove from stairwell']], ['Floor 3', ['Show', 'Remove from stairwell']]]);
@@ -617,6 +618,9 @@ test('the Floor tab lists a stairwell as one row with its letter, floors and way
   await page.keyboard.press('Enter');
   await waitFor('#inspector-floor [data-part="well-summary"]', 'Stairwell East · Floor 1 to Floor 3 · up only');
   assert.deepEqual(await wells(), [['A', 'East'], ['B', 'East']]);
+  // SV2-142b: heard once, by the toast; the announcer does not say it again
+  assert.equal(await toastText(), 'Stairwell A is now Stairwell East on every floor.');
+  assert.doesNotMatch(await said(), /Stairwell East/, 'heard twice: the announcer says it too');
   // the row is the same row after the rename: the focus stays in its Letter field
   const focused = () => page.evaluate(() => {
     const el = document.activeElement;

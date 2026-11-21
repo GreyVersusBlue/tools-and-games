@@ -367,10 +367,9 @@ export function cellPanel(env) {
       commit: (value) => {
         const steps = store.history.past.length;
         store.apply(setStairwellLetter, { well: well.letter, letter: value });
-        // said at once (Enter commits), and a toast with Undo like the other fields' (SV2-142)
-        const said = (store.undoOutcome || {}).text || 'Renamed the stairwell.';
-        ctx.announce(said);
-        if (store.history.past.length > steps) ctx.toast({ text: said, action: { label: 'Undo', run: ctx.undo } });
+        // said once, by the toast (a live region) with Undo, as the other fields'
+        // results are: not by the announcer too (SV2-142, SV2-142b)
+        if (store.history.past.length > steps) ctx.toast({ text: (store.undoOutcome || {}).text || 'Renamed the stairwell.', action: { label: 'Undo', run: ctx.undo } });
       },
     });
     letter.input.dataset.key = 'well-letter';
