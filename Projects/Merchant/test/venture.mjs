@@ -660,7 +660,7 @@ function longRoadStates(road, { seeds, ns, marks }) {
 }
 const errors = rows => ({ mean: rows.reduce((a, r) => a + Math.abs(r.est - r.made), 0) / rows.length, worst: Math.max(...rows.map(r => Math.abs(r.est - r.made))), rel: Math.max(...rows.map(r => Math.abs(r.est - r.made) / r.stake)) });
 
-test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 8 dinars, at most two trips more than 13 dinars out, and on the marked-home trips a mean of at most 9.5', () => {
+test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 5 dinars, at most two trips more than 13 dinars out, 26 at worst, and on the marked-home trips a mean of at most 7', () => {
   // The same 32 trips (2 seeds, 3 starts, both agents, three homes), measured before and after MER-115: mean 7.88 before, 6.88
   // after; worst 16 both; the 22 marked-home trips 7.36 before and 5.91 after, which is what the last line holds (the carried
   // home price is worth about 1.5 dinars a trip here, as the home price barely moves in four seasons). What is left is not the
@@ -678,16 +678,25 @@ test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmar
   // a worst case: at most two trips over 13 dinars out (before, none over 13). The means are what the MER-115 carry and the
   // MER-116 wage count hold: reverting the wage count reads a mean of 8.38 and reverting the carry 9.88, both over the 8, and each fails on the mean line (broken once each). Damascus's pepper does not move
   // these 32 trips (identical with the old base).
+  // MER-121b: a return the jump settles is valued at home's price after the jump's market reset (the new act's base, no mark),
+  // the price the ledger shows that season, and the estimate carries to the same price. Before, `jump` valued the goods at the
+  // closing before the reset and the estimate at a carried price near it, so the two agreed by luck. What moved: the same 32 trips
+  // read mean 4.38 (not 7.69), worst 24 (not 38), 6.09 on the 22 marked-home trips (not 9.00), 6.23 percent of the stake at worst.
+  // The seed 1, start 3, marked-high state that was 38 out is now 24: its silk is handed over as a toll at home's price on the
+  // day (560, `payFromExpedition`), and the estimate credits a load given that way at the carried price of that closing (535).
+  // The two 24s are that state, Yusuf and Ali. Broken once each, in the estimate: the wage count back to `proj.seasons` reads
+  // mean 5.50 and worst 33, and fails on both the mean (5) and the worst (26); the carry removed (goods at today's price) reads
+  // mean 17.50 and fails on the mean line.
   const { rows, lossy } = longRoadStates('cairo-aleppo', { seeds: [1, 2], ns: [0, 2, 3], marks: [[1, 0], [1.5, 0.2], [0.7, -0.1]] });
   ok(rows.length >= 30, `${rows.length} trips compared, ${lossy} left out for a loss`);
   for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
   const all = errors(rows);
-  ok(all.mean <= 8, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
+  ok(all.mean <= 5, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
   const far = rows.filter(r => Math.abs(r.est - r.made) > 13);
   ok(far.length <= 2, `${far.length} trips more than 13 dinars out: ${far.map(r => `${r.at} estimated ${r.est}, made ${r.made}`).join('; ')}`);
-  ok(all.worst <= 38, `worst error ${all.worst} dinars`);
+  ok(all.worst <= 26, `worst error ${all.worst} dinars`);
   const marked = errors(rows.filter(r => !r.at.includes('/1/')));
-  ok(marked.mean <= 9.5, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
+  ok(marked.mean <= 7, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
 });
 
 test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an act jump, which the estimate settles as `jump` does (the quotes it left with, the wage of the whole road): a mean error of at most 5 dinars, 12 at worst, 2.5 percent of the stake', () => {

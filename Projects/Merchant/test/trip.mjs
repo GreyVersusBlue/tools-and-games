@@ -355,10 +355,16 @@ const withActEnd = (c, end) => variant(c, x => { x.calendar.lengths.acts.acts = 
 const SALT_BACK = { ...SALTED };
 /** Plays SALT_BACK from the first season to the page between acts and opens the house: { line, paper, s } for the first calendar and
     seed `want` accepts, or null. */
-function jumpedTrip(want, { seeds = [7, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12] } = {}) {
+function jumpedTrip(want, { seeds = [7, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12], hopedHigh = false } = {}) {
   for (const end of [1, 2, 3, 4, 5, 6, 7, 8]) for (const seed of seeds) {
     const c = withActEnd(salty, end);
     let s = outfit(game(c, { length: 'acts', seed }), c, SALT_BACK);
+    // `hopedHigh`: the sheet hoped for a home price 40 percent over the one the estimate carries (a hope written when home's price
+    // stood higher). Since MER-121b the estimate and `jump` read the same price, so a jump return's home price is no longer a gap
+    // cause of its own and its why never names one; the sentences below are about the cases where the hope was off.
+    if (hopedHigh) for (const x of s.expeditions) {
+      x.hope.home.salt = Math.round(x.hope.home.salt * 1.4);
+    }
     let before = s;
     for (let i = 0; i < 20 && s.phase !== 'interlude' && s.phase !== 'recall'; i++) { before = s; s = step(s, c); }
     if (s.phase !== 'interlude') continue;
@@ -383,7 +389,7 @@ test('MER-119 (2) a party home before the years passed: its why names the price 
     if (l.quoted) return false;
     const home = cityOf(c, 'market').home;
     return M.truePrice(before, c, home, 'salt') !== M.truePrice(s, c, home, 'salt') && / at home in /.test(l.why ?? '');
-  });
+  }, { hopedHigh: true });
   ok(j, 'no seed had a home price that moved across the jump with a home price in its why');
   const from = j.s.log.findLast(e => e.kind === 'jump').from, home = cityOf(j.c, 'market').home;
   // the price of the closing season, read from the state before that closing; the market is reset to the next act's by the jump
@@ -393,8 +399,31 @@ test('MER-119 (2) a party home before the years passed: its why names the price 
   ok(new RegExp(`^Salt fetched ${then} at home in ${writeSeason(j.c, from)}, when Mira was back, `).test(d.why), `${d.why} (it was ${then} then and ${after} after the jump)`);
   ok(!/by the time/.test(d.why), d.why);
 });
+test('MER-121b a return the jump settles is worth home\'s price after the jump\'s market reset, the price the ledger shows that season, quoted or not', () => {
+  // `jump` settles a party before it resets the markets (step 4), so a return valued at the market as it stood read the price of the
+  // closing before: 33 of 33 jump returns were off from the ledger, 29 of 29 ordinary ones right (MER-121b). The paper's "worth" and
+  // its cargo value are the goods at the price the new act opens with, which is the price the ledger writes for that season.
+  let compared = 0;
+  for (const quoted of [true, false]) for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+    const j = jumpedTrip(l => l.quoted === quoted, { seeds: [seed] });
+    if (!j || !Object.keys(j.paper.data.goodsBack).length) continue;
+    const home = cityOf(j.c, 'market').home, to = j.s.log.findLast(e => e.kind === 'jump').to;
+    // the season the act opens in: play it to its close and read the price the ledger wrote for it
+    const worth = j.paper.data.cargoValue;
+    const after = step(openSeason(j.s, j.c), j.c);
+    let ledger = 0;
+    for (const [g, n] of Object.entries(j.paper.data.goodsBack)) {
+      const p = M.priceAt(after, home, g, to);
+      ok(Number.isFinite(p), `${g} has no ledger price for season ${to}`);
+      ledger += n * p;
+    }
+    eq(worth, ledger, `seed ${seed}, calendar ending ${j.end}, quoted ${quoted}: the paper says worth ${worth}, the ledger's price that season makes ${ledger}`);
+    compared++;
+  }
+  ok(compared >= 3, `${compared} jump returns with goods were compared`);
+});
 test('MER-119 (2) a trip settled by quotes says so, and does not say the party was back when the price was read', () => {
-  const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''));
+  const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''), { hopedHigh: true });
   ok(j, 'no calendar had a quoted trip whose why names a home price');
   const d = j.paper.data;
   ok(/^The years passed before Mira was home, so salt was counted at \d+ at home, (not|more than|less than) the \d+ we hoped for\.$/.test(d.why), d.why);

@@ -972,7 +972,11 @@ function homePriceAt(s, content, good, closings, market = s.market[homeOf(conten
   for (let i = 0; i < Math.max(0, closings) && sim.t + 1 < played.length; i++) {
     const was = actOfSeason(content.calendar, s.length, played[sim.t]);
     M.drift(sim, world); sim.t += 1;
-    if (actOfSeason(content.calendar, s.length, played[sim.t]) !== was) break;
+    if (actOfSeason(content.calendar, s.length, played[sim.t]) !== was) {
+      // the jump settles the party at the price its market reset leaves: the new act's base, no glut (MER-121b)
+      const b = M.baseOf(sim, content, home, good);
+      return Math.max(1, Math.round(b));
+    }
   }
   const m = sim.market[home][good], base = M.baseOf(sim, content, home, good);
   return Math.max(1, Math.round(base * m.f * (1 - m.glut)));
@@ -1073,6 +1077,16 @@ export function estimate(state, content, plan, memo = null) {
     const p = homePriceAt(state, content, g, proj.seasons, homeAfter) ?? 0;
     pricesHome[g] = p;
     goodsValue += n * p;
+  }
+  // A toll the purse cannot pay is paid in goods, each load credited at home's price on the day it is given (`payFromExpedition`),
+  // which for a party that comes home across the jump is the price of the closing before the reset, not the one the reset leaves:
+  // the loads given are worth that much more than `goodsValue` counts them (MER-121b).
+  if (count.settled && Object.keys(goodsBack).length) {
+    const worthThen = Object.fromEntries(Object.keys(goodsBack).map(g => [g, homePriceAt(state, content, g, Math.max(0, proj.seasons - 1), homeAfter) ?? 0]));
+    let owed = (tollsAll - tollsBefore) - Math.max(0, money);
+    for (const g of Object.keys(goodsBack).sort((a, b) => worthThen[a] - worthThen[b] || (a < b ? -1 : 1))) {
+      for (let k = goodsBack[g]; k > 0 && owed > 0; k--) { goodsValue += worthThen[g] - pricesHome[g]; owed -= worthThen[g]; }
+    }
   }
   const upkeep = proj.waits * UPKEEP;
   // what the tolls took before the far end came out of the purse (money already net of it) or the cargo; the rest comes out of what is left
@@ -1430,11 +1444,15 @@ export function split(contract, staked, value) {
 
 /** An expedition is home: its goods go to the warehouse, its money to the house, the shares are
     paid, the agent is at home. Returns the report the return paper and the interlude both use. */
-function bringHome(s, content, x, { elapsed, at = null }) {
+function bringHome(s, content, x, { elapsed, at = null, reset = false }) {
   const home = homeOf(content);
   const agentRec = s.agents[x.agent], agent = agentOf(content, x.agent), route = routeOf(content, x.route);
-  const cargoValue = Object.entries(x.cargo).reduce((v, [g, n]) => v + n * (M.truePrice(s, content, home, g) ?? 0), 0);
-  // The goods stay valued at the price as it stands now, the one the estimate carries to (test/venture.mjs bands depend on it).
+  // `reset`: the act jump settles the party before step 4 resets the markets, but the ledger's price for the season it opens is the
+  // reset one (the new act's base, no glut), so a jump's return is valued there and not at the price of the closing before (MER-121b).
+  const priceOf = g => reset ? Math.max(1, Math.round(M.baseOf(s, content, home, g) ?? 0)) : M.truePrice(s, content, home, g);
+  const cargoValue = Object.entries(x.cargo).reduce((v, [g, n]) => v + n * (priceOf(g) ?? 0), 0);
+  // The goods stay valued at the price as it stands now, the one the estimate carries to (test/venture.mjs bands depend on it);
+  // at the jump that is the price the reset leaves.
   // A party that was already home when the years passed also keeps the price home had in the season it came home (`at`, from
   // the price history), which is the one its why sentence names (MER-119).
   const homeThen = at === null ? null : Object.fromEntries(Object.keys(x.cargo).map(g => [g, M.priceAt(s, home, g, at)]).filter(([, p]) => p !== null));
@@ -1455,7 +1473,7 @@ function bringHome(s, content, x, { elapsed, at = null }) {
   agentRec.where = home;
   for (const k of x.book.seen) bumpKnown(s, k.stop, k.good, k.p, k.at);
   const houseNet = shares.house - x.staked.house - wage;
-  return { x, route, shares, value, cargoValue, homeThen, wage, houseNet, short: short + wageShort, elapsed, goodsBack: { ...x.cargo }, moneyBack: x.purse };
+  return { x, route, shares, value, cargoValue, homePrice: Object.fromEntries(Object.keys(x.cargo).map(g => [g, priceOf(g) ?? 0])), homeThen, wage, houseNet, short: short + wageShort, elapsed, goodsBack: { ...x.cargo }, moneyBack: x.purse };
 }
 
 /** The five causes a trip makes less than its estimate said (DESIGN 2.2 rule 2), as dinars the house is short by each:
@@ -1505,7 +1523,7 @@ export function gapCauses(s, content, x, r) {
     ownMove(e, seen, 'buy', e.cost - e.q * Math.max(1, Math.round(seen.p * cut)));
   }
   for (const [g, n] of Object.entries(r.goodsBack)) {
-    const now = M.truePrice(s, content, home, g) ?? 0, pH = hope.home?.[g], then = r.homeThen?.[g];
+    const now = r.homePrice?.[g] ?? M.truePrice(s, content, home, g) ?? 0, pH = hope.home?.[g], then = r.homeThen?.[g];
     if (pH) note('news', (pH - now) * n, { stop: home, good: g, side: 'home', got: now, hoped: pH, ...(then !== undefined ? { then } : {}) });
   }
   // a toll paid in goods that the far end would have bought costs what the last loads would have fetched there, less the toll they paid
@@ -1714,7 +1732,7 @@ function settleAndClose(s, content, x, elapsed, { papers = null, at = null } = {
     if (out.loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
     return settledLine(s, content, x, out);
   }
-  const r = bringHome(s, content, x, { elapsed, at: papers && wasHome ? at : null });
+  const r = bringHome(s, content, x, { elapsed, at: papers && wasHome ? at : null, reset: !!papers });
   // a trip that came home while the years passed leaves its paper for the first desk after the interlude (MER-98), with
   // what the sheet hoped and one sentence for the gap, which the interlude page carries too (MER-119)
   const line = { ...settledLine(s, content, x, out, r), quoted: !wasHome };   // `quoted`: settled by the prices it left with, not home before the years passed
