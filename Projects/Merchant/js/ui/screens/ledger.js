@@ -18,14 +18,17 @@ const GROUPS = { partners: 'Partners', agents: 'Agents', court: 'The court', for
 const signed = n => (n > 0 ? `+${num(n)}` : n < 0 ? `${MINUS}${num(-n)}` : '0');
 
 /** The changes in the house's money over the last four seasons that closed, newest last, from the
-    log's `season` entries ({ kind: 'season', at, change }). [] when the log has none. */
+    log's `season` entries ({ kind: 'season', at, change }). [] when the log has none. `gap` is the
+    years the act jump skipped, read from the log's own `jump` entry (its `years`, the number the
+    interlude page prints) when that jump sits between this season and the one before it; a gap in the
+    season entries with no jump entry in it says nothing (MER-113b). */
 export function moneyTrail(content, log) {
+  const jumps = (log ?? []).filter(e => e.kind === 'jump' && Number.isInteger(e.years));
   const four = (log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4);
-  // `gap` is the whole years the jump between acts skipped, on the entry that comes after it (0 when the seasons run on).
-  return four.map((e, i) => ({
-    at: e.at, season: writeSeason(content, e.at), change: e.change,
-    gap: i && e.at - four[i - 1].at > 1 ? Math.max(1, Math.round((e.at - four[i - 1].at - 1) / 4)) : 0,
-  }));
+  return four.map((e, i) => {
+    const j = i ? jumps.find(x => x.from >= four[i - 1].at && x.to <= e.at) : null;
+    return { at: e.at, season: writeSeason(content, e.at), change: e.change, gap: j ? j.years : 0 };
+  });
 }
 
 function whereIsExpedition(app, x) {

@@ -314,7 +314,11 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const goods = backGoods();
     const chosen = draft.buy.filter(g => goods.includes(g));
     const names = chosen.map(g => goodName(content, g));
-    const line = names.length ? `${cap(names.join(' and '))}, bought with the money left after selling in ${stop.name}.` : `Nothing: whatever the goods sell for comes home as money.`;
+    // MER-113b: with money in the purse and a good the stop could name, "Nothing" is what the engine refuses, so the line says that
+    // instead of promising money home. Without a purse, the goods' own sale comes home as money, as before.
+    const needsGood = draft.purse > 0 && !!defaultBack();
+    const noneLine = needsGood ? 'Money sent to buy with needs a good to bring back, so choose one.' : 'Whatever the goods sell for comes home as money.';
+    const line = names.length ? `${cap(names.join(' and '))}, bought with the money left after selling in ${stop.name}.` : `Nothing: ${noneLine.charAt(0).toLowerCase()}${noneLine.slice(1)}`;
     if (!expanded('back')) {
       return section('back', 'What they bring back', summary('back', line, () => { open.add('back'); render('outfit-back-h'); }, 'what they bring back'));
     }
@@ -334,10 +338,10 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     // MER-113: "Nothing" is a choice with a button of its own, last in the list, which clears every pick. Its class is not
     // `back-pick`, so a press on the first good never lands on it.
     if (goods.length) rows.push(h('li', { class: 'good back-good' },
-      h('button', { class: 'back-none', type: 'button', role: 'checkbox', id: 'back-nothing', dataset: { key: 'back-nothing' }, 'aria-checked': chosen.length ? 'false' : 'true',
+      h('button', { class: 'back-none', type: 'button', id: 'back-nothing', dataset: { key: 'back-nothing' }, 'aria-pressed': chosen.length ? 'false' : 'true',
         onclick: () => { draft.buy = []; render('back-nothing'); } },
       h('strong', null, 'Nothing'),
-      h('span', { class: 'far' }, 'Whatever the goods sell for comes home as money.'))));
+      h('span', { class: 'far' }, noneLine))));
     return section('back', 'What they bring back',
       goods.length ? h('ul', { class: 'goods', id: 'outfit-back-goods' }, rows) : h('p', { class: 'none', id: 'outfit-back-none' }, `${stop.name} sells nothing ${homeStop.name} trades in, so what the goods fetch comes home as money.`),
       h('p', { class: 'total', id: 'outfit-back-total' }, line),

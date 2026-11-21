@@ -1400,14 +1400,14 @@ try {
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
       await page.click('#change-back'); await page.waitForSelector('.back-pick');
       const checked = () => page.$$eval('.back-pick[aria-checked="true"]', bs => bs.length);
-      eq(await page.$eval('#back-nothing', b => [b.tagName, b.type, b.getAttribute('role'), b.getAttribute('aria-checked')]), ['BUTTON', 'button', 'checkbox', 'true'], 'a real button, chosen while no good is');
+      eq(await page.$eval('#back-nothing', b => [b.tagName, b.type, b.getAttribute('role'), b.getAttribute('aria-checked'), b.getAttribute('aria-pressed')]), ['BUTTON', 'button', null, null, 'true'], 'a plain button, pressed while no good is: no checkbox role, since it cannot be unchecked');
       eq(await page.$eval('#outfit-back-goods li:last-child #back-nothing', b => b.id), 'back-nothing', 'last in the list, so the first press on a good never lands on it');
       await page.click('.back-pick');
       eq(await checked(), 1, 'setup: a good is picked');
-      eq(await page.$eval('#back-nothing', b => b.getAttribute('aria-checked')), 'false', 'Nothing is not chosen while a good is');
+      eq(await page.$eval('#back-nothing', b => b.getAttribute('aria-pressed')), 'false', 'Nothing is not pressed while a good is');
       await page.click('#back-nothing');
       eq(await checked(), 0, 'the pointer press clears the pick');
-      eq(await page.$eval('#back-nothing', b => b.getAttribute('aria-checked')), 'true');
+      eq(await page.$eval('#back-nothing', b => b.getAttribute('aria-pressed')), 'true');
       eq(await page.$eval('#outfit-back-total', e => e.textContent.startsWith('Nothing')), true, 'the line says so');
       await page.click('.back-pick');
       eq(await checked(), 1, 'setup again');
@@ -1417,6 +1417,32 @@ try {
       await page.click('.back-pick');
       await page.focus('#back-nothing'); await page.keyboard.press('Space');
       eq(await checked(), 0, 'Space clears it too');
+      await page.click('#outfit-cancel');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+    });
+
+    await test('MER-113b: Nothing does not promise money home when a purse is set; with no purse it says the goods come home as money', async () => {
+      await goMap(page);
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      const typePurse = async v => {
+        await page.click('#change-carry'); await page.waitForSelector('#typed-purse');
+        await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+        await page.keyboard.type(v); await page.keyboard.press('Enter');
+        await page.waitForSelector('#step-purse');
+      };
+      const noneLine = async () => {
+        await page.click('#change-back'); await page.waitForSelector('#back-nothing');
+        await page.click('#back-nothing');
+        return page.$eval('#back-nothing', b => b.textContent);
+      };
+      await typePurse('200');
+      const withPurse = await noneLine();
+      ok(/needs a good to bring back/.test(withPurse) && !/comes home as money/.test(withPurse), `a purse is set: ${withPurse}`);
+      ok(/needs a good to bring back/.test(await page.$eval('#outfit-back-total', e => e.textContent)), 'the line under the list says it too');
+      await typePurse('0');
+      const noPurse = await noneLine();
+      ok(/comes home as money/.test(noPurse) && !/needs a good/.test(noPurse), `no purse: ${noPurse}`);
       await page.click('#outfit-cancel');
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
     });
@@ -1948,21 +1974,68 @@ try {
           'The court They come to you first +3', 'Foreign merchants They deal with you as with anyone 0']);
       });
 
-      await test(`${how}: the ledger says the years passed where the last four seasons span the jump between acts`, async () => {
-        const jumped = structuredClone(book), base = nodeContent.calendar.base, names = ['Spring', 'Summer', 'Autumn', 'Winter'];
-        const say = i => `${names[i % 4]} ${base + Math.floor(i / 4)}`;
-        jumped.log = jumped.log.filter(e => e.kind !== 'season');
-        for (const [at, change] of [[6, 10], [7, 20], [44, -281], [45, 30]]) jumped.log.push({ at, kind: 'season', change, money: 1000 });
+      await test(`${how}: the ledger says the years the engine's own jump skipped, on testport and cairo, and says nothing where seasons run on (MER-113b)`, async () => {
+        const { moneyTrail } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
+        const { writeSeason } = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
+        const fsp = await import('node:fs/promises');
+        const testportContent = eng.validateContent(await loadContent('testport', { fs: fsp }));
+        const answer = (st, c) => {
+          for (const p of st.desk) {
+            if (p.state !== 'open') continue;
+            const ch = eng.paperChoices(st, c, p.id).find(x => { try { eng.choose(structuredClone(st), c, p.id, x.id); return true; } catch { return false; } });
+            if (ch) st = eng.choose(st, c, p.id, ch.id);
+          }
+          return st;
+        };
+        const step = (st, c) => (st.phase === 'interlude' ? eng.openSeason(st, c) : eng.endSeason(answer(st, c), c));
+        const seasons = st => st.log.filter(e => e.kind === 'season');
+        /** A seeded acts game played with the engine's own functions until the jump is in the log and one season of the next act has closed. */
+        const playPastJump = (c, seed) => {
+          let st = eng.newGame(c, { seed, length: 'acts', house: 'plain' });
+          for (let i = 0; i < 80; i++) {
+            const j = st.log.find(e => e.kind === 'jump');
+            if (j && seasons(st).some(e => e.at >= j.to) && st.phase !== 'interlude') break;
+            st = step(st, c);
+          }
+          if (st.phase === 'interlude') st = eng.openSeason(st, c);
+          return st;
+        };
+        const years = { testport: [], cairo: [] };
+        let cairoJumped = null;
+        for (const [name, c, seed] of [['testport', testportContent, 7], ['cairo', nodeContent, SEED]]) {
+          const st = playPastJump(c, seed), j = st.log.find(e => e.kind === 'jump');
+          ok(j && Number.isInteger(j.years), `${name}: setup: the engine's own jump is in the log`);
+          const trail = moneyTrail(c, st.log), line = eng.view(st, c).interlude;
+          eq(line.years, j.years, `${name}: setup: the jump page reads ${j.years} years`);
+          eq(trail.map(t => t.gap).filter(g => g), [j.years], `${name}: the ledger prints the jump's years, the same number the interlude page does`);
+          eq(trail.length, 4, `${name}: four seasons`);
+          const noJump = moneyTrail(c, st.log.filter(e => e.kind !== 'jump'));
+          eq(noJump.map(t => t.gap), [0, 0, 0, 0], `${name}: a gap in the season entries that is not the act jump prints no line`);
+          years[name].push(j.years);
+          if (name === 'cairo') cairoJumped = st;
+        }
+        // cairo in the page: the same log, the same line, the same figures
+        const st = cairoJumped, j = st.log.find(e => e.kind === 'jump'), trail = moneyTrail(nodeContent, st.log);
         await page.goto(GAME, { waitUntil: 'load' });
-        await page.evaluate((st, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...st, __v: v })); }, JSON.parse(JSON.stringify(jumped)), SAVE_VERSION);
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
         await page.goto(GAME + '#ledger', { waitUntil: 'load' });
         await opened(page, 'ledger');
-        eq(await texts(page, '#ledger-trail li'), [`${say(6)} +10 dinars`, `${say(7)} +20 dinars`, `9 years passed before ${say(44)}.`, `${say(44)} −281 dinars`, `${say(45)} +30 dinars`], 'the four that closed last, with a line where the jump sits');
-        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), ['10', '20', '-281', '30']);
-        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), ['9']);
+        const first = trail.findIndex(t => t.gap);
+        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j.years)]);
+        eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], `${j.years === 1 ? 'A year' : `${j.years} years`} passed before ${writeSeason(nodeContent, trail[first].at)}.`, 'the line the page prints');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), trail.map(t => String(t.change)), 'the four that closed last');
+        // a book of at least four seasons that never jumped says nothing of years
+        let run = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'plain' });
+        for (let i = 0; i < 40 && seasons(run).length < 5; i++) run = step(run, nodeContent);
+        if (run.phase === 'interlude') run = eng.openSeason(run, nodeContent);
+        ok(seasons(run).length >= 5 && !run.log.some(e => e.kind === 'jump'), 'setup: five seasons closed, no jump yet');
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(run)), SAVE_VERSION);
+        await page.goto(GAME + '#ledger', { waitUntil: 'load' });
+        await opened(page, 'ledger');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.length), 4, 'four seasons shown');
+        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 0, 'seasons that run on say nothing of years');
         await loadBook(page, '#desk');
         await openBy('ledger', 'l');
-        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 0, 'seasons that run on say nothing of years');
       });
 
       await test(`${how}: Esc, Back and Close each close the ledger, step the hash back and return focus to its button`, async () => {
@@ -2440,6 +2513,19 @@ try {
         const barOf = async st => { await loadSave(page, st, '#desk'); await page.waitForSelector('#bar-worth'); return page.$eval('#bar-worth', e => e.textContent); };
         eq(await barOf(before), `· worth about ${withCommas(wb.net + wb.onRoad.total)}`);
         eq(await barOf(after), `· worth about ${withCommas(wb.net + wb.onRoad.total)}`, 'sent: the same figure, with the goods on the road counted');
+        // MER-113b: the figure says what it counts, where it moves: a title and the description a screen reader reads, one sentence
+        const said = () => page.$eval('#bar-worth', e => [e.title, e.getAttribute('aria-description')]);
+        const [title, desc] = await said();
+        eq(desc, title, 'the description is the title');
+        ok(/plus what is out on the road, the house's share only: \d+ loads of goods\.$/.test(title) && title.split('. ').length === 1, `after a Send: ${title}`);
+        const moneyOnly = structuredClone(after); moneyOnly.expeditions[0].cargo = {}; moneyOnly.expeditions[0].purse = 90;
+        await barOf(moneyOnly);
+        ok(/: 90 dinars sent to buy with\.$/.test((await said())[0]) && !/loads of goods/.test((await said())[0]), `a money-only trip: ${(await said())[0]}`);
+        const unpriced = structuredClone(after); unpriced.known = {};
+        await barOf(unpriced);
+        ok(/\d+ loads of goods \(\d+ with no known price, counted for nothing\)\.$/.test((await said())[0]), `unpriced loads: ${(await said())[0]}`);
+        await barOf(before);
+        ok(/\d+ loads of goods|which is nothing now/.test((await said())[0]), `before: ${(await said())[0]}`);
       });
       await test('MER-104: what they carry out reads with commas and one "and": one good, two goods, three or more', async () => {
         const rich = structuredClone(later); rich.money = 100000;
