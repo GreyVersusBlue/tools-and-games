@@ -265,6 +265,18 @@ test('5. the list dialog: rows, moves, rename and its refusal, delete with and w
   await shows(() => !(globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));
   assert.equal(await toastWords(), 'Deleted Sink');
   assert.equal(await text('#features-undo'), 'Deleted Sink · Undo');
+  // SV2-142: a message raised over the dialog is above its backdrop in the free space beside it
+  // and never covers the dialog; where there is no such space it stays behind the dialog
+  const lie = await page.evaluate(() => {
+    const toast = document.querySelector('.toast');
+    const dialog = document.getElementById('features-dialog').getBoundingClientRect();
+    const box = toast.getBoundingClientRect();
+    const lifted = toast.matches(':popover-open');
+    const apart = box.bottom <= dialog.top + 5 || box.top >= dialog.bottom - 5 || box.right <= dialog.left || box.left >= dialog.right;
+    return { lifted, apart, inside: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight };
+  });
+  assert.equal(lie.lifted ? lie.apart && lie.inside : true, true, 'the message lies on the dialog: ' + JSON.stringify(lie));
+  assert.equal(lie.lifted || (await page.evaluate(() => { const d = document.getElementById('features-dialog').getBoundingClientRect(); return d.top < 60 || d.bottom > innerHeight - 60; })), true, 'a message with room above or below the dialog was left behind it: ' + JSON.stringify(lie));
   // heard once: the toast is the live one; neither the announcer nor the dialog's line says it again
   assert.equal(await page.$eval('#toasts', (el) => el.getAttribute('role')), 'status');
   assert.doesNotMatch(await text('#announcer'), /Deleted/, 'the announcer does not repeat the toast');
@@ -656,6 +668,41 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   assert.ok(pinned.top >= 0 && pinned.bottom <= pinned.window, 'the Done button is on screen at 844 by 390: ' + JSON.stringify(pinned));
   await p.keyboard.press('Escape');
   await assertTouch(p, 'the phone');
+});
+
+test('SV2-142: on the phone a message raised over any modal dialog is lifted above its backdrop beside it, covers none of it, and is back in its place when the dialog closes', async () => {
+  const p = phone.page;
+  const state = () => p.evaluate(() => {
+    const toast = document.querySelector('.toast');
+    const dialog = document.querySelector('dialog[open]');
+    if (!toast) return null;
+    const box = toast.getBoundingClientRect();
+    const d = dialog ? dialog.getBoundingClientRect() : null;
+    return {
+      lifted: toast.matches(':popover-open'),
+      apart: d === null || box.bottom <= d.top || box.top >= d.bottom || box.right <= d.left || box.left >= d.right,
+      inside: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+      inline: toast.style.top === '' && toast.style.left === '' && !toast.hasAttribute('popover') && !toast.classList.contains('toast--over'),
+    };
+  });
+  await p.evaluate(() => {
+    globalThis.sv2.ctx.openDialog({ title: 'A small question', body: 'Nothing here.', buttons: [{ label: 'Close', value: null }] });
+  });
+  await p.waitForSelector('dialog[open]');
+  await p.evaluate(() => globalThis.sv2.ctx.toast({ text: 'Said over the dialog' }));
+  await p.waitForSelector('.toast');
+  const over = await state();
+  assert.equal(over.lifted, true, 'the message is behind the dialog, not lifted');
+  assert.equal(over.apart, true, 'the message covers the dialog');
+  assert.equal(over.inside, true, 'the message runs off the window');
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.querySelector('dialog[open]'));
+  const back = await state();
+  assert.equal(back.lifted, false, 'the message is still lifted after the dialog went');
+  assert.equal(back.inline, true, 'the message kept the dialog\'s place after it went');
+  // and with no dialog open it is the plain message
+  await p.evaluate(() => globalThis.sv2.ctx.toast({ text: 'Plain' }));
+  assert.equal((await state()).inline, true);
 });
 
 test('11. no page errors, and nothing asked for outside the tool', async () => {

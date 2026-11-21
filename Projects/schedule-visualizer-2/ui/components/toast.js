@@ -103,6 +103,52 @@ export function createToasts(host, options) {
     raised = null;
   }
 
+  // A message raised while a modal dialog is open lies behind it (the host is
+  // in the page, the dialog in the top layer), dimmed by its backdrop and
+  // against its corner. It is lifted into the top layer as a popover and set
+  // in the free space above the dialog, else below it, so it is read and
+  // never covers the dialog; where neither has room it stays behind, heard
+  // through the host as ever (the dialogs that make a message have their own
+  // way back, DESIGN 16.12 item 8). It goes back to its place when the dialog
+  // closes (SV2-142).
+  const LIFT_GAP = 8;
+  function modalOpen() {
+    const open = Array.from(document.querySelectorAll('dialog[open]')).filter((each) => each.matches(':modal'));
+    return open.length > 0 ? open[open.length - 1] : null;
+  }
+  function land(mine) {
+    if (element !== mine || !mine.classList.contains('toast--over')) return;
+    try {
+      mine.hidePopover();
+    } catch (error) {
+      // already hidden
+    }
+    mine.removeAttribute('popover');
+    mine.classList.remove('toast--over');
+    mine.style.top = '';
+    mine.style.left = '';
+  }
+  function liftOver(dialog) {
+    const mine = element;
+    if (!mine || typeof mine.showPopover !== 'function') return;
+    mine.setAttribute('popover', 'manual');
+    mine.classList.add('toast--over');
+    mine.showPopover();
+    const box = dialog.getBoundingClientRect();
+    const height = mine.offsetHeight;
+    const width = mine.offsetWidth;
+    let top = null;
+    if (box.top - height - LIFT_GAP >= LIFT_GAP) top = box.top - height - LIFT_GAP;
+    else if (box.bottom + height + LIFT_GAP <= window.innerHeight - LIFT_GAP) top = box.bottom + LIFT_GAP;
+    if (top === null) {
+      land(mine);
+      return;
+    }
+    mine.style.top = Math.round(top) + 'px';
+    mine.style.left = Math.round(Math.max(LIFT_GAP, Math.min(box.left, window.innerWidth - width - LIFT_GAP))) + 'px';
+    dialog.addEventListener('close', () => land(mine), { once: true });
+  }
+
   function show(options) {
     dismiss();
     const action = options.action
@@ -129,7 +175,9 @@ export function createToasts(host, options) {
     element.addEventListener('focusout', release);
     const atEnd = atEndOf(host.parentElement);
     host.append(element);
-    makeRoom(atEnd);
+    const dialog = modalOpen();
+    if (dialog !== null) liftOver(dialog);
+    else makeRoom(atEnd);
     // The store is the page's, found when the message is shown: a message
     // shown before the page has one (start-up) has nothing to follow. The
     // version tells a change made while this message was being shown from a
