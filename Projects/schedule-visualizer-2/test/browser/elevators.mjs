@@ -467,6 +467,33 @@ test('at 390 px: two rows of six tools, 44 px each, and a stop joined with a fin
   // a tap on a stairs cell on Floor 2 is refused where the banner says it
   await showFloor('Floor 2');
   const before = await entries();
+  // Since SV2-134b the floor tabs wrap rather than hide one behind the ⋯
+  // button (DESIGN 4: the floor tabs are "always visible"); with three tabs
+  // carrying problem counts that is two rows at 390 px, the plan is 44 px
+  // shorter, and the banner across the top of the surface (DESIGN 5.1,
+  // Connect mode) lies over row 10. Two fingers move the plan, as a phone
+  // user would, until the stairs cell is clear of the banner.
+  const stairs = () => page.evaluate(() => {
+    const editor = document.querySelector('.bld').editor;
+    const box = editor.canvas.getBoundingClientRect();
+    const at = editor.view.toScreen(14.5, 10.5);
+    const x = box.left + at.x;
+    const y = box.top + at.y;
+    return { x, y, open: document.elementFromPoint(x, y) === editor.canvas, banner: document.getElementById('connect-banner').getBoundingClientRect().bottom, bottom: box.bottom, size: editor.view.size };
+  });
+  let clear = await stairs();
+  if (!clear.open) {
+    const dy = Math.ceil(clear.banner - clear.y + 2 * clear.size);
+    const from = clear.bottom - 20 - dy;
+    const two = (y, type) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x: 150, y: Math.round(y), id: 31, radiusX: 4, radiusY: 4, force: 1 }, { x: 240, y: Math.round(y), id: 32, radiusX: 4, radiusY: 4, force: 1 }] });
+    await two(from, 'touchStart');
+    for (let i = 1; i <= 6; i += 1) await two(from + (dy * i) / 6, 'touchMove');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await still(page);
+    clear = await stairs();
+  }
+  assert.equal(clear.open, true, 'the stairs cell is still under the banner: ' + JSON.stringify(clear));
+  assert.equal(await entries(), before, 'the two fingers drew something');
   await tap(14, 10);
   await page.waitForFunction(() => !document.getElementById('connect-note').hidden);
   assert.match(await text('#connect-note'), /^An elevator stop joins only another elevator stop/);
