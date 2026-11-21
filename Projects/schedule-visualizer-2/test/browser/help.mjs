@@ -840,9 +840,14 @@ test('Help\'s Building part names the W7 controls as the screens label them, and
     for (const label of [...options, 'Features', 'Edit the features list…', 'Add a feature', 'Add common ones', 'Stairwell through floors…', 'Make one stairwell', 'Connect another floor…', 'Remove from stairwell', 'Split into separate stairs', 'Join the parts', 'Show me', 'Which way', 'Join the stairs and elevators', 'teachers in rooms']) {
       assert.ok(said.includes(label), 'Help\'s Building part lacks "' + label + '"');
     }
-    for (const phrase of ['on top of the building', 'same row and column', 'parts meet on one floor', 'highest number on the floor', 'longer than 6 cells', 'longer than 20 feet (6.1 metres)', 'a note when it is longer', 'a warning when it leads to no room, other space, stair or exit', 'with a door or without']) {
+    for (const phrase of ['on top of the building', 'same row and column', 'highest number on the floor', 'longer than 6 cells', 'longer than 20 feet (6.1 metres)', 'a note when it is longer', 'a warning when it leads to no room, other space, stair or exit', 'with a door or without']) {
       assert.ok(said.includes(phrase), 'Help\'s Building part lacks "' + phrase + '"');
     }
+    // a stairwell whose parts both stop on one floor: the inspector offers no
+    // Join the parts, and the finding says they cannot be joined; split it
+    // (engine/building-checks.js, fixable: !twice). Nothing is "refused".
+    assert.ok(said.includes('When two of its parts stop on one floor, at different stairs, Join the parts is not offered: the finding says they cannot be joined, and to split the stairwell.'), 'Help\'s Building part does not say Join the parts is not offered when two parts stop on one floor');
+    assert.ok(!/Join the parts[^.]*refused/.test(said), 'Help\'s Building part says Join the parts is refused, but the button is not offered then');
   });
 });
 
