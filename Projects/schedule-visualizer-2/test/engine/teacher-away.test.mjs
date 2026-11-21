@@ -348,7 +348,7 @@ test('the sentence repeats nothing: day types and a lone period are left out of 
   assert.equal(text([entry({ dayTypeIds: [A], periods: [1] })]), lead + tail, 'neither the day type nor the one period is said twice');
   assert.equal(text([entry({ periods: [1] })]), lead + tail);
   assert.equal(text([entry({ dayTypeIds: [A], periods: [1, 2] })]), lead + ' (in Periods 2 to 3)' + tail, 'the other period is news');
-  assert.equal(text([entry({ dayTypeIds: [A, B], periods: [1] })]), lead + ' (when it is A Day or B Day)' + tail, 'B Day is not in this sentence');
+  assert.equal(text([entry({ dayTypeIds: [A, B], periods: [1] })]), lead + ' (on A Day or B Day)' + tail, 'B Day is not in this sentence');
 });
 
 test('the note says what the entry adds: the weekdays, and a range of periods; a day type and weekdays together are one note', () => {

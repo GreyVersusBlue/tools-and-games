@@ -244,7 +244,7 @@ test('4. Not in school… takes entries one at a time: Done saves, saved entries
   await awayIs([{ dayTypeIds: [A], weekdays: [], periods: [1] }]);
   await settled();
   const words = await text('[data-entry="0"]');
-  assert.match(words, /Not in school in Period 2 when it is A Day/);
+  assert.match(words, /Not in school in Period 2 on A Day/);
   assert.equal(await activeKey(), 'teacher:' + T + ':part:edit:0');
   const name = await page.evaluate((id) => globalThis.sv2.store.project.teachers.find((teacher) => teacher.id === id).name, T);
   assert.equal(await page.$eval(key('remove:0'), (el) => el.textContent), 'Remove entry 1 for ' + name);
@@ -263,7 +263,7 @@ test('4. Not in school… takes entries one at a time: Done saves, saved entries
   const says = await text('[data-says="part"]');
   assert.match(says, /will not be counted as free in these periods, and a class with .+ then is flagged\./);
   assert.match(says, /Day-type views list this as a note/);
-  assert.match(await text(key('button')), /^Not in school in Period 2 when it is A Day; Not in Fri/);
+  assert.match(await text(key('button')), /^Not in school in Period 2 on A Day; Not in Fri/);
   // Edit changes the entry in place, one step; Remove is one step
   await press(key('edit:1'));
   await page.waitForSelector('[data-entry="1"] fieldset');

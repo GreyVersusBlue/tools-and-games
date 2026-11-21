@@ -141,7 +141,7 @@ function awayPeriods(settings, periods) {
 
 // An away entry in words (ARCHITECTURE 22.10): "Not in school", then the
 // periods ("in Periods 7 to 8"), the weekdays ("on Fridays") and the day
-// types ("when it is B Day"), whichever the entry names. `dayTypes` is the
+// types ("on B Day", DESIGN 16.12 item 4), whichever the entry names. `dayTypes` is the
 // project's list. The entry is read as awayFor reads it (awayEntry), so an
 // entry that holds nowhere is worded nowhere: '' for it. Day type names are
 // given as typed.
@@ -156,7 +156,7 @@ export function awayWords(settings, entry, dayTypes) {
   }
   const nameOf = new Map((Array.isArray(dayTypes) ? dayTypes : []).filter((dayType) => dayType && typeof dayType.id === 'string' && typeof dayType.name === 'string').map((dayType) => [dayType.id, dayType.name]));
   const named = read.dayTypeIds.filter((id) => nameOf.has(id)).map((id) => nameOf.get(id));
-  if (named.length > 0) parts.push('when it is ' + (named.length === 1 ? named[0] : named.slice(0, -1).join(', ') + ' or ' + named[named.length - 1]));
+  if (named.length > 0) parts.push('on ' + (named.length === 1 ? named[0] : named.slice(0, -1).join(', ') + ' or ' + named[named.length - 1]));
   return parts.join(' ');
 }
 

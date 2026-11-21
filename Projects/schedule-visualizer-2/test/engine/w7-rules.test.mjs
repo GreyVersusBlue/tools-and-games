@@ -378,11 +378,11 @@ test('awayWords: ranges by number names, weekdays, day types, as typed', () => {
   assert.equal(words({ periods: [0, 2, 4] }), 'Not in school in Period 1, Period 3 and Period 5');
   assert.equal(words({ weekdays: [4] }), 'Not in school on Fridays');
   assert.equal(words({ weekdays: [4, 0, 2] }), 'Not in school on Mondays, Wednesdays and Fridays');
-  assert.equal(words({ dayTypeIds: [B] }), 'Not in school when it is B <i>Day</i>');
-  assert.equal(words({ dayTypeIds: [A, B] }), 'Not in school when it is A Day or B <i>Day</i>');
+  assert.equal(words({ dayTypeIds: [B] }), 'Not in school on B <i>Day</i>');
+  assert.equal(words({ dayTypeIds: [A, B] }), 'Not in school on A Day or B <i>Day</i>');
   assert.equal(words({ dayTypeIds: ['dgone00000'] }), '', 'an entry naming only a day type that is not there holds nowhere and is worded nowhere');
-  assert.equal(words({ dayTypeIds: ['dgone00000', B] }), 'Not in school when it is B <i>Day</i>', 'a dangling id beside a real one is left out');
-  assert.equal(words({ periods: [6, 7], weekdays: [4], dayTypeIds: [B] }), 'Not in school in Periods 7 to 8 on Fridays when it is B <i>Day</i>');
+  assert.equal(words({ dayTypeIds: ['dgone00000', B] }), 'Not in school on B <i>Day</i>', 'a dangling id beside a real one is left out');
+  assert.equal(words({ periods: [6, 7], weekdays: [4], dayTypeIds: [B] }), 'Not in school in Periods 7 to 8 on Fridays on B <i>Day</i>');
   assert.equal(words({ periods: [4, 5] }, settingsWith({ periodWord: 'Block' })), 'Not in school in Blocks E to F');
   assert.equal(words({ periods: [0, 1] }, settingsWith({ periodWord: 'Hour' })), 'Not in school in 1st to 2nd Hour', 'an ordinal range carries the word once, at the end');
   assert.equal(words({ periods: [0, 1] }, settingsWith({ periodCustom: { word: 'Class', plural: 'Classes', count: 'number' }, periodNames: ['Homeroom', 'Maths'] })), 'Not in school in Classes 1 to 2', 'ranges use number names, never a period\'s own name');
@@ -522,7 +522,7 @@ test('away: a malformed entry never widens, and awayFor and awayWords agree on e
   assert.equal(awayFor({ away: [some] }, B, 3, { project, date: FRIDAY }), null);
   assert.equal(awayFor({ away: [some] }, A, 2, { project, date: FRIDAY }), null);
   assert.equal(awayFor({ away: [some] }, B, 2, { project, date: MONDAY }), null);
-  assert.equal(awayWords(defaultSettings(), some, dayTypes), 'Not in school in Period 3 on Fridays when it is B Day');
+  assert.equal(awayWords(defaultSettings(), some, dayTypes), 'Not in school in Period 3 on Fridays on B Day');
   // the same entries read the same through both, on a spread of inputs
   const inputs = [...bad, {}, entry({}), { periods: [] }, { periods: [0] }, { weekdays: [] }, { weekdays: [4] }, { dayTypeIds: [A] }, { dayTypeIds: [] }, some, null, 4, 'x', []];
   for (const each of inputs) {
@@ -726,7 +726,7 @@ test('the staff browser lists the away entries of a day type, so two day types t
   const open = openSchool(model);
   const id = model.teachers[0].id;
   assert.deepEqual(open.awayOf(id, A).map((each) => each.words), ['Not in school in Period 3 on Fridays']);
-  assert.deepEqual(open.awayOf(id, B).map((each) => each.words), ['Not in school in Periods 7 to 8 when it is ' + model.dayTypes.find((dayType) => dayType.id === B).name, 'Not in school in Period 3 on Fridays']);
+  assert.deepEqual(open.awayOf(id, B).map((each) => each.words), ['Not in school in Periods 7 to 8 on ' + model.dayTypes.find((dayType) => dayType.id === B).name, 'Not in school in Period 3 on Fridays']);
   assert.deepEqual(open.awayOf(id, B).map((each) => each.sometimes), [false, true]);
   assert.deepEqual(open.awayOf('tgone00000', A), []);
 });

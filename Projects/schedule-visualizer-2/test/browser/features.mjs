@@ -482,7 +482,7 @@ test('8. the room list print and the batch pages list features after Shared spac
   assert.deepEqual(made.names, ['A Day', 'B Day', 'Assembly Day'], 'the sample\u2019s day types');
   assert.deepEqual(Object.keys(made.partTime.none), ['A Day', 'B Day and Assembly Day'], 'with no away entry, B Day and Assembly Day are one table');
   assert.deepEqual(Object.keys(made.partTime.assemblyOnly), ['A Day', 'B Day', 'Assembly Day'], 'a sometimes entry on Assembly Day alone makes it a table of its own');
-  assert.match(made.partTime.assemblyOnly['Assembly Day']['Period 4'], /Not in school in Period 4 on Fridays when it is Assembly Day/);
+  assert.match(made.partTime.assemblyOnly['Assembly Day']['Period 4'], /Not in school in Period 4 on Fridays on Assembly Day/);
   assert.doesNotMatch(made.partTime.assemblyOnly['B Day']['Period 4'], /Not in school/);
   // out all A Day: a free period reads Not in school, and a period already out has no "sometimes" note on top
   const aDay = made.partTime.sometimes['A Day'];
