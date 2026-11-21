@@ -41,10 +41,25 @@ export function netWealth(state, content) {
     loads += n;
     if (price === undefined) unpriced += n; else stock += n * price;
   }
+  // On the road (MER-113): what every expedition still out carries, at the same home prices, and the money sent
+  // with it. The bar adds this to `net`; `net` and the score do not, so a venture sent costs nothing on the bar.
+  const road = { loads: 0, value: 0, unpriced: 0, money: 0, goods: [] };
+  for (const x of state.expeditions ?? []) {
+    road.money += x.purse ?? 0;
+    for (const [g, n] of Object.entries(x.cargo ?? {})) {
+      if (!(n > 0)) continue;
+      const price = state.known?.[home]?.[g]?.p;
+      const row = road.goods.find(r => r.good === g);
+      if (row) row.loads += n; else road.goods.push({ good: g, loads: n, price: price ?? null });
+      road.loads += n;
+      if (price === undefined) road.unpriced += n; else road.value += n * price;
+    }
+  }
+  const onRoad = { ...road, total: road.value + road.money };
   const owed = (state.loans ?? []).reduce((a, l) => a + l.principal, 0);
   const brought = (state.log ?? []).filter(e => e.kind === 'recall')
     .reduce((a, e) => a + (e.results ?? []).reduce((b, r) => b + (r.brought ?? 0), 0), 0);
-  return { money: state.money, cash: state.money, stock, stockLoads: loads, unpriced, goods, owed, loans: owed, brought, net: state.money + stock - owed };
+  return { money: state.money, cash: state.money, stock, stockLoads: loads, unpriced, goods, owed, loans: owed, brought, onRoad, net: state.money + stock - owed };
 }
 
 /** The wealth line in words, every sum with its thousands separator: "The house holds 2,453 dinars:
@@ -53,7 +68,8 @@ export function netWealth(state, content) {
 export function wealthReason(w, money) {
   const bits = [`${fmt(w.cash)} in cash${w.brought ? ` (${fmt(w.brought)} of it brought home by a recall)` : ''}`];
   bits.push(w.stockLoads ? `${fmt(w.stock)} in ${plural(w.stockLoads, 'load', 'loads')} of stock at the last prices known at home${w.unpriced ? `, ${plural(w.unpriced, 'load', 'loads')} of it with no known price and counted for nothing` : ''}` : 'no stock');
-  return `The house holds ${fmt(w.net)} ${money}: ${bits.join(', ')}, ${w.owed ? `less ${fmt(w.owed)} owed` : 'and owes nothing'}.`;
+  const road = w.onRoad?.loads ? ` ${plural(w.onRoad.loads, 'load', 'loads')} more ${w.onRoad.loads === 1 ? 'is' : 'are'} on the road${w.onRoad.value ? `, worth ${fmt(w.onRoad.value)} at those prices` : ''}, not counted here.` : '';
+  return `The house holds ${fmt(w.net)} ${money}: ${bits.join(', ')}, ${w.owed ? `less ${fmt(w.owed)} owed` : 'and owes nothing'}.${road}`;
 }
 
 export function score(state, content) {

@@ -115,7 +115,7 @@ export function createDesk(app) {
         h('p', { class: 'count', id: 'bar-count' }, `Season ${app.state.t + 1} of ${total} · Act ${WORDS[v.act - 1] ?? v.act}`)),
       h('div', { class: 'bar-money' },
         h('p', { class: 'money', id: 'bar-money' }, icon(ICONS.coin), h('span', null, dinars(v.money))),
-        h('p', { class: 'worth', id: 'bar-worth' }, `· worth about ${num(engine.netWealth(app.state, content).net)}`),
+        h('p', { class: 'worth', id: 'bar-worth' }, `· worth about ${num((w => w.net + w.onRoad.total)(engine.netWealth(app.state, content)))}`),
         h('button', { class: 'bar-btn loads', type: 'button', id: 'btn-warehouse', 'aria-haspopup': 'dialog',
           onclick: e => openBook('ledger', e.currentTarget, 'warehouse') }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
       h('div', { class: 'bar-tools' },
