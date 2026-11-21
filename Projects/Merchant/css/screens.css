@@ -140,6 +140,7 @@ html.large-text .title-what { display: none; }
 .sheet-head .sender { margin: 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
 .sheet-head .sender strong { color: var(--ink); font-weight: 600; }
 .sheet-title { font-size: var(--step-2); margin-bottom: var(--s2); }
+.return-lead { margin: 0 0 var(--s2); flex: 0 0 auto; }   /* a return's hoped, why and unsold sentences, in body type under its headline */
 .sheet-title:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
 .sheet-body { margin-bottom: var(--s3); }
 /* a letter's own lines (DESIGN 4.5): where and when it was written, and under the choices how long the answer takes */

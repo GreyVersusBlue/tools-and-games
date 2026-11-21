@@ -553,6 +553,21 @@ try {
             ok(!bad, bad ?? '');
           });
         }
+        if (screen.name === 'desk-return' && frame.name === 'board') {
+          // MER-104: the headline is who came home and what the house made, at most three lines; the rest sits under it in body type
+          await test(`${tag}: the return's headline is at most three lines and the hope, the reason and the unsold goods sit under it`, async () => {
+            const got = await page.evaluate(() => {
+              const t = document.querySelector('.sheet-title'), lead = document.querySelector('.sheet-title + .return-lead');
+              const lh = parseFloat(getComputedStyle(t).lineHeight) || parseFloat(getComputedStyle(t).fontSize) * 1.2;
+              return { lines: Math.round(t.getBoundingClientRect().height / lh), title: t.textContent, lead: lead?.textContent ?? null,
+                titleSize: parseFloat(getComputedStyle(t).fontSize), leadSize: lead ? parseFloat(getComputedStyle(lead).fontSize) : null };
+            });
+            ok(got.lines <= 3, `the headline sets ${got.lines} lines: ${got.title}`);
+            ok(!/We (hoped|expected)/.test(got.title), `the hope is not in the headline: ${got.title}`);
+            ok(got.lead && /We (hoped|expected)/.test(got.lead), `the lead holds the hope: ${got.lead}`);
+            ok(got.leadSize < got.titleSize, `the lead is in body type: ${got.leadSize} against ${got.titleSize}`);
+          });
+        }
         const geo = await page.evaluate(measureGeometry, scopeSel, MIN_TARGET);
         await test(`${tag}: no overflow, nothing outside the viewport without a way to scroll to it`, async () => { ok(!geo.overflow.length, brief(geo.overflow)); });
         await test(`${tag}: every hit target is ${MIN_TARGET} px`, async () => { { const t = unknown(screen.name, 'target', geo.target); ok(!t.length, brief(t)); }; });

@@ -270,8 +270,9 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   function carrySection() {
     const goods = carriable();
     const there = prices()[stopId] ?? {};
-    const parts = Object.entries(draft.cargo).filter(([, n]) => n > 0).map(([g, n]) => `${n} ${unitOf(content, g, n)} of ${goodName(content, g)}`);
-    const line = parts.length ? parts.join(' and ') : 'no goods';
+    const parts = Object.entries(draft.cargo).filter(([, n]) => n > 0).map(([g, n], i, all) =>
+      i && unitOf(content, g, 2) === unitOf(content, all[0][0], 2) ? `${n} of ${goodName(content, g)}` : `${n} ${unitOf(content, g, n)} of ${goodName(content, g)}`);
+    const line = parts.length ? (parts.length < 2 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`) : 'no goods';
     if (!expanded('carry')) {
       return section('carry', '3. What they carry out', summary('carry', `${cap(line)}${draft.purse ? `, and ${dinars(draft.purse)} to buy with` : ''}.`, () => { open.add('carry'); render('outfit-carry-h'); }, 'what they carry out'));
     }
