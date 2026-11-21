@@ -1070,7 +1070,7 @@
       {
         "id": "lesson",
         "label": "Call it a lesson",
-        "hint": "You gain nothing now. Salih will buy better bales for you.",
+        "hint": "You gain no money, and you keep your linen. Salih buys better bales for you. In two seasons the brokers think well of your house.",
         "now": [
           {
             "flag": "bales-lesson",
@@ -1083,10 +1083,7 @@
             "do": [
               {
                 "rep": "partners",
-                "by": 1
-              },
-              {
-                "money": 25
+                "by": 3
               }
             ]
           }

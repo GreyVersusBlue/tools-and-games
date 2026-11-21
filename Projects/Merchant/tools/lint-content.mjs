@@ -26,11 +26,6 @@ import { loadContent } from '../js/data.js';
 import { validateContent } from '../js/engine/content.js';
 import { tripLeaf } from '../js/engine/conditions.js';
 
-// Rule 10's second half found four choices already in the data that it refuses (MER-107). Two are Cairo cards
-// (cloth-for-the-east/keep pays 40 later for linen it keeps, bales-middling/lesson pays 25 later beside a sale), two
-// are testport's. MER-107 may change neither file, so they are listed here and each should be rewritten under the
-// same rule as gold-price-falls, then deleted from this list. A card not listed here is refused.
-const HOLD_PAYS_LATER_LISTED = ['cloth-for-the-east/keep', 'bales-middling/lesson', 'salt-order/keep-salt', 'wool-due/keep'];
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const DATA = path.join(ROOT, 'data');
@@ -224,7 +219,7 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
       const effects = [...(x.now ?? []), ...(x.later ?? []).flatMap(l => l.do ?? [])];
       const laterMoney = (x.later ?? []).some(l => (l.do ?? []).some(e => typeof e.money === 'number' && e.money > 0));
       const nowMoney = (x.now ?? []).some(e => typeof e.money === 'number' && e.money !== 0);
-      if (laterMoney && !nowMoney && !effects.some(e => 'stock' in e) && !HOLD_PAYS_LATER_LISTED.includes(`${c.id}/${x.id}`)) {
+      if (laterMoney && !nowMoney && !effects.some(e => 'stock' in e)) {
         fail(10, `${where}.choices[${x.id}]`, 'this choice keeps the stock and pays only later, while another choice on the card sells it: holding would pay as well as selling');
       }
     }

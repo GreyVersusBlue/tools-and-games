@@ -702,7 +702,7 @@
       {
         "id": "keep",
         "label": "Keep the linen for your own trips",
-        "hint": "Wadud will buy from someone else. Far away the linen may sell for 40 dinars more.",
+        "hint": "Wadud buys from someone else. All your linen stays in your warehouse for your own trips. You earn nothing now. In three seasons dealers say your house plans ahead.",
         "now": [
           {
             "flag": "wadud-passed",
@@ -714,7 +714,8 @@
             "in": 3,
             "do": [
               {
-                "money": 40
+                "rep": "partners",
+                "by": 3
               }
             ]
           }
