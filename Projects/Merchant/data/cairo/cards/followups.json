@@ -9,7 +9,7 @@
       "seal": null
     },
     "title": "Abu Bakr is back",
-    "body": "Two seasons ago you sold Abu Bakr ten loads of linen. He remembers a good neighbour. A friend of his has a boat going to Alexandria, with room for your goods at no charge. He asks for a small favour in return.",
+    "body": "Some time ago you sold Abu Bakr ten loads of linen. He remembers a good neighbour. A friend of his has a boat going to Alexandria, with room for your goods at no charge. He asks for a small favour in return.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -86,7 +86,7 @@
       "seal": null
     },
     "title": "The silk has come",
-    "body": "Two seasons ago you found silk for the rich family. It has come from Damascus, and the family is waiting. Nabil knows another buyer who may pay more.",
+    "body": "Some time ago you found silk for the rich family. It has come from Damascus, and the family is waiting. Nabil knows another buyer who may pay more.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -159,7 +159,7 @@
       "seal": null
     },
     "title": "Rahel offers first pick",
-    "body": "Two seasons ago you split the difference with Rahel over the short indigo. Now a new shipment of dyes has come. She offers you first pick before anyone else.",
+    "body": "Some time ago you split the difference with Rahel over the weight of her indigo. Now a new shipment of dyes has come. She offers you first pick before anyone else.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -231,7 +231,7 @@
       "seal": null
     },
     "title": "Farid's ship never came",
-    "body": "Two seasons ago you lent Farid 5. His ship was lost at sea. He has paid back 4, which is all he has. He asks you to forgive the rest.",
+    "body": "Some time ago you lent Farid 5. His ship was lost at sea. He has paid back 4, which is all he has. He asks you to forgive the rest.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -295,7 +295,7 @@
       "seal": null
     },
     "title": "The price of gold is falling",
-    "body": "Three seasons ago you bought two chests of gold while the Malians were in Cairo. Now they have gone on to Mecca, and gold sells for less. Jamil says the price may fall again.",
+    "body": "Some time ago you bought two chests of gold while the Malians were in Cairo. Now they have gone on to Mecca, and gold sells for less. Jamil says the price may fall again.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -440,7 +440,7 @@
       "seal": null
     },
     "title": "Yehuda owes you a favour",
-    "body": "Two seasons ago your carter took Yehuda's goods on his day of rest. Now a buyer at Alexandria wants glass, and Yehuda knows him. He offers to send the buyer to you.",
+    "body": "Some time ago your carter took Yehuda's goods on his day of rest. Now a buyer at Alexandria wants glass, and Yehuda knows him. He offers to send the buyer to you.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -504,7 +504,7 @@
       "seal": null
     },
     "title": "Amina says thank you",
-    "body": "Two seasons ago you bought three loads of sugar from Amina when she needed money. Now she offers you a place in her next pressing at a good price.",
+    "body": "Some time ago you bought three loads of sugar from Amina when she needed money. Now she offers you a place in her next pressing at a good price.",
     "when": {
       "notebook": "term-load"
     },
@@ -591,7 +591,7 @@
       "seal": null
     },
     "title": "Kamil's boat has arrived",
-    "body": "Two seasons ago you sent four loads of sugar with Kamil. His boat reached Alexandria, and the buyers paid. He asks you to ship with him again next year.",
+    "body": "Some time ago you sent four loads of sugar with Kamil. His boat reached Alexandria, and the buyers paid. He asks you to ship with him again next year.",
     "when": {
       "notebook": "term-load"
     },
@@ -658,7 +658,7 @@
       "seal": null
     },
     "title": "Binyamin comes back",
-    "body": "Two seasons ago you paid Idris and Binyamin each what he claimed. Now Binyamin says his cousin also put money in. He wants the same treatment.",
+    "body": "Some time ago you paid Idris and Binyamin each what he claimed. Now Binyamin says his cousin also put money in. He wants the same treatment.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -733,7 +733,7 @@
       "seal": null
     },
     "title": "Girgis remembers",
-    "body": "Three seasons ago you looked after the son of Girgis's partner. Now Girgis offers you a share in his next trip to Damascus.",
+    "body": "Some time ago you looked after the son of Girgis's partner. Now Girgis offers you a share in his next trip to Damascus.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -797,7 +797,7 @@
       "seal": null
     },
     "title": "News from the funduq",
-    "body": "Three seasons ago you took a share of the Karimi funduq. Now Khalid hears from merchants staying there that a road may close. He tells you first.",
+    "body": "Some time ago you took a share of the Karimi funduq. Now Khalid hears from merchants staying there that a road may close. He tells you first.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -874,7 +874,7 @@
       "seal": null
     },
     "title": "Zubayda wants a standing deal",
-    "body": "Two seasons ago you took Zubayda's offer to sell in her market. She asked a small fee. Now she wants you to sell with her every season.",
+    "body": "Some time ago you took Zubayda's offer to sell in her market. She asked a small fee. Now she wants you to sell with her every season.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -1020,7 +1020,7 @@
       "seal": null
     },
     "title": "Two bales were poor",
-    "body": "Two seasons ago Salih bought six loads of linen for you. When the bales were opened, two were poor. Salih says the grower mixed them in. He offers to make it right.",
+    "body": "Some time ago Salih bought six loads of linen for you. When the bales were opened, two were poor. Salih says the grower mixed them in. He offers to make it right.",
     "weight": 0,
     "repeat": false,
     "choices": [

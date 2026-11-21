@@ -563,7 +563,7 @@ function build(s, content, plan) {
     staked: { house: stockValue + buyCost + purse - partners, partners },
     orders: [], sent: idx, out: 0, start: first.startIdx,
     plan: { sell: [...sell], buy: [...buy] },
-    ...(hope ? { hoped: hope.net, hope: { net: hope.net, sell: hope.pricesSell, buy: hope.pricesBuy, home: hope.pricesHome, tolls: hope.tolls, ageWords: hope.ageWords, impact: hope.impact } } : {}),
+    ...(hope ? { hoped: hope.net, hope: { net: hope.net, sell: hope.pricesSell, buy: hope.pricesBuy, home: hope.pricesHome, tolls: hope.tolls, ageWords: hope.ageWords, impact: hope.impact, glut: hope.glut } } : {}),
     quote: Object.fromEntries(Object.keys(dest.sells ?? {}).map(g => [g, M.truePrice(s, content, route.to, g)])),
     book: { cargo: { ...cargo }, purse, capital: stockValue + buyCost + purse, ...(wagePaid ? { wagePaid } : {}), sold: [], bought: [], tolls: 0, upkeep: 0, paidInGoods: {}, seen: [] },
   };
@@ -865,7 +865,8 @@ function buyRun(m, content, stop, good, cut, budget) {
 }
 
 /** Loads of each good in `cargo` with their price at home now, the part drawn from the warehouse and the part to buy:
-    { stockValue, buyCost }, the second priced load by load as `build` prices it. */
+    { stockValue, buyCost, market }, the second priced load by load as `build` prices it, `market` home's market once it is bought
+    (what `build` leaves there). */
 function homeStake(s, content, cargo) {
   const home = homeOf(content);
   const sim = { ...s, market: { [home]: structuredClone(s.market[home]) } };   // only home's prices move here
@@ -875,14 +876,36 @@ function homeStake(s, content, cargo) {
     stockValue += fromStock * (M.truePrice(s, content, home, g) ?? 0);
     for (let i = fromStock; i < n; i++) { buyCost += M.buyPrice(sim, content, home, g); M.notePurchase(sim, content, home, g, 1); }
   }
-  return { stockValue, buyCost };
+  return { stockValue, buyCost, market: sim.market[home] };
+}
+
+/** What the house's own market at home will fetch for `good` when a party back `closings` closings from now sells or values it:
+    the market as it is now with the house's own buying of this plan's cargo in it (`market`; the house sees home's price and its own mark on it), carried through the closings by market.js's
+    `drift` with the noise off, the way `farMarket` carries a far one. A price event cannot be foreseen and is not in it. Null where
+    home does not trade the good. Past the calendar's last season the price stays where it got to. A road that comes home across a
+    jump into the next act is valued as `jump` values it:
+    the closing into the next act is the jump, which settles every party still out at home's price as it stands after that closing
+    (`jump` resets the markets after it), so the carry stops there. */
+function homePriceAt(s, content, good, closings, market = s.market[homeOf(content)]) {
+  const home = homeOf(content), e = market?.[good];
+  if (!e) return null;
+  const played = playedSeasons(content.calendar, s.length);
+  const sim = { t: s.t, length: s.length, seed: s.seed, market: { [home]: { [good]: { f: e.f, glut: e.glut, h: [] } } } };
+  const world = quiet(content, good);
+  for (let i = 0; i < Math.max(0, closings) && sim.t + 1 < played.length; i++) {
+    const was = actOfSeason(content.calendar, s.length, played[sim.t]);
+    M.drift(sim, world); sim.t += 1;
+    if (actOfSeason(content.calendar, s.length, played[sim.t]) !== was) break;
+  }
+  const m = sim.market[home][good], base = M.baseOf(sim, content, home, good);
+  return Math.max(1, Math.round(base * m.f * (1 - m.glut)));
 }
 
 /** What `plan` should make for the house, from the prices the house knows and no others: goods sold at the far end at the
     price its news gives, taken to the season of arrival (the house's own mark on that price as it stood when the news was
     written, halved at each closing since, and the factor pulled back toward its base, with no noise: `farMarket`), each load a
     little lower than the one before as the market takes it, the money bought back goods at the far end (each a little dearer),
-    those goods valued at the home price now, less every toll, the waiting a closed leg costs, the wage, and the qirad's shares.
+    those goods valued at the home price the party will find on its return (`homePriceAt`: today's price and the house's mark on it carried to the season the paper opens, noise off), less every toll, the waiting a closed leg costs, the wage, and the qirad's shares.
     It ignores what the road may take (that is `riskWord`'s warning) and the noise a price will add. Reads the state's `known`
     and the house's own mark, never the true far market. `pricesSell` and `pricesBuy` are the prices expected at arrival before
     the house's mark, `glut` the mark expected on each, `impact` what the house's own loads cost against the marked first price.
@@ -903,7 +926,7 @@ export function estimate(state, content, plan, memo = null) {
   const partners = kind === 'qirad' ? (plan.partners ?? plan.contract?.partners ?? 0) : 0;
   const sell = (plan.sell ?? Object.keys(cargo).filter(g => dest.sells?.[g])).filter(g => cargo[g] && dest.sells?.[g]);
   const buy = (plan.buy ?? []).filter(g => dest.sells?.[g]);
-  const { stockValue, buyCost } = homeStake(state, content, cargo);
+  const { stockValue, buyCost, market: homeAfter } = homeStake(state, content, cargo);
   const stakedHouse = stockValue + buyCost + purse - partners;
   const far = outEnd(route);
   let ages = [], guessed = false;
@@ -950,7 +973,7 @@ export function estimate(state, content, plan, memo = null) {
   });
   let goodsValue = 0;
   for (const [g, n] of Object.entries(goodsBack)) {
-    const p = M.truePrice(state, content, home, g) ?? 0;
+    const p = homePriceAt(state, content, g, proj.seasons, homeAfter) ?? 0;
     pricesHome[g] = p;
     goodsValue += n * p;
   }

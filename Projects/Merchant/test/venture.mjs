@@ -310,8 +310,9 @@ test('why, glut: a mark on the price that the estimate did not expect (another p
   const c = still();
   const s = know(game(c), c, 'hilltown', 'wool', 30);
   const sent = outfit(s, c, WOOL);
-  // `build` keeps no `glut` on the hope yet, so the sheet's expected mark is written in by hand here, as the other cases write in the
-  // hope they want: none on the wool. An expedition without it is read as expecting the mark it found (the case below).
+  // the sheet's expected mark is written in by hand here: none on the wool (`build` keeps one itself since MER-115, and the cases
+  // above play that; this one wants the other marks it sets up below to be a surprise). An expedition without one is read as
+  // expecting the mark it found.
   sent.expeditions[0].hope.glut = { wool: 0 };
   // by the time Mira arrives the house's own earlier sales have put a mark on: 0.6 now, 0.15 on arrival
   const late = structuredClone(sent);
@@ -321,6 +322,76 @@ test('why, glut: a mark on the price that the estimate did not expect (another p
   const marked = know(game(c), c, 'hilltown', 'wool', 12);   // the news carries the mark of 0.6: 12 is 30 less 60 percent
   marked.market.hilltown.wool.glut = 0.6;
   eq(toReturn(outfit(marked, c, WOOL), c).paper.data.why, 'The trip went about as hoped.');
+});
+
+/** Cairo with calm roads and prices that do not drift, 3,000 dinars and 45 linen, the house's own sales sent twice onto Damascus
+    in one season by two agents: the first (yusuf) arrives and sells before the second (ali), which put a mark on the price the
+    second's sheet could not have known when it was written. Played by the engine's own functions, nothing written into a save. */
+function twoSellers() {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  let s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.stock = { linen: 45 }; s.money = 3000;
+  s.agents.ali.hired = true; s.agents.ali.where = 'cairo';
+  const send = (st, agent, n) => outfit(st, c, { agent, route: 'cairo-damascus', cargo: { linen: n }, purse: 0, contract: 'own', sell: ['linen'], buy: [] });
+  s = send(send(s, 'yusuf', 25), 'ali', 20);
+  return { c, s };
+}
+
+test('MER-115 (1) build keeps the mark the estimate expected on each price, so the why can name the house\'s own earlier sales in live play: two parties sell linen at Damascus, the second finds the mark of the first', () => {
+  const { c, s } = twoSellers();
+  const [first, second] = s.expeditions;
+  eq(second.hope.glut, { linen: 0 }, 'the second sheet, written with no mark on Damascus linen, expected none');
+  eq(first.hope.glut, { linen: 0 });
+  const paper = toReturn(s, c).paper;   // the first to come home is the first sent
+  const seen = new Set(s.desk.map(p => p.id));
+  let w = s, second_paper;
+  for (let i = 0; i < 8 && !second_paper; i++) { w = step(w, c); second_paper = w.desk.find(p => p.kind === 'return' && p.data.trip.agent === 'ali' && !seen.has(p.id)); }
+  ok(second_paper, 'the second party came home');
+  eq(second_paper.data.why, 'Damascus already had too much linen: the house\'s own earlier sales there had pushed the price down.');
+  ok(!/own earlier sales/.test(paper.data.why ?? ''), `the first party met no mark of its own: ${paper.data.why}`);
+});
+
+test('MER-115 (1) an expedition saved before the sheet kept its mark (a hope with no glut) is read as having expected the mark it found: no gap is named for it, and nothing throws', () => {
+  const { c, s } = twoSellers();
+  for (const x of s.expeditions) delete x.hope.glut;
+  let w = s, paper;
+  const seen = new Set(s.desk.map(p => p.id));
+  for (let i = 0; i < 8 && !paper; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && p.data.trip.agent === 'ali' && !seen.has(p.id)); }
+  ok(paper && !/own earlier sales/.test(paper.data.why ?? ''), paper?.data.why);
+});
+
+/** Cairo calm, silk at home marked (the factor 1.5 and the house's own mark 0.2, so 540 against a base of 450) and the factor
+    pulled back each closing, a trip on `road` sent with its whole purse to buy silk, played home. { e, paper, s, c, home }: the
+    estimate before it, its return paper, the state it was sent from and the price at home when the party was back. */
+function markedHome(road, { revert = 0.5, seed = 3 } = {}) {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; if (g.id === 'silk') g.revert = revert; } });
+  let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+  s.market.cairo.silk = { f: 1.5, glut: 0.2, h: [] };
+  const plan = { agent: 'yusuf', route: road, cargo: {}, purse: 900, contract: 'own', sell: [], buy: ['silk'] };
+  const e = estimate(s, c, plan);
+  const seen = new Set(s.desk.map(p => p.id));
+  let w = outfit(structuredClone(s), c, plan), paper, home = null;
+  for (let i = 0; i < 10 && !paper; i++) { w = step(w, c); home = M.truePrice(w, c, 'cairo', 'silk'); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+  return { e, paper, s, c, home };
+}
+
+test('MER-115 (2) estimate: the bring-back good is valued at the price home will have when the party is back, the factor pulled toward its base and the house\'s mark halved each closing, not at today\'s price', () => {
+  for (const road of ['cairo-damascus', 'cairo-aleppo']) {
+    const { e, paper, s, c, home } = markedHome(road);
+    eq(M.truePrice(s, c, 'cairo', 'silk'), 540, 'silk is 540 at home when the trip is sent');
+    ok(home < 540 - 30, `${road}: silk fell to ${home} at home by the return`);
+    eq(e.pricesHome.silk, home, `${road}: the estimate valued silk at ${e.pricesHome.silk}, home paid ${home}`);
+    eq(paper.data.cargoValue, home * (paper.data.goodsBack.silk ?? 0), `${road}: the paper values the goods at that price`);
+    ok(Math.abs(e.net - paper.data.houseNet) <= 12, `${road}: estimated ${e.net}, made ${paper.data.houseNet}`);
+  }
+});
+
+test('MER-115 (2) estimate: a house mark at home that will not fade (the factor does not revert) is carried too, and a calm home is valued as it stands', () => {
+  const { e, home } = markedHome('cairo-damascus', { revert: 0 });
+  eq(e.pricesHome.silk, home, 'no revert: the mark alone halves each closing');
+  const g0 = newGame(C, { seed: 3, length: 'acts', house: C.houses[0].id });
+  const flat = estimate(g0, C, { agent: 'yusuf', route: 'cairo-damascus', cargo: {}, purse: 900, contract: 'own', sell: [], buy: ['silk'] });
+  eq(flat.pricesHome.silk, M.truePrice(g0, C, 'cairo', 'silk'), 'an unmarked home at its base is valued at its price now');
 });
 
 test('why, tolls: a toll paid in goods the far end would have bought for more costs the sales it took', () => {
@@ -563,6 +634,61 @@ test('MER-112b (4) every proposal is expected to make about what the trip makes:
   }
   ok(states >= 30, `${states} states`);
   ok(compared >= 60 && seenRoads.size === 2 && seenAgents.size === 2, `${compared} trips compared on ${[...seenRoads]} for ${[...seenAgents]}, ${lossy} left out for a loss`);
+});
+
+/** Aleppo and Samarkand, the roads that take 4 and 12 seasons: every proposal on the road for both agents from seeded states, noise
+    off, home's price unmarked or marked high (factor 1.5, the house's mark 0.2) or low (0.7, -0.1) as the house leaves it by buying
+    and selling there. A trip that lost anything is left out (no estimate foresees a loss). { rows: [{ at, est, made, stake }], lossy }. */
+function longRoadStates(road, { seeds, ns, marks }) {
+  const c = variant(C, x => { for (const g of x.goods) g.sigma = 0; });
+  const rows = []; let lossy = 0;
+  for (const seed of seeds) for (const n of ns) for (const [f, glut] of marks) for (const agent of ['yusuf', 'ali']) {
+    let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+    for (let i = 0; i < n; i++) s = step(s, c);
+    s.agents.ali.hired = true; s.agents.ali.where = 'cairo'; s.agents.yusuf.where = 'cairo';
+    if (f !== 1) for (const m of Object.values(s.market.cairo)) { m.f = f; m.glut = glut; }
+    const plan = proposePlan(s, c, agent, road);
+    if (!plan || plan.why) continue;
+    const e = estimate(s, c, plan), seen = new Set(s.desk.map(p => p.id));
+    let w = outfit(structuredClone(s), c, plan), paper;
+    for (let i = 0; i < 30 && !paper && w.phase !== 'recall' && w.phase !== 'ended'; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+    if (!paper) continue;
+    if (/^The road took/.test(paper.data.why ?? '')) { lossy++; continue; }
+    rows.push({ at: `${seed}/${n}/${f}/${agent}`, est: e.net, made: paper.data.houseNet, stake: e.stake });
+  }
+  return { rows, lossy };
+}
+const errors = rows => ({ mean: rows.reduce((a, r) => a + Math.abs(r.est - r.made), 0) / rows.length, worst: Math.max(...rows.map(r => Math.abs(r.est - r.made))), rel: Math.max(...rows.map(r => Math.abs(r.est - r.made) / r.stake)) });
+
+test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 8 dinars and 16 at worst, and on the marked-home trips a mean of at most 6.5', () => {
+  // The same 32 trips (2 seeds, 3 starts, both agents, three homes), measured before and after MER-115: mean 7.88 before, 6.88
+  // after; worst 16 both; the 22 marked-home trips 7.36 before and 5.91 after, which is what the last line holds (the carried
+  // home price is worth about 1.5 dinars a trip here, as the home price barely moves in four seasons). What is left is not the
+  // home price: the estimate charges the wage of 5 seasons (`tripWage`, proj.seasons counts the season after sending) and the trip
+  // pays for 4, 8 dinars on Aleppo, and the unmarked trips are all of it. A trip ending across the act jump (start 3) is settled by
+  // `jump`, which values the goods at home's price after the closing into the new act: the estimate stops its carry there.
+  const { rows, lossy } = longRoadStates('cairo-aleppo', { seeds: [1, 2], ns: [0, 2, 3], marks: [[1, 0], [1.5, 0.2], [0.7, -0.1]] });
+  ok(rows.length >= 30, `${rows.length} trips compared, ${lossy} left out for a loss`);
+  for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
+  const all = errors(rows);
+  ok(all.mean <= 8, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
+  ok(all.worst <= 16, `worst error ${all.worst} dinars`);
+  ok(all.rel <= 0.025, `worst error ${(all.rel * 100).toFixed(1)} percent of the stake`);
+  const marked = errors(rows.filter(r => !r.at.includes('/1/')));
+  ok(marked.mean <= 6.5, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
+});
+
+test('MER-115 (3) estimate on Samarkand (12 seasons): every trip ends across an act jump, which the estimate does not model, so the sign is held and the error is stated: it understates by about 75 dinars on average, 92 at worst, 14 percent of the stake', () => {
+  // No Samarkand trip comes home inside an act (the road is 12 seasons, an act 8), so every one is settled by `jump`: at the far
+  // prices the party left with (`x.quote`, not the market it arrives to) and the wage of the whole road. Measured before and after
+  // MER-115 on these 10 trips (4 seeds, 2 starts, both agents, home unmarked): mean 74.4, worst 92, 14.2 percent of the stake both
+  // times, since home's price does not move in them. The bands below are a ceiling on that, not a promise: if `estimate` ever models
+  // the jump they should tighten to Aleppo's. The seeded road risk loses 4 of every 14 of these trips, which are left out.
+  const { rows, lossy } = longRoadStates('cairo-samarkand', { seeds: [1, 2, 3, 4], ns: [0, 2], marks: [[1, 0]] });
+  ok(rows.length >= 8, `${rows.length} trips compared, ${lossy} left out for a loss`);
+  for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
+  const { mean, worst, rel } = errors(rows);
+  ok(mean <= 90 && worst <= 120 && rel <= 0.2, `mean ${mean.toFixed(1)}, worst ${worst} dinars, ${(rel * 100).toFixed(1)} percent of the stake`);
 });
 
 test('MER-98 (1) proposePlan: a good the far end pays barely more for stays at home when its extra loads sell lower than they cost', () => {
