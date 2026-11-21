@@ -380,10 +380,11 @@ test('venture bots: careful and greedy send what proposePlan proposes for the ro
         const plan = venturePlan(bot, s, content, a);
         if (!plan) continue;
         sent++;
-        // the plan is the engine's default for that road at one of the shares the bot tries (its own, then a bigger one if the wage bill wants it)
-        const share = [0.2, 0.35, 0.5, 0.65, 0.8].find(x => isDeepStrictEqual(plan, proposePlan(s, content, a, plan.route, { share: x })));
-        ok(share !== undefined, `${bot}/${seed}: the plan is the engine's default for that road: ${JSON.stringify(plan)}`);
-        ok(share >= (bot === 'careful' ? 0.5 : 0.2), `${bot} starts from its own share, not a smaller one: ${share}`);
+        // the plan is the engine's default for that road at a share the bot tries: its own, then bigger ones if the wage bill wants it.
+        // A smaller share is not tried, so a seed where cash or stock caps the plan (the same plan at 0.2 and at 0.5) does not decide the case
+        const own = bot === 'careful' ? 0.5 : 0.2;
+        const share = [0.2, 0.35, 0.5, 0.65, 0.8].filter(x => x >= own).find(x => isDeepStrictEqual(plan, proposePlan(s, content, a, plan.route, { share: x })));
+        ok(share !== undefined, `${bot} starts from its own share (${own}), not a smaller one, and the plan is the engine's default for that road: ${JSON.stringify(plan)}`);
         outfit(s, content, plan);
         const e = estimate(s, content, plan);
         ok(e.net > 0, `${bot} sends only what the estimate says pays: ${e.net}`);
