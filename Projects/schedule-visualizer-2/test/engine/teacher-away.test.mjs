@@ -357,7 +357,26 @@ test('the note says what the entry adds: the weekdays, and a range of periods; a
   assert.deepEqual(both.map((finding) => [finding.id, finding.severity]), [['teacher-away:dsample00a:1:tsample001', 'note']], 'only A Day is named');
   assert.equal(both[0].text, 'Ms. Halloran is not in school on Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
   const range = found([entry({ weekdays: [3, 4], periods: [1, 2] })]);
-  assert.equal(range[0].text, 'Ms. Halloran is not in school in Periods 2 to 3 on Thursdays and Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
+  // SV2-142: the two classes in the range are one note, not one each
+  assert.equal(range.filter((finding) => finding.where.dayTypeId === A).length, 1);
+  assert.equal(range[0].text, 'Ms. Halloran is not in school in Periods 2 to 3 on Thursdays and Fridays, and 8B is in Room 101 in Period 2; 6A is in Room 101 in Period 3 on A Day. On those days those groups need another teacher.');
+});
+
+test('SV2-142: a weekdays-only entry is one note for the teacher and the entry on each day type, however many classes it touches; its id is the first class\'s', () => {
+  const project = withAway([entry({ weekdays: [4] })]);
+  const found = ofKind(checkSchedule(project, null), 'teacher-away');
+  const onA = found.filter((finding) => finding.where.dayTypeId === A);
+  const onB = found.filter((finding) => finding.where.dayTypeId === B);
+  assert.equal(onA.length, 1, 'one note on A Day, not one for each class');
+  assert.equal(onB.length, 1, 'one note on B Day');
+  assert.equal(found.length, 2);
+  assert.equal(onA[0].severity, 'note');
+  assert.match(onA[0].id, /^teacher-away:dsample00a:\d+:tsample001$/);
+  assert.ok(onA[0].where.groupIds.length > 1, 'it names every group it touches');
+  assert.match(onA[0].text, /^Ms\. Halloran is not in school on Fridays, and .+; .+ on A Day\. On those days those groups need another teacher\.$/);
+  // two entries are two notes
+  const two = ofKind(checkSchedule(withAway([entry({ weekdays: [4], periods: [1] }), entry({ weekdays: [3], periods: [2] })]), null), 'teacher-away').filter((finding) => finding.where.dayTypeId === A);
+  assert.equal(two.length, 2, 'one for each entry');
 });
 
 test('the id and the day are this check\'s own: an accepted finding keeps its id when the day type that is the same as it changes', () => {

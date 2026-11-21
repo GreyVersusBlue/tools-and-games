@@ -397,6 +397,8 @@ export function checkSchedule(project, walkResults) {
         sometimes.set(copy, entry);
         return copy;
       });
+      const notes = new Map();
+      const scopeWords = (periods, weekdays, dayTypeIds) => awayWords(settings, { periods, weekdays, dayTypeIds }, project.dayTypes).slice('Not in school'.length).trim();
       for (const entry of day) {
         if (entry.kind !== 'teaching') continue;
         const hits = members.map((member) => [member, awayFor(teacher, member.id, entry.period, { project })]).filter((hit) => hit[1] !== null);
@@ -409,7 +411,6 @@ export function checkSchedule(project, walkResults) {
         // the periods when it names more than this one, the weekdays, and day
         // types the sentence does not name
         const holdingIds = holding.map((hit) => hit[0].id);
-        const scopeWords = (periods, weekdays, dayTypeIds) => awayWords(settings, { periods, weekdays, dayTypeIds }, project.dayTypes).slice('Not in school'.length).trim();
         const morePeriods = read.periods.length > 1 ? read.periods : [];
         const moreDayTypes = read.dayTypeIds.some((id) => !holdingIds.includes(id)) ? read.dayTypeIds : [];
         const dayNames = listWords(holding.map((hit) => hit[0].name));
@@ -420,6 +421,19 @@ export function checkSchedule(project, walkResults) {
           return taught.roomText !== '' ? taughtGroup.name + ' is in "' + taught.roomText + '" (not in the building)' : taughtGroup.name + ' is scheduled';
         });
         let text;
+        if (hits.length === 0) {
+          // SV2-142: a weekdays-only entry gives one note for the teacher and the
+          // entry, listing each class it touches (not one note per class); the
+          // id is the first class's, as a lone note's was (an accepted note keeps its id)
+          const key = 'on' + read.weekdays.join('') + (read.periods.length > 0 ? 'p' + read.periods.join('-') : '');
+          if (!notes.has(key)) notes.set(key, { key, read, morePeriods, moreDayTypes, items: [], dayNames: [], groupIds: [], roomIds: [], first: entry.period });
+          const note = notes.get(key);
+          note.items.push(listWords(teaches) + ' in ' + periodName(settings, entry.period));
+          for (const name of holding.map((hit) => hit[0].name)) if (!note.dayNames.includes(name)) note.dayNames.push(name);
+          for (const taught of entry.groups) if (!note.groupIds.includes(taught.groupId)) note.groupIds.push(taught.groupId);
+          for (const roomId of roomIds) if (!note.roomIds.includes(roomId)) note.roomIds.push(roomId);
+          continue;
+        }
         if (hits.length > 0) {
           const extra = scopeWords(morePeriods, [], moreDayTypes);
           text = teacher.name + ' is not in school in ' + periodName(settings, entry.period) + ' on ' + dayNames + (extra === '' ? '' : ' (' + extra + ')') + ', but ' + listWords(teaches) + ' then. Change the entry, or give that group another teacher.';
@@ -435,6 +449,19 @@ export function checkSchedule(project, walkResults) {
           { dayTypeId: d, period: entry.period, groupIds: entry.groups.map((taught) => taught.groupId), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id },
           [teacher.id].concat(entry.groups.map((taught) => taught.groupId)));
         finding.severity = hits.length > 0 ? 'warning' : 'note';
+        if (ids.has(finding.id)) continue;
+        ids.add(finding.id);
+        found.push(finding);
+      }
+      for (const note of notes.values()) {
+        // "not in school on Fridays": the weekdays are what the entry adds
+        const scope = scopeWords(note.morePeriods, note.read.weekdays, note.moreDayTypes);
+        const text = teacher.name + ' is not in school ' + scope + ', and ' + note.items.join('; ') + ' on ' + listWords(note.dayNames) + '. On those days '
+          + (note.groupIds.length === 1 ? 'that group needs' : 'those groups need') + ' another teacher.';
+        const finding = makeFinding('teacher-away', [d, note.first, teacher.id], text,
+          { dayTypeId: d, period: note.first, groupIds: note.groupIds, roomId: note.roomIds.length > 0 ? note.roomIds[0] : null, teacherId: teacher.id },
+          [teacher.id].concat(note.groupIds));
+        finding.severity = 'note';
         if (ids.has(finding.id)) continue;
         ids.add(finding.id);
         found.push(finding);
