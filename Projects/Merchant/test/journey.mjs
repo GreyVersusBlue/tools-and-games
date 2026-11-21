@@ -1510,7 +1510,14 @@ try {
       const noneLine = async tag => {
         for (let k = 0; k < 4 && !(await page.$('#back-nothing')); k++) {
           // a pointer press (MER-117): the link is clear of the sheet's sticky Send bar with the carry list open, so a click lands on it
-          if (await page.$('#change-back')) await page.click('#change-back');
+          if (await page.$('#change-back')) {
+            // centred first, as answerFirst does: puppeteer's own scroll can leave the link under the sticky Send bar, and the click then
+            // lands on Send, which the engine refuses (a purse and no good to bring back). Say what is on top if something still is.
+            await page.$eval('#change-back', b => b.scrollIntoView({ block: 'center' }));
+            const top = await page.$eval('#change-back', b => { const r = b.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return t === b || b.contains(t) ? null : (t?.id || t?.className || t?.tagName); });
+            if (top) throw new Error(`${tag}: #change-back is covered by ${top}`);
+            await page.click('#change-back');
+          }
           await page.waitForSelector('#back-nothing', { timeout: 1500 }).catch(() => {});
         }
         await page.waitForSelector('#back-nothing', { timeout: 1000 }).catch(async e => { throw new Error(`${tag}: errors ${typeof consoleErrors !== 'undefined' ? JSON.stringify(consoleErrors) : 'n/a'}; no #back-nothing; focus ${await page.evaluate(() => document.activeElement?.id)}; ids: ${(await page.$$eval('#panel-outfit [id]', es => es.map(x => x.id))).join(' ')}; ${e.message}`); });
@@ -1920,7 +1927,7 @@ try {
           if (r.fate === 'dead') ok(/died/.test(r.line), `${r.id} died and the line says so: ${r.line}`);
           ok(r.seal, `${r.id} has a seal`);
         }
-        ok(rows.some(r => r.fate === 'dead'), 'this seed has a death on the page, so the plain line is tested');
+        // whether anyone died on the way depends on the game's draws, so the plain line for a death is its own case below (MER-120)
         eq(await text('#home-count'), `${rows.filter(r => r.fate === 'home').length} of the ${rows.length} people who worked for the house came home.`);
       });
       await test(`ending by ${how}: the score shows the engine's four parts, reasons, multiplier, total and rank, and a reload resumes the page`, async () => {
@@ -1988,9 +1995,20 @@ try {
       }
       return eng.endSeason(s, nodeContent);
     };
+    // Found by condition, not by where a seed's draws leave the warehouse (MER-120): play on until a desk can send Yusuf to Damascus
+    // and the warehouse would still hold two goods after the plan sails. The sending is the engine's own outfit().
+    const goodsIn = x => Object.values(x.stock).filter(q => q > 0).length;
+    const readyToSend = x => {
+      if (x.t < 2 || x.phase !== 'desk' || x.expeditions.length) return false;
+      const plan = eng.suggestPlan(x, nodeContent, 'damascus');
+      return !!plan && goodsIn(eng.outfit(structuredClone(x), nodeContent, plan)) >= 2;
+    };
     let book = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
-    while (book.t < 2) book = policy(book);
-    book.loans.push({ id: 'nell-1', from: 'nell', principal: 100, due: book.t + 4, rate: 0.1 });
+    for (let i = 0; i < 60 && !readyToSend(book); i++) book = book.phase === 'interlude' ? eng.openSeason(book, nodeContent) : policy(book);
+    ok(readyToSend(book), 'the engine never reached a desk that can send Yusuf with two goods left in the warehouse');
+    book = eng.outfit(book, nodeContent, eng.suggestPlan(book, nodeContent, 'damascus'));
+    // due is a fixed season (Autumn 1325), not t + 4, so the line the page says does not move with the turn the state is found at
+    book.loans.push({ id: 'nell-1', from: 'nell', principal: 100, due: 6, rate: 0.1 });
     for (const [i, change] of [[0, -60], [1, 120], [2, -45], [3, 80], [4, 300]]) book.log.push({ at: i, kind: 'season', change });
     book.agents.yusuf.trust = -1; book.rep.court = 3; book.rep.partners = -3; book.rep.agents = 1;
     const view = eng.view(book, nodeContent);
@@ -2908,17 +2926,26 @@ try {
   // Each line on the page is checked against the jump's own log entry, and the order is trips, the money line,
   // who left, then the history.
   {
-    // seed 1, not 1324: after MER-75's card rewrites the first-choice play on 1324 loses nobody in act one; seed 1 loses one
-    let g = eng.newGame(nodeContent, { seed: 1, length: 'acts', house: 'spice' });
-    for (let guard = 0; guard < 20 && g.phase !== 'interlude'; guard++) {
+    // The state is found by what the engine does, not by what a seed's draws happen to do (MER-120): the first-choice play runs to
+    // the last desk before the jump; there Yusuf is sent out (the engine's own plan, so a trip is on the road when the years pass)
+    // and his trust is put at -2, the engine's rule for an agent who leaves at the jump (routes.js, step 3). The jump then settles
+    // that trip by quotes and loses him whatever card weights, stop prices or draws the seed has.
+    let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    for (let guard = 0; guard < 40 && !g.log.some(e => e.kind === 'jump'); guard++) {
       for (const p of g.desk) {
         if (p.state !== 'open') continue;
         const c = nodeChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
         g = eng.choose(g, nodeContent, p.id, c.id);
         if (c.ui === 'outfit-first') { const plan = sheetPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
       }
-      if (g.t === 7) g = eng.outfit(g, nodeContent, sheetPlan(g, nodeContent, 'damascus'));
-      g = eng.endSeason(g, nodeContent);
+      const yusuf = g.agents.yusuf;
+      const plan = !g.expeditions.length && yusuf.hired && yusuf.where === nodeContent.city.home && eng.suggestPlan(g, nodeContent, 'damascus');
+      const trial = structuredClone(g);
+      if (plan) Object.assign(trial, eng.outfit(trial, nodeContent, plan));
+      trial.agents.yusuf.trust = -2;
+      const after = eng.endSeason(trial, nodeContent);
+      // the jump closes this season: keep the state after it; any other season closes as the plain play would
+      g = after.log.some(e => e.kind === 'jump') ? after : eng.endSeason(g, nodeContent);
     }
     const entry = g.log.find(e => e.kind === 'jump');
     const { page, consoleErrors } = await open(FRAMES[0]);
@@ -3453,6 +3480,19 @@ try {
         }
         eq(await page.$$eval('[data-where="home"] button', bs => bs.length), 0, 'nothing to press for a person at home');
         ok(!/\d%|percent/.test(await page.$eval('[data-page="recall"]', e => e.textContent)), 'no number shown');
+      });
+      await test('MER-120: a person who died earlier in the game is listed as dead, with the plain line, whatever the draws were', async () => {
+        const dying = clone(ended);
+        // everyone in this state was on the road at the plague, so the recall wrote a line for each; one of them is made to have died
+        // before it instead (no line in the recall's log, where: dead), which is the state the plain line is for
+        const who = nodeContent.agents.find(a => dying.agents[a.id].hired);
+        ok(who, 'the state has a hired person, or this case checks nothing');
+        for (const e of dying.log) if (e.kind === 'recall') e.results = e.results.filter(r => r.agent !== who.id);
+        dying.agents[who.id].where = 'dead';
+        await go(dying, '#ending/home', '#home-count');
+        const rows = await page.$$eval('.person', rs => rs.map(r => ({ id: r.dataset.agent, fate: r.dataset.fate, line: r.querySelector('.ending-line').textContent })));
+        eq(rows.find(r => r.id === who.id), { id: who.id, fate: 'dead', line: `${who.name} died on the road earlier in the game.` });
+        ok(/died/.test(rows.find(r => r.id === who.id).line), 'the line says died');
       });
       await test('MER-90: the score page\'s wealth line shows cash, stock and loans, and they add up on screen to the wealth figure', async () => {
         await go(ended, '#ending/score', '#wealth-sums');
