@@ -17,15 +17,15 @@
         "id": "hire",
         "ui": "outfit-first",
         "label": "Hire Yusuf and send him",
-        "hint": "The clerk's fee is 10 dinars. The next sheet shows what sending him costs.",
+        "hint": "The clerk's fee is 4 dinars. The next sheet shows what sending him costs.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -4
           },
           {
             "hire": "yusuf"
@@ -196,7 +196,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf asks to go further",
-    "body": "Before he leaves for {to}, Yusuf asks to go on if the price is better beyond it. Your orders say {to} and no further. He says he may do better, but he will keep to your orders if you say so.",
+    "body": "Yusuf is ready for the road. The nearest stop that buys what you hold is {to}. He asks to go on past {to} if the price is better there. He says he may do better, and he will keep to your plan if you say so.",
     "when": {
       "trip": {
         "agent": "yusuf",
@@ -209,7 +209,7 @@
       {
         "id": "widen",
         "label": "Let him go further if the price is better",
-        "hint": "He may do better. A longer road costs 25 dinars more, later, and you carry the risk.",
+        "hint": "He may do better. A longer road costs 4 dinars more, later, and you carry the risk.",
         "now": [
           {
             "trust": "yusuf",
@@ -225,7 +225,7 @@
             "in": 3,
             "do": [
               {
-                "money": -25
+                "money": -4
               }
             ]
           }
@@ -233,16 +233,16 @@
       },
       {
         "id": "keep",
-        "label": "Keep to your orders",
-        "hint": "Yusuf will keep his word.",
+        "label": "Keep him to {to}",
+        "hint": "Yusuf will keep his word, and partners like a house that holds its orders.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "trust": "yusuf",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -312,7 +312,7 @@
             "in": 4,
             "do": [
               {
-                "money": -30
+                "money": -5
               }
             ]
           }
@@ -321,15 +321,15 @@
       {
         "id": "wage",
         "label": "Pay her a plain wage",
-        "hint": "It costs 20 dinars now. She is paid even if the goods are lost.",
+        "hint": "It costs 4 dinars now. She is paid even if the goods are lost.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -4
           },
           {
             "hire": "mariam"
@@ -355,7 +355,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -407,15 +407,15 @@
       {
         "id": "fee",
         "label": "Pay him a fee for the one job",
-        "hint": "It costs 20 dinars. He stays free to go.",
+        "hint": "It costs 5 dinars. He stays free to go.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -5
           },
           {
             "hire": "matteo"
@@ -435,15 +435,15 @@
       {
         "id": "wage",
         "label": "Hire him on a plain wage",
-        "hint": "It costs 40 dinars. He is paid whatever happens.",
+        "hint": "It costs 5 dinars. He is paid whatever happens.",
         "requires": {
           "money": {
-            "gte": 40
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -40
+            "money": -5
           },
           {
             "hire": "matteo"
@@ -476,7 +476,7 @@
             "in": 3,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }

@@ -323,6 +323,32 @@ test('rule 3: a choice with no effect at all fails', () => {
   const f = lintContent(variant(c => { c.cards[0].choices[0].now = []; c.cards[0].choices[0].later = []; }), { banned });
   ok(f.some(x => x.rule === 3 && /has no effect/.test(x.message)), JSON.stringify(f));
 });
+test('rule 10: a later effect list that adds money and removes stock together fails, either alone passes', () => {
+  const later = do_ => variant(c => { c.cards.find(x => x.id === 'wool-offer').choices[1].later = [{ in: 2, do: do_ }]; });
+  const hit = c => lintContent(c, { banned }).filter(f => f.rule === 10);
+  eq(hit(content), [], 'testport as it stands');
+  eq(hit(later([{ money: 40 }])).length, 0, 'money alone');
+  eq(hit(later([{ stock: 'wool', by: -10 }])).length, 0, 'stock alone');
+  eq(hit(later([{ stock: 'wool', by: 10 }, { money: -40 }])).length, 0, 'stock in and money out');
+  const f = hit(later([{ money: 40 }, { stock: 'wool', by: -10 }]));
+  eq(f.length, 1, JSON.stringify(f));
+  ok(/wool-offer\].choices\[pass\]/.test(f[0].path), f[0].path);
+});
+test('rule 10 (MER-107): a choice that keeps the stock and pays only later, beside a choice that sells it, fails', () => {
+  const card = (sellNow, holdNow, holdLater) => variant(c => {
+    const ch = c.cards.find(x => x.id === 'wool-offer').choices;
+    ch[0].now = sellNow; ch[1].now = holdNow; ch[1].later = holdLater;
+  });
+  const hit = c => lintContent(c, { banned }).filter(f => f.rule === 10);
+  const sell = [{ money: 40 }, { stock: 'wool', by: -4 }];
+  const lateMoney = [{ in: 2, do: [{ money: 30 }] }], lateRep = [{ in: 2, do: [{ rep: 'partners', by: 1 }] }];
+  eq(hit(card(sell, [], lateRep)).length, 0, 'hold that earns standing later passes');
+  eq(hit(card([{ money: -40 }, { stock: 'wool', by: 4 }], [], lateMoney)).length, 0, 'no choice sells, so late money alone passes');
+  eq(hit(card(sell, [{ money: -5 }], lateMoney)).length, 0, 'money now as well as later is a cost, not a free hold');
+  const f = hit(card(sell, [], lateMoney));
+  eq(f.length, 1, JSON.stringify(f));
+  ok(/wool-offer\].choices\[pass\]/.test(f[0].path), f[0].path);
+});
 test('rule 5: a banned stem is caught at a word start, in any case, and not inside another word', () => {
   const hit = t => lintContent(variant(c => { c.cards[0].body = t; }), { banned }).filter(f => f.rule === 5).length;
   eq(hit('A Servitude is owed.'), 1);

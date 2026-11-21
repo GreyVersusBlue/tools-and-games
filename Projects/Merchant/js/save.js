@@ -227,6 +227,8 @@ export function repair(state, content) {
   out.seen = Object.fromEntries(Object.entries(isObject(s.seen) ? s.seen : {}).filter(([, n]) => isNum(n)).map(([k, n]) => [k, count(n)]));
   const book = idSet(content.notebook);
   out.notebook = [...new Set((Array.isArray(s.notebook) ? s.notebook : []).filter(id => book.has(id)))];
+  // an old save has no read list and reads as having read nothing; a page read must also be a page found
+  out.notebookRead = [...new Set((Array.isArray(s.notebookRead) ? s.notebookRead : []).filter(id => out.notebook.includes(id)))];
 
   // the log is a record; entries stay even when the thing they name is gone. choose logs a string.
   out.log = (Array.isArray(s.log) ? s.log : []).filter(e => isObject(e) && isNum(e.at) && typeof e.kind === 'string' && (e.kind !== 'trust' || trustNote(e)))

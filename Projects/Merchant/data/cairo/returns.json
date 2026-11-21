@@ -267,7 +267,7 @@
       ]
     },
     "title": "A bigger share for {agent}?",
-    "body": "{agent} is home from {to} after {seasons}. The house made money, and {agent} kept a third under the qirad. {agent} hints that the road was hard.",
+    "body": "{agent} is home from {to} after {seasons}. The trip ended in a profit, and {agent} kept a third under the qirad. {agent} would like a bigger share next time.",
     "choices": [
       {
         "id": "more",
@@ -330,7 +330,7 @@
       ]
     },
     "title": "A bonus for {agent}?",
-    "body": "{agent} is home from {to} after {seasons}, and the house made money. A bonus is not in the contract. It would be a thank you.",
+    "body": "{agent} is home from {to} after {seasons}, and the trip ended in a profit. A bonus is not in the contract. The house can pay one out of its own purse, as a thank you.",
     "choices": [
       {
         "id": "bonus",
@@ -513,6 +513,9 @@
     "facts": {
       "outcome": [
         "loss"
+      ],
+      "contract": [
+        "own"
       ]
     },
     "title": "The trip lost money",
@@ -702,7 +705,7 @@
       },
       {
         "id": "share",
-        "label": "Ask the partners to share the loss",
+        "label": "Ask the partners to help carry the loss",
         "hint": "They may agree. They will not like being asked.",
         "now": [
           {
@@ -805,7 +808,7 @@
       },
       {
         "id": "share",
-        "label": "Ask the partners to share the loss",
+        "label": "Ask the partners to help carry the loss",
         "hint": "They may agree. They will not like being asked.",
         "now": [
           {
@@ -875,7 +878,7 @@
       },
       {
         "id": "share",
-        "label": "Ask the partners to share the loss",
+        "label": "Ask the partners to help carry the loss",
         "hint": "They may agree. They will not like being asked.",
         "now": [
           {
@@ -982,7 +985,7 @@
       },
       {
         "id": "share",
-        "label": "Ask the partners to share the loss",
+        "label": "Ask the partners to help carry the loss",
         "hint": "They may agree. They will not like being asked.",
         "now": [
           {
@@ -1055,7 +1058,7 @@
       },
       {
         "id": "share",
-        "label": "Ask the partners to share the loss",
+        "label": "Ask the partners to help carry the loss",
         "hint": "They may agree. They will not like being asked.",
         "now": [
           {
@@ -1161,7 +1164,7 @@
       },
       {
         "id": "share",
-        "label": "Ask the partners to share the loss",
+        "label": "Ask the partners to help carry the loss",
         "hint": "They may agree. They will not like being asked.",
         "now": [
           {

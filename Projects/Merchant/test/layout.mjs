@@ -71,6 +71,9 @@ const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
 const OPENS_WITH = { 'desk-letter': '.sheet .choice', 'desk-question': '.sheet .choice', 'desk-report': '.sheet .choice', 'desk-papers': '.sheet .choice',
   'desk-return': '.sheet .choice', 'desk-loss': '.sheet .choice', 'between-acts': '#btn-open-house', 'between-acts-long': '#btn-open-house' };
 const OPEN_FRAMES = new Set(['board', 'laptop', 'laptop-small']);
+// MER-99: a return paper ends by asking, and its last choice is whole in view, clear of End the season, at the two frames a teacher plays on
+const LAST_CHOICE = { 'desk-return': '.sheet .choices .choice:last-of-type' };
+const LAST_FRAMES = new Set(['board', 'laptop']);
 // MERCHANT_LAYOUT_ONLY=desk-loss,desk-return runs just those screens (a development shortcut; the suite must run whole to count)
 const ONLY = (process.env.MERCHANT_LAYOUT_ONLY || '').split(',').filter(Boolean);
 const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts']);
@@ -108,6 +111,10 @@ const states = {
   firstDone: (() => { let s = fresh(); for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, content, p.id, FIRST[p.ref]); return s; })(),
   interlude: playUntil(s => s.phase === 'interlude'),
   recall: playUntil(s => s.phase === 'recall'),
+  // the second expedition (MER-93): news has come, so the map's price panel has three best trades and the outfit sheet opens on the
+  // engine's proposal with every section open, a bring-back good named and an estimate line under Send
+  second: playUntil(x => x.phase === 'desk' && x.t >= 3 && x.log.some(e => e.kind === 'outfit') && eng.view(x, content).bestTrades.length === 3
+    && content.agents.filter(a => x.agents[a.id]?.hired && x.agents[a.id].where === 'cairo' && !x.expeditions.some(e => e.agent === a.id)).length >= 2),
   // a house with an expedition out, stock, a loan and several notebook entries, and the `season` log
   // entries the ledger's money trail reads (ledger.js: { kind: 'season', at, change }); the engine does not write them yet
   book: (() => {
@@ -146,7 +153,7 @@ const plain = s => JSON.parse(JSON.stringify(s));
   const base = plain(states.ret), r = base.desk.find(p => p.kind === 'return' && p.state === 'open');
   const entry = content.returns.find(e => e.id === 'loss-sea-gone'), fill = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Damascus');
   states.loss = { ...base, desk: [{ id: 'p80-0', state: 'open', kind: 'lost', ref: 'lost', agent: 'ali', expedition: r.expedition, data: {
-    headline: 'Ali did not come back', route: 'cairo-damascus', whole: true, survived: false,
+    headline: 'Ali\'s galley was lost on the way from Cairo to Damascus. Ali did not come back.', route: 'cairo-damascus', whole: true, survived: false,
     lines: [{ label: 'Lost', text: 'The ship and what it carried.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
     ask: { title: fill(entry.title), body: fill(entry.body) },
     choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
@@ -246,6 +253,35 @@ const SCREENS = [
       await p.waitForSelector('#screen-map[data-ready]');
       // phone upright and the narrower frames: the board is a dialog opened by its button
       if (await p.$eval('#prices-box', e => getComputedStyle(e).display === 'none')) { await p.click('#btn-prices'); }
+    },
+    modalOf: p => p.evaluate(() => { const b = document.getElementById('prices-box'); return b?.getAttribute('aria-modal') === 'true' ? '#prices-box' : null; }) },
+  { name: 'outfit-second', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      await p.click('#btn-outfit');
+      await p.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await p.waitForSelector('#outfit-estimate');
+    } },
+  // MER-99: every sheet opens as the summary (outfit-second above); this is the same sheet with every section opened by its Change link,
+  // so the steppers, the agent cards and the contract cards are still measured
+  { name: 'outfit-second-open', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      await p.click('#btn-outfit');
+      await p.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      // the phone's Send bar sticks over the foot of the sheet, and a press at a covered point lands on the bar: bring each link to the middle first
+      for (const id of ['who', 'carry', 'back', 'contract']) { await p.$eval(`#change-${id}`, e => e.scrollIntoView({ block: 'center' })); await p.click(`#change-${id}`); }
+      await p.waitForSelector('#step-purse');
+      await p.waitForSelector('#contract-own');
+    } },
+  { name: 'price-board-news',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      if (await p.$eval('#prices-box', e => getComputedStyle(e).display === 'none')) { await p.click('#btn-prices'); }
+      await p.waitForSelector('#best-trades li');
     },
     modalOf: p => p.evaluate(() => { const b = document.getElementById('prices-box'); return b?.getAttribute('aria-modal') === 'true' ? '#prices-box' : null; }) },
   { name: 'ledger', modal: 'dialog[open]',
@@ -372,7 +408,11 @@ const collectText = scopeSel => {
       // keep what is on screen and inside every clipping ancestor
       let x0 = Math.max(r.left, 0), y0 = Math.max(r.top, 0), x1 = Math.min(r.right, vw), y1 = Math.min(r.bottom, vh);
       for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
-        if (getComputedStyle(a).overflow !== 'visible') { const b = a.getBoundingClientRect(); x0 = Math.max(x0, b.left); y0 = Math.max(y0, b.top); x1 = Math.min(x1, b.right); y1 = Math.min(y1, b.bottom); }
+        const ca = getComputedStyle(a);
+        if (ca.overflow !== 'visible') { const b = a.getBoundingClientRect(); x0 = Math.max(x0, b.left); y0 = Math.max(y0, b.top); x1 = Math.min(x1, b.right); y1 = Math.min(y1, b.bottom); }
+        // a fixed box is placed against the viewport: what scrolls or clips its ancestors does not clip it (the price board's phone dialog
+        // sits inside the board, which scrolls; with a short panel every line was above the board's own top edge and none was measured)
+        if (ca.position === 'fixed') break;
       }
       // a line cut by its scroll box is half a line: it is measured when it scrolls fully into view
       if ((y1 - y0) < (r.height - 1) || (x1 - x0) < (r.width - 1)) continue;
@@ -505,6 +545,89 @@ try {
           await test(`${tag}: what the paper asks is in view when it opens, no scrolling`, async () => {
             const bad = await page.evaluate(wholeInView, OPENS_WITH[screen.name]);
             ok(!bad, bad ?? '');
+          });
+        }
+        if (LAST_CHOICE[screen.name] && LAST_FRAMES.has(frame.name) && !frame.large) {
+          await test(`${tag}: the last choice is in view above End the season, no scrolling`, async () => {
+            const bad = await page.evaluate(wholeInView, LAST_CHOICE[screen.name]);
+            ok(!bad, bad ?? '');
+          });
+        }
+        if (screen.name === 'desk-return') {
+          // MER-105: the top bar and the raised paper never share a pixel, and the bar never sits on the papers-left tag or the sender line
+          // (boxes, not pixels: the suite once passed 985 cases with Map and Menu on top of "Yusuf Home from the road")
+          // measured with the page at its top, where the desk opens: the harness scrolled an edge to the middle to press it, and any fixed bar
+          // is over whatever has scrolled up under it
+          await test(`${tag}: the top bar clears the paper, the papers-left tag and the sender line`, async () => {
+            await page.evaluate(() => window.scrollTo(0, 0));
+            const got = await page.evaluate(() => {
+              // the part of the element a player can see: its box cut down by every ancestor that clips or scrolls (a tall paper scrolls inside the stack on a laptop)
+              const box = sel => { const e = document.querySelector(sel); if (!e || !e.checkVisibility()) return null; const r = e.getBoundingClientRect(); const v = { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+                for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) { if (getComputedStyle(a).overflowY !== 'visible') { const b = a.getBoundingClientRect(); v.top = Math.max(v.top, b.top); v.bottom = Math.min(v.bottom, b.bottom); } }
+                return v; };
+              const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+              const bar = box('.topbar'), out = {};
+              for (const sel of ['.sheet', '.sheet-head .sender', '.stack-count']) { const b = box(sel); out[sel] = b === null ? 'missing' : hit(bar, b) ? `${Math.round(b.top)} to ${Math.round(b.bottom)} against the bar's ${Math.round(bar.top)} to ${Math.round(bar.bottom)}` : null; }
+              return out;
+            });
+            ok(got['.sheet'] !== 'missing' && got['.sheet-head .sender'] !== 'missing' && got['.stack-count'] !== 'missing', `the desk is missing a part: ${JSON.stringify(got)}`);
+            ok(!got['.sheet'], `the bar overlaps the paper: ${got['.sheet']}`);
+            ok(!got['.sheet-head .sender'], `the bar overlaps the sender line: ${got['.sheet-head .sender']}`);
+            ok(!got['.stack-count'], `the bar overlaps the papers-left tag: ${got['.stack-count']}`);
+          });
+          // MER-108: where the page scrolls under the fixed bar (the upright phones), nothing of a paper shows through it. Measured with the page
+          // scrolled down half a screen; on a frame that never scrolls no .sheet reaches the bar and the bar keeps the board's translucent look.
+          await test(`${tag}: scrolled down, the top bar is opaque over any paper under it and stacks above it`, async () => {
+            await page.evaluate(() => window.scrollTo(0, Math.round(innerHeight / 2)));
+            await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+            const got = await page.evaluate(() => {
+              const bar = document.querySelector('.topbar');
+              if (!bar || !bar.checkVisibility()) return { missing: true };
+              const r = bar.getBoundingClientRect();
+              // the part of a paper a player can see: its box cut down by every ancestor that clips or scrolls
+              const seen = e => { const q = e.getBoundingClientRect(); const v = { top: q.top, bottom: q.bottom, left: q.left, right: q.right };
+                for (let x = e.parentElement; x && x !== document.body; x = x.parentElement) { if (getComputedStyle(x).overflowY !== 'visible') { const c = x.getBoundingClientRect(); v.top = Math.max(v.top, c.top); v.bottom = Math.min(v.bottom, c.bottom); } }
+                return v; };
+              const under = [...document.querySelectorAll('.sheet')].filter(e => { const b = seen(e); return b.right - b.left > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom - 0.5 && b.bottom > r.top + 0.5; }).length;
+              const bg = getComputedStyle(bar).backgroundColor.match(/[\d.]+/g).map(Number);
+              const tops = [0.2, 0.5, 0.8].map(f => { const e = document.elementFromPoint(r.left + r.width * f, r.top + r.height / 2); return !!e && (e === bar || bar.contains(e)); });
+              return { under, alpha: bg.length > 3 ? bg[3] : 1, tops, scrollY: Math.round(scrollY) };
+            });
+            await page.evaluate(() => window.scrollTo(0, 0));
+            ok(!got.missing, 'the top bar is not on the desk');
+            ok(!got.under || got.alpha === 1, `${got.under} paper box(es) lie under the bar at scrollY ${got.scrollY} and the bar is ${got.alpha} opaque, so their text shows through`);
+            ok(!got.under || got.tops.every(Boolean), `a paper is above the bar at one of three points inside it: ${got.tops}`);
+          });
+          // the End the season bar is opaque wherever it covers other papers, and the last choice clears it when the page is scrolled to its foot
+          await test(`${tag}: End the season shows nothing from under it and never covers the last choice`, async () => {
+            await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+            const got = await page.evaluate(() => {
+              const row = document.querySelector('.end-row'), last = document.querySelector('.sheet .choices .choice:last-of-type');
+              if (!row || !row.checkVisibility() || !last) return { missing: true };
+              const rr = row.getBoundingClientRect(), lr = last.getBoundingClientRect();
+              const bg = getComputedStyle(row).backgroundColor.match(/[\d.]+/g).map(Number);
+              const covers = getComputedStyle(row).position === 'sticky' || getComputedStyle(row).position === 'fixed';
+              return { covers, alpha: bg.length > 3 ? bg[3] : 1, overlap: lr.left < rr.right && lr.right > rr.left && lr.top < rr.bottom - 0.5 && lr.bottom > rr.top + 0.5, last: [Math.round(lr.top), Math.round(lr.bottom)], row: [Math.round(rr.top), Math.round(rr.bottom)] };
+            });
+            await page.evaluate(() => window.scrollTo(0, 0));
+            ok(!got.missing, 'End the season or the last choice is not on the desk');
+            ok(!got.covers || got.alpha === 1, `the bar that sticks over the papers is ${got.alpha} opaque, so the papers under it show through`);
+            ok(!got.overlap, `the bar (${got.row}) covers the last choice (${got.last})`);
+          });
+        }
+        if (screen.name === 'desk-return' && frame.name === 'board') {
+          // MER-104: the headline is who came home and what the house made, at most three lines; the rest sits under it in body type
+          await test(`${tag}: the return's headline is at most three lines and the hope, the reason and the unsold goods sit under it`, async () => {
+            const got = await page.evaluate(() => {
+              const t = document.querySelector('.sheet-title'), lead = document.querySelector('.sheet-title + .return-lead');
+              const lh = parseFloat(getComputedStyle(t).lineHeight) || parseFloat(getComputedStyle(t).fontSize) * 1.2;
+              return { lines: Math.round(t.getBoundingClientRect().height / lh), title: t.textContent, lead: lead?.textContent ?? null,
+                titleSize: parseFloat(getComputedStyle(t).fontSize), leadSize: lead ? parseFloat(getComputedStyle(lead).fontSize) : null };
+            });
+            ok(got.lines <= 3, `the headline sets ${got.lines} lines: ${got.title}`);
+            ok(!/We (hoped|expected)/.test(got.title), `the hope is not in the headline: ${got.title}`);
+            ok(got.lead && /We (hoped|expected)/.test(got.lead), `the lead holds the hope: ${got.lead}`);
+            ok(got.leadSize < got.titleSize, `the lead is in body type: ${got.leadSize} against ${got.titleSize}`);
           });
         }
         const geo = await page.evaluate(measureGeometry, scopeSel, MIN_TARGET);

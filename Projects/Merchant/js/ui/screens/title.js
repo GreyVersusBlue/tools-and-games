@@ -1,7 +1,6 @@
 // The title screen, DESIGN 4.2. The title and tagline come from city.json when it has them,
 // so a rename is one line of data; these are the fallbacks and the About text.
 import { h } from '../dom.js';
-import { SAVE_KEY } from '../../save.js';
 import { num } from './paper.js';
 
 export const TITLE_TEXT = {
@@ -16,19 +15,16 @@ export const TITLE_TEXT = {
   noSave: 'The game sends nothing anywhere and saves only in this browser.',
 };
 
-/** The last finished game's score and rank, read from the save slot itself (the ended game's `state.score`; there is
-    no key of its own). Null while there is no save, while the game is not over, or when the save has no score. */
-export function lastScore(storage = globalThis.localStorage) {
-  try {
-    const st = JSON.parse(storage?.getItem(SAVE_KEY) ?? 'null');
-    const sc = st?.phase === 'ended' ? st.score : null;
-    return sc && Number.isFinite(sc.total) && typeof sc.rank === 'string' ? { total: sc.total, rank: sc.rank } : null;
-  } catch { return null; }
+/** The finished game's score and rank, from the save app.js loaded (the ended game's `state.score`; there is no key of its
+    own). Null for no save, a game not over, or a save with no score. The title never reads storage itself (MER-97). */
+export function lastScore(state) {
+  const sc = state?.phase === 'ended' ? state.score : null;
+  return sc && Number.isFinite(sc.total) && typeof sc.rank === 'string' ? { total: sc.total, rank: sc.rank } : null;
 }
 
 /** Render the title screen. `save` is null, or { label } for the game that Continue opens
-    ("Summer 1325, Act one"). Each handler gets the button that was pressed. */
-export function renderTitle({ city, save, onNew, onContinue, onAbout, onSettings, last = save ? lastScore() : null }) {
+    ("Summer 1325, Act one"). `last` is { total, rank } of a finished game (lastScore), or null. Each handler gets the button that was pressed. */
+export function renderTitle({ city, save, onNew, onContinue, onAbout, onSettings, last = null }) {
   const btn = (id, label, onclick, ...more) => h('button', { class: 'choice', type: 'button', id, onclick: e => onclick(e.currentTarget) }, label, ...more);
   return h('main', { class: 'title-screen', id: 'screen-title' },
     h('div', { class: 'title-head' },

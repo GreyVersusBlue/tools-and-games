@@ -63,6 +63,9 @@ export function tripOf(state, content, agent, is) {
   const a = agentOf(content, agent), idx = seasonIndex(state, content);
   if (!a || !state.agents[agent]) return null;
   if (is === 'home') {
+    // an agent who retired or is gone has no homecoming, whatever paper is still on the desk (seed 91 of test/letters)
+    const rec = state.agents[agent];
+    if (!rec.hired || rec.where === 'gone') return null;
     // the return paper carries the trip's facts (routes.js `tripData`); nothing is read back out of its words
     const p = state.desk.find(q => q.kind === 'return' && q.agent === agent && q.expedition);
     const t = p?.data?.trip, route = t && routeOf(content, t.route);

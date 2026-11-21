@@ -212,6 +212,7 @@ jobs:
               node test/letters.mjs
               node test/agents.mjs
               node test/trip.mjs
+              node test/venture.mjs
               node test/score.mjs
               node test/bots-smoke.mjs
               node tools/lint-content.mjs cairo

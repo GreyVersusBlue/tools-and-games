@@ -19,12 +19,12 @@
         "hint": "It costs money. The inspector will see an honest house.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -30
+            "money": -5
           }
         ],
         "later": [
@@ -42,18 +42,18 @@
       {
         "id": "hide",
         "label": "Hide the sacks and hope",
-        "hint": "Bad food is easy to smell.",
+        "hint": "Bad food is easy to smell, but your street hears nothing yet.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": -20
+                "money": -4
               },
               {
-                "rep": "court",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ],
             "card": "muhtasib-fine"
@@ -143,7 +143,7 @@
       "seal": null
     },
     "title": "The elders hear a loss",
-    "body": "Isaac sailed with 70 dinars of yours and lost almost 50 of them. He says the loss is bad luck, and that you have no claim on him. You can ask the elders of your community to hear it, or take it to a judge.",
+    "body": "Daud is a friend of yours. He gave Isaac 70 dinars to trade overseas, and Isaac lost almost 50 of them. Isaac says the loss is bad luck, and that Daud has no claim on him. Daud asks your house to help. You can ask the elders of your community to hear it, or take it to a judge.",
     "when": {
       "rep": "court",
       "gte": 1
@@ -163,10 +163,6 @@
               {
                 "rep": "partners",
                 "by": 1
-              },
-              {
-                "rep": "court",
-                "by": 1
               }
             ]
           }
@@ -174,16 +170,16 @@
       },
       {
         "id": "judge",
-        "label": "Press your claim before a judge",
-        "hint": "It costs now. Isaac will not forgive it.",
+        "label": "Press Daud's claim before a judge",
+        "hint": "It costs now. Daud will thank you in coin. Isaac will not forgive it.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -4
           }
         ],
         "later": [
@@ -191,11 +187,15 @@
             "in": 2,
             "do": [
               {
-                "money": 30
+                "money": 9
               },
               {
                 "rep": "partners",
                 "by": -1
+              },
+              {
+                "rep": "court",
+                "by": 1
               }
             ]
           }
@@ -223,7 +223,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf and the road costs",
-    "body": "Yusuf is home from {to}. He spent 60 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
+    "body": "Yusuf is home from {to}. He says he spent 7 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
     "when": {
       "trip": {
         "agent": "yusuf",
@@ -235,39 +235,32 @@
     "choices": [
       {
         "id": "pay",
-        "label": "Pay him back the 60 dinars",
-        "hint": "It costs now. Yusuf will trust you.",
+        "label": "Pay him back the 7 dinars",
+        "hint": "It costs 7 dinars now. Yusuf will trust you.",
         "requires": {
           "money": {
-            "gte": 60
+            "gte": 7
           }
         },
         "now": [
           {
-            "money": -60
+            "money": -7
           },
           {
             "trust": "yusuf",
             "by": 1
-          }
-        ],
-        "later": [
-          {
-            "in": 3,
-            "do": [
-              {
-                "rep": "agents",
-                "by": 1
-              }
-            ]
           }
         ]
       },
       {
         "id": "judge",
         "label": "Let a judge decide",
-        "hint": "It costs less. Yusuf will not like it.",
+        "hint": "It costs 2 dinars later. The court thinks well of you. Yusuf does not.",
         "now": [
+          {
+            "rep": "court",
+            "by": 1
+          },
           {
             "trust": "yusuf",
             "by": -1
@@ -282,7 +275,7 @@
             "in": 2,
             "do": [
               {
-                "money": -15
+                "money": -2
               }
             ]
           }
@@ -312,21 +305,21 @@
       "seal": null
     },
     "title": "Hamid never gives accounts",
-    "body": "Hamid has traded with your money for years. He has never given you a full account of it. You can ask him for the accounts as partners should, or take him to a judge.",
+    "body": "Nur is a friend of yours. He has had money with Hamid for years, and Hamid has never given him a full account. Nur asks your house to help. You can ask Hamid for the accounts as partners should, or take him to a judge.",
     "weight": 3,
     "repeat": false,
     "choices": [
       {
         "id": "ask",
         "label": "Ask him for the accounts",
-        "hint": "It costs nothing. He may be offended.",
+        "hint": "It costs nothing. Hamid may be offended, and Nur will thank you.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": 30
+                "money": 5
               }
             ]
           }
@@ -335,15 +328,15 @@
       {
         "id": "judge",
         "label": "Take him to a judge",
-        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues.",
+        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues. Nur pays you well.",
         "requires": {
           "money": {
-            "gte": 25
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -25
+            "money": -5
           }
         ],
         "later": [
@@ -351,7 +344,7 @@
             "in": 2,
             "do": [
               {
-                "money": 60
+                "money": 11
               },
               {
                 "rep": "partners",

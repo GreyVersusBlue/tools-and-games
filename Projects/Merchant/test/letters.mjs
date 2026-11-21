@@ -624,8 +624,10 @@ function cairoGame(seed, length) {
       for (let k = 0; k < stops.length; k++) {
         const stop = stops[(turn + k) % stops.length], hit = reach.find(d => d.stop === stop);
         if (!hit) continue;
-        // money only, as the bots send to a road with nothing the house sells
-        const plan = { agent: a.id, route: hit.route, cargo: {}, purse: 40, contract: 'own', sell: [], buy: [] };
+        // money only, as the bots send to a road with nothing the house sells, and one good to bring back with it
+        // (DESIGN 2.2 rule 1: money with no good named is refused once routes.js RULES.refuseUnspentMoney is on)
+        const back = Object.keys(s.market[stop] ?? {}).find(g => s.market.cairo?.[g]);
+        const plan = { agent: a.id, route: hit.route, cargo: {}, purse: 40, contract: 'own', sell: [], buy: back ? [back] : [] };
         try { s = outfit(s, c, plan); turn += k + 1; } catch { continue; }
         break;
       }

@@ -4,11 +4,11 @@
 // the ranks are the city's (city.json `score`); the other rates are the game's, below.
 import { REP_GROUPS, cityOf, find } from './state.js';
 
-export const REP_POINTS = 0.5;       // points per step of reputation, summed over the four groups (floor 0)
+export const REP_GROUP_POINTS = 2;   // most a group of reputation earns; counted from the middle (DESIGN 2.2 rule 6)
 export const HOME_POINTS = 10;      // per agent who made a trip for the house and is alive and home
 export const HOME_TRUST_BONUS = 3;  // more for one whose trust is 2 or 3
 export const TRUST_BONUS_AT = 2;
-export const NOTEBOOK_POINTS = 1.05; // per entry found
+export const NOTEBOOK_POINTS = 1.05; // per entry opened and read, not per entry found
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -69,11 +69,16 @@ export function score(state, content) {
     data: { cash: w.cash, stock: { value: w.stock, loads: w.stockLoads, goods: w.goods, unpriced: w.unpriced }, loans: w.loans, brought: w.brought, net: w.net },
   });
 
-  const repSum = REP_GROUPS.reduce((a, g) => a + (state.rep?.[g] ?? 0), 0);
+  // Reputation counts from the middle: a group at 0 earns half of REP_GROUP_POINTS, at -3 none, at +3 all,
+  // so a house that annoyed its partners scores under one that never met them (DESIGN 2.2 rule 6).
+  const repOf = g => Math.min(3, Math.max(-3, state.rep?.[g] ?? 0));
+  const repSum = REP_GROUPS.reduce((a, g) => a + repOf(g), 0);
+  const repPoints = REP_GROUPS.reduce((a, g) => a + REP_GROUP_POINTS * (repOf(g) + 3) / 6, 0);
   parts.push({
-    id: 'reputation', points: Math.max(0, repSum * REP_POINTS),
-    reason: repSum > 0 ? `Standing with partners, agents, the court and foreign merchants adds up to ${repSum}.`
-      : 'Standing with partners, agents, the court and foreign merchants adds up to nothing.',
+    id: 'reputation', points: repPoints,
+    reason: repSum > 0 ? `Standing with partners, agents, the court and foreign merchants adds up to ${repSum} above the middle.`
+      : repSum < 0 ? `Standing with partners, agents, the court and foreign merchants adds up to ${-repSum} below the middle.`
+      : 'Standing with partners, agents, the court and foreign merchants sits at the middle.',
   });
 
   const home = cityOf(content, 'score').home;
@@ -91,10 +96,12 @@ export function score(state, content) {
       + (stayed ? ` ${plural(stayed, 'other', 'others')} never left ${(content.stops ?? []).find(x => x.id === home)?.name ?? 'home'} and ${stayed === 1 ? 'counts' : 'count'} for nothing.` : ''),
   });
 
-  const pages = (state.notebook ?? []).length;
+  // Only a page that was found and then opened counts; an old save has no read list and reads as none.
+  const found = new Set(state.notebook ?? []);
+  const pages = new Set((state.notebookRead ?? []).filter(id => found.has(id))).size;
   parts.push({
     id: 'notebook', points: pages * NOTEBOOK_POINTS,
-    reason: pages ? `${plural(pages, 'page', 'pages')} in the notebook.` : 'The notebook is empty.',
+    reason: pages ? `${plural(pages, 'page', 'pages')} in the notebook opened and read.` : 'No page of the notebook was opened and read.',
   });
 
   const sum = parts.reduce((a, p) => a + p.points, 0);
