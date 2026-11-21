@@ -365,8 +365,12 @@ export function cellPanel(env) {
       value: well.letter,
       // a refusal is the field's own, under it, in the engine's words
       commit: (value) => {
+        const steps = store.history.past.length;
         store.apply(setStairwellLetter, { well: well.letter, letter: value });
-        ctx.announce((store.undoOutcome || {}).text || 'Renamed the stairwell.');
+        // said at once (Enter commits), and a toast with Undo like the other fields' (SV2-142)
+        const said = (store.undoOutcome || {}).text || 'Renamed the stairwell.';
+        ctx.announce(said);
+        if (store.history.past.length > steps) ctx.toast({ text: said, action: { label: 'Undo', run: ctx.undo } });
       },
     });
     letter.input.dataset.key = 'well-letter';

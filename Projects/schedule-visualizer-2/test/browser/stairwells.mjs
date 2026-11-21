@@ -251,6 +251,8 @@ test('a stairwell\'s properties: one way for every flight, the Letter field, a r
   await waitFor('#inspector-properties #inspector-title', 'Stairwell West');
   assert.deepEqual(await wells(), [['A', 'West'], ['B', 'West']]);
   assert.equal(await said(), 'Stairwell A is now Stairwell West on every floor.');
+  // SV2-142: Enter says the result in a toast too, as the other fields do
+  assert.equal(await toastText(), 'Stairwell A is now Stairwell West on every floor.');
   // a row for each of the three stops, each with Show; Remove from stairwell on all
   const rows = await page.$$eval('#well-stops li', (all) => all.map((li) => [li.querySelector('.bi-row__text').textContent, Array.from(li.querySelectorAll('button')).map((b) => b.textContent)]));
   assert.deepEqual(rows, [['Floor 1', ['Show', 'Remove from stairwell']], ['Floor 2 (this stop)', ['Show', 'Remove from stairwell']], ['Floor 3', ['Show', 'Remove from stairwell']]]);
