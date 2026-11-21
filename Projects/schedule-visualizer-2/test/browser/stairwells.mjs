@@ -462,6 +462,83 @@ test('Stairwell through floors…, by keys alone: Shift+F10, Space on each tick,
   assert.equal(await entries(), before + 1);
 });
 
+// Stairs A and B elsewhere (columns 21 and 23 of row 11, Floor 1 to Floor 2),
+// then Stairs C at the stairs' place from Floor 1 to Floor 2; with `d`, Stairs D
+// on from Floor 2 to Floor 3 at the same place. (The W7 walk-through: the well
+// became F, Floor 2's row said only "stairs" and started unticked.)
+async function stairsC(d) {
+  await floors(4, d ? [1, 2, 3] : [1, 2]);
+  await page.evaluate(async (d) => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    const all = () => store.project.building.floors;
+    for (const x of [20, 22]) {
+      for (const n of [1, 2]) store.apply(actions.placeStairs, { floorId: all()[n - 1].id, cells: [x + 10 * 40] });
+      store.apply(actions.connectStairs, { a: { floorId: all()[0].id, cell: x + 10 * 40 }, b: { floorId: all()[1].id, cell: x + 10 * 40 } });
+    }
+    store.apply(actions.connectStairs, { a: { floorId: all()[0].id, cell: 14 + 10 * 40 }, b: { floorId: all()[1].id, cell: 14 + 10 * 40 } });
+    if (d) store.apply(actions.connectStairs, { a: { floorId: all()[1].id, cell: 14 + 10 * 40 }, b: { floorId: all()[2].id, cell: 14 + 10 * 40 } });
+  }, Boolean(d));
+  assert.deepEqual((await building()).connections.map((connection) => connection.label), d ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C']);
+  await showFloor('Floor 1');
+  await page.keyboard.press('v');
+  await menuOn(14, 10);
+  await choose('Stairwell through floors…');
+  await dialogOpen('stairwell-through-dialog');
+}
+
+const throughRows = () => page.$$eval('#stairwell-floors label', (all) => all.map((label) => [label.textContent, label.querySelector('input').checked, label.querySelector('input').disabled]));
+const throughJoin = () => page.$eval('#stairwell-through-dialog .btn--primary', (el) => ({ text: el.textContent, disabled: el.getAttribute('aria-disabled') === 'true' }));
+
+test('Stairwell through floors… from Stairs C: Floor 2 is "Stairs C, joined", ticked and fixed; one more floor is enough; the well is Stairwell C; the ticks are the app\'s teal', async () => {
+  await stairsC(false);
+  assert.deepEqual(await throughRows(), [
+    ['Floor 4: empty, will become stairs', false, false],
+    ['Floor 3: empty, will become stairs', false, false],
+    ['Floor 2: Stairs C, joined', true, true],
+    ['Floor 1: this floor, stairs', true, true],
+  ]);
+  assert.deepEqual(await throughJoin(), { text: 'Join floors as a stairwell', disabled: true });
+  // the ticks in the app's accent, not the browser's blue
+  const colours = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--accent)';
+    document.getElementById('stairwell-through-dialog').append(probe);
+    const accent = getComputedStyle(probe).color;
+    probe.remove();
+    return { accent, ticks: Array.from(document.querySelectorAll('#stairwell-floors input'), (box) => getComputedStyle(box).accentColor) };
+  });
+  assert.notEqual(colours.accent, '');
+  assert.deepEqual(colours.ticks, colours.ticks.map(() => colours.accent), 'every tick is drawn in --accent');
+  const ticks = await page.$$('#stairwell-floors input');
+  await ticks[1].click(); // Floor 3
+  assert.deepEqual(await throughJoin(), { text: 'Join Floors 1 to 3 as Stairwell C', disabled: false });
+  assert.equal(await text('#stairwell-through-letters'), 'Stairs C keeps its letter on every floor, map, poster and set of directions.');
+  const before = await entries();
+  await page.click('#stairwell-through-dialog .btn--primary');
+  await dialogGone('stairwell-through-dialog');
+  assert.equal(await entries(), before + 1, 'one undo step');
+  const now = await building();
+  assert.deepEqual(now.connections.map((connection) => [connection.label, connection.well || null]), [['A', null], ['B', null], ['C', 'C'], ['D', 'C']]);
+  assert.match(await toastText(), /^Stairwell C now runs through Floors 1 to 3 at row 11, column 15 \(1 flight made, 1 kept\)\. Stairs were drawn on Floor 3\.$/);
+});
+
+test('Stairwell through floors… from Stairs C with Stairs D above it: both floors joined and fixed, and the dialog says D will be called C', async () => {
+  await stairsC(true);
+  assert.deepEqual(await throughRows(), [
+    ['Floor 4: empty, will become stairs', false, false],
+    ['Floor 3: Stairs D, joined', true, true],
+    ['Floor 2: Stairs C, joined', true, true],
+    ['Floor 1: this floor, stairs', true, true],
+  ]);
+  assert.deepEqual(await throughJoin(), { text: 'Join Floors 1 to 3 as Stairwell C', disabled: false });
+  assert.equal(await text('#stairwell-through-letters'), 'Stairs D will be called C on every floor, map, poster and set of directions.');
+  await page.click('#stairwell-through-dialog .btn--primary');
+  await dialogGone('stairwell-through-dialog');
+  assert.deepEqual((await building()).connections.map((connection) => connection.well || null), [null, null, 'C', 'C']);
+  assert.match(await toastText(), / It reads C on every floor; D is not shown any more\.$/);
+});
+
 // ---------------------------------------------------------------- the Floor tab
 
 test('the Floor tab lists a stairwell as one row with its letter, floors and way; its Letter field and chips change the whole well', async () => {

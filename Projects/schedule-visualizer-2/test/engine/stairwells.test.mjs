@@ -169,17 +169,18 @@ test('stairwellThrough: one stairwell through three floors at the same cell; an 
   const project = clone(school());
   const before = project.building.floors[2].cells[CELL];
   assert.equal(before, '.', 'Floor 3 is empty at that cell');
-  const { after, text } = step(project, stairwellThrough, { floorId: floorId(1), cell: CELL, floorIds: [floorId(2), floorId(3)] }, 'Join Floors 1, 2 and 3 as one stairwell, Stairwell C');
+  const { after, text } = step(project, stairwellThrough, { floorId: floorId(1), cell: CELL, floorIds: [floorId(2), floorId(3)] }, 'Join Floors 1, 2 and 3 as one stairwell, Stairwell A');
   assert.equal(after.building.floors[2].cells[CELL], 'S', 'drawn as stairs on Floor 3');
   const found = stairwells(after.building);
   assert.equal(found.length, 1);
-  assert.equal(found[0].letter, 'C', 'the first letter no label or well uses');
+  assert.equal(found[0].letter, 'A', 'the letter of the stairs at the starting stop (DESIGN 16.7)');
   assert.equal(found[0].connectionIds.length, 2);
   assert.ok(found[0].connectionIds.includes('csample00a'), 'the flight that was there is kept');
-  assert.equal(flight(after, 'csample00a').well, 'C');
+  assert.equal(flight(after, 'csample00a').well, 'A');
   assert.equal(flight(after, 'csample00a').label, 'A', 'and keeps its own label');
   assert.equal(found[0].parts, 1);
-  assert.equal(text, 'Stairwell C now runs through Floors 1, 2 and 3 at row 9, column 13 (1 flight made, 1 kept). Stairs were drawn on Floor 3.');
+  assert.equal(text, 'Stairwell A now runs through Floors 1, 2 and 3 at row 9, column 13 (1 flight made, 1 kept). Stairs were drawn on Floor 3.');
+  assert.deepEqual(actions.scheduleOutcome(run(stairwellThrough, clone(school()), { floorId: floorId(1), cell: CELL, floorIds: [floorId(2), floorId(3)] })).renamed, [], 'no letter changes');
   // the new flight has its own label too, and every label is still its own
   assert.equal(new Set(after.building.connections.map((connection) => connection.label)).size, after.building.connections.length);
 });
@@ -246,6 +247,53 @@ test('stairwellThrough: a letter no label, well or elevator uses', () => {
   assert.equal(made.letter, 'C');
   assert.equal(made.connectionIds.length, 2);
   assert.equal(nextConnectionLabel(project.building.connections), 'C');
+});
+
+// Stairs C joins Floor 1 and Floor 2 at CELL; Stairs A and B are elsewhere, so
+// the first unused letter would be D. (The W7 walk-through: the well became F.)
+function stairsC() {
+  const project = chain(3);
+  project.building.connections = [
+    { id: 'cwell00011', label: 'A', a: { floorId: floorId(1), cell: 60 }, b: { floorId: floorId(2), cell: 60 }, direction: 'both' },
+    { id: 'cwell00012', label: 'B', a: { floorId: floorId(2), cell: 61 }, b: { floorId: floorId(3), cell: 61 }, direction: 'both' },
+    { id: 'cwell00013', label: 'C', a: { floorId: floorId(1), cell: CELL }, b: { floorId: floorId(2), cell: CELL }, direction: 'both' },
+  ];
+  for (const n of [1, 2, 3]) {
+    const floor = project.building.floors[n - 1];
+    floor.cells = floor.cells.slice(0, 60) + 'SS' + floor.cells.slice(62);
+  }
+  return project;
+}
+
+test('stairwellThrough from Stairs C keeps the letter C: "Join Floors 1 to 3 as Stairwell C", no letter changes (DESIGN 16.7, 16.12 item 2)', () => {
+  const project = stairsC();
+  assert.equal(nextConnectionLabel(project.building.connections), 'D');
+  const { after, text } = step(project, stairwellThrough, { floorId: floorId(1), cell: CELL, floorIds: [floorId(2), floorId(3)] }, 'Join Floors 1, 2 and 3 as one stairwell, Stairwell C');
+  const made = stairwells(after.building).find((well) => well.stops.length === 3);
+  assert.equal(made.letter, 'C');
+  assert.equal(flight(after, 'cwell00013').label, 'C', 'the kept flight keeps its label');
+  const added = after.building.connections.find((connection) => !project.building.connections.some((old) => old.id === connection.id));
+  assert.equal(added.label, 'D', 'the new flight takes a label of its own, not C again');
+  assert.equal(new Set(after.building.connections.map((connection) => connection.label)).size, after.building.connections.length);
+  assert.deepEqual(actions.scheduleOutcome(run(stairwellThrough, stairsC(), { floorId: floorId(1), cell: CELL, floorIds: [floorId(2), floorId(3)] })).renamed, []);
+  assert.equal(text, 'Stairwell C now runs through Floors 1, 2 and 3 at row 9, column 13 (1 flight made, 1 kept).');
+  // the same from the top: Floor 3 has no flight, the kept one is lower down
+  const fromTop = run(stairwellThrough, project, { floorId: floorId(3), cell: CELL, floorIds: [floorId(1), floorId(2)] });
+  assert.equal(scheduleLetter(fromTop), 'C');
+});
+
+const scheduleLetter = (project) => actions.scheduleOutcome(project).letter;
+
+test('stairwellThrough: when the starting stairs\' letter is another well\'s, the well takes a free letter and says which letter goes', () => {
+  const project = stairsC();
+  // an older planner left Stairwell C elsewhere beside the plain Stairs C
+  project.building.connections[0] = { ...project.building.connections[0], label: 'X', well: 'C' };
+  const after = stairwellThrough(freeze(project), { floorId: floorId(1), cell: CELL, floorIds: [floorId(2), floorId(3)] }, shared);
+  const outcome = actions.scheduleOutcome(after);
+  assert.equal(outcome.letter, 'A', 'the first letter no label or well uses');
+  assert.deepEqual(outcome.renamed, ['C'], 'Stairs C stops being shown');
+  assert.match(outcome.text, / It reads A on every floor; C is not shown any more\.$/);
+  assert.equal(flight(after, 'cwell00013').well, 'A');
 });
 
 // ---------------------------------------------------------------- add and remove a stop

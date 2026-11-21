@@ -807,3 +807,8 @@
     display: none;
   }
 }
+
+/* Stairwell through floors…: the floor ticks in the app's teal (SV2-138). */
+.stairwell-tick {
+  accent-color: var(--accent);
+}
