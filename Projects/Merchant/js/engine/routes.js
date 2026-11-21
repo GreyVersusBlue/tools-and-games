@@ -730,9 +730,14 @@ export function proposePlan(state, content, agent, route, { check = true, share 
     .filter(e => e.far && e.at !== null && e.far.p > e.at && !((state.stock[e.g] ?? 0) > 0 && boughtAt[e.g] === dest.id))
     .sort((x, y) => rank(x.g) - rank(y.g) || y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
   const carried = out.map(e => e.g);
-  // the goods to bring back that the plan tries, one at a time, the best three the map keeps for the road (MER-121), or the old pick where it keeps none
-  const backs = known.filter(t => t.direction === 'back' && t.stop === dest.id && !carried.includes(t.good)).slice(0, 3)
+  // the goods to bring back that the plan tries, one at a time: those the map keeps for the road, then any other the house has news of
+  // that is cheaper there than at home (a letter may name one the map's margin rule left out), or the old pick where there is none
+  const backs = known.filter(t => t.direction === 'back' && t.stop === dest.id && !carried.includes(t.good))
     .map(t => ({ good: t.good, there: t.there, home: t.here, ratio: t.here / t.there, age: t.age, ageWords: t.ageWords, guess: false }));
+  for (const g of Object.keys(dest.sells ?? {})) {
+    const far = farPrice(state, content, dest.id, g), at = homeP(g);
+    if (far && at !== null && far.p < at && !carried.includes(g) && !backs.some(b => b.good === g)) backs.push({ good: g, there: far.p, home: at, ratio: at / far.p, age: far.age, ageWords: far.ageWords, guess: false });
+  }
   if (!backs.length) { const b = bringBack(state, content, dest, carried, known); if (b) backs.push(b); }
   const budget = Math.floor(state.money * share);
   const cargo = {}, caps = {};
@@ -779,43 +784,69 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   // coarse sizes stop helping, so that adding or taking away one load of any good the plan could carry does not raise the
   // estimate (MER-121, play items 2 and 3).
   const sizes = (c, cur) => [...new Set([0, Math.ceil(c / 3), Math.ceil(c * 2 / 3), c, cur - 1, cur + 1])].filter(n => n >= 0 && n <= c && n !== cur);
-  const solve = back => {
-    let loads = { ...cargo }, fetch = true, top = worth(shape(back, loads, true, 0));
-    for (let pass = 0; pass < 10; pass++) {
-      let moved = false;
-      if (back) {   // the bring-back good stays only while it adds (a tie drops it: no purse, nothing to carry back)
-        const w = worth(shape(back, loads, !fetch, 0));
-        if (w > top || (w === top && fetch)) { top = w; fetch = !fetch; moved = true; }
-      }
-      for (const g of carried) {
-        for (const n of sizes(caps[g], loads[g] ?? 0)) {
-          const trial = { ...loads, [g]: n };
-          if (!n) delete trial[g];
-          for (const f of back ? [true, false] : [false]) {
-            const p = shape(back, trial, f, 0);
-            if (!affordable(p)) continue;
-            const w = worth(p);
-            if (w > top || (w === top && n < (loads[g] ?? 0) && f === fetch)) { top = w; loads = trial; fetch = f; moved = true; }
+  /** The search for one good to bring back: { climb(at), levels, purseOnly } where `climb` takes any move that raises the estimate from
+      `at` = { loads, fetch, money } until none does. The money sent to buy with goes in four steps of what the good's market takes
+      (a quarter to all of it), or none. */
+  const searchFor = back => {
+    const capBack = back ? Math.max(1, Math.ceil(dest.sells[back.good].depth * DEPTH_SHARE)) : 0;
+    const purseOnly = back ? Math.min(budget, Math.ceil(capBack * back.there * 1.15)) : 0;
+    const levels = [...new Set([0, ...(back ? [0.25, 0.5, 0.75, 1].map(f => Math.floor(purseOnly * f)) : [])])];
+    const climb = at => {
+      let { loads, fetch, money } = at, top = worth(shape(back, loads, fetch, money));
+      for (let pass = 0; pass < 10; pass++) {
+        let moved = false;
+        const take = (l, f, m, tieOk) => {
+          const p = shape(back, l, f, m);
+          if (!affordable(p)) return;
+          const w = worth(p);
+          if (w > top || (w === top && tieOk)) { top = w; loads = l; fetch = f; money = m; moved = true; }
+        };
+        if (back) take(loads, !fetch, money, fetch);   // the bring-back good stays only while it adds (a tie drops it: no purse, nothing to carry back)
+        if (back && fetch) {   // another quarter of the good's market, or one load's price more or less
+          for (const m of levels) if (m !== money) take(loads, true, m, false);
+          for (const m of [money - back.there, money + back.there]) if (m > 0 && m <= purseOnly && m !== money) take(loads, true, m, false);
+        }
+        for (const g of carried) {
+          for (const n of sizes(caps[g], loads[g] ?? 0)) {
+            const trial = { ...loads, [g]: n };
+            if (!n) delete trial[g];
+            for (const f of back ? [true, false] : [false]) take(trial, f, f ? money : 0, n < (loads[g] ?? 0) && f === fetch);
           }
         }
+        if (!moved) break;
       }
-      if (!moved) break;
-    }
-    let best = { back, loads, fetch, money: 0, net: top };
-    // money alone, when no good goes out: to buy the good that is the whole point of the trip
+      return { back, loads, fetch, money: fetch ? money : 0, net: top };
+    };
+    return { climb, levels };
+  };
+  // from the goods the budget buys first, and, where there is a good to bring back, from money alone: the two meet in the middle only a load at a time
+  const solve = back => {
+    const { climb, levels } = searchFor(back);
+    let best = climb({ loads: { ...cargo }, fetch: true, money: 0 });
     if (back) {
-      const capBack = Math.max(1, Math.ceil(dest.sells[back.good].depth * DEPTH_SHARE));
-      const purseOnly = Math.min(budget, Math.ceil(capBack * back.there * 1.15));
-      for (const f of [0.25, 0.5, 0.75, 1]) {
-        const money = Math.floor(purseOnly * f);
-        const w = worth(shape(back, {}, true, money));
-        if (money && w > best.net) best = { back, loads: {}, fetch: true, money, net: w };
-      }
+      const first = levels.filter(m => m > 0).sort((x, y) => worth(shape(back, {}, true, y)) - worth(shape(back, {}, true, x)))[0];
+      if (first) { const alone = climb({ loads: {}, fetch: true, money: first }); if (alone.net > best.net) best = alone; }
     }
     return best;
   };
+  // every good to bring back is priced once on the plan the first fill makes, and the two best are searched
+  const quick = back => Math.max(worth(shape(back, cargo, true, 0)), worth(shape(back, {}, true, Math.floor(Math.min(budget, Math.ceil(Math.max(1, Math.ceil(dest.sells[back.good].depth * DEPTH_SHARE)) * back.there * 1.15)) / 2))));
+  const tried = backs.length > 2 ? backs.map(b => ({ b, q: quick(b) })).sort((x, y) => y.q - x.q).slice(0, 2).map(x => x.b) : backs;
   let best = null;
-  for (const back of backs.length ? backs : [null]) { const b = solve(back); if (!best || b.net > best.net) best = b; }
+  for (const back of tried.length ? tried : [null]) { const b = solve(back); if (!best || b.net > best.net) best = b; }
+  // the loads the search settled on may suit another good to bring back better than the one it started from: try each on them, and climb again
+  for (let round = 0; round < 2 && best.back; round++) {
+    let better = null;
+    for (const b of backs) {
+      if (b.good === best.back.good) continue;
+      const { climb, levels } = searchFor(b);
+      const money = levels.filter(m => m <= best.money).at(-1) ?? 0;
+      const r = climb({ loads: best.loads, fetch: true, money });
+      if (r.net > (better ?? best).net) better = r;
+    }
+    if (!better) break;
+    best = better;
+  }
   const back = best.back;
   const nothing = why => ({ ...shape(back, {}, false, 0), why });
   if (refused && !hasQirad) return nothing(refused);

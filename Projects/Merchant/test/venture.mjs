@@ -1059,4 +1059,145 @@ test('MER-103 returnPaper: goodsBack and cargoValue say what came home unsold at
   eq([sold.goodsBack, sold.cargoValue], [{}, 0]);
 });
 
+// ---- one calculation for the map and the sheet (MER-121)
+
+/** The sheet's own pick for a road (outfit.js): the free agent who knows the stop first, then the rest, the first with a plan that pays. */
+function sheetFor(s, c, route) {
+  const stop = c.routes.find(r => r.id === route).to;
+  const free = c.agents.filter(a => s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id));
+  const knows = a => a.traits?.includes(`knows-${stop}`);
+  for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
+    const plan = proposePlan(s, c, a.id, route);
+    if (plan && !plan.why) return { agent: a.id, plan };
+  }
+  return null;
+}
+/** Answers every open paper with the first choice the engine takes. */
+function answerAll(s, c) {
+  for (const p of s.desk) {
+    if (p.state !== 'open') continue;
+    for (const ch of paperChoices(s, c, p.id).filter(x => holds(x.requires, s, c))) { try { s = choose(s, c, p.id, ch.id); break; } catch { /* a choice the state refuses: the next */ } }
+  }
+  return s;
+}
+/** Seeded games of the real city played on, six seeds of fourteen seasons, a third agent hired from the start and a trip sent from the
+    sheet's own draft whenever it has one. The desks after the first trip has gone (the sheet opens on a proposal from then on), once
+    for the suite: [{ s, at }]. */
+let playedDesks = null;
+function played(c, visit) {
+  if (!playedDesks) {
+    playedDesks = [];
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+      s.agents.ali.hired = true; s.agents.ali.where = 'cairo';
+      for (let i = 0; i < 14 && s.phase !== 'ended' && s.phase !== 'recall'; i++) {
+        s = s.phase === 'interlude' ? openSeason(s, c) : endSeason(answerAll(s, c), c);
+        if (s.phase !== 'desk') continue;
+        if (s.log.some(e => e.kind === 'outfit')) playedDesks.push({ s: structuredClone(s), at: `${seed}/${i}` });
+        const d = view(s, c).venture;
+        if (d && !d.plan.why && checkPlan(s, c, d.plan).ok) s = outfit(s, c, d.plan);
+      }
+    }
+  }
+  for (const { s, at } of playedDesks) visit(s, at);
+  return playedDesks.length;
+}
+
+test('MER-121 (1) every road the map lists opens a sheet that carries the listed trade and expects more than 0 (play a086: map "Qus pepper at 88", sheet "would lose about 18")', () => {
+  let rows = 0, roads = new Set();
+  const seen = played(C, (s, at) => {
+    for (const t of bestTrades(s, C, Infinity)) {
+      const sheet = sheetFor(s, C, t.route);
+      ok(sheet, `${at}: the map lists ${t.good} on ${t.route} and no plan pays on it`);
+      const { plan } = sheet, e = estimate(s, C, plan);
+      ok(t.direction === 'out' ? plan.cargo[t.good] > 0 : plan.buy.includes(t.good), `${at}: the sheet for ${t.route} does not carry the listed ${t.good} (${t.direction}): ${JSON.stringify(plan)}`);
+      ok(e.net > 0, `${at}: ${t.route} estimates ${e.net}`);
+      eq([t.agent, t.expected], [sheet.agent, Math.round(e.net)], `${at}: the map's figure and agent are the sheet's`);
+      eq(checkPlan(s, C, plan).ok, true, `${at}: and the engine takes it`);
+      rows++; roads.add(t.route);
+    }
+  });
+  ok(seen >= 30 && rows >= 40 && roads.size >= 3, `${seen} desks, ${rows} listed trades on ${roads.size} roads`);
+});
+
+test('MER-121 (1) the map lists nothing the house cannot make now: nobody free, or no money for a load', () => {
+  const c = still();
+  const s = know(know(game(c), c, 'hilltown', 'wool', 30), c, 'hilltown', 'salt', 3);
+  ok(bestTrades(s, c).length > 0, 'news and an agent: trades');
+  const away = structuredClone(s); away.agents.mira.where = 'road';
+  eq(bestTrades(away, c), [], 'nobody at home, so nothing the house can send');
+  const poor = structuredClone(s); poor.money = 5; poor.stock = {};
+  eq(bestTrades(poor, c), [], 'five dinars buy no load, and a plan that cannot be fitted out is not listed (the map of play a086)');
+});
+
+test('MER-121 (2) adding one load of a good the map or a price letter names for the road never raises the sheet\'s estimate by more than 3 dinars, inside the stake the sheet opens with', () => {
+  const MARGIN = 3;
+  let tried = 0, named = new Set();
+  played(C, (s, at) => {
+    const idx = seasonIndex(s, C), budget = Math.floor(s.money * 0.5);
+    for (const d of R.destinations(s, C)) {
+      const sheet = sheetFor(s, C, d.route);
+      if (!sheet) continue;
+      const { plan } = sheet, base = estimate(s, C, plan).net, dest = C.stops.find(x => x.id === d.stop);
+      // the goods named for the road: the map's trades and the goods the latest letter from the stop (this season's or last) gives a price for
+      const goods = new Set(bestTrades(s, C, Infinity, d.route).map(t => t.good));
+      for (const [g, k] of Object.entries(s.known[d.stop] ?? {})) if (idx - k.at <= 1) goods.add(g);
+      for (const g of goods) {
+        const there = s.known[d.stop]?.[g]?.p, here = M.truePrice(s, C, 'cairo', g);
+        if (!dest.sells?.[g] || !there || here === null) continue;
+        let trial;
+        if (there > here) {   // carried out: one more load
+          const cap = Math.max(1, Math.ceil(Math.min(C.stops.find(x => x.id === 'cairo').sells[g].depth, dest.sells[g].depth) * R.DEPTH_SHARE));
+          if ((plan.cargo[g] ?? 0) >= cap) continue;
+          trial = { ...plan, cargo: { ...plan.cargo, [g]: (plan.cargo[g] ?? 0) + 1 }, sell: [...new Set([...plan.sell, g])] };
+        } else if (plan.buy[0] === g && plan.purse > 0) {   // brought back: one more load's price in the purse, inside the good's market (a default plan sends no more than DEPTH_SHARE of its depth, paid at 1.15 times the price)
+          if (plan.purse + there > Math.ceil(Math.max(1, Math.ceil(dest.sells[g].depth * R.DEPTH_SHARE)) * there * 1.15)) continue;
+          trial = { ...plan, purse: plan.purse + there };
+        } else continue;
+        const c1 = checkPlan(s, C, trial);
+        if (!c1.ok || c1.cost.total > budget) continue;
+        const gain = estimate(s, C, trial).net - base;
+        ok(gain <= MARGIN, `${at} ${d.route}: one more ${g} (${there} there, ${here} at home) takes the estimate from ${base} to ${base + gain}`);
+        tried++; named.add(g);
+      }
+    }
+  });
+  ok(tried >= 60 && named.size >= 4, `${tried} trials over ${named.size} goods`);
+});
+
+test('MER-121 (3) the plan does not send a good back to the stop the last trip bought it at; bringHome writes where each good was bought', () => {
+  const c = still();
+  const s = game(c);
+  know(s, c, 'hilltown', 'wool', 30); know(s, c, 'hilltown', 'salt', 3);
+  s.stock.wool = 4;
+  eq(proposePlan(s, c, 'mira', 'harbour-hilltown').cargo.wool, 8, 'with no word of where it came from the four loads go, and four more are bought');
+  const bought = structuredClone(s);
+  bought.log.push({ at: 0, kind: 'brought', ref: 'x1', from: { wool: 'hilltown' } });
+  ok(!(proposePlan(bought, c, 'mira', 'harbour-hilltown').cargo.wool > 0), 'wool the last trip bought at Hilltown stays out of the plan to Hilltown');
+  const elsewhere = structuredClone(s);
+  elsewhere.log.push({ at: 0, kind: 'brought', ref: 'x1', from: { wool: 'saltmarsh' } });
+  eq(proposePlan(elsewhere, c, 'mira', 'harbour-hilltown').cargo.wool, 8, 'wool bought at another stop goes');
+  // the entry is the engine's: a trip that buys salt at Hilltown and brings it home writes it
+  const u = know(game(c), c, 'hilltown', 'salt', 3);
+  const back = toReturn(outfit(u, c, { agent: 'mira', route: 'harbour-hilltown', cargo: { wool: 4 }, purse: 100, contract: 'own', sell: ['wool'], buy: ['salt'] }), c);
+  const note = back.s.log.find(e => e.kind === 'brought');
+  ok(back.s.stock.salt > 0, 'salt came home');
+  eq(note.from, { salt: 'hilltown' });
+});
+
+test('MER-121 (3) over played states no proposal sends a good in the warehouse back to the stop the last trip bought it at', () => {
+  let checked = 0;
+  played(C, (s, at) => {
+    const from = {};
+    for (const e of s.log) if (e.kind === 'brought') Object.assign(from, e.from);
+    for (const d of R.destinations(s, C)) for (const a of ['yusuf', 'ali']) {
+      if (s.agents[a].where !== 'cairo' || s.expeditions.some(x => x.agent === a)) continue;
+      const plan = proposePlan(s, C, a, d.route, { check: false });
+      if (!plan) continue;
+      for (const [g, n] of Object.entries(plan.cargo ?? {})) if (n > 0 && (s.stock[g] ?? 0) > 0 && from[g]) { ok(from[g] !== d.stop, `${at}: ${g} bought at ${d.stop} goes back to it`); checked++; }
+    }
+  });
+  ok(checked >= 10, `${checked} goods in the warehouse from a trip, in plans`);
+});
+
 await done();
