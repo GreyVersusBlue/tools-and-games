@@ -86,7 +86,7 @@ test('the worker answers for the sample school, with typed arrays and the walk t
       cellDelay: Object.prototype.toString.call(transition.cellDelay),
       loads: result.loads.map((load) => [load.dayTypeId, load.unit, Object.prototype.toString.call(load.cells.busiest), load.max.busiest > 0]),
       places: result.places.places.length > 0 && Object.prototype.toString.call(result.places.placeOfNode),
-      buildingFindings: result.buildingFindings.length,
+      buildingFindings: result.buildingFindings.map((finding) => finding.severity + ' ' + finding.id),
       work: result.work,
     };
   });
@@ -111,7 +111,11 @@ test('the worker answers for the sample school, with typed arrays and the walk t
   assert.equal(seen.cellDelay, '[object Int32Array]');
   assert.deepEqual(seen.loads, [['dsample00a', 'students', '[object Int32Array]', true], ['dsample00b', 'students', '[object Int32Array]', true]]);
   assert.equal(seen.places, '[object Int32Array]');
-  assert.equal(seen.buildingFindings, 0);
+  // SV2-135's dead-end check moved this pin: the sample's halls end in dead
+  // ends and nothing else is wrong in the building. The page shows the full
+  // sample, so these are test/engine/sample-school.test.mjs's four, not the
+  // level sample's that test/engine/worker.test.mjs pins.
+  assert.deepEqual(seen.buildingFindings, ['note dead-end:fsample001:287', 'note dead-end:fsample002:287', 'warning dead-end:fsample002:314', 'note dead-end:fsample003:292']);
   assert.equal(seen.work.transitionsRun, 15);
 });
 
