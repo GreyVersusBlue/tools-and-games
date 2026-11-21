@@ -660,7 +660,7 @@ function longRoadStates(road, { seeds, ns, marks }) {
 }
 const errors = rows => ({ mean: rows.reduce((a, r) => a + Math.abs(r.est - r.made), 0) / rows.length, worst: Math.max(...rows.map(r => Math.abs(r.est - r.made))), rel: Math.max(...rows.map(r => Math.abs(r.est - r.made) / r.stake)) });
 
-test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 6 dinars and 13 at worst, and on the marked-home trips a mean of at most 6', () => {
+test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 8 dinars, at most two trips more than 13 dinars out, and on the marked-home trips a mean of at most 9.5', () => {
   // The same 32 trips (2 seeds, 3 starts, both agents, three homes), measured before and after MER-115: mean 7.88 before, 6.88
   // after; worst 16 both; the 22 marked-home trips 7.36 before and 5.91 after, which is what the last line holds (the carried
   // home price is worth about 1.5 dinars a trip here, as the home price barely moves in four seasons). What is left is not the
@@ -670,15 +670,24 @@ test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmar
   // high on the wage alone are exact on it: the same 32 trips now read mean 5.81, worst 13, 1.46 percent of the stake, and 5.91 on
   // the marked-home trips (6.88, 16, 2.1 and 5.91 before). The 13 is on the start-3 trips with the highest estimates (194 against 181 and 190 against 177); its cause
   // was not traced.
+  // MER-111b: the go-further card (Yusuf's `contract-limits`) now waits for a trip on the road, so the cards the seeded states
+  // draw in their first three seasons are not the ones they drew, and the same 32 trips read mean 7.69 (not 5.81), 9.00 on the
+  // 22 marked-home trips (not 5.91), worst 38 (not 13). All of that is one state: seed 1, start 3, home marked high, Yusuf and
+  // Ali both, estimated 105 and 101 where the trips made 143 and 139 (a stake of 385). Both settle at the jump, and `jump` closes
+  // home's silk at 560 where the estimate carried it to 535; a price the estimate cannot know, so it is held as a count and not
+  // a worst case: at most two trips over 13 dinars out (before, none over 13). The means are what the MER-115 carry and the
+  // MER-116 wage count hold: reverting the wage count reads a mean of 8.38 and reverting the carry 9.88, both over the 8, and each fails on the mean line (broken once each). Damascus's pepper does not move
+  // these 32 trips (identical with the old base).
   const { rows, lossy } = longRoadStates('cairo-aleppo', { seeds: [1, 2], ns: [0, 2, 3], marks: [[1, 0], [1.5, 0.2], [0.7, -0.1]] });
   ok(rows.length >= 30, `${rows.length} trips compared, ${lossy} left out for a loss`);
   for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
   const all = errors(rows);
-  ok(all.mean <= 6, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
-  ok(all.worst <= 13, `worst error ${all.worst} dinars`);
-  ok(all.rel <= 0.015, `worst error ${(all.rel * 100).toFixed(1)} percent of the stake`);
+  ok(all.mean <= 8, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
+  const far = rows.filter(r => Math.abs(r.est - r.made) > 13);
+  ok(far.length <= 2, `${far.length} trips more than 13 dinars out: ${far.map(r => `${r.at} estimated ${r.est}, made ${r.made}`).join('; ')}`);
+  ok(all.worst <= 38, `worst error ${all.worst} dinars`);
   const marked = errors(rows.filter(r => !r.at.includes('/1/')));
-  ok(marked.mean <= 6, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
+  ok(marked.mean <= 9.5, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
 });
 
 test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an act jump, which the estimate settles as `jump` does (the quotes it left with, the wage of the whole road): a mean error of at most 5 dinars, 12 at worst, 2.5 percent of the stake', () => {
