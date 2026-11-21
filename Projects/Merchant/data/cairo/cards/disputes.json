@@ -9,7 +9,7 @@
       "seal": null
     },
     "title": "The indigo weighs less",
-    "body": "Rahel sold you a sack of indigo, a blue dye. At your warehouse it weighs less than she said. She says your scales are wrong. Your clerk says hers are.",
+    "body": "Rahel offers you a sack of indigo, a blue dye, and says how much it weighs. Your clerk weighed a sample, and it comes out lighter. She says your scales are wrong. Your clerk says hers are.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -55,7 +55,7 @@
       },
       {
         "id": "walk",
-        "label": "Say nothing and buy elsewhere",
+        "label": "Say no and buy elsewhere",
         "hint": "You buy elsewhere, and other sellers hear of it.",
         "now": [
           {

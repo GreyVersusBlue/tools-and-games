@@ -314,7 +314,11 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const goods = backGoods();
     const chosen = draft.buy.filter(g => goods.includes(g));
     const names = chosen.map(g => goodName(content, g));
-    const line = names.length ? `${cap(names.join(' and '))}, bought with the money left after selling in ${stop.name}.` : `Nothing: whatever the goods sell for comes home as money.`;
+    // MER-113b: with money in the purse and a good the stop could name, "Nothing" is what the engine refuses, so the line says that
+    // instead of promising money home. Without a purse, the goods' own sale comes home as money, as before.
+    const needsGood = draft.purse > 0 && !!defaultBack();
+    const noneLine = needsGood ? 'Money sent to buy with needs a good to bring back, so choose one.' : 'Whatever the goods sell for comes home as money.';
+    const line = names.length ? `${cap(names.join(' and '))}, bought with the money left after selling in ${stop.name}.` : `Nothing: ${noneLine.charAt(0).toLowerCase()}${noneLine.slice(1)}`;
     if (!expanded('back')) {
       return section('back', 'What they bring back', summary('back', line, () => { open.add('back'); render('outfit-back-h'); }, 'what they bring back'));
     }
@@ -331,6 +335,13 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
         homeP ? h('span', { class: 'might' }, `${homeStop.name} pays about ${num(homeP)} for it now.`) : null,
         g === proposed?.plan.buy?.[0] ? h('span', { class: 'suggested' }, 'The house suggests this one.') : null));
     });
+    // MER-113: "Nothing" is a choice with a button of its own, last in the list, which clears every pick. Its class is not
+    // `back-pick`, so a press on the first good never lands on it.
+    if (goods.length) rows.push(h('li', { class: 'good back-good' },
+      h('button', { class: 'back-none', type: 'button', id: 'back-nothing', dataset: { key: 'back-nothing' }, 'aria-pressed': chosen.length ? 'false' : 'true',
+        onclick: () => { draft.buy = []; render('back-nothing'); } },
+      h('strong', null, 'Nothing'),
+      h('span', { class: 'far' }, noneLine))));
     return section('back', 'What they bring back',
       goods.length ? h('ul', { class: 'goods', id: 'outfit-back-goods' }, rows) : h('p', { class: 'none', id: 'outfit-back-none' }, `${stop.name} sells nothing ${homeStop.name} trades in, so what the goods fetch comes home as money.`),
       h('p', { class: 'total', id: 'outfit-back-total' }, line),
@@ -415,10 +426,14 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     }
     const a = agent(), s = sendState();
     const label = a ? `Send ${a.name} to ${stop.name}` : `Send someone to ${stop.name}`;
-    const send = h('button', { class: 'button primary send', type: 'button', id: 'outfit-send', dataset: { key: 'outfit-send' }, 'aria-disabled': s.ok ? 'false' : 'true',
-      'aria-describedby': 'outfit-estimate outfit-reasons', onclick: () => doSend() }, label);
     // the line under Send is the engine's (estimate().line) for the plan as it stands; a plan the engine refuses has no estimate
     const est = checked().estimate;
+    // MER-117: a road too long to come home before the years skip is settled by `jump` at the prices the party left with; the figure above
+    // is already worked out that way, and this says so in one sentence (estimate().settledAtJump)
+    const settled = est?.settledAtJump && a
+      ? h('p', { class: 'estimate settled', id: 'outfit-settled' }, `The years pass before ${a.name} is home: the house will be paid at the prices ${a.name} left with.`) : null;
+    const send = h('button', { class: 'button primary send', type: 'button', id: 'outfit-send', dataset: { key: 'outfit-send' }, 'aria-disabled': s.ok ? 'false' : 'true',
+      'aria-describedby': `outfit-estimate${settled ? ' outfit-settled' : ''} outfit-reasons`, onclick: () => doSend() }, label);
     const estimate = h('p', { class: 'estimate', id: 'outfit-estimate' }, est ? est.line : 'The estimate comes when the plan can be sent.');
     const reasons = h('div', { class: 'reasons', id: 'outfit-reasons' }, s.ok ? null : s.reasons.map(r => h('p', null, r)));
     // the sheet tells the one-press player what is on it, once
@@ -428,8 +443,13 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     dialog.replaceChildren(
       h('h2', { id: titleId, tabindex: '-1' }, `Outfit an expedition to ${stop.name}`),
       ...[lead, whoSection(), whereSection(), carrySection(), backSection(), costSheet(quote()), first ? null : contractSection()].filter(Boolean),
-      h('div', { class: 'send-row' }, estimate, reasons, h('div', { class: 'panel-actions' },
+      h('div', { class: 'send-row' }, estimate, settled, reasons, h('div', { class: 'panel-actions' },
         h('button', { class: 'button', type: 'button', id: 'outfit-cancel', onclick: () => onCancel() }, 'Back to the map'), send)));
+    // MER-117: the Send bar sticks over the foot of the scroll, and scrolling a link into view stops it at `scroll-padding-bottom`. The bar is
+    // taller than the stylesheet's fixed padding on a phone (a wrapped estimate and two refusals), so the padding is the bar's own height.
+    const bar = qs('.send-row', dialog), clear = () => { dialog.style.scrollPaddingBottom = `${bar.offsetHeight + 8}px`; };
+    clear();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(clear).observe(bar);
     if (focusKey) {
       const el = document.getElementById(focusKey) ?? qs(`[data-key="${focusKey}"]`, dialog);
       el?.focus();

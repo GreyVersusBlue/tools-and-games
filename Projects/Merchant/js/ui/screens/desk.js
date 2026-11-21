@@ -5,7 +5,7 @@
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { leftHow } from '../../engine/agents.js';
-import { front, back, record, edge, paperTitle, happened, num, dinars, RECORD_KINDS } from './paper.js';
+import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, RECORD_KINDS } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
@@ -105,6 +105,16 @@ export function createDesk(app) {
     location.hash = 'map';
   }
 
+  /** The bar's worth line (MER-113, MER-113b): cash and stock less debts, plus what is out on the road at the house's share. The
+      sentence on it says in plain words what the figure holds where the number moves, as a title and as the description a screen reader reads. */
+  function worthLine(w) {
+    const r = w.onRoad, bits = [];
+    if (r.loads) bits.push(`${num(r.loads)} ${r.loads === 1 ? 'load' : 'loads'} of goods${r.unpriced ? ` (${num(r.unpriced)} with no known price, counted for nothing)` : ''}`);
+    if (r.money) bits.push(`${dinars(r.money)} sent to buy with`);
+    const say = `Worth is the house's cash and the goods in the warehouse at the last prices known at home, less what it owes, plus ${bits.length ? `what is out on the road, the house's share only: ${bits.join(' and ')}` : 'whatever is out on the road, which is nothing now'}.`;
+    return h('p', { class: 'worth', id: 'bar-worth', title: say, 'aria-description': say }, `· worth about ${num(w.net + r.total)}`);
+  }
+
   function drawBar(v) {
     const total = (content.calendar.lengths?.[app.state.length]?.acts ?? []).reduce((n, a) => n + a.to - a.from + 1, 0);
     const held = Object.values(app.state.stock).reduce((n, x) => n + x, 0);
@@ -115,7 +125,7 @@ export function createDesk(app) {
         h('p', { class: 'count', id: 'bar-count' }, `Season ${app.state.t + 1} of ${total} · Act ${WORDS[v.act - 1] ?? v.act}`)),
       h('div', { class: 'bar-money' },
         h('p', { class: 'money', id: 'bar-money' }, icon(ICONS.coin), h('span', null, dinars(v.money))),
-        h('p', { class: 'worth', id: 'bar-worth' }, `· worth about ${num(engine.netWealth(app.state, content).net)}`),
+        worthLine(engine.netWealth(app.state, content)),
         h('button', { class: 'bar-btn loads', type: 'button', id: 'btn-warehouse', 'aria-haspopup': 'dialog',
           onclick: e => openBook('ledger', e.currentTarget, 'warehouse') }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
       h('div', { class: 'bar-tools' },
@@ -227,6 +237,8 @@ export function createDesk(app) {
         ...(gap?.settled ?? []).flatMap(x => [
           h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text),
           ...(cargoLine(x.cargo) ? [h('p', { class: 'sheet-body', id: `cargo-${x.expedition}` }, cargoLine(x.cargo))] : []),
+          // what the sheet hoped and the one reason for the gap, as the return paper will say it (MER-119)
+          ...(x.why ? [h('p', { class: 'sheet-body', id: `hoped-${x.expedition}` }, returnLead(content, { kind: 'return', data: { hoped: x.hoped, why: x.why } }))] : []),
         ]),
         ...(gap?.settled?.length ? [h('p', { class: 'sheet-body', id: 'interlude-trips' }, tripsLine(gap.settled))] : []),
         ...(gap?.agents ?? []).map(g => {
