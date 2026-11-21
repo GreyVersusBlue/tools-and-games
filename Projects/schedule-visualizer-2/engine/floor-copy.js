@@ -202,7 +202,15 @@ function joinsFor(building, source, top) {
     if (join) joins.push(join);
   }
   // stairs first, then elevators, each in cell order: the sentence reads "Stairs A will run…; Elevator D gets a stop…"
-  return joins.filter((join) => join.type !== 'elevator').concat(joins.filter((join) => join.type === 'elevator'));
+  const ordered = joins.filter((join) => join.type !== 'elevator').concat(joins.filter((join) => join.type === 'elevator'));
+  // each new connection's own label, as connectStairs will give it, one after
+  // another in this order: a plain flight is shown by it ("Stairs C")
+  const labels = building.connections.slice();
+  return ordered.map((join) => {
+    const label = nextConnectionLabel(labels);
+    labels.push({ label, well: join.type === 'well-extend' || join.type === 'well-new' ? join.letter : undefined });
+    return join.type === 'plain' ? { ...join, newLetter: label } : join;
+  });
 }
 
 // ---------------------------------------------------------------- the dialog
@@ -331,14 +339,16 @@ function describeCopy(project, floorId, options) {
   };
 }
 
-// A clause for one join, no capital at the end and no full stop: the dialog
-// strings them with "; ". It names no letter change, because none is made.
+// A clause for one join, starting with a capital (each names its stairs or
+// elevator first) and with no full stop: the dialog strings them with "; ". It
+// names no letter change, because none is made; a plain flight is named by
+// the new letter it gets.
 function joinText(building, join, top, newName) {
   const name = (floorId) => (building.floors.find((floor) => floor.id === floorId) || { name: '' }).name;
   if (join.type === 'elevator') return 'Elevator ' + join.letter + ' gets a stop on ' + newName;
   if (join.type === 'well-extend') return 'Stairwell ' + join.letter + ' will run on to ' + newName;
   if (join.type === 'well-new') return 'Stairs ' + join.letter + ' will run from ' + name(join.from) + ' to ' + newName + ' as one stairwell';
-  return 'a new flight joins ' + top.name + ' to ' + newName + ' (Stairs ' + list(join.letters) + ' stay separate stairs; Make one stairwell is in the stair\'s properties)';
+  return 'Stairs ' + join.newLetter + ', a new flight, will join ' + top.name + ' to ' + newName + ' (Stairs ' + list(join.letters) + ' stay separate stairs; Make one stairwell is in the stair\'s properties)';
 }
 
 // ---------------------------------------------------------------- the action

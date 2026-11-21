@@ -501,12 +501,14 @@ test('join: two or more plain flights in the run leave a plain flight, and the d
   const info = describeFloorDuplicate(project, 'fsample003');
   assert.equal(info.joins[0].type, 'plain');
   assert.match(info.separateText, /^Stairs A and B stay separate stairs; Make one stairwell is in the stair's properties\.$/);
-  assert.match(info.joinText, /a new flight joins Floor 3 to Floor 4/);
+  assert.equal(info.joinText, 'Stairs C, a new flight, will join Floor 3 to Floor 4 (Stairs A and B stay separate stairs; Make one stairwell is in the stair\'s properties).', 'a capital first, and the new flight named by its letter');
   const after = run(project, { floorId: 'fsample003' });
+  assert.equal(scheduleOutcome(after).text, 'Duplicated Floor 3 as Floor 4: ' + info.joinText);
   assert.deepEqual(after.building.connections.slice(0, 2), project.building.connections, 'flights A and B are untouched');
   const fresh = connectionsTouching(after, newest(after).id)[0];
   assert.equal(fresh.well, undefined, 'a plain flight');
   assert.equal(fresh.label, 'C');
+  assert.equal(info.joins[0].newLetter, fresh.label, 'the letter the dialog named is the one it got');
   assert.deepEqual(stairwells(after.building), []);
   assert.deepEqual(after.building.connections.map(stairsLetter), ['A', 'B', 'C']);
 });
