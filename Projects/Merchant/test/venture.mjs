@@ -686,7 +686,7 @@ test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an 
   // prices the party left with (`x.quote`, not the market it arrives to) and the wage of the whole road. MER-115 measured these 10
   // trips (4 seeds, 2 starts, both agents, home unmarked) at mean 74.4, worst 92, 14.2 percent of the stake, because the estimate
   // priced the arrival and charged the wage of the road's waits. MER-116 reads mean 4.8, worst 12, 2.1 percent. What is left is
-  // 12 dinars on four of the ten trips (seeds 1 and 3 for Yusuf and Ali, start 0), the estimate high each time; its cause was not
+  // 12 dinars on four of the ten trips (seeds 1, 3 and 4, start 0), the estimate low each time; its cause was not
   // traced. The seeded road risk loses 4 of every 14 of these trips, which are left out.
   const { rows, lossy } = longRoadStates('cairo-samarkand', { seeds: [1, 2, 3, 4], ns: [0, 2], marks: [[1, 0]] });
   ok(rows.length >= 8, `${rows.length} trips compared, ${lossy} left out for a loss`);
