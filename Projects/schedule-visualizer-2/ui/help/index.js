@@ -355,7 +355,15 @@ export function openHelp(ctx, options) {
       }
       const first = current && current.results[0];
       if (first) open(first.entry, 0);
-    } else if (event.key === 'ArrowDown' && mode === 'results') {
+    } else if (event.key === 'ArrowDown') {
+      // during the 150 ms the list on screen is the last query's: settle
+      // first, so the focus goes to a result of what the field says now
+      if (typing) {
+        clearTimeout(typing);
+        settle();
+        speak();
+      }
+      if (mode !== 'results') return;
       const all = resultButtons();
       if (all.length > 0) {
         event.preventDefault();

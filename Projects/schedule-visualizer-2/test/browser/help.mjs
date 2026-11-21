@@ -642,6 +642,24 @@ test('Search help, by keyboard: ArrowDown from the field to the first result, Ar
       return at.top >= scroller.top - 1 && at.bottom <= scroller.bottom + 1;
     });
     assert.equal(visible, true, 'the focused result is out of view');
+    // ArrowDown while the 150 ms of typing have not settled goes to the new
+    // list's first result, not to the old list's (which the new one replaces)
+    await page.focus(FIELD);
+    const pending = await page.evaluate(() => {
+      const field = document.querySelector('#help-dialog .help__field');
+      field.value = 'dead end';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      const was = document.getElementById('help-dialog').dataset.pending || null;
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      return was;
+    });
+    assert.equal(pending, 'true', 'the ArrowDown was not pressed during the typing wait');
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+    const early = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { result: el.dataset.result || null, connected: el.isConnected, title: el.querySelector('.help__result-title') ? el.querySelector('.help__result-title').textContent : null };
+    });
+    assert.deepEqual(early, { result: '0', connected: true, title: 'Dead end' }, 'ArrowDown during the typing wait did not land on the new list\'s first result');
     // Enter on the field opens the first result
     await page.focus(FIELD);
     await page.keyboard.press('Enter');
