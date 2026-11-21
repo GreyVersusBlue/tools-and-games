@@ -575,6 +575,25 @@ try {
             ok(!got['.sheet-head .sender'], `the bar overlaps the sender line: ${got['.sheet-head .sender']}`);
             ok(!got['.stack-count'], `the bar overlaps the papers-left tag: ${got['.stack-count']}`);
           });
+          // MER-108: where the page scrolls under the fixed bar (the upright phones), nothing of a paper shows through it. Measured with the page
+          // scrolled down half a screen; on a frame that never scrolls no .sheet reaches the bar and the bar keeps the board's translucent look.
+          await test(`${tag}: scrolled down, the top bar is opaque over any paper under it and stacks above it`, async () => {
+            await page.evaluate(() => window.scrollTo(0, Math.round(innerHeight / 2)));
+            await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+            const got = await page.evaluate(() => {
+              const bar = document.querySelector('.topbar');
+              if (!bar || !bar.checkVisibility()) return { missing: true };
+              const r = bar.getBoundingClientRect();
+              const under = [...document.querySelectorAll('.sheet')].filter(e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom - 0.5 && b.bottom > r.top + 0.5; }).length;
+              const bg = getComputedStyle(bar).backgroundColor.match(/[\d.]+/g).map(Number);
+              const tops = [0.2, 0.5, 0.8].map(f => { const e = document.elementFromPoint(r.left + r.width * f, r.top + r.height / 2); return !!e && (e === bar || bar.contains(e)); });
+              return { under, alpha: bg.length > 3 ? bg[3] : 1, tops, scrollY: Math.round(scrollY) };
+            });
+            await page.evaluate(() => window.scrollTo(0, 0));
+            ok(!got.missing, 'the top bar is not on the desk');
+            ok(!got.under || got.alpha === 1, `${got.under} paper box(es) lie under the bar at scrollY ${got.scrollY} and the bar is ${got.alpha} opaque, so their text shows through`);
+            ok(!got.under || got.tops.every(Boolean), `a paper is above the bar at one of three points inside it: ${got.tops}`);
+          });
           // the End the season bar is opaque wherever it covers other papers, and the last choice clears it when the page is scrolled to its foot
           await test(`${tag}: End the season shows nothing from under it and never covers the last choice`, async () => {
             await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));

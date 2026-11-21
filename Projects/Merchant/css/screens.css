@@ -218,7 +218,8 @@ html.large-text .title-what { display: none; }
   /* MER-105: two rows, not three. The date and Map/Menu share the first, the money and the worth figure (kept whole) the second:
      about 80 px, so the 7.4rem a placeholder still leaves above the papers always clears it. At three rows the bar was 149 px
      and sat over the paper's sender line and the papers-left tag. */
-  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--s3); row-gap: 0; background: rgba(20, 17, 13, .78); }
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--s3); row-gap: 0;
+    background: var(--night); }   /* opaque (MER-108): on this frame the page scrolls under the fixed bar, and at .78 a paper's lines printed over the date and the money */
   .topbar .bar-date { grid-column: 1; grid-row: 1; }
   .topbar .bar-tools { grid-column: 2; grid-row: 1; }
   .topbar .bar-money { grid-column: 1 / -1; grid-row: 2; row-gap: 0; }
