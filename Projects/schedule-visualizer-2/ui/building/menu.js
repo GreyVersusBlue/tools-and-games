@@ -11,9 +11,18 @@ import { openMenu } from '../components/menu.js';
 import { count } from '../components/words.js';
 import { paintCorridor, placeStairs, placeLift, placeRoom, placeOtherSpace, eraseCells, deleteSpaces, describeSpaceDelete, addDoor, removeDoor, setDoorStepFree, disconnectStairs, nameCorridor, removeCorridorName, markExit, unmarkExit, setExitStepFree, setStepCells, addRefuge, removeRefuge, setZone, removeZone } from '../../engine/actions.js';
 import { describeCell, SIDE_WORDS } from '../../engine/building.js';
-import { DOOR_SIDES, CELL_CORRIDOR, neighbourCell } from '../../engine/schema.js';
+import { DOOR_SIDES, CELL_CORRIDOR, neighbourCell, stairwells, stairsLetter, nameKey } from '../../engine/schema.js';
+import { removeStairwellStop, splitStairwell } from '../../engine/stairwells.js';
+import { openStairwellThrough } from './stairwell.js';
 import { roomName } from '../../engine/findings.js';
 import { focusCells, returnToCell } from './inspector/cell-focus.js';
+
+// The stairwell a stairs cell is a stop of, or null.
+export function stairwellAt(building, floorId, cell, connections) {
+  const flight = (connections || []).find((connection) => typeof connection.well === 'string' && connection.well.trim() !== '');
+  if (!flight) return null;
+  return stairwells(building).find((well) => nameKey(well.letter) === nameKey(flight.well) && well.stops.some((stop) => stop.floorId === floorId && stop.cell === cell)) || null;
+}
 
 function spaceWords(space) {
   if (space.kind === 'room') return roomName(space);
@@ -192,9 +201,23 @@ export function menuItems(ed, deps, cell) {
     items.push(properties);
     items.push('separator', place.stairs, place.lift, place.room, place.other, 'separator', eraseCell);
   } else if (at.kind === 'stairs') {
-    items.push({ label: 'Connect these stairs…', run: () => deps.connect().start({ floorId, cell }) });
-    for (const connection of at.connections) {
-      items.push({ label: 'Disconnect stairs ' + connection.label, run: () => ed.commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected stairs ' + connection.label + '.' }) });
+    // a stop of a stairwell: it is named, not lettered flight by flight (DESIGN 16.7)
+    const well = stairwellAt(ed.project.building, floorId, cell, at.connections);
+    items.push({ label: well ? 'Connect another floor to Stairwell ' + well.letter + '…' : 'Connect these stairs…', run: () => deps.connect().start({ floorId, cell }) });
+    if (!well) items.push({ label: 'Stairwell through floors…', keepsFocus: true, run: () => openStairwellThrough(ed, { floorId, cell }, ed.canvas) });
+    const plain = at.connections.filter((connection) => !(well && nameKey(stairsLetter(connection)) === nameKey(well.letter) && connection.well));
+    for (const connection of plain) {
+      items.push({ label: 'Disconnect stairs ' + stairsLetter(connection), run: () => ed.commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected stairs ' + stairsLetter(connection) + '.' }) });
+    }
+    if (well) {
+      // a stairwell of two stops is disconnected; of more, this floor leaves it
+      if (well.stops.length > 2) {
+        items.push({ label: 'Remove ' + floor.name + ' from Stairwell ' + well.letter, run: () => ed.commit(removeStairwellStop, { well: well.letter, floorId }, { done: (outcome) => outcome.text, toast: (outcome) => outcome.text }) });
+      } else {
+        const flight = ed.project.building.connections.find((connection) => well.connectionIds.includes(connection.id));
+        items.push({ label: 'Disconnect Stairwell ' + well.letter, run: () => ed.commit(disconnectStairs, { connectionId: flight.id }, { done: () => 'Disconnected Stairwell ' + well.letter + '.' }) });
+      }
+      items.push({ label: 'Split Stairwell ' + well.letter + ' into separate stairs', run: () => ed.commit(splitStairwell, { well: well.letter }, { done: (outcome) => outcome.text, toast: (outcome) => outcome.text }) });
     }
     items.push(...refugeItems());
     items.push(properties);

@@ -22,7 +22,7 @@ import { stepFreeReport } from '../../engine/step-free.js';
 import { nameOfRoom } from '../../engine/schema.js';
 import { periodName } from '../../engine/bells.js';
 import { ownDayTypes } from '../../engine/day-types.js';
-import { count } from '../components/words.js';
+import { count, periodWords } from '../components/words.js';
 import { UNMARKED_SAYS, TWO_VIEWS_SAYS, ALL_REACHED_SAYS } from '../safety/ways.js';
 import { esc, frame } from './document.js';
 
@@ -66,7 +66,7 @@ export function pages(project, derived, options) {
       const many = dayTypes.size > 1;
       const groupNames = new Map((project.groups || []).map((group) => [group.id, group.name]));
       body.push('<section class="doc-section" data-section="groups"><h2>Step-free groups in these rooms</h2>');
-      body.push('<table class="doc-table doc-table--stepfree-groups"><thead><tr>' + (many ? '<th scope="col">Day</th>' : '') + '<th scope="col">' + esc(String(project.settings.periodWord || 'Period')) + '</th><th scope="col">Group, room</th></tr></thead><tbody>');
+      body.push('<table class="doc-table doc-table--stepfree-groups"><thead><tr>' + (many ? '<th scope="col">Day</th>' : '') + '<th scope="col">' + esc(periodWords(project.settings).One) + '</th><th scope="col">Group, room</th></tr></thead><tbody>');
       for (const row of report.groups) {
         const dayType = dayTypes.get(row.dayTypeId);
         const cells = row.entries.map((entry) => typed(groupNames.get(entry.groupId) || 'A group') + ', ' + typed(nameOfRoom(rooms.get(entry.roomId), true))).join('<br>');

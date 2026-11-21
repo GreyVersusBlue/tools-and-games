@@ -1,6 +1,6 @@
 // The room list on paper: every room of the building, or of one floor, with
 // what the building editor's sortable list shows: number, floor, teacher,
-// subject, capacity, shared.
+// subject, capacity, shared, and the features when the school has any.
 //
 // render(project, derived, options) → { title, html }
 //   options.floorId  a floor's id, or 'all' (the default)
@@ -11,6 +11,7 @@
 
 import { compareValues } from '../components/table.js';
 import { count } from '../components/words.js';
+import { roomFeatures } from '../../engine/schema.js';
 import { esc, frame } from './document.js';
 
 export const id = 'room-list';
@@ -25,6 +26,11 @@ export const ROOM_COLUMNS = [
   { id: 'shared', label: 'Shared', value: (row) => (row.shared ? 0 : 1), shown: (row) => (row.shared ? 'Shared' : '') },
 ];
 
+// After Shared. It is on paper only when the school has features, so a school
+// without them prints the columns above and no more; it sorts by how many a
+// room has.
+export const FEATURES_COLUMN = { id: 'features', label: 'Features', value: (row) => (row.features || []).length, shown: (row) => (row.features || []).join(', ') };
+
 // One row per room, in the building's own order. Every text is as typed.
 export function roomRows(project, floorId) {
   const rows = [];
@@ -33,6 +39,7 @@ export function roomRows(project, floorId) {
     for (const space of floor.spaces) {
       if (space.kind !== 'room') continue;
       const subject = space.subjectId ? project.subjects.find((candidate) => candidate.id === space.subjectId) : null;
+      const features = roomFeatures(project.building, space).map((feature) => feature.name);
       rows.push({
         id: space.id,
         number: typeof space.number === 'string' ? space.number : '',
@@ -42,6 +49,8 @@ export function roomRows(project, floorId) {
         subject: subject ? subject.name : '',
         capacity: Number.isInteger(space.capacity) ? space.capacity : null,
         shared: space.shared === true,
+        // only a room that has some carries the field, so a school with none has the rows it always had
+        ...(features.length > 0 ? { features } : {}),
       });
     }
   });
@@ -49,7 +58,7 @@ export function roomRows(project, floorId) {
 }
 
 export function sortRoomRows(rows, sort) {
-  const column = sort && ROOM_COLUMNS.find((candidate) => candidate.id === sort.column);
+  const column = sort && ROOM_COLUMNS.concat([FEATURES_COLUMN]).find((candidate) => candidate.id === sort.column);
   const sign = sort && sort.direction === 'descending' ? -1 : 1;
   const byNumber = (a, b) => compareValues(a.number, b.number);
   return rows
@@ -70,13 +79,15 @@ export function render(project, derived, options) {
     ? 'There are no rooms ' + where + ' yet.'
     : (rows.length === 1 ? 'There is 1 room ' : 'There are ' + rows.length + ' rooms ') + where + '.';
 
+  const hasFeatures = Array.isArray(project.building.features) && project.building.features.length > 0;
+  const columns = hasFeatures ? ROOM_COLUMNS.concat([FEATURES_COLUMN]) : ROOM_COLUMNS;
   const body = ['<p class="doc-lead">' + esc(lead) + '</p>'];
   if (rows.length > 0) {
     body.push('<table class="doc-table doc-table--rooms">');
-    body.push('<thead><tr>' + ROOM_COLUMNS.map((column) => '<th scope="col"' + (column.numeric ? ' class="is-number"' : '') + '>' + esc(column.label) + '</th>').join('') + '</tr></thead>');
+    body.push('<thead><tr>' + columns.map((column) => '<th scope="col"' + (column.numeric ? ' class="is-number"' : '') + '>' + esc(column.label) + '</th>').join('') + '</tr></thead>');
     body.push('<tbody>');
     for (const row of rows) {
-      body.push('<tr>' + ROOM_COLUMNS.map((column) => {
+      body.push('<tr>' + columns.map((column) => {
         const shown = column.shown ? column.shown(row) : String(column.value(row));
         if (column.id === 'number') {
           return row.number.trim() === ''

@@ -16,6 +16,7 @@ import { createPipeline } from '../../engine/worker.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { setPeriods, setRoomTeachers, setRoomFields, editTeacher, editGroup, setSlot } from '../../engine/actions.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
+import { setPeriodCustom, setPeriodName, setTeacherAway } from '../../engine/w7-actions.js';
 import { school, ctx } from './helpers.mjs';
 
 const A = 'dsample00a';
@@ -777,4 +778,47 @@ test('bell schedules: a walk late under Early Release alone is not cleared by ma
     }
     assertHonest(project, finding, answer);
   }
+});
+
+// ---------------------------------------------------------------- SV2-127b: custom words, own names, a teacher who is away
+
+test('twoPeriods follows a custom word in every count, and a plural as typed: by number, never by a period\'s own name', () => {
+  const expected = [
+    [{ word: 'Lesson', count: 'number' }, "Swap 7C's Lessons 2 and 6: ", 'Move 7C to Cafeteria for Lesson 2: '],
+    [{ word: 'Class', plural: 'Classes', count: 'letter' }, "Swap 7C's Classes B and F: ", 'Move 7C to Cafeteria for Class B: '],
+    [{ word: 'Session', count: 'ordinal' }, "Swap 7C's 2nd and 6th Sessions: ", 'Move 7C to Cafeteria for 2nd Session: '],
+    [{ word: 'Mass', plural: 'Masses', count: 'number' }, "Swap 7C's Masses 2 and 6: ", 'Move 7C to Cafeteria for Mass 2: '],
+  ];
+  for (const [custom, swap, move] of expected) {
+    const project = setPeriodCustom(school(), custom, ctx());
+    const texts = suggest(project, findingOf(project, DOUBLE)).suggestions.map((one) => one.text);
+    assert.ok(texts.some((text) => text.startsWith(swap)), custom.word + ': ' + texts.join(' / '));
+    assert.ok(texts.some((text) => text.startsWith(move)), custom.word + ': ' + texts.join(' / '));
+  }
+});
+
+test('with period names, a swap still says the periods by number and a move says the one it is for by its name', () => {
+  let project = setPeriodName(school(), { period: 1, name: 'Advisory' }, ctx());
+  project = setPeriodName(project, { period: 5, name: 'Late Start' }, ctx());
+  const texts = suggest(project, findingOf(project, DOUBLE)).suggestions.map((one) => one.text);
+  assert.ok(texts.some((text) => text.startsWith("Swap 7C's Periods 2 and 6: ")), texts.join(' / '));
+  assert.ok(texts.some((text) => text.startsWith('Move 7C to Cafeteria for Advisory: ')), texts.join(' / '));
+  assert.equal(texts.some((text) => /Late Start/.test(text) && text.startsWith('Swap')), false, 'a swap names no period but by number');
+});
+
+test('a swap that puts a group in a period its teacher is away is still offered, with the new teacher-away warning as its trade', () => {
+  // Pennywhistle (tsample009) teaches 7C in Period 6 and is free in Period 2: away in Period 2, so the swap of 7C's Periods 2 and 6 brings her there
+  const project = setTeacherAway(school(), { teacherId: 'tsample009', away: [{ dayTypeIds: [A], weekdays: [], periods: [1] }] }, ctx());
+  const finding = findingOf(project, DOUBLE);
+  const answer = suggest(project, finding);
+  assertHonest(project, finding, answer);
+  assertOrdered(answer);
+  const swap = answer.suggestions.find((one) => one.text.startsWith("Swap 7C's Periods 2 and 6: "));
+  assert.ok(swap, answer.suggestions.map((one) => one.text).join(' / '));
+  assert.equal(swap.effects.findings.new.warning, 1, 'the trade says there is a new warning');
+  assert.match(swap.text, /, one new warning$/);
+  const after = run(applyChanges(project, [swap.change])).findings.findings.filter((one) => one.kind === 'teacher-away');
+  assert.deepEqual(after.map((one) => one.id), ['teacher-away:' + A + ':1:tsample009'], 'and that warning is the teacher-away one');
+  // the Move suggestions, which bring nothing new, still come after it: the kind is the first key
+  assert.equal(answer.suggestions.filter((one) => one.kind !== 'reorder').every((one) => one.effects.findings.new.warning === 0), true);
 });

@@ -109,7 +109,7 @@ export const subView = {
       }
       const taught = cover.length;
       says.replaceChildren(h('span', null, typed(absent.name), '\'s day on ', dayWords(school, dayType, bellsId), ': ',
-        taught === 0 ? 'no group to teach.' : taught + ' of ' + day.length + ' ' + school.data.settings.periodWord.toLowerCase() + 's with a group.'));
+        taught === 0 ? 'no group to teach.' : taught + ' of ' + day.length + ' ' + school.periodWords().manyLower + ' with a group.'));
 
       out.replaceChildren(...[
         h('section', { class: 'card', dataset: { sub: 'day' } },

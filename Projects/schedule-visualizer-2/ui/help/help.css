@@ -180,6 +180,14 @@
     padding: var(--s-3) var(--s-4) var(--s-4);
   }
 
+  .help__search {
+    padding: var(--s-2) var(--s-4);
+  }
+
+  .help__back {
+    padding-inline: var(--s-2);
+  }
+
   /* a shortcut is its keys and what it does on one line, where it works
      under them, so nothing scrolls sideways at 390 px */
   .help__table tr {
@@ -227,15 +235,183 @@
   }
 }
 
+/* ---------- Search help (DESIGN 16.10, 16.12 item 7) ---------- */
+
+.help__search {
+  flex: none;
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-5) var(--s-2);
+  border-bottom: var(--border);
+  background: var(--card);
+}
+
+.help__label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 var(--s-3);
+}
+
+.help__label label {
+  font-weight: var(--w-semibold);
+}
+
+.help__hint {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.help__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.help__field {
+  flex: 1 1 12rem;
+  min-width: 0;
+  height: 44px;
+  font-size: var(--t-md);
+}
+
+.help__back,
+.help__clear {
+  flex: none;
+  min-height: 44px;
+}
+
+.help__clear {
+  min-width: 44px;
+  padding-inline: 0;
+}
+
+.help__back[hidden],
+.help__clear[hidden] {
+  display: none;
+}
+
+.help__count,
+.help__none {
+  color: var(--ink-2);
+}
+
+.help__results {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help__result {
+  display: grid;
+  gap: var(--s-1);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  scroll-margin: var(--s-3);
+}
+
+.help__result:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.help__result-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--s-3);
+  align-items: baseline;
+}
+
+.help__result-title {
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+}
+
+.help__result-section {
+  color: var(--note);
+  font-size: var(--t-sm);
+}
+
+/* the paragraph's first words, when other results share the title */
+.help__result-lead {
+  color: var(--note);
+  font-size: var(--t-sm);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.help__result-text {
+  overflow-wrap: anywhere;
+}
+
+.help mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: var(--mark-bg);
+  color: var(--mark-ink);
+}
+
+/* where a result opened */
+.help [data-landed] {
+  border-radius: var(--r-1);
+  background: var(--accent-soft);
+  box-shadow: -4px 0 0 var(--accent-soft);
+}
+
 /* A phone on its side: the head and foot take as little height as they can. */
 @media (max-height: 500px) {
+  /* Under 500 px of height only the search field stays pinned: the dialog
+     itself scrolls, so the title goes up with the text, the field sticks to
+     the top and Close help sticks to the foot. */
+  .dialog.help {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .dialog.help[open] {
+    display: block;
+  }
+
   .dialog.help > .dialog__title {
     padding-block: var(--s-2);
     font-size: var(--t-md);
   }
 
+  .dialog.help > .dialog__body {
+    display: block;
+  }
+
+  .help__search {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding-block: var(--s-1);
+  }
+
+  .help__hint {
+    display: none;
+  }
+
+  .help__scroll {
+    overflow: visible;
+  }
+
   .dialog.help > .dialog__buttons {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
     padding-block: var(--s-2);
+    background: var(--card);
   }
 }
 

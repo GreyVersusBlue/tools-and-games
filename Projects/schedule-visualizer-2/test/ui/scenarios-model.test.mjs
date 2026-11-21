@@ -254,6 +254,15 @@ test('SV2-92 chips: a trial staggered dismissal that replaces a real one says wh
   assert.equal(insteadOf(project, { kind: 'release', who: { groups: ['gsample07a'] }, seconds: 60, after: null, dayTypeIds: null }), 'on the bell');
 });
 
+// SV2-135b: grades keyed with spacelessKey, as the dismissal card matches them
+test('SV2-135b chips: a trial for "Grade7" says what the saved "Grade 7" entry was', () => {
+  const project = open([{ ...grade7, who: { grade: 'Grade7' }, seconds: 180 }]);
+  project.release = [{ id: 'lreal', who: { grade: 'Grade 7' }, seconds: 120, after: null, dayTypeIds: null }];
+  assert.equal(insteadOf(project, project.scenario.levers[0]), '2 min');
+  assert.equal(insteadOf(project, { ...grade7, who: { grade: 'grade 7 ' }, seconds: 60 }), '2 min', 'case and spaces aside');
+  assert.equal(insteadOf(project, { ...grade7, who: { grade: 'Grade 8' }, seconds: 60 }), null);
+});
+
 test('SV2-92 words: the first line and the bar count changes and levers together, and the skipped ones of both', () => {
   const project = open([capacity, { kind: 'capacity', roomId: 'rnowhere', capacity: 9 }], [{ kind: 'move', dayTypeId: DAY_A, groupId: 'gsample07c', period: 1, roomId: 'rsample204' }]);
   const view = scenarioView(project);

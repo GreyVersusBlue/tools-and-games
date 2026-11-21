@@ -12,12 +12,17 @@
 // offers "Connect another floor" and "Done". Focus goes to the banner when the
 // mode starts and back to the stop when it ends.
 //
+// "Connect another floor" from a stop of a stairwell (DESIGN 16.7): the same
+// mode, and the click adds a stop to that stairwell (addStairwellStop) instead
+// of making a plain flight. The banner then names the stairwell.
+//
 // A connection between two stairs on one floor is unusual (a split level, a
 // detached part of the building), so the tool asks first.
 
 import { h } from '../components/dom.js';
 import { connectStairs, describeConnect, ActionError } from '../../engine/actions.js';
-import { CELL_STAIRS, elevatorCars, isLiftCell, nextConnectionLabel } from '../../engine/schema.js';
+import { CELL_STAIRS, elevatorCars, isLiftCell, nextConnectionLabel, stairwells, nameKey } from '../../engine/schema.js';
+import { addStairwellStop } from '../../engine/stairwells.js';
 import { list, pendingElevatorLetter } from '../components/words.js';
 import { inspectorSheet } from './inspector/sheet.js';
 
@@ -46,12 +51,22 @@ export function createConnect(ed, options) {
   let asking = false;
   // 'stairs' or 'elevator'; for an elevator, 'picking' a stop or 'joined' with the result on show
   let kind = 'stairs';
+  // the letter of the stairwell the mode started from a stop of, else null
+  let well = null;
   let phase = 'picking';
   // the other end of the join on show while phase is 'joined'
   let joinedTo = null;
 
   function label() {
     return nextConnectionLabel(ed.project.building.connections);
+  }
+
+  // the stairwell the cell is a stop of, or null
+  function wellAt(end0) {
+    const flight = ed.project.building.connections.find((connection) => typeof connection.well === 'string' && connection.well.trim() !== '' && [connection.a, connection.b].some((end) => end.floorId === end0.floorId && end.cell === end0.cell));
+    if (!flight) return null;
+    const found = stairwells(ed.project.building).find((each) => nameKey(each.letter) === nameKey(flight.well));
+    return found ? found.letter : null;
   }
 
   function floorName(id) {
@@ -137,7 +152,9 @@ export function createConnect(ed, options) {
     if (kind === 'elevator' && phase === 'joined') delete canvas.dataset.connecting;
     else canvas.dataset.connecting = 'true';
     if (kind === 'stairs') {
-      words.textContent = 'Connecting stairs ' + label() + ' from ' + floorName(from.floorId) + ': click the other stairs, on any floor. Esc cancels.';
+      words.textContent = well !== null
+        ? 'Adding a floor to Stairwell ' + well + ' from ' + floorName(from.floorId) + ': click its stairs on another floor. Esc cancels.'
+        : 'Connecting stairs ' + label() + ' from ' + floorName(from.floorId) + ': click the other stairs, on any floor. Esc cancels.';
       return;
     }
     const joined = phase === 'joined';
@@ -152,6 +169,7 @@ export function createConnect(ed, options) {
   function end() {
     const stopped = kind === 'elevator' && from !== null ? from : null;
     from = null;
+    well = null;
     press = null;
     phase = 'picking';
     note.textContent = '';
@@ -207,6 +225,7 @@ export function createConnect(ed, options) {
   function start(end0) {
     from = { floorId: end0.floorId, cell: end0.cell };
     kind = isLiftCell(ed.project.building, end0.floorId, end0.cell) ? 'elevator' : 'stairs';
+    well = kind === 'stairs' ? wellAt(end0) : null;
     phase = 'picking';
     note.textContent = '';
     note.hidden = true;
@@ -238,6 +257,12 @@ export function createConnect(ed, options) {
         : 'That is not a stairs cell. Click the stairs at the other end, on any floor. Esc cancels.';
       ctx.toast({ kind: 'problem', text: message });
       ed.say(message);
+      return;
+    }
+    // from a stop of a stairwell the click adds a floor to it; the engine says what it refuses
+    if (well !== null) {
+      const added = ed.commit(addStairwellStop, { well, floorId: floor.id, cell }, { done: (outcome) => outcome.text, toast: (outcome) => outcome.text });
+      if (added) end();
       return;
     }
     const payload = { a: from, b: { floorId: floor.id, cell } };
@@ -384,6 +409,7 @@ export function createConnect(ed, options) {
         const held = banner.contains(document.activeElement);
         // the mode's own end() would try to return the focus to a stop that is gone
         from = null;
+        well = null;
         press = null;
         phase = 'picking';
         joinedTo = null;

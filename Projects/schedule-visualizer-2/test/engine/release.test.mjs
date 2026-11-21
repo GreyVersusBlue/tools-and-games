@@ -672,6 +672,10 @@ function digest(project) {
 // the projects below. SV2-94 gave the sample a third stair, so `sample` was
 // recorded again on purpose, and `sampleBeforeStairsC` holds the old digests. If a later unit changes the crowd model, the
 // checks or the routes on purpose, it records the file again, and says so.
+// SV2-135's dead-end check moved the `whole` digest of `sample`, `sampleBeforeStairsC` and `plain`
+// (the sample's halls end in dead ends it now finds); crowd, walks, findings, loads and routes did not move.
+// SV2-135b moved the same three `whole` digests again: Floor 3's east stub serves the doorless Plant Room
+// (DECISIONS 2026-11-20), so its warning went; nothing else moved.
 test('a project with no release gives byte-identical pipeline results to sv2 before this unit', () => {
   const baseline = JSON.parse(readFileSync(path.join(HERE, '..', 'fixtures', 'release-baseline.json'), 'utf8'));
   // `sampleBeforeStairsC` is the sample as it was at 180edab7, so the old digests still prove the promise on a school with a calendar, bell schedules and marks
@@ -720,18 +724,25 @@ test('releaseMissing: a typed time the engine would refuse is missing, 315 s and
   assert.equal(releaseMissing({ ...named, onBell: false, seconds: 0 }) !== '', true, 'but 0 with On the bell off is not a time');
 });
 
-test('grades: the card, the chip and the crowd group "Grade 7" and "Grade7" the same way, as two grades', async () => {
+test('grades: the card, the chip and the crowd treat "Grade 7", "Grade7" and " grade 7 " as one grade, as a mark does (SV2-135)', async () => {
   const { gradesOf, releaseParts } = await import('../../ui/schedule/release.js');
   const project = withRelease([entry('lgrade0001', { grade: 'Grade 7' }, 120)]);
   project.groups = project.groups.map((group, index) => ({ ...group, grade: index === 0 ? 'Grade 7' : index === 1 ? 'Grade7' : index === 2 ? ' grade 7 ' : 'Grade 8' }));
-  assert.deepEqual(gradesOf(project).filter((grade) => /7/.test(grade)), ['Grade 7', 'Grade7'], 'two grades, as Movement\'s picker has them; case and outer spaces do not make a third');
+  assert.deepEqual(gradesOf(project).filter((grade) => /7/.test(grade)), ['Grade 7'], 'one grade, as first typed; spaces and case do not make a second or third');
   const parts = releaseParts(project, project.release[0], 'lgrade0001');
-  const crowd = project.groups.filter((group) => releaseDelay(project, group.id, A, 0, null) > 0).length;
-  assert.equal(crowd, 2, 'the crowd model delays "Grade 7" and " grade 7 "');
-  assert.equal(parts.groups, '2 groups', 'the card says what the crowd does');
-  const joined = withRelease([entry('lgrade0002', { grade: 'Grade7' }, 120)], project);
-  assert.equal(releaseParts(joined, joined.release[0], 'lgrade0002').groups, '1 group');
-  assert.equal(project.groups.filter((group) => releaseDelay(joined, group.id, A, 0, null) > 0).length, 1);
+  const delayed = project.groups.filter((group) => releaseDelay(project, group.id, A, 0, null) > 0);
+  assert.deepEqual(delayed.map((group) => group.id), project.groups.slice(0, 3).map((group) => group.id), 'the crowd model delays all three spellings and not Grade 8');
+  assert.equal(parts.groups, '3 groups', 'the card says what the crowd does');
+  // the entry spelled another way holds for the same groups
+  for (const [id, spelled] of [['lgrade0002', 'Grade7'], ['lgrade0003', ' GRADE   7 ']]) {
+    const joined = withRelease([entry(id, { grade: spelled }, 120)], project);
+    assert.equal(releaseParts(joined, joined.release[0], id).groups, '3 groups', spelled);
+    assert.equal(project.groups.filter((group) => releaseDelay(joined, group.id, A, 0, null) > 0).length, 3, spelled);
+  }
+  // a grade that differs by more than spaces and case stays another grade
+  const other = withRelease([entry('lgrade0004', { grade: 'Grade 8' }, 120)], project);
+  assert.equal(releaseParts(other, other.release[0], 'lgrade0004').groups, (project.groups.length - 3) + ' groups', 'every group after the first three is Grade 8');
+  // a wing is still matched ignoring case and surrounding spaces only
 });
 
 test('syncReleaseDraft: an entry changed because a group, day type or period went says so; an Undo or a Redo says that; neither is said for the other', async () => {

@@ -15,6 +15,7 @@ import { CHECK_KINDS, RANGES, CELL_LENGTH_MOST, DAY_TYPES_MOST, bellSchedulesOf,
 import { readLength, lengthWords } from '../building/scale-tool.js';
 import { isOwnCopy, effectiveDayType } from '../../engine/day-types.js';
 import { calendarDays, dateWords } from '../../engine/calendar.js';
+import { periodWordControl } from '../schedule/day.js';
 
 const LETTER_REGIONS = ['US', 'CA', 'MX', 'PH', 'CL', 'CO', 'VE', 'CR', 'PA', 'GT', 'DO', 'PR', 'SV', 'HN', 'NI', 'BO'];
 
@@ -215,8 +216,16 @@ export function settingsCard(ctx) {
     });
     return { element: control.element, sync: (project) => control.set(project.settings.periods) };
   });
-  row(day, 'Period word', 'What your school calls one slot of the day. The word you pick is used everywhere.',
-    pick('periodWord', (s) => s.periodWord, ['Period', 'Mod', 'Block', 'Hour'].map((word) => ({ value: word, label: word }))));
+  row(day, 'Period word', 'What your school calls one slot of the day. The word you pick is used everywhere. Names for single periods, like Lunch, are on Schedule › Day.',
+    (labelId, hintId) => {
+      let control = null;
+      control = periodWordControl(ctx, { name: 'periodWord', labelledBy: labelId, describedBy: hintId, prefix: 'setting-word', redraw: (key) => {
+        control.sync(ctx.store.project);
+        const target = control.element.querySelector('[data-key="' + key + '"]');
+        if (target) target.focus();
+      } });
+      return control;
+    });
   row(day, 'Day types', 'The named patterns of the day: which classes meet. Each has its own classes or is the same as another, up to ' + DAY_TYPES_MOST + '.',
     summary((project) => list(project.dayTypes.map((dayType) => dayType.name + (isOwnCopy(project, dayType.id) ? '' : ' (same as ' + effectiveDayType(project, dayType.id).name + ')'))), '#schedule/day', 'Edit under Schedule › Day'));
   row(day, 'Bell schedules', (w) => 'When each ' + w.one + ' starts and ends: each day type’s regular bells, and other bell schedules such as an early release.',

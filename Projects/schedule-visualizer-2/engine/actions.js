@@ -17,16 +17,16 @@ import { dutyTeachers } from './marks.js';
 // changes nothing returns the project it was given, and the store then makes
 // no undo entry.
 
-import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
+import { RANGES, AWAY_MOST, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
 import { defaultSettings, isCellScale, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom, newAcceptedFinding } from './schema.js';
 import { checkSchedule } from './checks.js';
 import { isOwnCopy, findDayType, baseDayType, effectiveDayType, followersOf } from './day-types.js';
-import { periodName } from './bells.js';
+import { periodName, periodNumberName } from './bells.js';
 import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, LATER_PUBLISH_VIEWS } from './schema.js';
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, marksOf, dutiesOf, newMark, newDuty } from './schema.js';
 import { RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS, releaseOf, newRelease } from './schema.js';
-import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND } from './schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND, stairsLetter } from './schema.js';
 import { releaseKind } from './release.js';
 import { formatDuration } from './findings.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
@@ -203,7 +203,8 @@ const SETTINGS = {
   elevatorWaitSeconds: { label: 'Change the elevator wait', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorWaitSeconds, 'The elevator wait in seconds') },
   elevatorSecondsPerFloor: { label: 'Change elevator seconds per floor', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorSecondsPerFloor, 'Elevator seconds per floor') },
   elevatorPeoplePerTrip: { label: 'Change people per elevator trip', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorPeoplePerTrip, 'People per elevator trip') },
-  cellScale: { label: 'Change the cell scale', bumps: [], check: (value) => (isCellScale(value) ? null : CELL_SCALE_RULE) },
+  // BUILDING: the building checks say a dead end's length in the Cell scale (SV2-135b)
+  cellScale: { label: 'Change the cell scale', bumps: [BUILDING], check: (value) => (isCellScale(value) ? null : CELL_SCALE_RULE) },
   'colourScale.mode': { label: 'Change the colour scale', bumps: [], check: choiceRule(COLOUR_SCALE_MODES, 'The colour scale') },
   'colourScale.bands': {
     label: 'Change the colour bands',
@@ -334,13 +335,15 @@ export function describePeriodChange(project, periods) {
     }
     return scenario;
   });
-  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0 };
+  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0, names: 0, away: 0 };
   // the sentence's words for what the change takes, in the order the screen says it
   const lostWords = [];
   if (past.marks > 0) lostWords.push(count(past.marks, 'marked period', 'marked periods'));
   if (past.duties > 0) lostWords.push(count(past.duties, 'duty', 'duties'));
   if (past.release > 0) lostWords.push(count(past.release, 'staggered dismissal', 'staggered dismissals'));
-  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), marks: past.marks, duties: past.duties, release: past.release, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + scenarioLevers + past.marks + past.duties + past.release > 0 };
+  if (past.names > 0) lostWords.push(count(past.names, 'period name', 'period names'));
+  if (past.away > 0) lostWords.push(count(past.away, 'not-in-school entry', 'not-in-school entries'));
+  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), marks: past.marks, duties: past.duties, release: past.release, ...(past.names > 0 ? { periodNames: past.names } : {}), ...(past.away > 0 ? { away: past.away } : {}), marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + scenarioLevers + past.marks + past.duties + past.release + past.names + past.away > 0 };
 }
 
 // Periods per day. Going down removes the later periods from every day, every
@@ -360,9 +363,40 @@ export const setPeriods = action(
     const resized = resizeDays(patch(project, ['settings', 'periods'], () => periods), periods);
     // raising the count deletes nothing: a mark or duty kept past the old end
     // (repair keeps them) is a period that exists now
-    return periods < project.settings.periods ? dropPastPeriods(resized, periods) : resized;
+    const changed = periods < project.settings.periods ? dropPastAway(dropPastNames(dropPastPeriods(resized, periods), periods), periods) : resized;
+    // a longer day has number names a period's own name may now equal
+    return clearNumberNames(project, changed);
   },
 );
+
+// A period's own name that equals the number name of any period (up to the
+// most a day can have), as imports would read it: a name set while a word or a
+// day length made it harmless. Those names are cleared and the outcome says so
+// (ARCHITECTURE 22.7, 22.17). `before` is the project the action began with.
+export function clearNumberNames(before, after) {
+  const names = after.settings.periodNames;
+  if (!Array.isArray(names)) return after;
+  const clashing = [];
+  names.forEach((name, at) => {
+    if (typeof name !== 'string' || name.trim() === '') return;
+    for (let number = 0; number < RANGES.periods[1]; number += 1) {
+      if (spacelessKey(periodNumberName(after.settings, number)) === spacelessKey(name)) {
+        clashing.push({ at, name: name.trim() });
+        return;
+      }
+    }
+  });
+  if (clashing.length === 0) return after;
+  const kept = names.map((name, at) => (clashing.some((clash) => clash.at === at) ? '' : name));
+  while (kept.length > 0 && (typeof kept[kept.length - 1] !== 'string' || kept[kept.length - 1].trim() === '')) kept.pop();
+  const next = kept.length > 0 ? patch(after, ['settings', 'periodNames'], () => kept) : (() => {
+    const { periodNames: dropped, ...rest } = after.settings;
+    return { ...after, settings: rest };
+  })();
+  const quoted = listWords(clashing.map((clash) => '"' + clash.name + '"'));
+  const text = (clashing.length === 1 ? 'The period name ' + quoted + ' was cleared: it is' : 'The period names ' + quoted + ' were cleared: each is') + ' now the number name of a period, and a file would match it to that period.';
+  return reporting(before, next, { text, periodNamesCleared: clashing.length });
+}
 
 // One setting. payload: { key, value }, key one of SETTING_KEYS.
 export const setSetting = action(
@@ -378,7 +412,8 @@ export const setSetting = action(
     const problem = rule.check(payload.value);
     if (problem) refuse(problem, 'bad-value');
     const value = keptValue(payload.value);
-    return patch(project, ['settings'].concat(payload.key.split('.')), (current) => (sameValue(current, value) ? current : value));
+    const next = patch(project, ['settings'].concat(payload.key.split('.')), (current) => (sameValue(current, value) ? current : value));
+    return payload.key === 'periodWord' ? clearNumberNames(project, next) : next;
   },
 );
 
@@ -669,10 +704,58 @@ export const mergeTeachers = action(
       roomIds: Array.from(new Set(keep.roomIds.concat(gone.roomIds))),
       notes,
     };
+    // the kept teacher's not-in-school entries, then the merged one's that are
+    // not already there; written only when either had any
+    const away = mergedAway(project, keep.away, gone.away);
+    if (away.length > AWAY_MOST) refuse('Merging ' + gone.name + ' into ' + keep.name + ' would give ' + keep.name + ' ' + away.length + ' entries for when they are not in school, and a teacher has at most ' + AWAY_MOST + '. Combine or remove some entries first.', 'limit');
+    if (away.length > 0) merged.away = away;
     next = { ...next, teachers: next.teachers.filter((teacher) => teacher.id !== gone.id).map((teacher) => (teacher.id === keep.id ? merged : teacher)) };
     return swapTeacherInDuties(next, gone.id, keep.id);
   },
 );
+
+// An away entry in its one stored form: day types in the project's order,
+// weekdays and periods each once and sorted, all three lists present. Never
+// refuses: a value that is not an entry comes back as it is.
+export function normalAway(project, entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const ids = list(entry.dayTypeIds);
+  const inOrder = project.dayTypes.map((dayType) => dayType.id).filter((id) => ids.includes(id));
+  const dayTypeIds = inOrder.concat(Array.from(new Set(ids.filter((id) => !inOrder.includes(id)))));
+  const sorted = (value) => Array.from(new Set(list(value))).sort((a, b) => a - b);
+  return { ...entry, dayTypeIds, weekdays: sorted(entry.weekdays), periods: sorted(entry.periods) };
+}
+
+// Two entries are the same when their three lists are.
+export function awayKey(entry) {
+  return entry && typeof entry === 'object' && !Array.isArray(entry) ? JSON.stringify([entry.dayTypeIds, entry.weekdays, entry.periods]) : JSON.stringify(entry);
+}
+
+// Does a normalised entry mean the teacher is never in school: every day type
+// of `dayTypes`, every weekday and every one of `periods`, each either named in
+// full or not named (which means all)?
+export function awayIsNever(dayTypes, periods, entry) {
+  const covers = (list, all) => !Array.isArray(list) || list.length === 0 || all.every((one) => list.includes(one));
+  return covers(entry.dayTypeIds, dayTypes.map((dayType) => dayType.id))
+    && covers(entry.weekdays, [0, 1, 2, 3, 4, 5, 6])
+    && covers(entry.periods, Array.from({ length: periods }, (unused, at) => at));
+}
+
+// The kept teacher's not-in-school entries, then the merged one's, each in its
+// normal form and each once.
+function mergedAway(project, kept, other) {
+  const list = [];
+  const held = new Set();
+  for (const entry of (Array.isArray(kept) ? kept : []).concat(Array.isArray(other) ? other : [])) {
+    const normal = normalAway(project, entry);
+    if (!held.has(awayKey(normal))) {
+      held.add(awayKey(normal));
+      list.push(normal);
+    }
+  }
+  return list;
+}
 
 // ---------------------------------------------------------------- groups
 
@@ -1007,7 +1090,7 @@ export const setBells = action(
 
 const scheduleOutcomes = new WeakMap();
 
-function reporting(project, next, outcome) {
+export function reporting(project, next, outcome) {
   if (next !== project) scheduleOutcomes.set(next, outcome);
   return next;
 }
@@ -1252,11 +1335,14 @@ export function describeDayTypeDelete(project, dayTypeId) {
   const left = marksAndDutiesLeftNoDayType(project, dayTypeId);
   if (left.marks > 0) parts.push(count(left.marks, 'marked period', 'marked periods'));
   if (left.duties > 0) parts.push(count(left.duties, 'duty', 'duties'));
+  const { lost: awayLeft, never: awayNever } = awayLeftNoDayType(project, dayTypeId);
+  if (awayLeft > awayNever) parts.push(count(awayLeft - awayNever, 'not-in-school entry', 'not-in-school entries'));
+  if (awayNever > 0) parts.push(count(awayNever, 'not-in-school entry', 'not-in-school entries') + ' that would now mean never in school');
   const releases = releaseChanges(project, dropDayTypeFromRelease(project, dayTypeId));
   if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
   let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
   if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
-  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...leverKeys(project, dayTypeId), dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...leverKeys(project, dayTypeId), dates, weekdays, rotation, marks: left.marks, duties: left.duties, ...(awayLeft > 0 ? { away: awayLeft } : {}), ...(awayNever > 0 ? { awayNever } : {}), release: releases.changed, releaseRemoved: releases.removed, text };
 }
 
 // payload: { dayTypeId }. The first day type cannot be deleted. The outcome
@@ -1274,7 +1360,7 @@ export const deleteDayType = action(
       dayTypes: project.dayTypes.filter((candidate) => candidate !== dayType).map((candidate) => (followers.has(candidate) ? { ...candidate, sameAs: null } : candidate)),
       groups: withoutDays(project.groups, dayType.id),
     };
-    next = dropDayTypeFromRelease(dropDayTypeFromMarksAndDuties(next, dayType.id), dayType.id);
+    next = dropDayTypeFromRelease(dropDayTypeFromAway(dropDayTypeFromMarksAndDuties(next, dayType.id), project, dayType.id), dayType.id);
     const calendar = calendarOf(project);
     if (calendar && (outcome.dates > 0 || outcome.weekdays.length > 0 || outcome.rotation > 0)) {
       const rotation = calendar.rotation.filter((id) => id !== dayType.id);
@@ -2224,9 +2310,29 @@ export const setRoomFields = action(
   { label: (before, payload) => 'Edit ' + spaceLabel(before, payload.roomId), bumps: roomBumps, focus: buildingFocus },
   (project, payload) => {
     if (payload.subjectId !== undefined && payload.subjectId !== null) need(project.subjects, payload.subjectId, 'subject');
-    return inBuilding(project, (building) => geometry.setRoomFields(building, payload));
+    const fields = inBuilding(project, (building) => geometry.setRoomFields(building, payload));
+    return payload.featureIds === undefined ? fields : withRoomFeatureIds(fields, payload.roomId, payload.featureIds);
   },
 );
+
+// A room's features (ARCHITECTURE 22.2): the ids given must be in the school's
+// list, each once, kept in the list's order; none at all removes the field, as
+// a room that never had one. Refused in words when one is not in the list.
+export function withRoomFeatureIds(project, roomId, featureIds) {
+  if (!Array.isArray(featureIds) || featureIds.some((id) => typeof id !== 'string')) refuse('The features of a room are a list of features from the school\'s list.', 'bad-value');
+  const list = Array.isArray(project.building.features) ? project.building.features : [];
+  for (const id of featureIds) if (!list.some((feature) => feature.id === id)) refuse('One of those features is no longer on the list. Pick the features again.', 'missing');
+  const wanted = list.map((feature) => feature.id).filter((id) => featureIds.includes(id));
+  if (!findRoom(project, roomId)) refuse('That room is no longer in the building.', 'missing');
+  return mapRooms(project, (room) => {
+    if (room.id !== roomId) return room;
+    const held = Array.isArray(room.featureIds) ? room.featureIds : [];
+    if (sameList(held, wanted) && (wanted.length > 0 || !('featureIds' in room))) return room;
+    if (wanted.length > 0) return { ...room, featureIds: wanted };
+    const { featureIds: dropped, ...rest } = room;
+    return rest;
+  });
+}
 
 // Clearing a room's details keeps the room, its cells and its doors, and
 // every slot that names it. payload: { roomId }.
@@ -2234,7 +2340,7 @@ export const clearRoomDetails = action(
   { label: (before, payload) => 'Clear the details of ' + spaceLabel(before, payload.roomId), bumps: roomBumps, focus: buildingFocus },
   (project, payload, ctx) => {
     const cleared = inBuilding(project, (building) => geometry.setRoomFields(building, { roomId: payload.roomId, number: '', subjectId: null, wing: '', capacity: null, shared: false }));
-    return setRoomTeachers(cleared, { roomId: payload.roomId, teacherIds: [] }, ctx);
+    return setRoomTeachers(withRoomFeatureIds(cleared, payload.roomId, []), { roomId: payload.roomId, teacherIds: [] }, ctx);
   },
 );
 
@@ -2293,14 +2399,14 @@ export const connectStairs = action(
 
 function connectionLabel(project, connectionId) {
   const connection = project.building.connections.find((candidate) => candidate.id === connectionId);
-  return connection ? connection.label : '';
+  return connection ? stairsLetter(connection) : '';
 }
 
 // 'stairs A' or 'elevator D' for a connection, for a label.
 function connectionWords(project, connectionId) {
   const connection = project.building.connections.find((candidate) => candidate.id === connectionId);
   if (!connection) return 'stairs';
-  return connection.kind === ELEVATOR_KIND ? 'elevator ' + (connection.car || connection.label) : 'stairs ' + connection.label;
+  return connection.kind === ELEVATOR_KIND ? 'elevator ' + (connection.car || connection.label) : 'stairs ' + stairsLetter(connection);
 }
 
 // payload: { connectionId }. An elevator's stops stay where they are, not connected.
@@ -2315,11 +2421,12 @@ export const disconnectStairs = action(
 export const setConnection = action(
   { label: (before, payload) => 'Change ' + (connectionWords(before, payload.connectionId).startsWith('elevator') ? 'an elevator connection' : 'stairs connection ' + connectionLabel(before, payload.connectionId)), bumps: [GEOMETRY], focus: buildingFocus },
   (project, payload) => {
-    const clash = typeof payload.label === 'string' ? project.building.connections.find((other) => other.id !== payload.connectionId && other.label === payload.label) : null;
+    const clash = typeof payload.label === 'string' ? project.building.connections.find((other) => other.id !== payload.connectionId && (other.label === payload.label || (typeof other.well === 'string' && nameKey(other.well) === nameKey(payload.label)))) : null;
     if (clash && clash.kind === ELEVATOR_KIND) {
       const car = clash.car || clash.label;
       refuse(car === clash.label ? 'Elevator ' + car + ' already uses that letter. Each has its own letter or name; type a different one.' : 'A connection of Elevator ' + car + ' is already called ' + clash.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     }
+    if (clash && typeof clash.well === 'string' && nameKey(clash.well) === nameKey(payload.label)) refuse('Stairwell ' + clash.well + ' already uses that letter. Each has its own letter or name; type a different one.', 'duplicate-label');
     if (clash) refuse('There is already a stairs connection ' + payload.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     return inBuilding(project, (building) => geometry.setConnection(building, payload));
   },
@@ -2831,7 +2938,7 @@ const PART_BUMPS = { building: [GEOMETRY, BUILDING, SCHEDULE], schedule: [BUILDI
 // period word, the two defaults and the checks move the schedule; the school
 // name, the colour scale and the time format move nothing. A settings import
 // never moves the geometry.
-const SETTING_BUMPS = { periods: [SCHEDULE], periodWord: [SCHEDULE], defaultPassingSeconds: [SCHEDULE], defaultHeadCount: [SCHEDULE], checks: [SCHEDULE], schoolName: [], colourScale: [], timeFormat: [] };
+const SETTING_BUMPS = { periods: [SCHEDULE], periodWord: [SCHEDULE], periodCustom: [SCHEDULE], periodNames: [SCHEDULE], defaultPassingSeconds: [SCHEDULE], defaultHeadCount: [SCHEDULE], checks: [SCHEDULE], schoolName: [], colourScale: [], timeFormat: [] };
 function takenBumps(summary) {
   const bumps = [];
   if (summary && Array.isArray(summary.taken)) {
@@ -3415,7 +3522,7 @@ function scenarioLever(project, lever) {
       const floor = project.building.floors.find((each) => each.id === end.floorId);
       return Boolean(floor) && floor.cells[end.cell] === CELL_STAIRS;
     };
-    if (!stairsAt(connection.a) || !stairsAt(connection.b)) refuse('Stairs ' + connection.label + ' no longer has stairs at both ends, so it has no way to change.', 'missing');
+    if (!stairsAt(connection.a) || !stairsAt(connection.b)) refuse('Stairs ' + stairsLetter(connection) + ' no longer has stairs at both ends, so it has no way to change.', 'missing');
     if (!['both', 'ab', 'ba', 'closed'].includes(lever.way)) refuse('A stairs\' way is both ways, one way only from its A end or from its B end, or closed.', 'bad-value');
     return { kind: 'way', connectionId: connection.id, way: lever.way };
   }
@@ -4022,7 +4129,94 @@ function countPastPeriods(project, periods) {
     marks: marksOf(project).filter((mark) => Number.isInteger(mark.period) && mark.period >= periods).length,
     duties: dutiesOf(project).filter((duty) => duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods).length,
     release: releaseChanges(project, dropPastPeriodsFromRelease(project, periods)).changed,
+    names: pastNames(project, periods),
+    away: awayLostPast(project, periods),
   };
+}
+
+// Period names past the new end (ARCHITECTURE 22.17): trimmed with the periods.
+function pastNames(project, periods) {
+  const names = project.settings.periodNames;
+  return Array.isArray(names) ? names.slice(periods).filter((name) => typeof name === 'string' && name.trim() !== '').length : 0;
+}
+
+function dropPastNames(project, periods) {
+  const names = project.settings.periodNames;
+  if (!Array.isArray(names) || names.length <= periods) return project;
+  const kept = names.slice(0, periods);
+  while (kept.length > 0 && kept[kept.length - 1] === '') kept.pop();
+  if (kept.length > 0) return patch(project, ['settings', 'periodNames'], () => kept);
+  const { periodNames: dropped, ...rest } = project.settings;
+  return { ...project, settings: rest };
+}
+
+// An away entry that names periods: those past the end go, and one left with
+// none is dropped, never left as [] (which would mean the whole day).
+function trimAwayPeriods(entry, periods) {
+  if (!entry || !Array.isArray(entry.periods) || entry.periods.length === 0) return entry;
+  const kept = entry.periods.filter((period) => !Number.isInteger(period) || period < periods);
+  if (kept.length === entry.periods.length) return entry;
+  return kept.length === 0 ? null : { ...entry, periods: kept };
+}
+
+function awayLostPast(project, periods) {
+  let lost = 0;
+  for (const teacher of project.teachers) {
+    if (Array.isArray(teacher.away)) lost += teacher.away.filter((entry) => trimAwayPeriods(entry, periods) === null).length;
+  }
+  return lost;
+}
+
+function dropPastAway(project, periods) {
+  return changeAway(project, (entry) => trimAwayPeriods(entry, periods));
+}
+
+// Map every teacher's away entries; null drops one. A teacher left with none
+// has no `away` at all, as one that never had any.
+function changeAway(project, fn) {
+  return withKey(project, 'teachers', mapShared(project.teachers, (teacher) => {
+    if (!Array.isArray(teacher.away) || teacher.away.length === 0) return teacher;
+    const away = mapShared(teacher.away, (entry) => fn(entry)).filter((entry) => entry !== null);
+    if (away.length === teacher.away.length && away.every((entry, at) => entry === teacher.away[at])) return teacher;
+    if (away.length > 0) return { ...teacher, away };
+    const { away: gone, ...rest } = teacher;
+    return rest;
+  }));
+}
+
+// A day type is gone: out of every away entry's day types. An entry left with
+// none it had is dropped, not widened to every day type (ARCHITECTURE 22.9),
+// and so is one that names what is left of the day types in full with nothing
+// else to limit it, which says "never in school" (`never`: counted apart). An
+// entry that was already never in school and holds no such id is left alone.
+function awayWithoutDayType(project, dayTypeId, entry) {
+  if (!entry || !Array.isArray(entry.dayTypeIds)) return { entry, dropped: false, never: false };
+  const left = project.dayTypes.filter((dayType) => dayType.id !== dayTypeId);
+  const named = entry.dayTypeIds.includes(dayTypeId);
+  const dayTypeIds = entry.dayTypeIds.filter((id) => id !== dayTypeId);
+  if (named && dayTypeIds.length === 0) return { entry: null, dropped: true, never: false };
+  const next = named ? { ...entry, dayTypeIds } : entry;
+  const was = awayIsNever(project.dayTypes, project.settings.periods, normalAway(project, entry));
+  if (awayIsNever(left, project.settings.periods, normalAway(project, next)) && (named || !was)) return { entry: null, dropped: true, never: true };
+  return { entry: next, dropped: false, never: false };
+}
+
+function dropDayTypeFromAway(project, before, dayTypeId) {
+  return changeAway(project, (entry) => awayWithoutDayType(before, dayTypeId, entry).entry);
+}
+
+function awayLeftNoDayType(project, dayTypeId) {
+  let lost = 0;
+  let never = 0;
+  for (const teacher of project.teachers) {
+    if (!Array.isArray(teacher.away)) continue;
+    for (const entry of teacher.away) {
+      const read = awayWithoutDayType(project, dayTypeId, entry);
+      if (read.dropped) lost += 1;
+      if (read.never) never += 1;
+    }
+  }
+  return { lost, never };
 }
 
 // ================================================================ SV2-83: marked periods and duties (end)

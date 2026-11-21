@@ -606,7 +606,9 @@ test('the room page: who is in it each period, when it is empty, its subject, ca
     assert.equal(lunch[2], 'No teacher');
     assert.match(lunch[1], /^6A Lunch, /);
     await visit(page, files.open, '#/room/rsamplegym');
-    assert.equal(await one(page, '.facts div:nth-child(4) dd'), 'Shared space and Wing: East');
+    assert.equal(await one(page, '.facts div:nth-child(4) dd'), 'Shared space');
+    assert.equal(await one(page, '.facts div:nth-child(5) dt'), 'Wing');
+    assert.equal(await one(page, '.facts div:nth-child(5) dd'), 'East');
     await visit(page, files.open, '#/room/rnothere00');
     assert.equal(await one(page, 'h1'), 'Not in this schedule');
     assert.deepEqual(session.errors, []);

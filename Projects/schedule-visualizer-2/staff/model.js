@@ -4,11 +4,12 @@
 // a bell time is engine/bells.js's, a route is engine/routing.js's: the same
 // functions the planner uses, run on the published data.
 
-import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars } from '../engine/schema.js';
+import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, stairsLetter, nameKey, roomFeatures } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule, effectiveDayType, dayShort, bellsShort } from '../engine/day-types.js';
-import { bellsFor, findBellSchedule, periodName, periodLabel, parseTime, formatTime } from '../engine/bells.js';
+import { bellsFor, findBellSchedule, periodName, periodLabel, periodWordForms, parseTime, formatTime } from '../engine/bells.js';
 import { dayOn, calendarDays, isCalendarDate, addDays, daysBetween, weekdayOf, dateWords } from '../engine/calendar.js';
-import { teacherDay } from '../engine/teacher-day.js';
+import { teacherDay, awayWords } from '../engine/teacher-day.js';
+import { awayEntries } from '../engine/marks.js';
 import { roomName, formatDuration } from '../engine/findings.js';
 import { buildGraph } from '../engine/graph.js';
 import { routingGraph, route } from '../engine/routing.js';
@@ -21,6 +22,53 @@ export const SCHOOL_FALLBACK_NAME = 'Staff schedule';
 // kind themselves.
 export function isElevatorLink(link) {
   return Boolean(link) && link.kind === ELEVATOR_KIND;
+}
+
+// What a stairs connection is called on screen: its stairwell's letter when it
+// has one, else its own. The views ask this and never read the label themselves
+// (the views reach the engine only through the school).
+export function letterOfStairs(link) {
+  return stairsLetter(link);
+}
+
+// The one-way stairs that touch a floor, grouped by letter (a stairwell's
+// flights are one letter, compared as names are), in the building's order:
+// [{ id, letter, ways, text, sentence }]. `ways` is each distinct way a flight
+// there may be walked, { way: 'up only' | 'down only' | 'one way only', from,
+// to } by floor name (between floors the way goes by floor level; on one floor
+// it is "one way only"). A letter whose flights all go one way reads
+// "Stairs B (up only)" as a `text` and "Stairs B is up only." as a `sentence`;
+// one with flights of different ways says each, "Stairs A: up only from Floor 1
+// to Floor 2, down only from Floor 3 to Floor 2", never two sentences that
+// contradict. A stair that runs both ways is not listed.
+export function oneWayGroups(data, floor) {
+  const building = data && data.building ? data.building : {};
+  const floors = Array.isArray(building.floors) ? building.floors : [];
+  const links = Array.isArray(building.connections) ? building.connections : [];
+  const at = (id) => floors.find((each) => each && each.id === id) || { level: 0, name: '' };
+  const touches = (end) => Boolean(end) && end.floorId === floor.id;
+  const groups = new Map();
+  for (const link of links) {
+    if (!link || isElevatorLink(link) || (link.direction !== 'ab' && link.direction !== 'ba') || !(touches(link.a) || touches(link.b))) continue;
+    const from = link.direction === 'ab' ? link.a : link.b;
+    const to = link.direction === 'ab' ? link.b : link.a;
+    const rise = at(to.floorId).level - at(from.floorId).level;
+    const way = { way: rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only', from: at(from.floorId).name, to: at(to.floorId).name };
+    const letter = letterOfStairs(link);
+    const key = nameKey(letter);
+    if (!groups.has(key)) groups.set(key, { id: link.id, letter, ways: [] });
+    const held = groups.get(key).ways;
+    if (!held.some((other) => other.way === way.way && other.from === way.from && other.to === way.to)) held.push(way);
+  }
+  return Array.from(groups.values()).map((group) => {
+    const kinds = new Set(group.ways.map((each) => each.way));
+    if (kinds.size === 1) {
+      const way = group.ways[0].way;
+      return { ...group, ways: group.ways, text: 'Stairs ' + group.letter + ' (' + way + ')', sentence: 'Stairs ' + group.letter + ' is ' + way + '.' };
+    }
+    const said = group.ways.map((each) => (each.way === 'one way only' ? 'one way only on ' + each.from : each.way + ' from ' + each.from + ' to ' + each.to)).join(', ');
+    return { ...group, text: 'Stairs ' + group.letter + ': ' + said, sentence: 'Stairs ' + group.letter + ': ' + said + '.' };
+  });
 }
 
 export function openSchool(data) {
@@ -54,6 +102,37 @@ export function openSchool(data) {
     teacher(id) {
       return findById(data.teachers, id);
     },
+    // The teacher's away entries that apply to a day type (always and
+    // sometimes), in words: [{ words, sometimes, periods }], for a day card.
+    // An entry that holds nowhere is not listed (engine/marks.js awayEntry).
+    awayOf(teacherId, dayTypeId) {
+      return awayEntries(findById(data.teachers, teacherId), dayTypeId, { project: data }).map((read) => ({ words: awayWords(data.settings, read.entry, data.dayTypes), sometimes: read.sometimes, periods: read.periods }));
+    },
+    // The part-time line under a teacher's name: "Part-time: not in school on
+    // Fridays, and in Periods 7 to 8 when it is B Day", each entry worded by
+    // the engine's awayWords; '' for a teacher with none. An entry that holds
+    // nowhere is not in it.
+    awayLine(teacherId) {
+      const teacher = findById(data.teachers, teacherId);
+      const list = teacher && Array.isArray(teacher.away) ? teacher.away : [];
+      const rest = list.map((entry) => awayWords(data.settings, entry, data.dayTypes)).filter((words) => words !== '').map((words) => words.slice('Not in school'.length).trim());
+      if (rest.length === 0) return '';
+      const said = rest.map((part) => (part === '' ? 'every day' : part));
+      return 'Part-time: not in school ' + (said.length === 1 ? said[0] : said.slice(0, -1).join(', ') + ', and ' + said[said.length - 1]);
+    },
+    // A room's features as { id, name } in the school's list order.
+    featuresOf(room) {
+      return roomFeatures(data.building, room);
+    },
+    // The features some room has, as { id, name }, in the school's order.
+    // Only those a published room uses are in the file; none, none.
+    features() {
+      const used = new Set();
+      for (const room of school.rooms) {
+        for (const feature of roomFeatures(data.building, room)) used.add(feature.id);
+      }
+      return (Array.isArray(data.building.features) ? data.building.features : []).filter((feature) => feature && used.has(feature.id)).map((feature) => ({ id: feature.id, name: feature.name }));
+    },
     group(id) {
       return findById(data.groups, id);
     },
@@ -82,6 +161,11 @@ export function openSchool(data) {
     },
     periodName(index) {
       return periodName(data.settings, index);
+    },
+    // The school's word for a period in every form ("Lesson", "Lessons"), for
+    // sentences and column heads: { one, many, oneLower, manyLower, count }.
+    periodWords() {
+      return periodWordForms(data.settings);
     },
     // The period without its word, for a badge on a room: "3", "C", "3rd".
     periodLabel(index) {

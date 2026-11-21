@@ -158,13 +158,15 @@ const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 
   // DESIGN 14.1's words (SV2-112)
   'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack',
   // DESIGN 15.1's words (SV2-124)
-  'Label', 'Kept scenario', 'Building comparison'];
+  'Label', 'Kept scenario', 'Building comparison',
+  // DESIGN 16.1's words (SV2-136)
+  'Feature', 'Period name', 'Not in school', 'Stairwell', 'Flight', 'Dead end'];
 const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
   assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
   for (const each of words(defaultSettings())) assert.ok(each.meaning.endsWith('.') && each.meaning.length > 20, each.term + ' is not explained in a sentence');
   const block = words({ ...defaultSettings(), periodWord: 'Block' });
-  assert.deepEqual(block.map((each) => each.term), ALL_WORDS.map((term) => (term === 'Period' ? 'Block' : term)));
+  assert.deepEqual(block.map((each) => each.term), ALL_WORDS.map((term) => (term === 'Period' ? 'Block' : term === 'Period name' ? 'Block name' : term)));
   assert.match(block.find((each) => each.term === 'Block').meaning, /This school’s word for it is block, and the planner says block everywhere\./);
   assert.match(block.find((each) => each.term === 'Passing time').meaning, /one block and the start of the next/);
   assert.equal(words(undefined).length, ALL_WORDS.length);
@@ -219,7 +221,7 @@ const KEEPERS = new Set(['schema.js', 'validate.js', 'repair.js', 'migrate.js', 
 // schedule check's own limit and its switches, not load, travel or late), and
 // checks and colourScale, read whole to reach their fields, which are named
 // one by one.
-const NOT_A_NUMBER = new Set(['periods', 'periodWord', 'timeFormat', 'schoolName', 'paper', 'paper.size', 'paper.orientation', 'theme', 'checks.consecutiveLimit', 'checks.off', 'checks', 'colourScale']);
+const NOT_A_NUMBER = new Set(['periods', 'periodWord', 'periodCustom', 'periodNames', 'timeFormat', 'schoolName', 'paper', 'paper.size', 'paper.orientation', 'theme', 'checks.consecutiveLimit', 'checks.off', 'checks', 'colourScale']);
 
 function stripComments(source) {
   let out = '';
@@ -416,6 +418,8 @@ const SHOWN = {
   elevatorWaitSeconds: [75, '75 seconds (the default is 30 seconds)'],
   elevatorSecondsPerFloor: [13, '13 seconds (the default is 6 seconds)'],
   elevatorPeoplePerTrip: [10, '10 people (the default is 8 people)'],
+  // SV2-135: the dead-end check reads it, and Help says so
+  cellScale: [{ unit: 'feet', length: 3 }, '3 feet to a cell (the default is not set)'],
 };
 
 function withSetting(dotted, value) {
@@ -512,7 +516,7 @@ test('Elevator is no longer "planned": ordinary routes, step-free routes and an 
   assert.match(meaning('Area of refuge'), /a place to wait for help in an evacuation/i);
   assert.match(meaning('Route sheet'), /One person’s day, printed/);
   assert.equal(all.filter((each) => each.term === 'Elevator').length, 1, 'no new entry for the elevator: its meaning changed');
-  assert.equal(all.length, 42, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three, DESIGN 14.1 four, DESIGN 15.1 three');
+  assert.equal(all.length, 48, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three, DESIGN 14.1 four, DESIGN 15.1 three, DESIGN 16.1 six');
   assert.doesNotMatch(all.map((each) => each.meaning).join(' '), /\blifts?\b/i, 'the code says lift; Help says elevator');
 });
 
@@ -622,4 +626,25 @@ test('Help says blocked stairs do not change the Step-free view; only blocked ex
   assert.ok(/blocked stairs do not change it, because it never uses stairs/.test(text), 'stairs unchanged');
   assert.ok(/only blocked exits and corridors do/.test(text), 'exits and corridors do');
   if (STAIRS_UNCHANGED) assert.ok(STAIRS_UNCHANGED.toLowerCase().includes('never uses stairs'));
+});
+
+test('Help names the staff browser’s free-rooms view as its tab and title label it', () => {
+  // the tab (staff/clock.js) and the page's title (staff/views/free.js)
+  const tab = read('staff', 'clock.js').match(/\['free', '([^']+)'/);
+  assert.ok(tab, 'staff/clock.js has no free tab to read the label from');
+  const title = read('staff', 'views', 'free.js').match(/pageOf\('([^']+)'/);
+  assert.ok(title, 'staff/views/free.js has no pageOf(title, …) to read the title from');
+  assert.equal(tab[1], title[1], 'the free view\'s tab and title differ');
+  const staff = SECTION_HELP.staff.parts.join(' ');
+  assert.ok(staff.includes('In the staff browser, ' + tab[1] + ' shows the features'), 'Help does not call the view ' + tab[1]);
+  assert.ok(!/Free rooms/.test(JSON.stringify(SECTION_HELP)), 'Help names a view Free rooms; the staff browser labels it ' + tab[1]);
+});
+
+test('Help gives the fire-code figure in feet and in metres, the two the dead-end note says by the Cell scale', () => {
+  // engine/building-checks.js: `scale.unit === 'metres' ? 'about 6 metres' : 'about 20 feet'`
+  const code = read('engine', 'building-checks.js').match(/scale\.unit === 'metres' \? '([^']+)' : '([^']+)'/);
+  assert.ok(code, 'engine/building-checks.js no longer chooses the fire-code figure by the scale\'s unit');
+  const [, metres, feet] = code;
+  const building = SECTION_HELP.building.parts.join(' ');
+  assert.ok(building.includes('often to ' + feet + ', or to ' + metres + ' when the Cell scale is in metres'), 'Help\'s Building part does not give both the note\'s figures (' + feet + ', ' + metres + ')');
 });

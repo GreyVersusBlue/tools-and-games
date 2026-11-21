@@ -1,0 +1,871 @@
+// The crowd model: the one rule for how long a group takes in a transition,
+// and whether it is late. Every time figure in the tool comes from here.
+//
+// A group walks its route as a column of lane slots, one step every
+// secondsPerCell. Groups keep right, so two groups going opposite ways along
+// a corridor are in different slots and pass each other; a group behind a
+// slower or waiting group waits; a group turning left across the oncoming
+// lane waits for a gap in it, 6 seconds at most, and walks around a group
+// that is standing there. The model is deterministic: it reads the project
+// and the routes, never the screen, and commits moves in group id order, so
+// the same project gives the same numbers on every machine.
+//
+// The rules are ARCHITECTURE 6.3, numbered 1 to 9 there with 4a, and the
+// comments below name the rule each piece of code is. Rules 4, 4a, 6 and 8
+// were amended on 2026-10-08 and this file follows the amended text.
+//
+// Rule 4, the crossing. A left turn (north to west, west to south, south to
+// east, east to north) also needs the oncoming lane of the cell the head
+// stands on, the crossing slot, to be clear. It is clear when any of these
+// holds:
+//
+//   - nobody is in it;
+//   - the group in it is standing, and is walked around;
+//   - this group has already been refused CROSSING_WAIT_MAX = 6 seconds at
+//     this crossing (people cross a gap in oncoming traffic after a few
+//     seconds);
+//   - the two groups each hold the other's crossing slot, both became ready
+//     on the same tick, and this one has the lower id.
+//
+// A right turn, straight on, the step out of the room and the step off a
+// stairs connection ask nothing more.
+//
+// Where the rules leave a question open, this is what was chosen (each has a
+// test in test/engine/crowd.test.mjs). Choices a to d as SV2-15 made them are
+// the text of rules 6, 4a and 8 now, and are kept here for what they add:
+//
+//   a. Arrival (rule 6) is the tick on which the head steps off the last
+//      slot into the room: the tick it took that slot plus secondsPerCell.
+//      An unhindered group then has total = walking and waiting = 0, and
+//      waiting is exactly the seconds it spent refused.
+//   b. The step into the room takes no slot (rule 3), so it is never refused,
+//      and rule 4 is not applied to it even when the door is on the left.
+//   c. The slot of the cell a stairs connection lands on (rule 4a). The step
+//      onto it has no heading, so its slot takes the heading of the next real
+//      step on the route: the step off it, or the step into the room. A
+//      walker who lands and leaves at once by another connection (the middle
+//      floor of a stairwell drawn as a chain) takes the heading of the last
+//      real step before the stairs instead, when it came down onto the cell;
+//      one going up keeps the next real heading. Rule 4a does not say which
+//      way, and applying it both ways puts the walkers going up through a
+//      middle landing and those coming down through it in one slot whenever
+//      the floors are drawn alike, which is what the rule is there to
+//      prevent. Rule 4 asks nothing of the step off a landing cell (h1 is
+//      none).
+//   d. Waiting for a stopped group (rule 8) is the seconds it was refused,
+//      not total − walking: a walk longer than the cap is stopped without
+//      having waited at all, and the subtraction would go negative.
+//   e. The cap. A group whose head is not in the room after tick `cap` has
+//      been played is stopped there; one that steps in on tick `cap` itself
+//      arrived. A stopped column stays where it is. Nobody is left to want
+//      its slots: every group in a transition has the same cap.
+//   f. Group order is by id as plain strings (code units), the order `<`
+//      gives, so it does not depend on the machine's language.
+//   g. k for a stairs connection uses Math.round, so a half rounds up
+//      (8 s stairs at 3 s a cell is 3 slots; 10 s at 4 s is 3).
+//   h. positions[t] is the head's path index once tick t has been played:
+//      −1 in the first room, 0 … slots − 1 on the route, slots and above once
+//      the head is in the room (the tail is at positions[t] − length + 1).
+//      Every group's array runs to the transition's last tick. It is an
+//      Int16Array unless a path is too long for one, then an Int32Array.
+//   i. A head count that is missing or not a whole number from 1 up uses the
+//      school default.
+//   j. Standing (rule 4, added by SV2-37). The rule's words are "did not move
+//      in the previous tick", but a tick is one second and a step takes
+//      secondsPerCell of them, so a column walking at full pace does not move
+//      in two ticks of every three. A group is standing when it was due a
+//      step in the previous tick and was refused it (rule 5). A group between
+//      two steps is walking and is waited for. At one second a cell the two
+//      readings are the same.
+//   k. Waited for this crossing (rule 4, SV2-37) counts the seconds the
+//      crossing itself refused the turn at this cell. A second refused
+//      because the cell ahead was taken, or lost to a lower id, is not one of
+//      the 6. The count starts again at every crossing.
+//   l. Each hold the other's crossing slot (rule 4, SV2-37): by the head or
+//      by any part of the column, and the other group must be asking for a
+//      left turn of its own on this tick. "Became ready the same tick" is the
+//      two groups' readyAt being equal. When they differ the one that asked
+//      first has been refused a second by the time the other asks, is
+//      standing, and is walked around; it turns once the other has gone or
+//      its own 6 seconds are up.
+//
+// What this module gives:
+//
+//   isLate(total, passingSeconds, marginSeconds)   the one lateness rule
+//   crowdCap(passingSeconds)                       when a group is stopped
+//   columnLength(headCount)                        slots a group is long
+//   routePath(graph, route)                        the lane slots of a route
+//   walkingSeconds(graph, route)                   the uncrowded time
+//   simulateTransition(graph, walkers, options)    one transition
+//   retimeTransition(result, passingSeconds, marginSeconds)
+//                                                  the same transition under
+//                                                  another passing time, when
+//                                                  nothing but `late` changes
+//   transitionAs(result, dayTypeId, period, bellsId?)
+//                                                  the same figures as another
+//                                                  run's transition
+//   simulateDayTransition(project, routes, dayTypeId, period, graph?, bellsId?)
+//   simulateDay(project, routes, dayTypeId, graph?, bellsId?)
+//   simulateSchedule(project, routes, graph?)      every run
+//   routesByRun(project, graph?, options?)         routesForSchedule for every run
+//   teacherWalks(project, graph?, options?)        teachers' walks, uncrowded
+//   walkResults(project, crowd, graph?, options?)  what checkSchedule takes
+//
+// `graph` is routingGraph(project) from routing.js (a bare buildGraph result
+// is wrapped); `routes` is what routesByRun() (or routesForSchedule()) gave
+// for the same project.
+//
+// Runs (ARCHITECTURE 17.8). A run is a day type's classes under one set of
+// bells: { dayTypeId, bellsId }, bellsId null for its regular bells
+// (engine/runs.js runsOf). A run with regular bells is keyed and shaped
+// exactly as a day type was before bell schedules: `days` in a crowd result,
+// the entries of `groups` and `teachers` in the walk results. A run with a
+// bell schedule is in `bells` beside them, each entry carrying `bellsId`,
+// and `bells` is there only when the project has a bell schedule.
+//
+// Where the passing time matters. simulateTransition reads the passing time
+// for two things only: the cap (rule 6, three times the passing time and at
+// least 600 s) and `late`. No step, wait or crossing depends on it. So a
+// transition whose walkers are the same under two passing times gives the
+// same walking, waiting, totals, positions and delays under both whenever no
+// group reaches either cap, and only `late` (and the passing time and cap
+// the result names) differ: retimeTransition makes that result without
+// simulating. A transition in which a group reaches a cap is simulated
+// again. A bell-schedule run takes its rooms from the regular run (the same
+// classes), so each transition whose two periods both meet is the regular
+// run's walkers, and simulateSchedule retimes the regular run's result for
+// it; a transition into or out of a period that does not meet moves nobody
+// (meetingSlots empties the period) and is { off: true } with no passing
+// time. So an off period in the middle of the day moves nobody either side
+// of it: with Period 3 off, the transitions out of Period 2 and out of
+// Period 3 are both off, and the walk from Period 2's room to Period 4's
+// room is not simulated anywhere (ARCHITECTURE 17.3: an off period books no
+// room and moves nobody; the students are not in school, or not walking
+// between classes, then).
+//
+// One transition's result:
+//
+//   { passingSeconds, marginSeconds, cap,
+//     seconds,          the last tick played
+//     groups: [{ groupId, fromRoomId, toRoomId, headCount,
+//                length,     slots the column is long
+//                slots,      slots on its path
+//                walking, waiting, total, late, arrived,
+//                positions }],                in group id order
+//     cellDelay,        Int32Array over the graph's nodes: seconds of waiting
+//                       charged to each cell (the one the head was refused)
+//     connectionDelay } Int32Array over graph.links, the same for stairs
+//
+// simulateDayTransition adds dayTypeId and period (the one walked out of),
+// and for a bell-schedule run bellsId between them; a transition of such a
+// run into or out of a period that does not meet also has off: true and a
+// passingSeconds of null. A walk across periods that do not meet (Period 2
+// to Period 4 under an assembly in Period 3) is kept under the period it
+// leaves and has toPeriod, the period it reaches, and the gap between the
+// two as its passing time; a transition that goes next door has no toPeriod.
+
+import { DOOR_SIDES, STUDENTS_PER_LANE_CELL, RANGES, inRange, defaultSettings, ELEVATOR_DOOR_SECONDS } from './schema.js';
+import { routingGraph, route, createRouteCache, routesForSchedule, runRoutes, walkTarget } from './routing.js';
+import { effectiveDayType, findDayType } from './day-types.js';
+import { bellsFor, offPeriods, parseTime } from './bells.js';
+import { teacherDays, teacherMoves } from './teacher-day.js';
+import { runsOf, meetingSlots } from './runs.js';
+import { releaseDelay } from './release.js';
+
+export const CAP_FACTOR = 3;
+export const CAP_MINIMUM_SECONDS = 600;
+export const CROSSING_WAIT_MAX = 6;
+
+const NONE = 4;
+const OPPOSITE = [2, 3, 0, 1];
+const LEFT = [3, 0, 1, 2]; // north turns left to west, east to north, south to east, west to south
+const SIDE_INDEX = new Map(DOOR_SIDES.map((side, index) => [side, index]));
+const INT16_MAX = 32767;
+
+// Rule 8. Late is decided against the passing time plus the school's margin.
+export function isLate(total, passingSeconds, marginSeconds) {
+  return total > passingSeconds + (Number.isFinite(marginSeconds) ? marginSeconds : 0);
+}
+
+// Rule 6. The tick after which a group that has not arrived is stopped.
+export function crowdCap(passingSeconds) {
+  const passing = Number.isFinite(passingSeconds) && passingSeconds > 0 ? passingSeconds : 0;
+  return Math.max(CAP_MINIMUM_SECONDS, Math.ceil(CAP_FACTOR * passing));
+}
+
+// A group of head count h is a column ceil(h / 6) slots long.
+export function columnLength(headCount) {
+  return Math.max(1, Math.ceil(headCount / STUDENTS_PER_LANE_CELL));
+}
+
+export function headCountOf(group, settings) {
+  if (group && Number.isInteger(group.headCount) && inRange(group.headCount, RANGES.headCount)) return group.headCount;
+  const fallback = settings ? settings.defaultHeadCount : undefined;
+  return Number.isInteger(fallback) && fallback >= 1 ? fallback : defaultSettings().defaultHeadCount;
+}
+
+// The slot numbering of a graph. A cell slot is node × 4 + heading. After
+// those come the stairs slots: for each connection, k slots one way (from its
+// `a` end) and then k the other, and one slot for each elevator car.
+const numberings = new WeakMap();
+
+function numberingOf(graph) {
+  if (!graph || graph.routing !== true) throw new TypeError('The crowd model needs a graph from routingGraph(project).');
+  const held = numberings.get(graph);
+  if (held) return held;
+  const stairsStart = graph.count * 4;
+  const linkSlots = new Int32Array(graph.links.length);
+  const linkBase = new Int32Array(graph.links.length);
+  const linkOfId = new Map();
+  const cars = Array.isArray(graph.cars) ? graph.cars : [];
+  // a car is one slot of its own, numbered by car and shared by every link of
+  // the car and by both directions (ARCHITECTURE 19.5); `carBase[car]` is it
+  const carBase = new Int32Array(cars.length).fill(-1);
+  const slotOwner = [];
+  let total = 0;
+  graph.links.forEach((link, index) => {
+    if (link.elevator === true && cars[link.car]) {
+      if (carBase[link.car] === -1) {
+        carBase[link.car] = total;
+        slotOwner.push(cars[link.car].link);
+        total += 1;
+      }
+      linkSlots[index] = 1;
+      linkBase[index] = carBase[link.car];
+      // a car id is its first link's: never whichever link came last
+      if (index === cars[link.car].link) linkOfId.set(link.id, index);
+      return;
+    }
+    const k = Math.max(1, Math.round((graph.secondsPerStair * link.levels) / graph.secondsPerCell));
+    linkSlots[index] = k;
+    linkBase[index] = total;
+    for (let j = 0; j < 2 * k; j += 1) slotOwner.push(index);
+    total += 2 * k;
+    linkOfId.set(link.id, index);
+  });
+  const linkOfSlot = Int32Array.from(slotOwner);
+  const numbering = { stairsStart, slotCount: stairsStart + total, linkSlots, linkBase, linkOfId, linkOfSlot };
+  numberings.set(graph, numbering);
+  return numbering;
+}
+
+function headingBetween(graph, from, to) {
+  for (let d = 0; d < 4; d += 1) if (graph.neighbours[from * 4 + d] === to) return d;
+  return -1;
+}
+
+// The lane slots a group on this route occupies in order, or null when the
+// route is the same room, failed, or does not fit this graph.
+//
+//   { length,   how many slots
+//     slots,    Int32Array: the slot numbers
+//     cross,    Int32Array: the crossing slot of the step from index i to
+//               i + 1 when that step is a left turn (rule 4), or −1
+//     nodes,    Int32Array: the graph node of a cell slot, −1 on the stairs
+//     links,    Int32Array: the index into graph.links of a stairs slot, −1 on a cell
+//     part,     Int32Array: 0 … k − 1 along a stairs connection, 0 on a cell
+//     rides }   Int32Array: the floors changed at a car's slot (a ride), 0 elsewhere
+export function routePath(graph, found) {
+  const numbering = numberingOf(graph);
+  if (!found || found.ok !== true || found.same === true || !Array.isArray(found.cells) || found.cells.length === 0) return null;
+  const count = found.cells.length;
+  const nodeOf = new Int32Array(count);
+  for (let i = 0; i < count; i += 1) {
+    const f = graph.floorIndex.get(found.cells[i].floorId);
+    const cell = found.cells[i].cell;
+    const node = f === undefined || !(cell >= 0 && cell < graph.floors[f].nodeOfCell.length) ? -1 : graph.floors[f].nodeOfCell[cell];
+    if (node === -1) return null;
+    nodeOf[i] = node;
+  }
+  // linkAfter[i]: the connection taken from cell i, as an index into graph.links
+  const linkAfter = new Int32Array(count).fill(-1);
+  const connections = found.connections || [];
+  for (let c = 0; c < connections.length; c += 1) {
+    const at = found.connectionAt[c];
+    const link = numbering.linkOfId.get(connections[c]);
+    if (link === undefined || !(at >= 0 && at + 1 < count)) return null;
+    linkAfter[at] = link;
+  }
+  // the heading of the step onto each cell, and of the step into the room
+  const stepIn = new Int8Array(count + 1);
+  stepIn[0] = found.from && SIDE_INDEX.has(found.from.side) ? SIDE_INDEX.get(found.from.side) : NONE;
+  for (let i = 1; i < count; i += 1) {
+    if (linkAfter[i - 1] !== -1) {
+      stepIn[i] = NONE;
+    } else {
+      const heading = headingBetween(graph, nodeOf[i - 1], nodeOf[i]);
+      if (heading === -1) return null;
+      stepIn[i] = heading;
+    }
+  }
+  stepIn[count] = found.to && SIDE_INDEX.has(found.to.side) ? OPPOSITE[SIDE_INDEX.get(found.to.side)] : NONE;
+  // choice c: the lane of a cell stepped onto with no heading
+  const lane = new Int8Array(count);
+  let next = stepIn[count] === NONE ? 0 : stepIn[count];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    if (stepIn[i] !== NONE) next = stepIn[i];
+    lane[i] = next;
+  }
+  let last = stepIn[0] === NONE ? next : stepIn[0];
+  for (let i = 0; i < count; i += 1) {
+    if (stepIn[i] !== NONE) {
+      last = stepIn[i];
+    } else if (linkAfter[i] !== -1 && graph.floors[graph.nodeFloor[nodeOf[i]]].level < graph.floors[graph.nodeFloor[nodeOf[i - 1]]].level) {
+      lane[i] = last; // came down, and going straight on by another connection
+    }
+  }
+
+  let length = count;
+  for (let i = 0; i < count; i += 1) if (linkAfter[i] !== -1) length += numbering.linkSlots[linkAfter[i]];
+  const slots = new Int32Array(length);
+  const cross = new Int32Array(length).fill(-1);
+  const nodes = new Int32Array(length).fill(-1);
+  const links = new Int32Array(length).fill(-1);
+  const part = new Int32Array(length);
+  const rides = new Int32Array(length); // the floors a ride changes at its car slot, 0 elsewhere
+  let p = 0;
+  for (let i = 0; i < count; i += 1) {
+    slots[p] = nodeOf[i] * 4 + lane[i];
+    nodes[p] = nodeOf[i];
+    // rule 4: a left turn from the heading walked in on asks about the oncoming lane of this cell
+    if (i + 1 < count && linkAfter[i] === -1 && stepIn[i] !== NONE && stepIn[i + 1] === LEFT[stepIn[i]]) {
+      cross[p] = nodeOf[i] * 4 + OPPOSITE[stepIn[i]];
+    }
+    p += 1;
+    const link = linkAfter[i];
+    if (link !== -1) {
+      const k = numbering.linkSlots[link];
+      // a car's one slot has no direction; a stairs connection's has one each way
+      const base = numbering.stairsStart + numbering.linkBase[link] + (graph.links[link].elevator === true || graph.links[link].a === nodeOf[i] ? 0 : k);
+      for (let j = 0; j < k; j += 1) {
+        slots[p] = base + j;
+        links[p] = link;
+        part[p] = j;
+        if (graph.links[link].elevator === true) {
+          // a ride's ends are read from the route, never from the car's first link
+          const from = graph.floors[graph.nodeFloor[nodeOf[i]]].level;
+          const to = graph.floors[graph.nodeFloor[nodeOf[i + 1]]].level;
+          rides[p] = Math.max(1, Math.abs(to - from));
+        }
+        p += 1;
+      }
+    }
+  }
+  return { length, slots, cross, nodes, links, part, rides };
+}
+
+// The seconds a ride of `levels` floors takes one person: the wait for the
+// car and the ride itself (ARCHITECTURE 19.4's cost, 19.5's trips = 1).
+function rideSeconds(graph, levels) {
+  return graph.elevator.wait + graph.elevator.perFloor * levels;
+}
+
+// How long a group's head holds the car after it takes the car's slot
+// (ARCHITECTURE 19.5): wait + ride, plus, for a group that needs more than
+// one trip, a return and a second ride for each trip after the first, less
+// the walk out of the car that the column's own steps already count; never
+// less than one person's wait + ride.
+export function rideFor(graph, levels, headCount) {
+  const { wait, perFloor, perTrip } = graph.elevator;
+  const ride = perFloor * levels;
+  const trips = Math.max(1, Math.ceil(headCount / perTrip));
+  const held = wait + ride + (trips - 1) * (2 * ride + 2 * ELEVATOR_DOOR_SECONDS) - (columnLength(headCount) - 1) * graph.secondsPerCell;
+  return Math.max(wait + ride, Math.round(held));
+}
+
+// Rule 8: walking = (number of path slots, less a car's) × secondsPerCell,
+// and a ride counts as wait + ride for one person. This is the walking time
+// every screen shows; null when there is no walk to time.
+export function walkingSeconds(graph, found) {
+  const path = routePath(graph, found);
+  if (!path) return null;
+  let seconds = 0;
+  for (let p = 0; p < path.length; p += 1) seconds += path.rides[p] > 0 ? rideSeconds(graph, path.rides[p]) : graph.secondsPerCell;
+  return seconds;
+}
+
+// walkingSeconds split as a group's figures are: the walk (no car slot) and
+// the rides (wait + ride for each); walking + riding is walkingSeconds.
+function walkParts(graph, found) {
+  const path = routePath(graph, found);
+  if (!path) return null;
+  let walking = 0;
+  let riding = 0;
+  for (let p = 0; p < path.length; p += 1) {
+    if (path.rides[p] > 0) riding += rideSeconds(graph, path.rides[p]);
+    else walking += graph.secondsPerCell;
+  }
+  return { walking, riding };
+}
+
+function ridesOf(path) {
+  let n = 0;
+  for (let p = 0; p < path.length; p += 1) if (path.rides[p] > 0) n += 1;
+  return n;
+}
+
+function byId(a, b) {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+// One transition. `walkers` is [{ id, headCount, route, delay }] in any order;
+// a walker whose route is the same room or failed takes no part (rule 7).
+// `delay` is the whole seconds a group waits after the bell before its head
+// may try its first step (staggered dismissal, ARCHITECTURE 18.2): it is the
+// group's first `readyAt` and nothing else. Arrival is still counted from the
+// bell, so total = released + walking + waiting, and a group held back keeps
+// its own passing time to walk in. `released` is on a group's figures only
+// when it was held (absent reads as 0), so a project with no staggered
+// dismissal has the figures it always had.
+// options: { passingSeconds, marginSeconds }.
+export function simulateTransition(graph, walkers, options) {
+  const numbering = numberingOf(graph);
+  const opts = options || {};
+  const passingSeconds = Number.isFinite(opts.passingSeconds) ? opts.passingSeconds : defaultSettings().defaultPassingSeconds;
+  const marginSeconds = Number.isFinite(opts.marginSeconds) ? opts.marginSeconds : 0;
+  const cap = crowdCap(passingSeconds);
+  const step = graph.secondsPerCell;
+
+  const taking = [];
+  for (const walker of walkers || []) {
+    const path = walker ? routePath(graph, walker.route) : null;
+    if (!path) continue;
+    const headCount = headCountOf(walker, null);
+    // holds[p]: the seconds the head stays at slot p before its next step, the
+    // step for a cell and a stairs slot, rideFor for a car's
+    const holds = new Int32Array(path.length).fill(graph.secondsPerCell);
+    let riding = 0;
+    for (let p = 0; p < path.length; p += 1) {
+      if (path.rides[p] > 0) {
+        holds[p] = rideFor(graph, path.rides[p], headCount);
+        riding += holds[p];
+      }
+    }
+    taking.push({ id: walker.id, route: walker.route, path, headCount, length: columnLength(headCount), holds, riding, delay: Number.isInteger(walker.delay) && walker.delay > 0 ? walker.delay : 0 });
+  }
+  taking.sort(byId);
+  const count = taking.length;
+
+  const cellDelay = new Int32Array(graph.count);
+  const connectionDelay = new Int32Array(graph.links.length);
+  let longest = 0;
+  let wide = false;
+  for (const walker of taking) {
+    if (walker.length > longest) longest = walker.length;
+    if (walker.path.length + walker.length > INT16_MAX) wide = true;
+  }
+  const lastTick = cap + longest * step; // a group in the room by `cap` has its tail in by then
+  const occupancy = new Int32Array(numbering.slotCount).fill(-1);
+  const head = new Int32Array(count).fill(-1);
+  const readyAt = new Int32Array(count);
+  for (let g = 0; g < count; g += 1) readyAt[g] = taking[g].delay; // the release-delay wish changes only this
+  const waited = new Int32Array(count);
+  const refusedAt = new Int32Array(count).fill(-2); // the last tick each group was refused a step
+  const crossingWaited = new Int32Array(count); // seconds rule 4 has refused the turn the head is at
+  const arrivedAt = new Int32Array(count).fill(-1);
+  const over = new Uint8Array(count); // 1: tail in the room, 2: stopped
+  const want = new Int32Array(count);
+  const track = new Int32Array(count * (lastTick + 1));
+  const IDLE = -2;
+  const FREE = -1;
+  const REFUSED = -3;
+  const CROSSING = -4; // refused by rule 4 alone
+
+  let active = count;
+  let tick = 0;
+  for (; active > 0; tick += 1) {
+    // rule 1, read: what each group may do, from the slots as the last tick left them
+    for (let g = 0; g < count; g += 1) {
+      want[g] = IDLE;
+      if (over[g] || readyAt[g] > tick) continue; // rule 2
+      const path = taking[g].path;
+      const at = head[g];
+      if (at >= path.length - 1) {
+        want[g] = FREE; // into the room, or the column following it in: takes no slot
+        continue;
+      }
+      const slot = path.slots[at + 1];
+      if (occupancy[slot] !== -1) {
+        want[g] = REFUSED; // rule 3
+        continue;
+      }
+      want[g] = slot;
+      // rule 4: a left turn needs the oncoming lane of this cell clear
+      const crossing = at >= 0 ? path.cross[at] : -1;
+      const other = crossing === -1 ? -1 : occupancy[crossing];
+      if (other === -1 || other === g) continue;
+      if (refusedAt[other] === tick - 1) continue; // a standing group is walked around (choice j)
+      if (crossingWaited[g] >= CROSSING_WAIT_MAX) continue; // it has waited its 6 seconds (choice k)
+      if (g < other && readyAt[other] === readyAt[g] && !over[other]) {
+        // each holds the other's crossing slot and both became ready on this tick: the lower id goes first (choice l)
+        const theirs = taking[other].path;
+        const there = head[other];
+        if (there >= 0 && there < theirs.length - 1 && theirs.cross[there] !== -1 && occupancy[theirs.cross[there]] === g) continue;
+      }
+      want[g] = CROSSING;
+    }
+    // rule 1, commit: in group id order
+    for (let g = 0; g < count; g += 1) {
+      const wanted = want[g];
+      if (wanted === IDLE) continue;
+      const walker = taking[g];
+      const path = walker.path;
+      const at = head[g];
+      if (wanted === REFUSED || wanted === CROSSING || (wanted >= 0 && occupancy[wanted] !== -1)) {
+        // rule 5: a second of waiting, charged to the slot the head was refused
+        waited[g] += 1;
+        refusedAt[g] = tick;
+        if (wanted === CROSSING) crossingWaited[g] += 1;
+        const refused = path.slots[at + 1];
+        if (refused < numbering.stairsStart) cellDelay[refused >> 2] += 1;
+        else connectionDelay[numbering.linkOfSlot[refused - numbering.stairsStart]] += 1;
+        continue;
+      }
+      if (wanted >= 0) occupancy[wanted] = g;
+      const tail = at - walker.length + 1;
+      if (tail >= 0 && tail < path.length) occupancy[path.slots[tail]] = -1;
+      head[g] = at + 1;
+      readyAt[g] = tick + (head[g] < path.length ? walker.holds[head[g]] : step);
+      crossingWaited[g] = 0;
+      if (head[g] === path.length) arrivedAt[g] = tick; // choice a
+      if (head[g] >= path.length + walker.length - 1) {
+        over[g] = 1;
+        active -= 1;
+      }
+    }
+    for (let g = 0; g < count; g += 1) track[g * (lastTick + 1) + tick] = head[g];
+    // rule 6: not in the room once tick `cap` has been played
+    if (tick === cap) {
+      for (let g = 0; g < count; g += 1) {
+        if (!over[g] && arrivedAt[g] === -1) {
+          over[g] = 2;
+          active -= 1;
+        }
+      }
+    }
+  }
+  const seconds = count === 0 ? 0 : tick - 1;
+
+  const groups = taking.map((walker, g) => {
+    const arrived = arrivedAt[g] !== -1;
+    const total = arrived ? arrivedAt[g] : cap;
+    const positions = wide ? new Int32Array(seconds + 1) : new Int16Array(seconds + 1);
+    for (let t = 0; t <= seconds; t += 1) positions[t] = track[g * (lastTick + 1) + t];
+    return {
+      groupId: walker.id,
+      fromRoomId: walker.route.fromRoomId,
+      toRoomId: walker.route.toRoomId,
+      headCount: walker.headCount,
+      length: walker.length,
+      slots: walker.path.length,
+      walking: (walker.path.length - ridesOf(walker.path)) * step, // rule 8, no car slot
+      ...(walker.riding > 0 ? { riding: walker.riding } : {}),
+      waiting: waited[g],
+      ...(walker.delay > 0 ? { released: walker.delay } : {}),
+      total,
+      late: arrived ? isLate(total, passingSeconds, marginSeconds) : true,
+      arrived,
+      positions,
+    };
+  });
+  return { passingSeconds, marginSeconds, cap, seconds, groups, cellDelay, connectionDelay };
+}
+
+// The same transition under another passing time, or null when the result
+// would be more than `late` and the times it names: when a group reached
+// the cap under the passing time it was simulated with, or would reach the
+// cap under this one (rule 6 is the only rule that reads the passing time;
+// the header has why). A group whose `late` does not change is the same
+// object; positions and delays are shared, never copied. Null too for a
+// passing time that is not a number: an off transition ('off' in the
+// worker's cache, null in bellsFor) is { off: true } with no passing time,
+// never a met transition retimed, even one that moves nobody.
+export function retimeTransition(result, passingSeconds, marginSeconds) {
+  if (!result || !Array.isArray(result.groups) || result.off === true) return null;
+  if (typeof passingSeconds !== 'number' || !Number.isFinite(passingSeconds)) return null;
+  const passing = passingSeconds;
+  const margin = Number.isFinite(marginSeconds) ? marginSeconds : 0;
+  const cap = crowdCap(passing);
+  // a group stopped at its cap means the transition ran to it, so this is
+  // also "every group arrived"
+  if (!(result.seconds < result.cap) || !(result.seconds < cap)) return null;
+  const groups = result.groups.map((group) => {
+    const late = isLate(group.total, passing, margin);
+    return late === group.late ? group : { ...group, late };
+  });
+  return { ...result, passingSeconds: passing, marginSeconds: margin, cap, groups };
+}
+
+// The routes of run (dayTypeId, bellsId). A day type that is the same as A Day
+// is answered from A Day, unless it has a run of its own (runsOf gives one to
+// a follower a No class mark names): then it is answered from that run.
+function dayOf(project, routes, dayTypeId, bellsId) {
+  const own = findDayType(project, dayTypeId);
+  const dayType = own && runRoutes(routes, own.id, bellsId) ? own : effectiveDayType(project, dayTypeId);
+  if (!dayType) return null;
+  const day = runRoutes(routes, dayType.id, bellsId);
+  return day ? { dayType, day, bellsId: typeof bellsId === 'string' ? bellsId : null } : null;
+}
+
+// What every transition result of a run starts with: the day type, a bell
+// schedule's id when there is one, the period walked out of.
+function runHead(found, period) {
+  return found.bellsId === null ? { dayTypeId: found.dayType.id, period } : { dayTypeId: found.dayType.id, bellsId: found.bellsId, period };
+}
+
+function simulated(result) {
+  const { dayTypeId, bellsId, period, off, ...rest } = result;
+  return rest;
+}
+
+// A transition result of one run as the result of another run's transition
+// with the same walkers and the same passing time: the same figures under
+// the other run's day type, bell schedule (null or left out for regular
+// bells) and period. The very object when those already match; the parts
+// are shared, never copied.
+export function transitionAs(result, dayTypeId, period, bellsId) {
+  const bells = typeof bellsId === 'string' ? bellsId : null;
+  const was = typeof result.bellsId === 'string' ? result.bellsId : null;
+  if (result.dayTypeId === dayTypeId && result.period === period && was === bells) return result;
+  const head = bells === null ? { dayTypeId, period } : { dayTypeId, bellsId: bells, period };
+  return result.off === true ? { ...head, off: true, ...simulated(result) } : { ...head, ...simulated(result) };
+}
+
+function runTransition(project, routing, found, period, passingSeconds) {
+  const settings = project.settings;
+  const groupOf = new Map(project.groups.map((group) => [group.id, group]));
+  const walkers = [];
+  for (const entry of found.day.groups) {
+    const group = groupOf.get(entry.groupId);
+    const way = entry.routes[period];
+    if (!group || !way || way.ok !== true || way.same === true) continue;
+    walkers.push({ id: group.id, headCount: headCountOf(group, settings), route: way, delay: releaseDelay(project, group.id, found.dayType.id, period, way.fromRoomId) });
+  }
+  const marginSeconds = settings.checks ? settings.checks.passingMarginSeconds : 0;
+  const result = simulateTransition(routing, walkers, { passingSeconds, marginSeconds });
+  return { ...runHead(found, period), ...result };
+}
+
+// What the transition kept under `period` is under these bells (bellsFor's
+// list): null when it moves nobody (a period that does not meet leaves it,
+// or nothing meets after it), else { to, passing }, the period walked into
+// and the passing time. Next door that is the bells' own passing time; past
+// periods that do not meet (an assembly in Period 3: Period 2 to Period 4) it
+// is the gap between the two by the bells, the school default when either
+// has no time or the gap is none (ARCHITECTURE 17.3).
+export function transitionPlan(project, bells, period) {
+  const off = new Set();
+  bells.forEach((bell, p) => { if (bell.off === true) off.add(p); });
+  const to = walkTarget(off, bells.length, period);
+  if (to === null) return null;
+  if (to === period + 1) return { to, passing: bells[period].passingAfter };
+  const end = parseTime(bells[period].end);
+  const start = parseTime(bells[to].start);
+  return { to, passing: end !== null && start !== null && start > end ? (start - end) * 60 : project.settings.defaultPassingSeconds };
+}
+
+// A transition into or out of a period that does not meet: nobody walks.
+function offTransition(project, routing, found, period) {
+  const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
+  return { ...runHead(found, period), off: true, ...simulateTransition(routing, [], { marginSeconds }), passingSeconds: null };
+}
+
+// One transition of a run: off, the regular run's result retimed when it is
+// handed in and can be (`regular`, the same period's transition of the
+// regular run of this day type), or simulated.
+function transitionOf(project, routing, found, period, bells, regular) {
+  const plan = transitionPlan(project, bells, period);
+  if (plan === null) return offTransition(project, routing, found, period);
+  const passingSeconds = plan.passing;
+  if (plan.to !== period + 1) {
+    // a walk across periods that do not meet is no regular transition retimed
+    return { ...runHead(found, period), toPeriod: plan.to, ...simulated(runTransition(project, routing, found, period, passingSeconds)) };
+  }
+  if (regular) {
+    const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
+    const retimed = retimeTransition(regular, passingSeconds, marginSeconds);
+    if (retimed) return { ...runHead(found, period), ...simulated(retimed) };
+  }
+  return runTransition(project, routing, found, period, passingSeconds);
+}
+
+// The transition out of `period` (into period + 1) on one day type, under
+// its regular bells or with bellsId under a bell schedule. A day type that
+// is the same as A Day is answered from A Day. Null when the day type, the
+// run's routes or the transition is not there.
+export function simulateDayTransition(project, routes, dayTypeId, period, graph, bellsId) {
+  const found = dayOf(project, routes, dayTypeId, bellsId);
+  if (!found || !Number.isInteger(period) || period < 0 || period + 1 >= project.settings.periods) return null;
+  const bells = bellsFor(project, found.dayType.id, found.bellsId === null ? undefined : found.bellsId);
+  return transitionOf(project, routingGraph(project, graph), found, period, bells, null);
+}
+
+function runDay(project, routing, found, regularDay) {
+  const bells = bellsFor(project, found.dayType.id, found.bellsId === null ? undefined : found.bellsId);
+  const transitions = [];
+  for (let period = 0; period + 1 < project.settings.periods; period += 1) {
+    const regular = regularDay && found.bellsId !== null ? regularDay.transitions[period] : null;
+    transitions.push(transitionOf(project, routing, found, period, bells, regular));
+  }
+  return found.bellsId === null ? { dayTypeId: found.dayType.id, transitions } : { dayTypeId: found.dayType.id, bellsId: found.bellsId, transitions };
+}
+
+// Every transition of one run: { dayTypeId, transitions: [one result each] },
+// with bellsId between them for a bell-schedule run.
+export function simulateDay(project, routes, dayTypeId, graph, bellsId) {
+  const found = dayOf(project, routes, dayTypeId, bellsId);
+  if (!found) return null;
+  return runDay(project, routingGraph(project, graph), found, null);
+}
+
+// The whole day of every run: { days: [simulateDay's result for each run
+// with regular bells, each own day type in order] }, and when the project has a bell schedule `bells`,
+// each own day type under each schedule in runsOf's order, whose
+// transitions retime the regular run's where they can.
+export function simulateSchedule(project, routes, graph) {
+  const routing = routingGraph(project, graph);
+  const runs = runsOf(project);
+  const days = [];
+  for (const run of runs) {
+    if (run.bellsId !== null) continue;
+    const found = dayOf(project, routes, run.dayTypeId, null);
+    if (found) days.push(runDay(project, routing, found, null));
+  }
+  const result = { days };
+  const bells = [];
+  for (const run of runs) {
+    if (run.bellsId === null) continue;
+    const found = dayOf(project, routes, run.dayTypeId, run.bellsId);
+    if (!found) continue;
+    bells.push(runDay(project, routing, found, days.find((day) => day.dayTypeId === found.dayType.id)));
+  }
+  if (bells.length > 0) result.bells = bells;
+  return result;
+}
+
+// routesForSchedule (routing.js) for every run of the project: runsOf's runs,
+// each group where meetingSlots puts it (engine/runs.js). What the pipeline
+// and every caller that wants the bell-schedule runs ask.
+export function routesByRun(project, graph, options) {
+  return routesForSchedule(project, graph, { ...(options || {}), runs: runsOf(project), meetingSlots });
+}
+
+// A teacher's walk between rooms is routed like a group's and timed by
+// walking alone, with no crowd. One entry per walk teacherMoves() names, on
+// every own day type, in the shape checkSchedule takes. A walk with no way
+// through has no figure: it is there with `failed: true` and `late: true` and
+// no `walking` (SV2-90b). options.cache is a route cache.
+// options.ways, options.avoidConnections and options.shutCells are routing's
+// (the scenario's building levers) and pass through to every route.
+//
+// With options.bells true, the same for every bell-schedule run instead
+// (runsOf's order), each entry with bellsId after dayTypeId: the teacher's
+// day is the day type's, less the periods that do not meet under the
+// schedule. A walk into or out of the leading or trailing ones is not one;
+// a walk across the ones in the middle is kept under the period it leaves,
+// has toPeriod (the period it reaches) and the gap between the two as its
+// passing time, as a group's does; every other walk is timed against the
+// schedule's passing time.
+export function bellMoves(day, off) {
+  if (off === null || off.size === 0) return teacherMoves(day);
+  const meets = [];
+  for (let period = 0; period < day.length; period += 1) if (!off.has(period)) meets.push(period);
+  return teacherMoves(meets.map((period) => day[period])).map((move) => ({
+    ...move,
+    period: meets[move.period],
+    ...(meets[move.period + 1] === meets[move.period] + 1 ? {} : { toPeriod: meets[move.period + 1] }),
+  }));
+}
+
+export function teacherWalks(project, graph, options) {
+  const routing = routingGraph(project, graph);
+  const cache = options && options.cache ? options.cache : createRouteCache();
+  const routeOptions = { cache };
+  if (options && options.geometryVersion !== undefined) routeOptions.geometryVersion = options.geometryVersion;
+  // the scenario's building levers (a stair one way or closed, closed cells)
+  // reach a teacher as they reach a class (ARCHITECTURE 18.3)
+  if (options && options.ways) routeOptions.ways = options.ways;
+  if (options && options.avoidConnections) routeOptions.avoidConnections = options.avoidConnections;
+  if (options && options.shutCells) routeOptions.shutCells = options.shutCells;
+  const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
+  const bellRuns = Boolean(options && options.bells === true);
+  const runs = runsOf(project).filter((run) => (run.bellsId !== null) === bellRuns);
+  const walks = [];
+  const daysOf = new Map();
+  for (const run of runs) {
+    if (!daysOf.has(run.dayTypeId)) daysOf.set(run.dayTypeId, teacherDays(project, run.dayTypeId));
+    const days = daysOf.get(run.dayTypeId);
+    if (!days) continue;
+    const bellsId = run.bellsId;
+    const bells = bellsId === null ? bellsFor(project, run.dayTypeId) : bellsFor(project, run.dayTypeId, bellsId);
+    const off = bellsId === null ? null : offPeriods(project, bellsId);
+    for (const teacher of project.teachers) {
+      const day = days.get(teacher.id);
+      if (!day) continue;
+      for (const move of bellMoves(day, off)) {
+        const found = route(routing, move.fromRoomId, move.toRoomId, routeOptions);
+        const parts = walkParts(routing, found);
+        const walking = parts === null ? null : parts.walking;
+        const riding = parts === null ? 0 : parts.riding;
+        // a walk with no way through (a closure or a one-way stair in the
+        // building or the scenario, or a room that opens onto no corridor) is
+        // a failed walk, as a group's is, never a walk that is not there; a
+        // room not placed has no walk to fail
+        const stranded = walking === null && found && found.ok === false && (found.reason === 'unreachable' || found.reason === 'no-entry');
+        if (walking === null && !stranded) continue;
+        const passingSeconds = move.toPeriod === undefined ? bells[move.period].passingAfter : transitionPlan(project, bells, move.period).passing;
+        const head = bellsId === null ? { dayTypeId: run.dayTypeId } : { dayTypeId: run.dayTypeId, bellsId };
+        if (stranded) {
+          walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, failed: true, late: true });
+          continue;
+        }
+        walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, ...(riding > 0 ? { riding } : {}), late: isLate(walking + riding, passingSeconds, marginSeconds) });
+      }
+    }
+  }
+  return walks;
+}
+
+function groupWalks(days) {
+  const groups = [];
+  for (const day of days) {
+    for (const transition of day.transitions) {
+      for (const group of transition.groups) {
+        const head = typeof day.bellsId === 'string' ? { dayTypeId: day.dayTypeId, bellsId: day.bellsId } : { dayTypeId: day.dayTypeId };
+        groups.push({
+          ...head,
+          groupId: group.groupId,
+          period: transition.period,
+          ...(transition.toPeriod === undefined ? {} : { toPeriod: transition.toPeriod }),
+          fromRoomId: group.fromRoomId,
+          toRoomId: group.toRoomId,
+          passingSeconds: transition.passingSeconds,
+          total: group.total,
+          walking: group.walking,
+          ...(group.riding > 0 ? { riding: group.riding } : {}),
+          waiting: group.waiting,
+          ...(group.released > 0 ? { released: group.released } : {}),
+          late: group.late,
+          arrived: group.arrived,
+        });
+      }
+    }
+  }
+  return groups;
+}
+
+// The walk results checkSchedule(project, walkResults) takes, built from
+// simulateSchedule's result: { groups, teachers } for the regular runs, and
+// when the crowd result has bell-schedule runs, bells: { groups, teachers }
+// for those, each entry with its bellsId. Every walk is there, late or not,
+// so the travel-time tables read the same list the checks do.
+export function walkResults(project, crowd, graph, options) {
+  const result = {
+    groups: groupWalks(crowd && Array.isArray(crowd.days) ? crowd.days : []),
+    teachers: teacherWalks(project, graph, options),
+  };
+  if (crowd && Array.isArray(crowd.bells)) {
+    result.bells = { groups: groupWalks(crowd.bells), teachers: teacherWalks(project, graph, { ...(options || {}), bells: true }) };
+  }
+  return result;
+}

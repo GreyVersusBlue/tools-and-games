@@ -361,7 +361,7 @@ export function momentWords(school, dayType, moment, bellsId) {
   if (moment.state === 'passing') return ['It is passing time on ', day, '. ', school.periodName(moment.next), ' starts at ', start(moment.next), '.'];
   if (moment.state === 'before') return ['The day has not started on ', day, '. ', school.periodName(moment.next), ' starts at ', start(moment.next), '.'];
   if (moment.state === 'after') return ['The last bell on ', day, ' has gone.'];
-  return [day, ' has no bell times in this schedule, so the current ', school.data.settings.periodWord.toLowerCase(), ' is not known.'];
+  return [day, ' has no bell times in this schedule, so the current ', school.periodWords().oneLower, ' is not known.'];
 }
 
 // One watcher at a time: the page on screen. `tick()` is called every 30
@@ -439,7 +439,7 @@ export function groupMark(school, groupId, dayTypeId, period) {
   return markFor(school.data, groupId, dayTypeId, period);
 }
 
-const MARK_WORDS = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+const MARK_WORDS = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class', away: 'Not in school' };
 const DUTY_WORDS = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
 const WEEKDAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 
@@ -496,6 +496,8 @@ export function sometimesWords(school, duty) {
 //   free, for Coverage's list: "On duty: Lunch duty", "At lunch".
 export function takenBy(school, entry, dayTypeId, date) {
   if (!entry || entry.kind !== 'planning' || !entry.marked) return null;
+  // a teacher who is away is taken by nothing else, whatever the period holds
+  if (entry.marked === 'away') return { eyebrow: '', title: MARK_WORDS.away, place: '', times: '', reason: MARK_WORDS.away };
   const duty = takingDuty(entry, date);
   if (duty) {
     const title = dutyWords(duty);
@@ -505,14 +507,14 @@ export function takenBy(school, entry, dayTypeId, date) {
   }
   const mark = schoolMarkFor(school.data, dayTypeId, entry.period);
   const title = mark ? markWords(mark) : MARK_WORDS[entry.marked] || 'Taken';
-  const lead = { lunch: 'At lunch', advisory: 'In advisory', activity: 'At an activity', noclass: 'No class' }[entry.marked] || 'Busy';
+  const lead = { lunch: 'At lunch', advisory: 'In advisory', activity: 'At an activity', noclass: 'No class', away: MARK_WORDS.away }[entry.marked] || 'Busy';
   return { eyebrow: '', title, place: '', times: '', reason: title === MARK_WORDS[entry.marked] ? lead : lead + ': ' + title };
 }
 
 // The duty that takes a free period, by teacher-day.js's order: an always
 // duty first, and with a date also one that holds that day.
 export function takingDuty(entry, date) {
-  if (!entry || entry.kind !== 'planning' || !entry.marked) return null;
+  if (!entry || entry.kind !== 'planning' || !entry.marked || entry.marked === 'away') return null;
   return (entry.duties || []).find((each) => !dutyIsSometimes(each) || typeof date === 'string') || null;
 }
 
@@ -613,7 +615,7 @@ export function periodPicker(school, dayTypeId, value, onChoose, bellsId) {
   }
   const select = h('select', { class: 'field__input', id, dataset: { pick: 'period' } }, options);
   select.addEventListener('change', () => onChoose(select.value === '' ? '' : Number(select.value)));
-  return h('div', { class: 'field' }, h('label', { class: 'field__label', for: id }, school.data.settings.periodWord), select);
+  return h('div', { class: 'field' }, h('label', { class: 'field__label', for: id }, school.periodWords().one), select);
 }
 
 // The period an address names with ?p=…: '' for now, or an index that exists.

@@ -77,7 +77,15 @@
 //              the label) and so keep their row when the floors they serve
 //              change. Stairs are matched by label and floor names; a stairs
 //              whose label is the only one of that label on each side is
-//              matched with the other even when its floor names differ.
+//              matched with the other even when its floor names differ. Stairs
+//              show a stairwell's letter (stairsLetter). Plain stairs on one
+//              side and a stairwell's flight over the same floors on the other
+//              (each the only unpaired one over those floors) are one row,
+//              named as A has it, with nameAfter (B's name) and stairwell
+//              "now one stairwell" (or "no longer one stairwell"). `stairwells`
+//              lists each such change whatever the loads did: { kind: "now" |
+//              "no-longer", letter, names, sentence }, "Stairs A and B are now
+//              one stairwell, A."
 //              Every connection row carries floorsBefore, floorsAfter and
 //              floorsChanged. Rows: { key, kind, name, floorNames (as A
 //              writes them), before, after, difference } (+ the above),
@@ -105,7 +113,7 @@
 // for a missing project or result, or a result whose loads are of day types
 // the project does not have; everything else is a value.
 
-import { allRooms, floorOfRoom } from './schema.js';
+import { allRooms, floorOfRoom, stairsLetter } from './schema.js';
 import { countBySeverity, SEVERITIES } from './findings.js';
 import { trimResult, walkFigures, busiestOf, findingsOf, roomKeys, matchRooms } from './scenario.js';
 
@@ -215,8 +223,8 @@ function namedPlaces(project, view, dayTypeId, transition) {
           entries.push({ kind: 'elevator', name, floorNames, load: value, order });
           return;
         }
-      } else if (connection && !blank(connection.label)) {
-        entries.push({ kind: 'stairs', name: connection.label, floorNames: (place.floorIds || [place.floorId]).map(floorName), load: value, order });
+      } else if (connection && !blank(stairsLetter(connection))) {
+        entries.push({ kind: 'stairs', name: stairsLetter(connection), well: !blank(connection.well), floorNames: (place.floorIds || [place.floorId]).map(floorName), load: value, order });
         return;
       }
     }
@@ -224,6 +232,9 @@ function namedPlaces(project, view, dayTypeId, transition) {
   });
   return { entries, unnamed };
 }
+
+export const NOW_ONE_STAIRWELL = 'now one stairwell';
+export const NO_LONGER_ONE_STAIRWELL = 'no longer one stairwell';
 
 const floorsKey = (entry) => entry.floorNames.map(nameKey).sort();
 
@@ -292,6 +303,32 @@ function keyPlaces(entriesA, entriesB) {
     const listB = labelsB.get(label);
     if (listA.length === 1 && listB && listB.length === 1) listB[0].key = listA[0].key;
   }
+  // flights that became one stairwell (or stopped being one): plain stairs A
+  // and B on one side and well A over the same floors on the other have
+  // different letters, so the letter cannot pair them; the floors do, when each
+  // side has exactly one still-unpaired flight over those floors, one a well's
+  // and the other not. The row keeps A's name and says what changed.
+  const unpaired = (entries, other) => {
+    const keys = new Set(other.map((entry) => entry.key));
+    const out = new Map();
+    for (const entry of entries) {
+      if (entry.kind !== 'stairs' || keys.has(entry.key)) continue;
+      const key = JSON.stringify(floorsKey(entry));
+      if (!out.has(key)) out.set(key, []);
+      out.get(key).push(entry);
+    }
+    return out;
+  };
+  const looseB = unpaired(entriesB, entriesA);
+  for (const [floorsOf, listA] of unpaired(entriesA, entriesB)) {
+    const listB = looseB.get(floorsOf);
+    if (listA.length !== 1 || !listB || listB.length !== 1 || Boolean(listA[0].well) === Boolean(listB[0].well)) continue;
+    listB[0].key = listA[0].key;
+    const note = listB[0].well ? NOW_ONE_STAIRWELL : NO_LONGER_ONE_STAIRWELL;
+    listA[0].wellNote = note;
+    listB[0].wellNote = note;
+    listA[0].nameAfter = listB[0].name;
+  }
   const group = (entries) => {
     const found = new Map();
     for (const entry of entries) {
@@ -300,7 +337,45 @@ function keyPlaces(entriesA, entriesB) {
     }
     return found;
   };
-  return { foundA: group(entriesA), foundB: group(entriesB) };
+  return { foundA: group(entriesA), foundB: group(entriesB), stairwells: stairwellChanges(entriesA, entriesB) };
+}
+
+// Stairs that joined into one stairwell, or a stairwell that came apart, as
+// sentences. Flights are paired by key (letter and floors, or floors alone for
+// the stairs `keyPlaces` paired above); a stairwell of one side whose flights
+// are plain stairs on the other is one change, however the loads moved.
+//   { kind: 'now' | 'no-longer', letter, names, sentence }
+// 'now': the letter is B's stairwell, `names` A's plain stairs; "Stairs A and B
+// are now one stairwell, A." 'no-longer': the letter is A's stairwell, `names`
+// B's stairs; "Stairwell A is no longer one stairwell: it is now stairs A and B."
+function stairwellChanges(entriesA, entriesB) {
+  const byKey = (entries) => {
+    const out = new Map();
+    for (const entry of entries) if (entry.kind === 'stairs') out.set(entry.key, (out.get(entry.key) || []).concat([entry]));
+    return out;
+  };
+  const inA = byKey(entriesA);
+  const inB = byKey(entriesB);
+  const changes = [];
+  const sweep = (wellSide, plainSide, kind) => {
+    const found = new Map();
+    for (const [key, list] of wellSide) {
+      if (list.length !== 1 || !list[0].well) continue;
+      const other = plainSide.get(key);
+      if (!other || other.length !== 1 || other[0].well) continue;
+      const letter = nameKey(list[0].name);
+      if (!found.has(letter)) found.set(letter, { letter: list[0].name, names: [] });
+      if (!found.get(letter).names.some((name) => nameKey(name) === nameKey(other[0].name))) found.get(letter).names.push(other[0].name);
+    }
+    for (const entry of found.values()) {
+      const words = entry.names.length === 1 ? 'stairs ' + entry.names[0] : 'stairs ' + entry.names.slice(0, -1).join(', ') + ' and ' + entry.names[entry.names.length - 1];
+      const sentence = kind === 'now' ? words.charAt(0).toUpperCase() + words.slice(1) + (entry.names.length === 1 ? ' is ' : ' are ') + NOW_ONE_STAIRWELL + ', ' + entry.letter + '.' : 'Stairwell ' + entry.letter + ' is ' + NO_LONGER_ONE_STAIRWELL + ': it is now ' + words + '.';
+      changes.push({ kind, letter: entry.letter, names: entry.names, sentence });
+    }
+  };
+  sweep(inB, inA, 'now');
+  sweep(inA, inB, 'no-longer');
+  return changes;
 }
 
 // The names a finding is about, as this side writes them, and the key that
@@ -554,7 +629,7 @@ export function compareBuildings(projectA, resultA, projectB, resultB, options) 
   // ---- places
   const placesA = namedPlaces(projectA, viewA, idA, transition);
   const placesB = namedPlaces(projectB, viewB, idB, transition);
-  const { foundA, foundB } = keyPlaces(placesA.entries, placesB.entries);
+  const { foundA, foundB, stairwells } = keyPlaces(placesA.entries, placesB.entries);
   const keys = [];
   for (const key of foundA.keys()) keys.push(key);
   for (const key of foundB.keys()) if (!foundA.has(key)) keys.push(key);
@@ -587,6 +662,10 @@ export function compareBuildings(projectA, resultA, projectB, resultB, options) 
       row.floorsChanged = JSON.stringify(floorsKey(a[0])) !== JSON.stringify(floorsKey(b[0]));
     }
     if (a[0].renamedFloor) row.renamedFloor = a[0].renamedFloor;
+    if (a[0].wellNote) {
+      row.stairwell = a[0].wellNote;
+      row.nameAfter = a[0].nameAfter;
+    }
     row.order = order;
     (unitsDiffer ? changed : row.difference > 0 ? busier : quieter).push(row);
   });
@@ -603,6 +682,7 @@ export function compareBuildings(projectA, resultA, projectB, resultB, options) 
     new: fresh,
     gone,
     ambiguous,
+    stairwells,
     unnamed: { before: placesA.unnamed, after: placesB.unnamed, sentence: placesA.unnamed + placesB.unnamed > 0 ? UNNAMED_SENTENCE : null },
   };
 

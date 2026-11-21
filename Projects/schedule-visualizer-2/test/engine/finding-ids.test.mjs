@@ -12,7 +12,7 @@ import { findingId } from '../../engine/findings.js';
 import { CHECK_KINDS } from '../../engine/schema.js';
 import { isId } from '../../engine/ids.js';
 import { school } from './helpers.mjs';
-import { threeFloors } from '../fixtures/buildings/plans.mjs';
+import { threeFloors, planProject } from '../fixtures/buildings/plans.mjs';
 
 // The sample school with one of everything the building checks look for.
 function brokenBuilding() {
@@ -46,10 +46,15 @@ function assertForm(finding) {
   assert.equal(finding.id, findingId(finding.kind, ...parts), 'and it is what findingId builds');
 }
 
-test('every building finding\'s id has the form findings.js gives the schedule findings, for all ten kinds', () => {
+test('every building finding\'s id has the form findings.js gives the schedule findings, for all twelve kinds', () => {
   const oneWay = threeFloors();
   oneWay.building.connections[1].direction = 'ab';
-  const findings = buildingChecks(brokenBuilding()).concat(buildingChecks(noExits()), buildingChecks(oneWay));
+  // SV2-135: the sample's five dead ends come out of brokenBuilding once (the other plans repeat them with the same ids)
+  // SV2-135: the two kinds it added (a dead end the sample's halls make; a stairwell left in two parts)
+  const floor = ['.AA.BB.', '.AA.BB.', 'S######', '.......', '.......'];
+  const split = planProject([floor, floor, floor, floor, floor], { connections: [[1, 0, 2, 2, 0, 2], [4, 0, 2, 5, 0, 2]], exits: [[1, 6, 2, 'Main Door']] });
+  split.building.connections.forEach((connection) => { connection.well = 'A'; });
+  const findings = buildingChecks(brokenBuilding()).concat(buildingChecks(noExits()).filter((finding) => finding.kind !== 'dead-end'), buildingChecks(oneWay).filter((finding) => finding.kind !== 'dead-end'), buildingChecks(split).filter((finding) => finding.kind === 'stairwell-split'));
   assert.deepEqual(BUILDING_CHECK_KINDS.filter((kind) => !findings.some((finding) => finding.kind === kind)), [], 'every kind is among the findings checked');
   for (const finding of findings) assertForm(finding);
   assert.equal(new Set(findings.map((finding) => finding.id)).size, findings.length, 'and no two share one');

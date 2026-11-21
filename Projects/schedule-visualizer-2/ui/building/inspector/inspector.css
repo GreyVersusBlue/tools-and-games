@@ -251,6 +251,109 @@
   text-align: right;
 }
 
+.bi-cell__label {
+  display: none;
+}
+
+/* The Rooms tab in a panel narrower than its five columns (287 px at 1280,
+   DESIGN 16.4): each room stacks into a card, Room and Seats side by side,
+   then Teacher, Subject and Features each on a line of its own, every cell
+   naming itself. Nothing is cut and nothing hides past a sideways scroll. The
+   headings stay as one wrapping row of sort buttons. */
+
+#rooms-table {
+  container-type: inline-size;
+}
+
+@container (max-width: 30rem) {
+  #rooms-table .table,
+  #rooms-table thead,
+  #rooms-table tbody,
+  #rooms-table th,
+  #rooms-table td {
+    display: block;
+  }
+
+  #rooms-table .table {
+    min-width: 0;
+  }
+
+  #rooms-table thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-3);
+    padding-bottom: var(--s-2);
+  }
+
+  #rooms-table th {
+    padding: var(--s-1) 0;
+    text-align: left;
+  }
+
+  #rooms-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--s-1) var(--s-2);
+    padding: var(--s-2) 0;
+    border-top: var(--border);
+  }
+
+  #rooms-table tbody td {
+    min-width: 0;
+    padding: 0;
+    border-top: 0;
+    text-align: left;
+  }
+
+  /* Room, Teacher, Subject, Seats, Features: Seats goes up beside Room,
+     as wide as three digits, and the room's number or name has the rest */
+  #rooms-table tbody td:nth-child(2),
+  #rooms-table tbody td:nth-child(3),
+  #rooms-table tbody td:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+
+  #rooms-table tbody td:nth-child(4) {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  #rooms-table .bi-cell {
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  #rooms-table tbody td:nth-child(4) .bi-cell {
+    grid-template-columns: auto 4rem;
+  }
+
+  #rooms-table .bi-cell__label {
+    display: block;
+    color: var(--ink-2);
+    font-size: var(--t-xs);
+    font-weight: var(--w-semibold);
+  }
+
+  #rooms-table .bi-cell > :last-child,
+  #rooms-table td.table__num .field__input,
+  #rooms-table .bi-select,
+  #rooms-table .bi-features-cell {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  #rooms-table td.table__num .field__input {
+    text-align: left;
+  }
+
+  #rooms-table .bi-features-cell {
+    justify-content: flex-start;
+  }
+}
+
 /* ---------- The checks ---------- */
 
 .bi-finding {
@@ -450,4 +553,176 @@
   .bld-connect {
     display: none;
   }
+}
+
+/* ---------- Room features: chips, the picker's list, the Rooms tab's popover ---------- */
+
+.bi-features {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.bi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bi-chip__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 44px;
+  max-width: 100%;
+}
+
+.bi-chip__name {
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.bi-feature-option {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
+.bi-linkbutton {
+  justify-self: start;
+  min-height: 44px;
+  text-decoration: underline;
+}
+
+.bi-features-cell {
+  min-height: 44px;
+  max-width: 16rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.bi-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(22rem, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: var(--s-3);
+  background: var(--card);
+  color: var(--ink);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow);
+}
+
+/* The list dialog: a scrolling body and a footer pinned at the bottom (DESIGN 16.12 item 10). */
+
+.features-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: min(40rem, calc(100dvh - var(--s-4)));
+  overflow: hidden;
+}
+
+.features-dialog .dialog__title {
+  flex: none;
+}
+
+.features-dialog .dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.features-dialog .dialog__buttons {
+  flex: none;
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.features-dialog__content {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.features-dialog__content p {
+  margin: 0;
+}
+
+.features-dialog__rows {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.features-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding-bottom: var(--s-3);
+  border-bottom: var(--border);
+}
+
+.features-row__name {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.features-row__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.features-row__buttons .btn {
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+
+.features-row__used {
+  flex: 1 0 100%;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.features-dialog__addrow {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.features-dialog__addrow .field__input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.features-dialog__empty {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+}
+
+.features-dialog__undo {
+  padding: var(--s-2);
+  border-left: 3px solid var(--accent);
+  background: var(--paper);
+}
+
+@media (max-width: 520px) {
+  .features-row__name {
+    flex-basis: 100%;
+  }
+}
+
+.bi-features .field__input,
+.features-dialog .field__input,
+.bi-popover .field__input {
+  min-height: 44px;
 }

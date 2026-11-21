@@ -563,7 +563,12 @@ test('one project can hold every kind of finding, and each kind is the severity 
     'empty-period': 'note', 'teacher-multi-room': 'note', 'teacher-room-unused': 'note', 'room-unused': 'note', 'room-no-subject': 'note', 'room-no-teacher': 'note', 'duty-nobody': 'note',
   };
   assert.deepEqual(Object.keys(expected), CHECK_KINDS, 'the kinds, in the order of the table');
-  assert.deepEqual(KIND_SEVERITY, expected);
+  // teacher-away is always on and not in CHECK_KINDS: its severity is pinned in teacher-away.test.mjs
+  const { 'teacher-away': away, ...checked } = KIND_SEVERITY;
+  assert.equal(away, 'warning');
+  const mk = (kind) => ({ id: kind, kind, severity: 'warning', where: { dayTypeId: null, period: null } });
+  assert.deepEqual(sortFindings(['room-missing', 'teacher-away', 'duty-clash', 'over-capacity'].map(mk), project).map((one) => one.kind), ['over-capacity', 'duty-clash', 'teacher-away', 'room-missing'], 'teacher-away ranks after duty-clash and before room-missing');
+  assert.deepEqual(checked, expected);
   for (const finding of result.findings) {
     assert.equal(finding.severity, expected[finding.kind], finding.id);
     assert.equal(finding.fixable, FIXABLE_KINDS.includes(finding.kind), finding.id);

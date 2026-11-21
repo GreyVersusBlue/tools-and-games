@@ -1569,6 +1569,316 @@ const SV2_124 = [
   { id: 'scenarios-buildings-phone', hash: '#scenarios', viewport: PHONE, open: buildingsHeld(true, 'the building comparison, at 390') },
 ];
 
+// ---- SV2-136: W7's screens (DESIGN 16) and Help's search: the floor menu, the
+// Duplicate floor dialog, Auto-number on, a room's Features and the features
+// list, a stairwell's Properties and its two dialogs, the building checks with
+// a split stairwell, the Day tab's Other word and Name periods, Settings with
+// Other word, the Teachers table's Part-time editor, and Help with results and
+// with a result opened. Each is at 1280 and at 390 with touch; the sweeps run
+// each in both themes, and every opener ends by asserting nothing scrolls
+// sideways. Every wait is on a state the page sets (the plan at rest, a
+// dialog's open, a control's value, Help's data-mode and data-pending), never
+// a first paint or a fixed sleep.
+
+async function fitsInWindow(page, what) {
+  const over = await page.evaluate(() => {
+    const root = document.documentElement;
+    const inner = [];
+    for (const selector of ['dialog[open]', '#inspector', '.sch-day', '.sch-teachers', '.help__scroll', '.help__search']) {
+      for (const el of document.querySelectorAll(selector)) if (el.getClientRects().length > 0 && el.scrollWidth > el.clientWidth + 1) inner.push(selector + ' is ' + (el.scrollWidth - el.clientWidth) + ' px wider inside than its box');
+    }
+    return { page: root.scrollWidth - root.clientWidth, body: document.body.scrollWidth - root.clientWidth, inner };
+  });
+  if (over.page > 1 || over.body > 1) throw new Error(what + ' scrolls sideways: the page is ' + over.page + ' px and the body ' + over.body + ' px wider than the window');
+  if (over.inner.length > 0) throw new Error(what + ' scrolls sideways inside: ' + over.inner.join('; '));
+}
+
+// the plan on the named floor, at rest
+async function planOnFloor(page, name) {
+  await planReady(page);
+  await page.evaluate((wanted) => Array.from(document.querySelectorAll('.bld-floors__tab')).find((each) => each.textContent.includes(wanted)).click(), name);
+  await page.waitForFunction((wanted) => document.querySelector('.bld').editor.floor.name === wanted, {}, name);
+  await still(page);
+}
+
+// the screen point of a cell of the floor on show, to right-click it
+async function pointOfCell(page, cell) {
+  return page.evaluate((index) => {
+    const editor = document.querySelector('.bld').editor;
+    const box = editor.canvas.getBoundingClientRect();
+    const place = editor.view.toScreen((index % editor.floor.width) + 0.5, Math.floor(index / editor.floor.width) + 0.5);
+    return { x: box.left + place.x, y: box.top + place.y };
+  }, cell);
+}
+
+async function menuItem(page, label) {
+  await page.waitForSelector('.menu[role="menu"]');
+  const done = await page.evaluate((wanted) => {
+    const item = Array.from(document.querySelectorAll('.menu [role^="menuitem"]')).find((each) => each.textContent.replace('●', '').trim() === wanted);
+    if (!item) return false;
+    item.click();
+    return true;
+  }, label);
+  if (!done) throw new Error('the menu has no "' + label + '"');
+}
+
+// the stairs cell's menu, by the right button, with `label` chosen
+async function stairsMenu(page, cell, label) {
+  const at = await pointOfCell(page, cell);
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  await menuItem(page, label);
+}
+
+const STAIRS_A = 332;
+
+// a stairwell A through the sample school's three floors, at the cell Stairs A has
+async function sampleWell(page) {
+  await planReady(page);
+  await page.evaluate(async (cell) => {
+    const { stairwellThrough } = await import(new URL('engine/stairwells.js', location.href).href);
+    globalThis.sv2.store.apply(stairwellThrough, { floorId: 'fsample001', cell, floorIds: ['fsample002', 'fsample003'] });
+  }, STAIRS_A);
+}
+
+// the stairs' Properties, by the cell's menu (the Select tool does not open Properties for stairs)
+async function stairsProperties(page, floor) {
+  await planOnFloor(page, floor);
+  await stairsMenu(page, STAIRS_A, 'Properties of this cell');
+  await page.waitForFunction(() => { const t = document.querySelector('#inspector-properties #inspector-title'); return Boolean(t) && t.textContent !== ''; });
+  await inspectorOpen(page);
+}
+
+const w7Duplicate = (what) => async (page) => {
+  await planOnFloor(page, 'Floor 2');
+  await page.click('#floor-actions');
+  await page.waitForSelector('.menu[role="menu"]');
+  await menuItem(page, 'Duplicate floor…');
+  await page.waitForSelector('dialog#duplicate-floor-dialog[open]');
+  await page.waitForFunction(() => document.getElementById('duplicate-sentence').textContent !== '' && document.getElementById('duplicate-copied').textContent !== '');
+  await fitsInWindow(page, what);
+};
+
+const w7FloorMenu = (what) => async (page) => {
+  await planOnFloor(page, 'Floor 2');
+  await page.click('#floor-actions');
+  await page.waitForSelector('.menu[role="menu"]');
+  await fitsInWindow(page, what);
+};
+
+const w7AutoNumber = (what) => async (page) => {
+  await planReady(page);
+  await page.click('[data-tool="room"]');
+  await page.waitForFunction(() => document.getElementById('auto-number').getClientRects().length > 0, { timeout: 8000 });
+  // the device remembers the switch, so an earlier screen may have left it on
+  if (!(await page.$eval('#auto-number', (el) => el.checked))) await page.click('#auto-number');
+  await page.waitForFunction(() => document.getElementById('auto-number').checked, { timeout: 8000 });
+  await page.waitForFunction(() => !document.getElementById('next-number-field').hidden, { timeout: 8000 });
+  await page.waitForFunction(() => document.getElementById('next-number').value !== '', { timeout: 8000 });
+  await fitsInWindow(page, what);
+};
+
+// a room with three features, selected, its Properties showing Features
+async function roomWithFeatures(page) {
+  await planReady(page);
+  await page.evaluate(async () => {
+    const { addCommonFeatures, setRoomFeatures } = await import(new URL('engine/w7-actions.js', location.href).href);
+    const { store } = globalThis.sv2;
+    store.apply(addCommonFeatures, {});
+    const room = document.querySelector('.bld').editor.floor.spaces.find((space) => space.kind === 'room');
+    const ids = store.project.building.features.slice(0, 3).map((feature) => feature.id);
+    store.apply(setRoomFeatures, { roomId: room.id, featureIds: ids });
+    document.querySelector('.bld').editor.select([room.id]);
+  });
+  await page.waitForSelector('#room-features-add');
+  await inspectorOpen(page);
+  await page.waitForFunction(() => document.querySelectorAll('#room-features-chips button').length === 3 && document.getElementById('room-features-add').getBoundingClientRect().height > 0);
+}
+
+const w7Features = (what) => async (page) => {
+  await roomWithFeatures(page);
+  await fitsInWindow(page, what);
+};
+
+const w7FeaturesList = (what) => async (page) => {
+  await roomWithFeatures(page);
+  await page.click('#inspector-properties [data-key="feature-edit"]');
+  await page.waitForSelector('#features-dialog[open]');
+  await page.waitForFunction(() => document.querySelectorAll('#features-rows li').length >= 8);
+  await fitsInWindow(page, what);
+};
+
+const w7StairwellProperties = (what) => async (page) => {
+  await sampleWell(page);
+  await stairsProperties(page, 'Floor 2');
+  await page.waitForSelector('#inspector-properties [data-key="well-split"]');
+  await fitsInWindow(page, what);
+};
+
+const w7StairwellThrough = (what) => async (page) => {
+  await planOnFloor(page, 'Floor 1');
+  await stairsMenu(page, STAIRS_A, 'Stairwell through floors…');
+  await page.waitForSelector('dialog#stairwell-through-dialog[open]');
+  await page.waitForFunction(() => document.querySelectorAll('#stairwell-floors li').length === 3);
+  await fitsInWindow(page, what);
+};
+
+// Stairs A (Floors 1 and 2) and a plain flight from Floor 2 to Floor 3 at the same cell
+async function chainOfFlights(page) {
+  await planReady(page);
+  await page.evaluate(async (cell) => {
+    const actions = await import(new URL('engine/actions.js', location.href).href);
+    const { store } = globalThis.sv2;
+    store.apply(actions.placeStairs, { floorId: 'fsample003', cells: [cell] });
+    store.apply(actions.connectStairs, { a: { floorId: 'fsample002', cell }, b: { floorId: 'fsample003', cell } });
+  }, STAIRS_A);
+}
+
+const w7MakeStairwell = (what) => async (page) => {
+  await chainOfFlights(page);
+  await stairsProperties(page, 'Floor 2');
+  await page.click('#inspector-properties [data-key="well-make"]');
+  await page.waitForSelector('dialog#stairwell-make-dialog[open]');
+  await page.waitForFunction(() => document.getElementById('stairwell-sentence').textContent !== '');
+  await fitsInWindow(page, what);
+};
+
+// Stairwell A in two parts, Floors 1 to 2 and Floors 3 to 4 (a Floor 4 added), as a file edited elsewhere could hold it
+const w7SplitStairwell = (what) => async (page) => {
+  await planReady(page);
+  await page.evaluate(async (cell) => {
+    const actions = await import(new URL('engine/actions.js', location.href).href);
+    const { store } = globalThis.sv2;
+    store.apply(actions.addFloor, {});
+    const floors = store.project.building.floors;
+    const [three, four] = [floors[2], floors[3]];
+    store.apply(actions.paintCorridor, { floorId: four.id, from: 5 + 10 * 40, to: 12 + 10 * 40 });
+    for (const floor of [three, four]) store.apply(actions.placeStairs, { floorId: floor.id, cells: [cell] });
+    store.apply(actions.connectStairs, { a: { floorId: three.id, cell }, b: { floorId: four.id, cell } });
+    const project = JSON.parse(JSON.stringify(store.project));
+    const made = project.building.connections[project.building.connections.length - 1];
+    for (const connection of project.building.connections) if (connection.id === 'csample00a' || connection.id === made.id) connection.well = 'A';
+    store.replace(project);
+  }, STAIRS_A);
+  await inspectorOpen(page);
+  await page.click('#inspector [data-tab="checks"]');
+  await page.waitForSelector('#inspector-checks');
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('#inspector-checks button')).some((button) => button.textContent === 'Join the parts'));
+  await fitsInWindow(page, what);
+};
+
+// SV2-136b: the building checks with the sample's dead ends (a warning, on
+// Floor 2, and notes), the warning's Show me pressed, so its run is marked on the plan
+const w7DeadEnd = (what) => async (page) => {
+  await planReady(page);
+  await inspectorOpen(page);
+  await page.click('#inspector [data-tab="checks"]');
+  await page.waitForSelector('#building-findings li[data-kind="dead-end"].bi-finding--warning [data-action="show"]');
+  await page.waitForFunction(() => document.querySelectorAll('#building-findings li[data-kind="dead-end"].bi-finding--note').length > 0);
+  await page.click('#building-findings li[data-kind="dead-end"].bi-finding--warning [data-action="show"]');
+  await page.waitForFunction(() => { const marked = document.querySelector('.bld').editor.finder.marked; return Boolean(marked && marked.cells && marked.cells.length > 0); });
+  await inspectorOpen(page);
+  await page.waitForSelector('#building-findings li[data-kind="dead-end"]');
+  await fitsInWindow(page, what);
+};
+
+const w7DayOtherWord = (what) => async (page) => {
+  await scheduleDrawn(page);
+  await page.evaluate(() => {
+    const radio = document.querySelector('.sch input[type="radio"][value="other"]');
+    radio.click();
+  });
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('.sch input[type="text"]')).some((input) => /^word$/i.test(input.labels?.[0]?.textContent.trim() || '')));
+  await scheduleDrawn(page);
+  await fitsInWindow(page, what);
+};
+
+const w7DayNames = (what) => async (page) => {
+  await scheduleDrawn(page);
+  await page.evaluate(async () => {
+    const { setPeriodName } = await import(new URL('engine/w7-actions.js', location.href).href);
+    globalThis.sv2.store.apply(setPeriodName, { period: 3, name: 'Lunch' });
+    globalThis.sv2.store.apply(setPeriodName, { period: 6, name: 'Advisory' });
+  });
+  await scheduleDrawn(page);
+  await page.click('[data-key="names:toggle"]');
+  await page.waitForFunction(() => document.querySelector('[data-key="names:toggle"]').getAttribute('aria-expanded') === 'true');
+  await scheduleDrawn(page);
+  await fitsInWindow(page, what);
+};
+
+const w7SettingsOtherWord = (what) => async (page) => {
+  await page.evaluate(() => {
+    const radio = Array.from(document.querySelectorAll('#settings input[type="radio"]')).find((input) => input.value === 'other');
+    radio.click();
+  });
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('#settings input[type="text"]')).some((input) => /word/i.test(input.labels?.[0]?.textContent || '')));
+  await fitsInWindow(page, what);
+};
+
+const w7PartTime = (what) => async (page) => {
+  await scheduleDrawn(page);
+  await page.evaluate(async () => {
+    const { setTeacherAway } = await import(new URL('engine/w7-actions.js', location.href).href);
+    globalThis.sv2.store.apply(setTeacherAway, { teacherId: 'tsample001', away: [{ weekdays: [4] }, { dayTypeIds: ['dsample00b'], periods: [6, 7] }] });
+  });
+  await scheduleDrawn(page);
+  await page.click('[data-key="teacher:tsample001:part:button"]');
+  await page.waitForSelector('[data-part-editor="tsample001"]');
+  await scheduleDrawn(page);
+  await fitsInWindow(page, what);
+};
+
+// Help with the field typed in: the results, or the part a result opened
+const w7Help = (query, opened, what) => async (page) => {
+  await press('?')(page);
+  await page.waitForSelector('#help-dialog[open][data-styled="true"]');
+  await page.focus('#help-dialog .help__field');
+  await page.keyboard.type(query);
+  await page.waitForFunction(() => { const d = document.getElementById('help-dialog'); return d.dataset.mode === 'results' && !d.dataset.pending; });
+  if (opened) {
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.getElementById('help-dialog').dataset.mode === 'opened' && document.querySelector('#help-dialog [data-landed]') !== null);
+  }
+  await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+  await fitsInWindow(page, what);
+};
+
+const SV2_136 = [
+  { id: 'w7-floor-menu', hash: '#building', open: w7FloorMenu('the floor menu') },
+  { id: 'w7-floor-menu-phone', hash: '#building', viewport: PHONE, open: w7FloorMenu('the floor menu, at 390') },
+  { id: 'w7-duplicate-floor', hash: '#building', open: w7Duplicate('the Duplicate floor dialog') },
+  { id: 'w7-duplicate-floor-phone', hash: '#building', viewport: PHONE, open: w7Duplicate('the Duplicate floor dialog, at 390') },
+  { id: 'w7-auto-number', hash: '#building', open: w7AutoNumber('Auto-number on') },
+  { id: 'w7-auto-number-phone', hash: '#building', viewport: PHONE, open: w7AutoNumber('Auto-number on, at 390') },
+  { id: 'w7-room-features', hash: '#building', open: w7Features('a room\'s Features') },
+  { id: 'w7-room-features-phone', hash: '#building', viewport: PHONE, open: w7Features('a room\'s Features, at 390') },
+  { id: 'w7-features-list', hash: '#building', open: w7FeaturesList('the features list dialog') },
+  { id: 'w7-features-list-phone', hash: '#building', viewport: PHONE, open: w7FeaturesList('the features list dialog, at 390') },
+  { id: 'w7-stairwell-properties', hash: '#building', open: w7StairwellProperties('a stairwell\'s Properties') },
+  { id: 'w7-stairwell-properties-phone', hash: '#building', viewport: PHONE, open: w7StairwellProperties('a stairwell\'s Properties, at 390') },
+  { id: 'w7-stairwell-through', hash: '#building', open: w7StairwellThrough('the Stairwell through floors dialog') },
+  { id: 'w7-stairwell-through-phone', hash: '#building', viewport: PHONE, open: w7StairwellThrough('the Stairwell through floors dialog, at 390') },
+  { id: 'w7-make-stairwell', hash: '#building', open: w7MakeStairwell('the Make one stairwell dialog') },
+  { id: 'w7-make-stairwell-phone', hash: '#building', viewport: PHONE, open: w7MakeStairwell('the Make one stairwell dialog, at 390') },
+  { id: 'w7-split-stairwell', hash: '#building', open: w7SplitStairwell('the checks with a split stairwell') },
+  { id: 'w7-split-stairwell-phone', hash: '#building', viewport: PHONE, open: w7SplitStairwell('the checks with a split stairwell, at 390') },
+  { id: 'w7-dead-end', hash: '#building', open: w7DeadEnd('the checks with dead ends, one shown') }, // SV2-136b
+  { id: 'w7-dead-end-phone', hash: '#building', viewport: PHONE, open: w7DeadEnd('the checks with dead ends, one shown, at 390') }, // SV2-136b
+  { id: 'w7-day-other-word', hash: '#schedule/day', open: w7DayOtherWord('the Day tab with Other word') },
+  { id: 'w7-day-other-word-phone', hash: '#schedule/day', viewport: PHONE, open: w7DayOtherWord('the Day tab with Other word, at 390') },
+  { id: 'w7-day-names', hash: '#schedule/day', open: w7DayNames('the Day tab with Name periods open') },
+  { id: 'w7-day-names-phone', hash: '#schedule/day', viewport: PHONE, open: w7DayNames('the Day tab with Name periods open, at 390') },
+  { id: 'w7-settings-other-word', hash: '#project', open: w7SettingsOtherWord('Settings with Other word') },
+  { id: 'w7-settings-other-word-phone', hash: '#project', viewport: PHONE, open: w7SettingsOtherWord('Settings with Other word, at 390') },
+  { id: 'w7-part-time', hash: '#schedule/teachers', open: w7PartTime('the Part-time editor') },
+  { id: 'w7-part-time-phone', hash: '#schedule/teachers', viewport: PHONE, open: w7PartTime('the Part-time editor, at 390') },
+  { id: 'w7-help-results', hash: '#building', open: w7Help('stairs', false, 'Help with results') },
+  { id: 'w7-help-results-phone', hash: '#building', viewport: PHONE, open: w7Help('stairs', false, 'Help with results, at 390') },
+  { id: 'w7-help-opened', hash: '#building', open: w7Help('dead end', true, 'Help with a result opened') },
+  { id: 'w7-help-opened-phone', hash: '#building', viewport: PHONE, open: w7Help('dead end', true, 'Help with a result opened, at 390') },
+  { id: 'w7-help-none-sideways', hash: '#building', viewport: { width: 844, height: 390, mobile: true }, open: w7Help('qqqzz', false, 'Help with no results, on its side') },
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -2118,4 +2428,5 @@ export const SCREENS = [
   ...SV2_106,
   ...SV2_112,
   ...SV2_124,
+  ...SV2_136,
 ];

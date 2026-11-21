@@ -23,7 +23,8 @@
 // `images` is { [imageId]: { data, type } } both ways: the page passes what
 // it holds to a writer, and stores what a reader hands back.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, releaseOf, RELEASE_MOST, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, CHECK_KINDS, RANGES, PERIOD_WORDS, TIME_FORMATS, COLOUR_SCALE_MODES } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, releaseOf, RELEASE_MOST, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, CHECK_KINDS, RANGES, PERIOD_WORDS, TIME_FORMATS, COLOUR_SCALE_MODES, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, textLength } from './schema.js';
+import { periodWordForms } from './bells.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { repair } from './repair.js';
@@ -39,6 +40,9 @@ export const SCHEDULE_VERSION = 1;
 
 // The settings a schedule file carries.
 export const SCHEDULE_SETTINGS = ['periods', 'periodWord', 'defaultPassingSeconds', 'defaultHeadCount'];
+// Optional extras of a schedule file's settings (W7, ARCHITECTURE 22.14): written only when the
+// project has them, read when the file has them; a file without them is still a schedule file.
+export const SCHEDULE_SETTING_EXTRAS = ['periodCustom', 'periodNames'];
 
 export const NOT_JSON_MESSAGE = 'This file could not be read. It is not a Schedule Visualizer 2 file, or it was cut short when it was saved or sent. Export it again and choose the new file.';
 export const NOT_A_BUILDING_MESSAGE = 'This is not a Schedule Visualizer 2 building file. Choose a building file the tool exported.';
@@ -414,13 +418,21 @@ export function applyBuilding(project, file, options) {
 
   // rooms
   const teacherIds = new Set(project.teachers.map((teacher) => teacher.id));
+  const featureIds = new Set(Array.isArray(incoming.features) ? incoming.features.map((feature) => feature.id) : []);
   const building = {
     ...incoming,
     floors: incoming.floors.map((floor) => ({
       ...floor,
       spaces: floor.spaces.map((space) => {
         if (space.kind !== 'room') return space;
-        return { ...space, teacherIds: space.teacherIds.filter((id) => teacherIds.has(id)), subjectId: subjectMap.has(space.subjectId) ? subjectMap.get(space.subjectId) : null };
+        const room = { ...space, teacherIds: space.teacherIds.filter((id) => teacherIds.has(id)), subjectId: subjectMap.has(space.subjectId) ? subjectMap.get(space.subjectId) : null };
+        // a room's features are the incoming building's: one it does not list is not carried (an older file may name a gone one)
+        if (Array.isArray(space.featureIds)) {
+          const kept = space.featureIds.filter((id) => featureIds.has(id));
+          if (kept.length > 0 || space.featureIds.length === 0) room.featureIds = kept;
+          else delete room.featureIds; // all of them gone: absent, not an empty list written
+        }
+        return room;
       }),
     })),
   };
@@ -505,6 +517,9 @@ function scheduleFileObject(project) {
   for (const duty of duties) if (typeof duty.roomId === 'string') named.add(duty.roomId);
   const settings = {};
   for (const key of SCHEDULE_SETTINGS) settings[key] = project.settings[key];
+  // written only when there is something to write: no null, and no list of blank names
+  if (project.settings.periodCustom !== undefined && project.settings.periodCustom !== null) settings.periodCustom = project.settings.periodCustom;
+  if (Array.isArray(project.settings.periodNames) && project.settings.periodNames.some((name) => typeof name === 'string' && name.trim() !== '')) settings.periodNames = project.settings.periodNames;
   const file = {
     format: SCHEDULE_FORMAT,
     version: SCHEDULE_VERSION,
@@ -598,6 +613,7 @@ export function readScheduleFile(text) {
   };
   const settings = { ...defaultSettings() };
   for (const key of SCHEDULE_SETTINGS) settings[key] = value.settings[key];
+  for (const key of SCHEDULE_SETTING_EXTRAS) if (value.settings[key] !== undefined) settings[key] = value.settings[key];
   const stood = scaffold({ settings, building: { floors: [floor], connections: [], zones: [] }, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes });
   if (value.bellSchedules !== undefined) stood.bellSchedules = value.bellSchedules;
   if (value.calendar !== undefined) stood.calendar = value.calendar;
@@ -758,7 +774,20 @@ export function applySchedule(project, file, options) {
   }
   if (options.takeSettings) {
     for (const key of SCHEDULE_SETTINGS) {
-      if (key === 'periods' || next.settings[key] === file.settings[key]) continue;
+      if (key === 'periods') continue;
+      if (key === 'periodWord') {
+        // the word and the names are one setting (22.17): the custom word and the periods' own names go with it
+        const taken = takeWordAndNames(next.settings, file.settings);
+        if (taken.changed) {
+          const plainBefore = next.settings.periodCustom === undefined && next.settings.periodNames === undefined;
+          const plainAfter = taken.settings.periodCustom === undefined && taken.settings.periodNames === undefined;
+          // the plain word is the key, as before; when the custom word or names are on either side the entry says what went and what came
+          summary.settingsTaken.push(plainBefore && plainAfter ? key : { key, from: wordAndNamesText(next.settings), to: wordAndNamesText(taken.settings) });
+          next = { ...next, settings: taken.settings };
+        }
+        continue;
+      }
+      if (next.settings[key] === file.settings[key]) continue;
       next = { ...next, settings: { ...next.settings, [key]: file.settings[key] } };
       summary.settingsTaken.push(key);
     }
@@ -791,11 +820,13 @@ export function applySchedule(project, file, options) {
 
   // teachers
   const teacherMap = new Map();
+  const awayOf = new Map(); // id of a teacher added, or matched, here -> the file's teacher (for `away`, once the day types are mapped)
   const homes = new Map();
   for (const teacher of file.teachers) {
     const match = project.teachers.find((candidate) => candidate.id === teacher.id) || next.teachers.find((candidate) => nameKey(candidate.name) === nameKey(teacher.name));
     if (match) {
       teacherMap.set(teacher.id, match.id);
+      if (Array.isArray(teacher.away)) awayOf.set(match.id, teacher);
       continue;
     }
     const id = keepOrMake(teacher.id, 't', taken, ids);
@@ -806,6 +837,7 @@ export function applySchedule(project, file, options) {
       else if (!roomIds.includes(resolved)) roomIds.push(resolved);
     }
     next = { ...next, teachers: next.teachers.concat([{ id, name: teacher.name, subjectId: teacher.subjectId === null ? null : subjectMap.get(teacher.subjectId) || null, roomIds, notes: teacher.notes }]) };
+    awayOf.set(id, teacher);
     for (const roomId of roomIds) homes.set(roomId, (homes.get(roomId) || []).concat([id]));
     teacherMap.set(teacher.id, id);
     summary.teachersAdded.push(teacher.name);
@@ -855,6 +887,25 @@ export function applySchedule(project, file, options) {
     dayMap.set(dayType.id, id);
     added.add(id);
     summary.dayTypesAdded.push(dayType.name);
+  }
+  // when a teacher is away (W7): an added teacher carries the file's `away`, a matched one takes it when
+  // the file has the field, with the day types mapped as a duty's are. An entry left naming none of the
+  // day types it named is dropped, never widened to every day type.
+  for (const [teacherId, fileTeacher] of awayOf) {
+    if (!Array.isArray(fileTeacher.away)) continue;
+    const mapped = [];
+    for (const entry of fileTeacher.away) {
+      if (!isObject(entry)) continue;
+      const days = Array.isArray(entry.dayTypeIds) ? entry.dayTypeIds.map((id) => dayMap.get(id)).filter((id, k, all) => id !== undefined && all.indexOf(id) === k) : [];
+      if (Array.isArray(entry.dayTypeIds) && entry.dayTypeIds.length > 0 && days.length === 0) {
+        summary.referencesDropped += 1;
+        continue;
+      }
+      mapped.push({ ...entry, dayTypeIds: days });
+    }
+    const here = next.teachers.find((candidate) => candidate.id === teacherId);
+    if (!here || (mapped.length === 0 && here.away === undefined && fileTeacher.away.length === 0) || sameJson(here.away === undefined ? [] : here.away, mapped)) continue;
+    next = { ...next, teachers: next.teachers.map((candidate) => (candidate.id === teacherId ? { ...candidate, away: mapped } : candidate)) };
   }
   if (next.dayTypes.length > Math.max(DAY_TYPES_MOST, project.dayTypes.length)) {
     throw new FileError('This schedule file cannot be imported, and nothing was changed. It would bring the project to ' + next.dayTypes.length + ' day types, and a project has at most ' + DAY_TYPES_MOST + '. Delete the day types you do not need, here or in the file, and import it again.', 'too-many-day-types');
@@ -1213,6 +1264,18 @@ function checkedSettings(project, fileSettings) {
       out[key] = checks;
     }
   }
+  // W7: the custom period word and the periods' own names, taken with the period word
+  const custom = fileSettings.periodCustom;
+  if (custom !== undefined && custom !== null) {
+    const text = (v) => typeof v === 'string' && v.trim() !== '' && textLength(v.trim()) <= PERIOD_WORD_MOST;
+    if (!isObject(custom) || !text(custom.word) || (custom.plural !== undefined && !text(custom.plural)) || !PERIOD_COUNTS.includes(custom.count)) throw badSetting('periodCustom', 'The custom period word is a word of 1 to ' + PERIOD_WORD_MOST + ' characters, its plural, and how periods are counted: ' + PERIOD_COUNTS.join(', ') + '.');
+  }
+  if (custom !== undefined) out.periodCustom = custom;
+  const names = fileSettings.periodNames;
+  if (names !== undefined) {
+    if (!Array.isArray(names) || names.length > RANGES.periods[1] || !names.every((name) => typeof name === 'string' && textLength(name) <= PERIOD_NAME_MOST)) throw badSetting('periodNames', 'The period names are a list of at most ' + RANGES.periods[1] + ' texts of at most ' + PERIOD_NAME_MOST + ' characters.');
+    out.periodNames = names;
+  }
   return out;
 }
 
@@ -1226,6 +1289,44 @@ function sameContents(a, b) {
   return a === b;
 }
 
+// The period word, the custom word and the periods' own names are one setting, "The period word and
+// names" (ARCHITECTURE 22.17). `file` is the file's settings, checked. A part the file does not hold
+// is removed when the file holds the period word (it is the file's whole way of naming its periods),
+// and kept when the file holds only some of them. An absent value and null are the same.
+function takeWordAndNames(here, file) {
+  const settings = { ...here };
+  let changed = false;
+  if (file.periodWord !== undefined && file.periodWord !== here.periodWord) {
+    settings.periodWord = file.periodWord;
+    changed = true;
+  }
+  for (const key of SCHEDULE_SETTING_EXTRAS) {
+    let want = file[key] !== undefined ? file[key] : file.periodWord !== undefined ? undefined : here[key];
+    // the names the day has periods for: the result's periods, not the file's
+    if (key === 'periodNames' && Array.isArray(want)) {
+      if (want.length > settings.periods) want = want.slice(0, settings.periods);
+      if (!want.some((name) => typeof name === 'string' && name.trim() !== '')) want = undefined; // no empty list written
+    }
+    const held = here[key] !== undefined && here[key] !== null;
+    if (want === undefined || want === null) {
+      if (held) {
+        delete settings[key];
+        changed = true;
+      }
+    } else if (!held || !sameContents(want, here[key])) {
+      settings[key] = JSON.parse(JSON.stringify(want));
+      changed = true;
+    }
+  }
+  return { settings, changed };
+}
+
+// The word and names as a person reads them, for the summary line when more than the word changed.
+function wordAndNamesText(settings) {
+  const named = Array.isArray(settings.periodNames) ? settings.periodNames.filter((name) => typeof name === 'string' && name.trim() !== '').length : 0;
+  return periodWordForms(settings).one + (named > 0 ? ' and ' + named + (named === 1 ? ' period name' : ' period names') : '');
+}
+
 export function applySettings(project, fileSettings) {
   const summary = { taken: [], periodsRaised: null, periodsStay: null };
   if (!isObject(fileSettings)) throw new FileError(invalidMessage('settings', [{ path: 'settings', message: 'A project file holds settings.' }]), 'invalid', [{ path: 'settings', message: 'A project file holds settings.' }]);
@@ -1233,6 +1334,16 @@ export function applySettings(project, fileSettings) {
   let next = project;
   for (const key of Object.keys(defaultSettings())) {
     if (!SETTINGS_TAKEN.includes(key)) continue;
+    if (key === 'periodWord') {
+      const taken = takeWordAndNames(next.settings, given);
+      if (!taken.changed) continue;
+      const plainBefore = next.settings.periodCustom === undefined && next.settings.periodNames === undefined;
+      const plainAfter = taken.settings.periodCustom === undefined && taken.settings.periodNames === undefined;
+      const entry = plainBefore && plainAfter ? { key, from: project.settings.periodWord, to: taken.settings.periodWord } : { key, from: wordAndNamesText(next.settings), to: wordAndNamesText(taken.settings) };
+      next = { ...next, settings: taken.settings };
+      summary.taken.push(entry);
+      continue;
+    }
     const value = given[key];
     if (value === undefined) continue;
     const here = project.settings[key];
