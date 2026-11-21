@@ -538,6 +538,8 @@ async function openHelpOn(page, hash) {
   await blurAll(page);
   await page.keyboard.press('?');
   await page.waitForSelector(OPEN);
+  // the dialog rises into place over 200 ms: measure it at rest
+  await page.evaluate(() => Promise.all(document.getElementById('help-dialog').getAnimations().map((animation) => animation.finished.catch(() => undefined))));
 }
 
 test('Search help: words in any order, case and accents ignored, results are buttons with the matched words marked, and one character searches nothing', async () => {
