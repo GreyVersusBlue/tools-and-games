@@ -1287,6 +1287,15 @@ try {
         eq(await page.$eval('#step-partners', e => e.getAttribute('role')), 'spinbutton');
         await page.focus('#step-purse'); await page.keyboard.press('PageUp');
         eq(await page.$eval('#step-purse', e => e.getAttribute('aria-valuenow')), '250', 'PageUp moves the purse by 250 (MER-72)');
+        // The test's own edits made this plan (MER-117): the proposal the sheet opened on may bring nothing back, and then it sends no money
+        // either. Raising the purse by hand to a plan with no good named is the engine's refusal, in words; naming a good is what makes it stand.
+        // Whether a seed's proposal names a good depends on card weights and prices, so the case finds out and does not assume.
+        if (!(await page.$('.back-pick[aria-checked="true"]'))) {
+          ok((await page.$eval('#outfit-reasons', e => e.textContent)).includes('needs a good to bring back'), 'money and no good to bring back is refused in words: ' + await page.$eval('#outfit-reasons', e => e.textContent));
+          await page.$eval('.back-pick', e => e.scrollIntoView({ block: 'center' }));
+          await page.click('.back-pick');
+          await page.waitForSelector('.back-pick[aria-checked="true"]');
+        }
         eq(await page.$eval('#outfit-reasons', e => e.textContent), '', 'the qirad plan stands: ' + await page.$eval('#outfit-reasons', e => e.textContent));
         await page.click('#outfit-send');
         await page.waitForFunction(() => !document.getElementById('panel-outfit'));
@@ -1299,7 +1308,10 @@ try {
       // two expeditions at the same place on a leg are one token with a count.
       await test('tokens stand at the fraction of their leg done, and two on the same spot stack with a count', async () => {
         await page.evaluate(() => {
-          const m = window.__merchant, x = m.state.expeditions.at(-1), leg = m.content.routes.find(r => r.id === x.route).legs[x.leg];
+          // the expedition the case before left on the road, found by what it is (the last one sent that is not home), not by where a seed's play put it
+          const m = window.__merchant, x = m.state.expeditions.filter(e => e.status === 'out' || e.status === 'waiting').at(-1) ?? m.state.expeditions.at(-1);
+          if (!x) throw new Error('no expedition is on the road: the case before it sends one');
+          const leg = m.content.routes.find(r => r.id === x.route).legs[x.leg];
           leg.seasons = 4; x.left = 3; x.status = 'out';
           m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin', agent: 'ali' });
         });
@@ -1308,7 +1320,7 @@ try {
         eq(ts.length, 1, 'two expeditions on one spot are one token');
         eq([ts[0].count, ts[0].ids.split(' ').length], ['2', 2]);
         const info = await page.evaluate(() => {
-          const x = window.__merchant.state.expeditions.at(-1), leg = window.__merchant.content.routes.find(r => r.id === x.route).legs[x.leg];
+          const x = window.__merchant.state.expeditions.filter(e => e.id !== 'x-twin' && e.status === 'out').at(-1), leg = window.__merchant.content.routes.find(r => r.id === x.route).legs[x.leg];
           const at = id => { const d = document.querySelector(`.dot[data-stop="${id}"]`); return [parseFloat(d.style.left), parseFloat(d.style.top)]; };
           return { a: at(leg.from), b: at(leg.to) };
         });
@@ -1318,6 +1330,55 @@ try {
         eq(ts[0].label, `2 expeditions, home about ${soonest}`, 'a stack says the soonest of its trips, from the engine\'s view');
       });
     }
+    await page.close();
+  }
+
+  // ---- MER-117: the line under Send says when the years skip before the party is home. The state is found by what it must hold, not by
+  // where a seed's play leads: a desk in act one with an expedition already sent (so the sheet opens on the engine's proposal, with the
+  // estimate under Send), where the sheet's Samarkand plan is settled at the jump and its Damascus plan is not.
+  {
+    const settledOf = (s, stop) => { const p = sheetPlan(s, nodeContent, stop); return p ? eng.estimate(s, nodeContent, p) : null; };
+    let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    const want = x => x.phase === 'desk' && x.log.some(e => e.kind === 'outfit') && settledOf(x, 'samarkand')?.settledAtJump === true && settledOf(x, 'damascus')?.settledAtJump === false;
+    for (let i = 0; i < 80 && !want(g); i++) {
+      if (g.phase === 'interlude') { g = eng.openSeason(g, nodeContent); continue; }
+      for (const p of g.desk) {
+        if (p.state !== 'open') continue;
+        const c = nodeChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        g = eng.choose(g, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
+      }
+      g = eng.endSeason(g, nodeContent);
+    }
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    await test('MER-117: a plan the years skip across says so under Send, in one sentence, and the figure above it is the engine\'s own', async () => {
+      ok(want(g), 'the play never reached a desk where Samarkand settles at the jump and Damascus does not');
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((st, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...st, __v: v })); }, JSON.parse(JSON.stringify(g)), SAVE_VERSION);
+      await page.goto(GAME + '#map', { waitUntil: 'load' });
+      await page.waitForSelector('#screen-map[data-ready]');
+      // Damascus comes home inside the act: no sentence, and Send is described by the estimate and the reasons only
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await page.waitForSelector('#outfit-estimate');
+      eq(await page.$('#outfit-settled'), null, 'a road that comes home in its act has no such sentence');
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-describedby')), 'outfit-estimate outfit-reasons');
+      await page.click('#outfit-cancel');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      // Samarkand does not
+      await page.click('#stop-samarkand, .dot[data-stop="samarkand"]');
+      eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Samarkand');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await page.waitForSelector('#outfit-settled');
+      const plan = sheetPlan(g, nodeContent, 'samarkand'), est = eng.estimate(g, nodeContent, plan);
+      const name = nodeContent.agents.find(a => a.id === plan.agent).name;
+      eq(await page.$eval('#outfit-settled', e => e.textContent), `The years pass before ${name} is home: the house will be paid at the prices ${name} left with.`);
+      eq(await page.$eval('#outfit-estimate', e => e.textContent), est.line, 'the figure under Send is the engine\'s line, unchanged');
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-describedby')), 'outfit-estimate outfit-settled outfit-reasons');
+      ok((await page.$eval('#summary-who', e => e.textContent)).startsWith(name), 'the sheet opened on the agent the plan is for');
+    });
+    await test('MER-117: the settled sentence page: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.close();
   }
 
@@ -1440,8 +1501,8 @@ try {
       };
       const noneLine = async tag => {
         for (let k = 0; k < 4 && !(await page.$('#back-nothing')); k++) {
-          // pressed through the DOM: with the carry list open the link sits under the sheet's sticky Send bar, and a pointer click lands on that
-          if (await page.$('#change-back')) await page.$eval('#change-back', b => b.click());
+          // a pointer press (MER-117): the link is clear of the sheet's sticky Send bar with the carry list open, so a click lands on it
+          if (await page.$('#change-back')) await page.click('#change-back');
           await page.waitForSelector('#back-nothing', { timeout: 1500 }).catch(() => {});
         }
         await page.waitForSelector('#back-nothing', { timeout: 1000 }).catch(async e => { throw new Error(`${tag}: errors ${typeof consoleErrors !== 'undefined' ? JSON.stringify(consoleErrors) : 'n/a'}; no #back-nothing; focus ${await page.evaluate(() => document.activeElement?.id)}; ids: ${(await page.$$eval('#panel-outfit [id]', es => es.map(x => x.id))).join(' ')}; ${e.message}`); });

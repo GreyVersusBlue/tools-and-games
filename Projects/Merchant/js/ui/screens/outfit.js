@@ -426,10 +426,14 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     }
     const a = agent(), s = sendState();
     const label = a ? `Send ${a.name} to ${stop.name}` : `Send someone to ${stop.name}`;
-    const send = h('button', { class: 'button primary send', type: 'button', id: 'outfit-send', dataset: { key: 'outfit-send' }, 'aria-disabled': s.ok ? 'false' : 'true',
-      'aria-describedby': 'outfit-estimate outfit-reasons', onclick: () => doSend() }, label);
     // the line under Send is the engine's (estimate().line) for the plan as it stands; a plan the engine refuses has no estimate
     const est = checked().estimate;
+    // MER-117: a road too long to come home before the years skip is settled by `jump` at the prices the party left with; the figure above
+    // is already worked out that way, and this says so in one sentence (estimate().settledAtJump)
+    const settled = est?.settledAtJump && a
+      ? h('p', { class: 'estimate settled', id: 'outfit-settled' }, `The years pass before ${a.name} is home: the house will be paid at the prices ${a.name} left with.`) : null;
+    const send = h('button', { class: 'button primary send', type: 'button', id: 'outfit-send', dataset: { key: 'outfit-send' }, 'aria-disabled': s.ok ? 'false' : 'true',
+      'aria-describedby': `outfit-estimate${settled ? ' outfit-settled' : ''} outfit-reasons`, onclick: () => doSend() }, label);
     const estimate = h('p', { class: 'estimate', id: 'outfit-estimate' }, est ? est.line : 'The estimate comes when the plan can be sent.');
     const reasons = h('div', { class: 'reasons', id: 'outfit-reasons' }, s.ok ? null : s.reasons.map(r => h('p', null, r)));
     // the sheet tells the one-press player what is on it, once
@@ -439,7 +443,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     dialog.replaceChildren(
       h('h2', { id: titleId, tabindex: '-1' }, `Outfit an expedition to ${stop.name}`),
       ...[lead, whoSection(), whereSection(), carrySection(), backSection(), costSheet(quote()), first ? null : contractSection()].filter(Boolean),
-      h('div', { class: 'send-row' }, estimate, reasons, h('div', { class: 'panel-actions' },
+      h('div', { class: 'send-row' }, estimate, settled, reasons, h('div', { class: 'panel-actions' },
         h('button', { class: 'button', type: 'button', id: 'outfit-cancel', onclick: () => onCancel() }, 'Back to the map'), send)));
     // MER-117: the Send bar sticks over the foot of the scroll, and scrolling a link into view stops it at `scroll-padding-bottom`. The bar is
     // taller than the stylesheet's fixed padding on a phone (a wrapped estimate and two refusals), so the padding is the bar's own height.
