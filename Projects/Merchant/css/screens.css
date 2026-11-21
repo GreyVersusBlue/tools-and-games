@@ -215,13 +215,19 @@ html.large-text .title-what { display: none; }
 @media (max-width: 700px) and (min-height: 501px) {
   .desk-stills, .desk-still { height: 30svh; bottom: auto; }
   .desk-screen { padding-top: 30svh; background: var(--night); }
-  .topbar { flex-wrap: wrap; background: rgba(20, 17, 13, .78); }
+  /* MER-105: two rows, not three. The date and Map/Menu share the first, the money and the worth figure (kept whole) the second:
+     about 80 px, so the 7.4rem a placeholder still leaves above the papers always clears it. At three rows the bar was 149 px
+     and sat over the paper's sender line and the papers-left tag. */
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--s3); row-gap: 0; background: rgba(20, 17, 13, .78); }
+  .topbar .bar-date { grid-column: 1; grid-row: 1; }
+  .topbar .bar-tools { grid-column: 2; grid-row: 1; }
+  .topbar .bar-money { grid-column: 1 / -1; grid-row: 2; row-gap: 0; }
   /* a placeholder still is a flat colour with a file name in it: 143 px of nothing between the bar and the first paper
      (MER-87, finding 15). Without it the papers start under the bar; a final picture keeps its band. */
   .desk-screen:has(.desk-still.placeholder) { padding-top: 7.4rem; }
   .desk-screen:has(.desk-still.placeholder) .desk-stills { display: none; }
   /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
-  .sheet-title { scroll-margin-top: 9rem; }
+  .sheet-title { scroll-margin-top: 5.5rem; }   /* the bar is two rows, 75 px (MER-105); 9rem was for three */
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
   /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
@@ -235,7 +241,7 @@ html.large-text .title-what { display: none; }
   .sheet { padding: var(--s3); }
   .choices .choice { min-height: 56px; }
   .end-row { position: sticky; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
-    background: rgba(20, 17, 13, .9); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }
+    background: var(--night); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }   /* opaque: at .9 the next paper's lines showed behind End the season (MER-105) */
   .end-reason { text-align: center; }
 }
 
