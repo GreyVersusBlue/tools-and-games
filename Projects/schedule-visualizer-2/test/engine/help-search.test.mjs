@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { helpModel, SECTION_HELP } from '../../ui/help/content.js';
-import { buildIndex, search, announcement, queryTokens, fold, partTitles, findKey, MIN_CHARS, SNIPPET_CHARS } from '../../ui/help/search.js';
+import { buildIndex, search, announcement, queryTokens, fold, partTitles, findKey, leadOf, MIN_CHARS, SNIPPET_CHARS, LEAD_WORDS } from '../../ui/help/search.js';
 import { defaultSettings } from '../../engine/schema.js';
 
 // An index over made-up entries, to test the matcher alone.
@@ -233,4 +233,30 @@ test('a query with nothing to find says so in words, and counts say their number
   assert.equal(announcement(0, ' kiln '), 'No results for ‘kiln’. Try fewer or different words.');
   assert.equal(announcement(1, 'kiln'), '1 result');
   assert.equal(announcement(5, 'kiln'), '5 results');
+});
+
+test('a section\'s entries are its paragraphs, each named for the one it opens, with its first words to tell same-title results apart', () => {
+  const model = realModel();
+  const index = buildIndex(model);
+  const building = model.sections.find((s) => s.id === 'building');
+  const mine = index.filter((e) => e.part === 'sections' && e.key === 'building');
+  assert.deepEqual(mine.map((e) => e.paragraph), ['purpose', 'first', 'more', ...building.parts.map((_, at) => 'part-' + at)]);
+  assert.equal(new Set(mine.map((e) => e.id)).size, mine.length, 'two of Building\'s paragraphs share an id');
+  // the dead-end paragraph is the last part, many screens below the heading
+  const dead = search(index, 'dead end').results.filter((r) => r.entry.part === 'sections' && r.entry.key === 'building');
+  const last = 'part-' + (building.parts.length - 1);
+  assert.deepEqual(dead.map((r) => r.entry.paragraph), [last], 'the dead-end paragraph is not the Building result');
+  assert.equal(dead[0].entry.lead, 'Checks has two more findings, each…');
+  // results under one title each have their own second line
+  const stairs = search(index, 'stairs').results.filter((r) => r.entry.part === 'sections' && r.entry.key === 'building');
+  assert.ok(stairs.length > 2, 'too few Building results for stairs to tell apart');
+  assert.equal(new Set(stairs.map((r) => r.entry.lead)).size, stairs.length, 'two Building results have the same second line');
+  assert.match(mine.find((e) => e.paragraph === 'first').lead, /^First: Draw a corridor/);
+  // the lead: up to LEAD_WORDS words, the sentence whole when it is shorter
+  assert.equal(LEAD_WORDS, 6);
+  assert.equal(leadOf('One two three. Four five six seven eight.'), 'One two three.');
+  assert.equal(leadOf('One two three four five (six) seven.'), 'One two three four five (six)…');
+  assert.equal(leadOf('One two three four five six, seven.'), 'One two three four five six…');
+  // the other parts have no paragraphs, and so no lead
+  assert.ok(index.filter((e) => e.part !== 'sections').every((e) => e.paragraph === undefined && e.lead === undefined));
 });

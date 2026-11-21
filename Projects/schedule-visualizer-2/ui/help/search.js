@@ -8,11 +8,13 @@
 //   announcement(count, query) -> the sentence the live region says
 //
 // An entry is one part of Help a reader can be taken to:
-//   { id, part, key, title, section, text }
+//   { id, part, key, title, section, text, paragraph?, lead? }
 // `part` is the body part it sits in (sections, keys, gestures, words, numbers),
 // `key` which thing in that part (a section's id, a shortcut's id, a device, a
 // word, a numbers block), `title` what a result is called, `section` the part's
-// own title, and `text` the sentences. ./index.js puts data-find="part:key" on
+// own title, and `text` the sentences. A section's entries are its paragraphs,
+// one each: `paragraph` names which (purpose, first, more, part-0, …) and `lead`
+// is its first words, the second line of a result whose title others share. ./index.js puts data-find="part:key" on
 // the heading a result opens, so an entry names a place by those two strings.
 //
 // What matches: every word of the query, in any order, ignoring case and
@@ -81,9 +83,25 @@ function sentencesOf(text) {
   return pieces.length > 0 ? pieces : [String(text)];
 }
 
-function entry(part, key, title, section, text) {
+// The first words of a paragraph, as the second line that tells apart results
+// with one title (Building's parts): up to LEAD_WORDS words, ending at the
+// sentence's end when that comes first.
+export const LEAD_WORDS = 6;
+export function leadOf(text) {
+  const first = sentencesOf(String(text).trim())[0].trim();
+  const words = first.split(/\s+/u);
+  if (words.length <= LEAD_WORDS) return first;
+  return words.slice(0, LEAD_WORDS).join(' ').replace(/[,;:(]+$/u, '') + '…';
+}
+
+function entry(part, key, title, section, text, paragraph) {
   const body = String(text === undefined || text === null ? '' : text).trim();
-  return { id: part + ':' + key + ':' + title, part, key: String(key), title: String(title), section, text: body };
+  const made = { id: part + ':' + key + ':' + title + (paragraph ? ':' + paragraph : ''), part, key: String(key), title: String(title), section, text: body };
+  if (paragraph) {
+    made.paragraph = paragraph;
+    made.lead = (paragraph === 'first' ? 'First: ' : '') + leadOf(body);
+  }
+  return made;
 }
 
 // The index of everything Help says, from the model the dialog draws.
@@ -95,7 +113,11 @@ export function buildIndex(model) {
     if (made.text !== '') entries.push(made);
   };
   for (const section of model.sections) {
-    for (const text of [section.purpose, section.first, section.more, ...section.parts]) add('sections', section.id, section.name, titles.sections, text);
+    // each paragraph its own entry, named as ./index.js marks it (data-paragraph)
+    add('sections', section.id, section.name, titles.sections, section.purpose, 'purpose');
+    add('sections', section.id, section.name, titles.sections, section.first, 'first');
+    add('sections', section.id, section.name, titles.sections, section.more, 'more');
+    section.parts.forEach((text, at) => add('sections', section.id, section.name, titles.sections, text, 'part-' + at));
   }
   add('keys', '', titles.keys, titles.keys, model.keys.guard);
   for (const row of model.keys.rows) add('keys', 'key:' + row.id, row.keys, titles.keys, row.does + ' (' + row.group + ')');

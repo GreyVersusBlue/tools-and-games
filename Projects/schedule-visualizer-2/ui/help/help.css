@@ -342,6 +342,14 @@
   font-size: var(--t-sm);
 }
 
+/* the paragraph's first words, when other results share the title */
+.help__result-lead {
+  color: var(--note);
+  font-size: var(--t-sm);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
 .help__result-text {
   overflow-wrap: anywhere;
 }

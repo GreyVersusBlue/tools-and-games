@@ -710,6 +710,42 @@ test('Search help: a result opens its part in the full body, heading focused, th
       const there = await activeIs(page);
       assert.ok(check(there) && there.landed === 'true', query + ' opened somewhere else: ' + JSON.stringify(there));
     }
+    // a section's result opens at the paragraph that matched, screens below
+    // the section's heading, and that paragraph is in view
+    await typeQuery(page, 'dead end');
+    const deadEnds = await resultsNow(page);
+    const building = deadEnds.findIndex((r) => r.title === 'Building');
+    assert.ok(building >= 0, 'no Building result for dead end');
+    await page.click('#help-dialog .help__result[data-result="' + building + '"]');
+    await page.waitForFunction(() => document.getElementById('help-dialog').dataset.mode === 'opened');
+    const para = await page.evaluate(() => {
+      const dialog = document.getElementById('help-dialog');
+      const scroller = dialog.querySelector('.help__scroll');
+      const frame = scroller.getBoundingClientRect();
+      const el = document.activeElement;
+      const box = el.getBoundingClientRect();
+      const heading = dialog.querySelector('.help__section[data-section="building"] .help__name').getBoundingClientRect();
+      return {
+        tag: el.tagName,
+        landed: el.dataset.landed || null,
+        starts: el.textContent.startsWith('Checks has two more findings') && el.textContent.includes('A dead end is a corridor that ends'),
+        inside: box.top >= frame.top - 1 && box.top < frame.bottom - 40,
+        headingAbove: heading.bottom < frame.top,
+        dialogScrolled: dialog.scrollTop,
+      };
+    });
+    assert.deepEqual(para, { tag: 'P', landed: 'true', starts: true, inside: true, headingAbove: true, dialogScrolled: 0 }, 'the dead-end result did not open at its paragraph, in view');
+    // results under one title each have a second line of their own
+    await typeQuery(page, 'stairs');
+    const leads = await page.$$eval('#help-dialog .help__result', (all) => all
+      .filter((button) => button.querySelector('.help__result-title').textContent === 'Building')
+      .map((button) => (button.querySelector('.help__result-lead') ? button.querySelector('.help__result-lead').textContent : null)));
+    assert.ok(leads.length > 2, 'too few Building results for stairs');
+    assert.ok(leads.every((lead) => lead && lead.length > 0), 'a Building result has no second line: ' + JSON.stringify(leads));
+    assert.equal(new Set(leads).size, leads.length, 'two Building results have the same second line: ' + JSON.stringify(leads));
+    // a title found once has no second line
+    await typeQuery(page, 'flight');
+    assert.equal(await page.$$eval('#help-dialog .help__result', (all) => all.filter((b) => b.querySelector('.help__result-title').textContent === 'Flight' && b.querySelector('.help__result-lead')).length), 0);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await helpGone(page);

@@ -8,7 +8,8 @@
 // A Search help field sits at the top of the body (ARCHITECTURE 22.12, DESIGN
 // 16.10 and 16.12 item 7; the index and matcher are ./search.js). Typing two
 // letters or more replaces the body with a list of results, a button each; one
-// opens its part in the full body, its heading focused, and Back to results
+// opens its part in the full body, its heading (or a section's paragraph that
+// matched) focused and scrolled to, and Back to results
 // (the next Tab stop after the field) returns to the list. Escape clears a
 // non-empty field first, then closes Help as before; Ctrl or ⌘ with F inside
 // Help focuses the field. The dialog's data-mode says where it is (browse,
@@ -69,10 +70,10 @@ function sectionsPart(model, titles) {
     h('p', null, 'The rail on the left (along the bottom on a phone) has one item for each. The digit in its corner opens it from anywhere.'),
     h('ol', { class: 'help__sections' }, model.sections.map((section) => h('li', { class: 'help__section', data: { section: section.id, here: String(section.here) } },
       h('h4', { class: 'help__name' }, h('kbd', null, section.key), ' ', name(section.name), section.here ? h('span', { class: 'help__here' }, ' · open now') : null),
-      h('p', null, section.purpose),
-      section.first ? h('p', null, h('strong', null, 'First: '), section.first) : null,
-      section.more ? h('p', { class: 'help__more' }, section.more) : null,
-      ...section.parts.map((text) => h('p', { class: 'help__more' }, text)),
+      h('p', { data: { paragraph: 'purpose' } }, section.purpose),
+      section.first ? h('p', { data: { paragraph: 'first' } }, h('strong', null, 'First: '), section.first) : null,
+      section.more ? h('p', { class: 'help__more', data: { paragraph: 'more' } }, section.more) : null,
+      ...section.parts.map((text, at) => h('p', { class: 'help__more', data: { paragraph: 'part-' + at } }, text)),
     ))));
 }
 
@@ -121,8 +122,8 @@ function numbersPart(model, titles) {
       each.sentences.map((sentence) => h('p', null, sentence)))));
 }
 
-// The element a result opens, in the full body: a section's, a gesture's, a
-// word's or a numbers block's heading, a shortcut's row, a group's term, or
+// The element a result opens, in the full body: a section's paragraph that
+// matched, a gesture's, a word's or a numbers block's heading, a shortcut's row, a group's term, or
 // the part's own heading. Compared as text, never as a selector, since a word
 // can be the school's own.
 function locate(root, entry) {
@@ -130,7 +131,10 @@ function locate(root, entry) {
   const same = (list, name, value) => list.find((el) => el.dataset[name] === value);
   if (entry.part === 'sections') {
     const item = same(all('.help__section'), 'section', entry.key);
-    return item && item.querySelector('.help__name');
+    if (!item) return null;
+    // the paragraph that matched, which may be screens below the heading
+    const paragraph = entry.paragraph && same(Array.from(item.querySelectorAll('p[data-paragraph]')), 'paragraph', entry.paragraph);
+    return paragraph || item.querySelector('.help__name');
   }
   if (entry.part === 'keys') {
     if (entry.key.startsWith('key:')) return same(all('tbody tr[data-key]'), 'key', entry.key.slice(4));
@@ -234,6 +238,16 @@ export function openHelp(ctx, options) {
     scroller.setAttribute('aria-label', 'Search results');
     // the results are the Tab stops; the box itself is not one
     scroller.removeAttribute('tabindex');
+    // results that share a title and a section (Building's paragraphs) get
+    // a second line, the paragraph's first words, to tell them apart
+    const shared = new Map();
+    for (const result of found.results) {
+      const both = result.entry.title + '\n' + result.entry.section;
+      shared.set(both, (shared.get(both) || 0) + 1);
+    }
+    const leadOf = (result) => (result.entry.lead && shared.get(result.entry.title + '\n' + result.entry.section) > 1
+      ? h('span', { class: 'help__result-lead' }, result.entry.lead)
+      : null);
     if (found.results.length === 0) {
       scroller.replaceChildren(h('p', { class: 'help__none' }, announcement(0, found.query)));
     } else {
@@ -244,6 +258,7 @@ export function openHelp(ctx, options) {
             h('span', { class: 'help__result-head' },
               h('span', { class: 'help__result-title' }, name(result.entry.title)),
               h('span', { class: 'help__result-section' }, result.entry.section)),
+            leadOf(result),
             h('span', { class: 'help__result-text' }, result.segments.map((piece) => (piece.mark ? h('mark', null, piece.text) : piece.text))))))));
     }
     scroller.scrollTop = 0;
