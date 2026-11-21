@@ -143,6 +143,7 @@ test('the dialog says where the copy goes, what it has, how the numbers come out
   assert.equal(await page.$eval('#duplicate-join', (el) => el.checked), true);
   assert.equal(await text(page, '#duplicate-join-words'), 'Stairs A will run from Floor 2 to Floor 4 as one stairwell.', 'it names no letter change');
   assert.equal(await text(page, '#duplicate-left'), 'Not copied: teachers in rooms, exits, the traced image.');
+  assert.equal(await text(page, '#duplicate-notes'), 'The 3 numbered copies will add 6 notes to the Checks tab: 3 for a room no group uses and 3 for a room with no subject.', 'counted by the checks: one day type, and no subject');
   const buttons = await page.$$eval('#duplicate-floor-dialog .dialog__buttons button', (all) => all.map((button) => button.textContent));
   assert.deepEqual(buttons, ['Duplicate Floor 2', 'Cancel'], 'Cancel last');
   await page.keyboard.press('Escape');
@@ -214,6 +215,20 @@ test('numbers that cannot carry over are one line, not two rows; a floor with no
   assert.equal(await page.$eval('#duplicate-numbers', (el) => el.hidden), true);
   assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers ("A-1" does not begin with a digit), so 2 rooms will need one.');
   assert.equal(await page.$eval('#duplicate-join-block', (el) => el.hidden), true, 'nothing is connected, so nothing to join');
+  await page.keyboard.press('Escape');
+  await dialogGone(page);
+});
+
+test('a floor below the copy of another size: nothing is joined, and the dialog says why in its Not copied line', async () => {
+  await build(page);
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    store.apply(actions.resizeFloor, { floorId: store.project.building.floors[2].id, right: 2 });
+  });
+  await openDialogByButton(page);
+  assert.equal(await page.$eval('#duplicate-join-block', (el) => el.hidden), true, 'no join to make');
+  assert.equal(await text(page, '#duplicate-left'), 'Not copied: teachers in rooms, exits, the traced image. Nothing is joined: Floor 3 is 42 × 30 cells and Floor 2 is 40 × 30, so the copy\'s stairs and elevator stops do not line up with Floor 3\'s.');
   await page.keyboard.press('Escape');
   await dialogGone(page);
 });

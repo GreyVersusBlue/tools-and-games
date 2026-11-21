@@ -195,7 +195,7 @@ export function floorMenu(ed) {
       }
       joinBlock.hidden = info.joins.length === 0;
       joinWords.textContent = info.joinText;
-      left.textContent = 'Not copied: ' + info.notCopied + '.';
+      left.textContent = 'Not copied: ' + info.notCopied + '.' + (info.notJoinedText === '' ? '' : ' ' + info.notJoinedText);
       const level = info.renumber.possible && keepRadio.checked && info.notes > 0;
       notes.hidden = !level;
       notes.textContent = level ? info.notesText : '';

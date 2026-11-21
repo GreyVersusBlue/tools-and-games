@@ -513,6 +513,30 @@ test('join: two or more plain flights in the run leave a plain flight, and the d
   assert.deepEqual(after.building.connections.map(stairsLetter), ['A', 'B', 'C']);
 });
 
+test('join: a floor below the copy of another size joins nothing, and the dialog says why', () => {
+  const project = chain(2);
+  const top = newFloor('fsample002', 'Floor 2', 2, 40, 15);
+  top.cells = top.cells.slice(0, CELL) + 'S' + top.cells.slice(CELL + 1);
+  project.building.floors[1] = top;
+  const info = describeFloorDuplicate(project, 'fsample001');
+  assert.deepEqual(info.joins, []);
+  assert.equal(info.notJoinedText, 'Nothing is joined: Floor 2 is 40 × 15 cells and Floor 1 is 40 × 14, so the copy\'s stairs and elevator stops do not line up with Floor 2\'s.');
+  const after = run(project, { floorId: 'fsample001' });
+  assert.deepEqual(connectionsTouching(after, newest(after).id), []);
+  assert.equal(describeFloorDuplicate(chain(2), 'fsample001').notJoinedText, '', 'the same size: nothing to say');
+});
+
+test('not copied: stairs with both ends on the source floor are named', () => {
+  const project = chain(2);
+  const floor = project.building.floors[0];
+  floor.cells = floor.cells.slice(0, CELL + 5) + 'S' + floor.cells.slice(CELL + 6);
+  project.building.connections.push({ id: 'cwithin001', label: 'E', a: { floorId: floor.id, cell: CELL }, b: { floorId: floor.id, cell: CELL + 5 }, direction: 'both' });
+  const info = describeFloorDuplicate(project, floor.id);
+  assert.equal(info.notCopied, 'teachers in rooms, exits, the traced image, Stairs E, which joins two cells of Floor 1');
+  const after = run(project, { floorId: floor.id });
+  assert.ok(after.building.connections.every((connection) => !(connection.a.floorId === newest(after).id && connection.b.floorId === newest(after).id)), 'not copied indeed');
+});
+
 test('join: Join off leaves the copy\'s stairs unconnected', () => {
   const project = chain(2);
   const after = run(project, { floorId: 'fsample002', join: false });

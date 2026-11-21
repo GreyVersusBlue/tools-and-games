@@ -222,7 +222,7 @@ function joinsFor(building, source, top) {
 //     numbered, renumber: { possible, reason, examples: [{ from, to }], count },
 //     unnumbered, notes, noteCounts: { <check kind>: n }, notesText,
 //     joins: [{ type, cell, text }], joinText, separateText,
-//     copied, notCopied, sentence }
+//     copied, notCopied, notJoinedText, sentence }
 export function describeFloorDuplicate(project, floorId, options) {
   const info = describeCopy(project, floorId, options);
   if (!info) return null;
@@ -334,9 +334,31 @@ function describeCopy(project, floorId, options) {
     joinText: joins.length === 0 ? '' : joins.map((join) => join.text).join('; ') + '.',
     separateText: separate.length === 0 ? '' : separate.map((join) => 'Stairs ' + list(join.letters) + ' stay separate stairs; Make one stairwell is in the stair\'s properties.').join(' '),
     copied,
-    notCopied: 'teachers in rooms, exits, the traced image',
+    notCopied: notCopiedText(building, source),
+    notJoinedText: notJoined(source, top),
     sentence: 'The copy goes on top of the building, as ' + newName + ', with ' + source.name + '\'s corridors, stairs, rooms and other spaces: ' + copied + '.',
   };
+}
+
+// What is not copied, in a list: a connection with both ends on the source
+// (stairs within one floor) is not copied either, and is named.
+function notCopiedText(building, source) {
+  const parts = ['teachers in rooms', 'exits', 'the traced image'];
+  const within = building.connections.filter((connection) => connection.a.floorId === source.id && connection.b.floorId === source.id);
+  if (within.length > 0) {
+    const letters = Array.from(new Set(within.map(stairsLetter)));
+    parts.push('Stairs ' + list(letters) + ', which ' + (letters.length === 1 ? 'joins' : 'join') + ' two cells of ' + source.name);
+  }
+  return parts.join(', ');
+}
+
+// Why nothing is joined when the floor below the copy is another size than the
+// source: no cell of the copy lines up with one of it. '' when the sizes agree,
+// or the source has no stairs or elevator stop to join.
+function notJoined(source, top) {
+  if (top.width === source.width && top.height === source.height) return '';
+  if (!source.cells.includes('S')) return '';
+  return 'Nothing is joined: ' + top.name + ' is ' + top.width + ' × ' + top.height + ' cells and ' + source.name + ' is ' + source.width + ' × ' + source.height + ', so the copy\'s stairs and elevator stops do not line up with ' + top.name + '\'s.';
 }
 
 // A clause for one join, starting with a capital (each names its stairs or
