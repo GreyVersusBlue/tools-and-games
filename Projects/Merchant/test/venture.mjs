@@ -535,6 +535,56 @@ test('MER-98 (3) bestTrades: news older than about eight seasons ranks below fre
 
 // ---- MER-98 (6): the why
 
+/** Cairo with no drift and calm roads, 3,000 dinars, news that Damascus sells porcelain at 78, and the house's own mark on that price
+    (`glut` now, halved at the one closing before Yusuf arrives, so the price he finds is the 78 the news gave). */
+function porcelainTrip(glut) {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  let s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.money = 3000;
+  s.market.damascus.porcelain.f = 78 / (M.baseOf(s, c, 'damascus', 'porcelain') * (1 - glut / 2));
+  s.market.damascus.porcelain.glut = glut;
+  know(s, c, 'damascus', 'porcelain', 78);
+  const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: {}, purse: 2200, contract: 'own', sell: [], buy: ['porcelain'] };
+  const e = estimate(s, c, plan);
+  const paper = toReturn(outfit(s, c, plan), c).paper;
+  const bought = -paper.data.account.find(r => r.label === 'Bought').amount;
+  return { e, paper, bought, loads: paper.data.account.find(r => r.label === 'Bought').text };
+}
+
+test('MER-112 (1) estimate, play 2 trip 3: 18 loads of porcelain bought at Damascus on news of 78 are priced at what the buying pushes the price to, within 5 percent of what the trade charges', () => {
+  const { e, paper, bought, loads } = porcelainTrip(0);
+  const q = e.back.porcelain, flat = Math.round(78 * 1);
+  ok(q >= 15, `${q} loads bought`);
+  ok(new RegExp(`^${q} loads of porcelain`).test(loads), `the trade bought ${loads}, the estimate ${q}`);
+  const cost = q * flat + e.impact.porcelain;
+  ok(Math.abs(cost - bought) <= bought * 0.05, `estimated ${cost}, the trade charged ${bought}`);
+  ok(bought / q > flat * 1.15, `${bought} for ${q} is ${(bought / q).toFixed(1)} a load, well over the 78 the news gave`);
+  ok(Math.abs(paper.data.houseNet - e.net) <= Math.abs(e.net) * 0.05 + 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
+});
+
+test('MER-112 (1) estimate: where the house\'s own earlier sales still mark the price at the far end, its buying there is priced from that mark by market.js, not as if the market were fresh', () => {
+  const { e, paper, bought, loads } = porcelainTrip(0.3);
+  const q = e.back.porcelain;
+  ok(new RegExp(`^${q} loads of porcelain`).test(loads), `the trade bought ${loads}, the estimate ${q}`);
+  ok(Math.abs(e.net - paper.data.houseNet) <= 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
+  ok(Math.abs(q * 78 + e.impact.porcelain - bought) <= bought * 0.05, `${q * 78 + e.impact.porcelain} against ${bought}`);
+});
+
+test('MER-112 (1) estimate: the house\'s own selling at the far end, with the price already marked, is what the trade fetches', () => {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  let s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.stock = { linen: 30 };
+  s.market.damascus.linen.f = 60 / (M.baseOf(s, c, 'damascus', 'linen') * (1 - 0.2 / 2));
+  s.market.damascus.linen.glut = 0.2;
+  know(s, c, 'damascus', 'linen', 60);
+  const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 20 }, purse: 0, contract: 'own', sell: ['linen'], buy: [] };
+  const e = estimate(s, c, plan);
+  const paper = toReturn(outfit(s, c, plan), c).paper;
+  const got = paper.data.account.find(r => r.label === 'Sold').amount;
+  ok(Math.abs(20 * 60 - e.impact.linen - got) <= got * 0.05, `estimated ${20 * 60 - e.impact.linen}, the trade fetched ${got}`);
+  ok(Math.abs(e.net - paper.data.houseNet) <= 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
+});
+
 test('MER-98 (6) why, the house\'s own buying: named with the loads and the price before and after when it is the largest cause', () => {
   const c = still(x => { x.stops.find(z => z.id === 'hilltown').sells.salt = { base: 20, depth: 20 }; });
   let s = know(know(game(c), c, 'hilltown', 'wool', 30), c, 'hilltown', 'salt', 20);
