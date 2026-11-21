@@ -1307,10 +1307,14 @@ export function split(contract, staked, value) {
 
 /** An expedition is home: its goods go to the warehouse, its money to the house, the shares are
     paid, the agent is at home. Returns the report the return paper and the interlude both use. */
-function bringHome(s, content, x, { elapsed }) {
+function bringHome(s, content, x, { elapsed, at = null }) {
   const home = homeOf(content);
   const agentRec = s.agents[x.agent], agent = agentOf(content, x.agent), route = routeOf(content, x.route);
   const cargoValue = Object.entries(x.cargo).reduce((v, [g, n]) => v + n * (M.truePrice(s, content, home, g) ?? 0), 0);
+  // The goods stay valued at the price as it stands now, the one the estimate carries to (test/venture.mjs bands depend on it).
+  // A party that was already home when the years passed also keeps the price home had in the season it came home (`at`, from
+  // the price history), which is the one its why sentence names (MER-119).
+  const homeThen = at === null ? null : Object.fromEntries(Object.keys(x.cargo).map(g => [g, M.priceAt(s, home, g, at)]).filter(([, p]) => p !== null));
   const value = x.purse + cargoValue;
   const shares = split(x.contract, x.staked, value);
   for (const [g, n] of Object.entries(x.cargo)) addStock(s, g, n);
@@ -1325,7 +1329,7 @@ function bringHome(s, content, x, { elapsed }) {
   agentRec.where = home;
   for (const k of x.book.seen) bumpKnown(s, k.stop, k.good, k.p, k.at);
   const houseNet = shares.house - x.staked.house - wage;
-  return { x, route, shares, value, cargoValue, wage, houseNet, short: short + wageShort, elapsed, goodsBack: { ...x.cargo }, moneyBack: x.purse };
+  return { x, route, shares, value, cargoValue, homeThen, wage, houseNet, short: short + wageShort, elapsed, goodsBack: { ...x.cargo }, moneyBack: x.purse };
 }
 
 /** The five causes a trip makes less than its estimate said (DESIGN 2.2 rule 2), as dinars the house is short by each:
@@ -1375,8 +1379,8 @@ export function gapCauses(s, content, x, r) {
     ownMove(e, seen, 'buy', e.cost - e.q * Math.max(1, Math.round(seen.p * cut)));
   }
   for (const [g, n] of Object.entries(r.goodsBack)) {
-    const now = M.truePrice(s, content, home, g) ?? 0, pH = hope.home?.[g];
-    if (pH) note('news', (pH - now) * n, { stop: home, good: g, side: 'home', got: now, hoped: pH });
+    const now = M.truePrice(s, content, home, g) ?? 0, pH = hope.home?.[g], then = r.homeThen?.[g];
+    if (pH) note('news', (pH - now) * n, { stop: home, good: g, side: 'home', got: now, hoped: pH, ...(then !== undefined ? { then } : {}) });
   }
   // a toll paid in goods that the far end would have bought costs what the last loads would have fetched there, less the toll they paid
   const dest = stopOf(content, routeOf(content, x.route).to);
@@ -1415,7 +1419,12 @@ function whyLine(s, content, x, r) {
   const priceWords = (n, better) => {
     const good = goodName(content, n.good), place = stopName(content, n.stop);
     const rel = (up) => (better ? `${up ? 'more' : 'less'} than` : 'not');
-    if (n.side === 'home') return `${cap(good)} fetched ${n.got} at home by the time ${agent.name} was back, ${rel(n.got > n.hoped)} the ${n.hoped} it fetched when ${agent.name} left.`;
+    if (n.side === 'home') {
+      // a party settled by quotes was not back when the price was read: say so (MER-119); one that was back says the season
+      if (r.jump?.quoted) return `The years passed before ${agent.name} was home, so ${good} was counted at ${n.got} at home, ${rel(n.got > n.hoped)} the ${n.hoped} we hoped for.`;
+      const got = n.then ?? n.got, when = r.jump && n.then !== undefined ? `in ${M.writeSeason(content, r.jump.at)}, when ${agent.name} was back` : `by the time ${agent.name} was back`;
+      return `${cap(good)} fetched ${got} at home ${when}, ${rel(got > n.hoped)} the ${n.hoped} it fetched when ${agent.name} left.`;
+    }
     const was = guessed ? ` We had no news of ${place} and guessed ${n.hoped}.` : null;   // no news: say so in a sentence of its own
     if (n.side === 'sell') return was ? `${place} paid ${n.got} for ${good} when ${agent.name} arrived.${was}` : `${place} paid ${n.got} for ${good} when ${agent.name} arrived, ${rel(true)} the ${n.hoped} ${aged}.`;
     return was ? `${cap(good)} cost ${n.got} in ${place} when ${agent.name} arrived.${was}` : `${cap(good)} cost ${n.got} in ${place} when ${agent.name} arrived, ${rel(false)} the ${n.hoped} ${aged}.`;
@@ -1495,7 +1504,6 @@ function returnPaper(s, content, r) {
       account: rows, goodsBack: Object.fromEntries(Object.entries(r.goodsBack).filter(([, q]) => q > 0)), cargoValue: Math.round(r.cargoValue), houseNet: n, outcome: n > 0 ? 'profit' : n < 0 ? 'loss' : 'even',
       hoped: x.hoped ?? null, why: x.hoped === undefined ? null : whyLine(s, content, x, r),   // what the sheet said at sending, and one sentence for the gap (DESIGN 2.2 rule 2)
       shares: { agent: r.shares.agent, partners: r.shares.partners, house: r.shares.house },
-      agentLine: `${agent.name} is home and wants to rest a season.`,
     },
   };
 }
@@ -1571,7 +1579,8 @@ function settledLine(s, content, x, out, r) {
 }
 
 /** Settles `x` (settle, then bring it home or write it off). Returns its line. */
-function settleAndClose(s, content, x, elapsed, { papers = null } = {}) {
+function settleAndClose(s, content, x, elapsed, { papers = null, at = null } = {}) {
+  const wasHome = x.status === 'home';   // it finished its road before the years passed; otherwise the jump settles it by quotes
   const out = settle(s, content, x);
   if (out.result === 'lost') {
     out.fate = out.loss.survived ? 'survived' : 'died';
@@ -1579,11 +1588,17 @@ function settleAndClose(s, content, x, elapsed, { papers = null } = {}) {
     if (out.loss.survived && x.contract.kind === 'own' && !x.contract.prepaid) pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
     return settledLine(s, content, x, out);
   }
-  const r = bringHome(s, content, x, { elapsed });
+  const r = bringHome(s, content, x, { elapsed, at: papers && wasHome ? at : null });
   // a trip that came home while the years passed leaves its paper for the first desk after the interlude (MER-98), with
-  // what the sheet hoped and one sentence for the gap, besides the line the interlude page gives it
-  if (papers) papers.push(returnPaper(s, content, r));
-  return settledLine(s, content, x, out, r);
+  // what the sheet hoped and one sentence for the gap, which the interlude page carries too (MER-119)
+  const line = { ...settledLine(s, content, x, out, r), quoted: !wasHome };   // `quoted`: settled by the prices it left with, not home before the years passed
+  if (papers) {
+    r.jump = { quoted: !wasHome, at };
+    const paper = returnPaper(s, content, r);
+    papers.push(paper);
+    if (paper.data.why) Object.assign(line, { hoped: paper.data.hoped, why: paper.data.why });
+  }
+  return line;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1610,7 +1625,7 @@ export function jump(s, content) {
     norm(x);
     const road = routeOf(content, x.route) ? wholeRoad(content, x) : 0;
     x.out = Math.max(x.out, road);
-    entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out), { papers }));
+    entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out), { papers, at: from }));
     close(s, content, x, to);
   }
   s.expeditions = [];
