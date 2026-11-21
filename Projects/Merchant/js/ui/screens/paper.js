@@ -397,8 +397,8 @@ function cardAgent(card) {
   return null;
 }
 
-/** The engine records a card's title and a choice's label as written, so a card that tells of a trip arrives here with
-    `{agent}` or `{to}` still in it. The one slot the card itself names is filled, the agent; a slot that needs the trip
+/** The engine records a card's title and a choice's label as the player saw them, filled (MER-109). A record from an
+    older save holds them as written, with `{agent}` or `{to}` still in it, and keeps this fallback. For those the one slot the card itself names is filled, the agent; a slot that needs the trip
     (`{to}`, `{good}`, `{route}`, `{seasons}`) is not known here, and its words are dropped to a plainer line. */
 function causeLine(i, content) {
   const card = content ? (content.cards ?? []).find(c => c.id === String(i.from ?? '').split('/')[0]) : null;
