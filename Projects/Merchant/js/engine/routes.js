@@ -1309,10 +1309,13 @@ function whyLine(s, content, x, r) {
     return was ? `${cap(good)} cost ${n.got} in ${place} when ${agent.name} arrived.${was}` : `${cap(good)} cost ${n.got} in ${place} when ${agent.name} arrived, ${rel(false)} the ${n.hoped} ${aged}.`;
   };
   if (gap < 0) return low.news && causes.news < -small / 2 ? priceWords(low.news, true) : 'The trip made more than hoped.';
-  // the largest cause in dinars; a tie goes in this order
+  // the cause that moved the result most, in dinars, as the sentence will tell it: a cause the house came out short by is sized by
+  // the one item its sentence names (a price that fell 40 dinars short is 40 even when another good rose and the sum is 10);
+  // loss, order and tolls are sized by the whole of what they took. A tie goes in this order.
   const order = ['loss', 'order', 'tolls', 'glut', 'own', 'news'];
-  const top = order.reduce((best, k) => (causes[k] > causes[best] ? k : best), 'news');
-  if (causes[top] <= 0) return 'Prices moved against the house on the way.';
+  const size = k => (causes[k] <= 0 ? 0 : named[k]?.amount > 0 && k !== 'tolls' && k !== 'loss' ? named[k].amount : causes[k]);
+  const top = order.reduce((best, k) => (size(k) > size(best) ? k : best), 'news');
+  if (size(top) <= 0) return 'Prices moved against the house on the way.';
   if (top === 'loss') return `The road took ${cargoText(content, x.book.lost)}.`;
   if (top === 'order') return orderLine(content, x, seasonIndex(s, content)) ?? 'An order from a letter changed the trip.';
   if (top === 'own') {

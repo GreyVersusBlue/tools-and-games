@@ -347,6 +347,22 @@ test('why: when two causes apply the larger one is named, and it is one sentence
   for (const w of [small, big]) ok(!/\u2014/.test(w) && (w.match(/\./g) ?? []).length === 1, w);
 });
 
+test('MER-112 (2) why: the cause that moved the result most is named, sized by what its sentence tells, not the first found and not a sum that other items cancel', () => {
+  const c = still();
+  let s = know(know(game(c), c, 'hilltown', 'wool', 30), c, 'hilltown', 'salt', 6);
+  s.stock.salt = 10;
+  s = outfit(s, c, { ...WOOL, cargo: { wool: 10, salt: 10 }, sell: ['wool', 'salt'] });
+  const x = s.expeditions[0];
+  eq(toReturn(structuredClone(s), c).paper.data.why, 'The trip went about as hoped.', 'the sheet as built is sound');
+  // by hand: wool fetched 4 a load less than hoped (40 on ten loads, the largest single item), salt 2 a load more (a gain of 20, so the
+  // news sums to 20), and the sheet allowed 30 too little for the house's own selling of wool (a cause of 30: larger than the news
+  // sum, smaller than the wool item). The code that compares sums names the selling; the cause that moved the result most is the price.
+  const gap = 40 - 20 + 30;
+  x.hope.sell.wool += 4; x.hope.sell.salt -= 2; x.hope.impact.wool -= 30; x.hope.net += gap; x.hoped += gap;
+  const why = toReturn(s, c).paper.data.why;
+  eq(why, 'Hilltown paid 30 for wool when Mira arrived, not the 34 the news, this season, led us to expect.');
+});
+
 // ---- the three widest trades, and the view
 
 test('bestTrades: the trades with their road, the news age and the risk word, best a season first; unknown prices and trades the house does not make are left out', () => {
