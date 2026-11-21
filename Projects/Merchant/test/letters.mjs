@@ -18,9 +18,9 @@ import { validateContent } from '../js/engine/content.js';
 import { holds } from '../js/engine/conditions.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import { lagOf, writeSeason } from '../js/engine/market.js';
-import { LETTER_CHANCE, MAX_HOLD, letters } from '../js/engine/letters.js';
-import { MAX_PAPERS } from '../js/engine/state.js';
-import { MAX_WAIT } from '../js/engine/routes.js';
+import { LETTER_CHANCE, MAX_HOLD, letters, CLAIMS, repeatsRecent, claimsHold } from '../js/engine/letters.js';
+import { MAX_PAPERS, addPaper } from '../js/engine/state.js';
+import { MAX_WAIT, pickEntry } from '../js/engine/routes.js';
 import { next as dice } from '../js/engine/rng.js';
 import { steps } from '../js/engine/turn.js';
 import { repair } from '../js/save.js';
@@ -58,13 +58,13 @@ const choicesOf = () => [
 ];
 const question = (id, when, over = {}) => ({
   id, kind: 'question', from: { name: 'The road', role: 'The trek', seal: null }, title: id, body: 'A question from the road.', when, weight: 1,
-  repeat: false, default: 'on', choices: choicesOf(), note: 'An invented letter for testing.', sources: [{ src: 'testport-fiction' }], ...over,
+  repeat: false, default: 'on', choices: choicesOf(), note: `An invented letter for testing: ${id}.`, sources: [{ src: 'testport-fiction', at: id }], ...over,
 });
 const report = (id, when, over = {}) => ({
   id, kind: 'report', from: { name: 'The road', role: 'The trek', seal: null }, title: id, body: 'A report from the road.', when, weight: 1, repeat: false,
   happened: [{ stock: 'salt', by: 3 }],
   choices: [{ id: 'right', label: 'You did right', hint: 'Trust.', now: [{ trust: '$agent', by: 1 }] }, { id: 'argue', label: 'You should have argued', hint: 'Less trust.', now: [{ trust: '$agent', by: -1 }] }],
-  note: 'An invented letter for testing.', sources: [{ src: 'testport-fiction' }], ...over,
+  note: `An invented letter for testing: ${id}.`, sources: [{ src: 'testport-fiction', at: id }], ...over,
 });
 const writing = (c, ...ls) => variant(c, x => { x.letters = ls; });
 const at = stop => ({ at: stop });
@@ -173,18 +173,24 @@ test('(1) a letter in the post when its expedition is lost is delivered, a repor
   eq(d[0].at, arrived, 'in the season it was answered');
   eq(q[arrived + 1].log.filter(e => e.kind === 'card' && e.ref === 'q1').length, 1, 'the answer still counts at the desk');
 });
-test('(1) a letter in the post when the act jump settles its expedition is delivered at the opening after the jump', () => {
+test('(1, MER-123) a letter in the post when the act jump settles its expedition is dropped and logged, not delivered years late', () => {
   const c = writing(trek(calm, { end: 10 }), report('r1', at('s1')));
   const opts = { plan: { length: 'acts' }, n: 4 };
-  const seed = seedFor(c, st => everPosted(st, 'r1'), { ...opts, n: 2 });
-  const states = play(c, seed, opts), control = play(noHappened(c), seed, opts);
+  // pool no longer writes such a letter, so one is put in the post by hand the way a save from an earlier build holds it
+  const first = play(c, 1, { ...opts, n: 2 });
+  const s2 = structuredClone(first[2]);
+  s2.post.push({ id: 'r1', kind: 'report', expedition: x0(s2).id, agent: x0(s2).agent, stop: 's1', standing: true, written: 2, lag: 1, arrive: 3 });
+  const control = structuredClone(first[2]);
+  const run = s => { const out = [s]; for (let i = 0; i < 3 && ['desk', 'interlude'].includes(out.at(-1).phase); i++) out.push(step(out.at(-1), c, {})); return out; };
+  const states = run(s2), ctl = run(control);
   const j = states.findIndex(s => s.phase === 'interlude');
   ok(j > 0, 'the jump came');
-  eq([states[j].expeditions, states[j].log.some(e => e.kind === 'jump')], [[], true], 'the jump settled the expedition');
-  ok(posted(states[j], 'r1'), 'the letter is still in the post across the jump');
-  ok(states[j + 1].desk.some(p => p.ref === 'r1'), 'on the desk when the next act opens');
-  eq(salt(states[j + 1]) - salt(control[j + 1]), 3, 'its happened applied');
-  eq(states[j + 1].post, [], 'and it left the post');
+  ok(states.every(s => !s.desk.some(p => p.ref === 'r1')), 'never on the desk');
+  eq(states.at(-1).post, [], 'and no longer in the post');
+  const gone = drops(states.at(-1), 'r1');
+  eq(gone.length, 1, 'the log says it was dropped, once');
+  ok(/act that ended/.test(gone[0].reason), gone[0].reason);
+  eq(salt(states.at(-1)), salt(ctl.at(-1)), 'its happened did not apply');
 });
 test('(1) a report is not written if it would arrive after the expedition is due home', () => {
   // Hilltown is two seasons from home on the way out; a road that comes back in one season gets its report home too late
@@ -332,13 +338,12 @@ test('(1b) a report is written only if it arrives before the game\'s last season
   eq(drawn(ask(5)), [], 'written in season 3 at s2 (lag 2) it would arrive in season 5, the last');
   ok(drawn(ask(6)).length > 10, 'one season more and it is written');
 });
-test('(1c) a report that would arrive in the gap between acts is written, and delivered when the next act opens (the game\'s rule, not the act\'s)', () => {
+test('(1c, MER-123) a report that would arrive after the act it is written in is never written; the full length, which has no gap, writes it', () => {
   const c = writing(trek(calm, { end: 10 }), report('r2', at('s1')));
-  const opts = { plan: { length: 'acts' }, n: 4 };
-  const seed = seedFor(c, st => everPosted(st, 'r2'), { ...opts, n: 3 });
-  const states = play(c, seed, opts), j = states.findIndex(s => s.phase === 'interlude');
-  ok(j > 0 && posted(states[j], 'r2')?.arrive > 2 && posted(states[j], 'r2').written === 2, 'in the post across the jump, due after the act\'s last season');
-  ok(states[j + 1].desk.some(p => p.ref === 'r2'), 'on the desk when act 2 opens');
+  const seeds = Array.from({ length: 60 }, (_, i) => i + 1);
+  const drawn = length => seeds.filter(sd => everPosted(play(c, sd, { plan: { length }, n: 4 }), 'r2'));
+  eq(drawn('acts').filter(sd => play(c, sd, { plan: { length: 'acts' }, n: 4 }).some(s => posted(s, 'r2')?.written === 2)), [], 'written in season 2 (the act\'s last), it would reach the desk in season 3 or later');
+  ok(drawn('full').length > 10, 'the same letter, the same seeds, no gap: written');
 });
 
 // ---- (2) the agent acts by trait at once, then the answer is a standing order for the rest of the trip
@@ -604,12 +609,12 @@ const GAMES = Number(process.env.LETTER_GAMES ?? 100);
 /** One cairo game of `length`: every free agent is sent each season to the next stop in a rotation that starts
     at the seed, every paper is answered by a dice of the test's own, every expedition still out at the end is
     recalled or left by the same dice. Returns the end state and what the post held, by letter. */
-function cairoGame(seed, length) {
+function cairoGame(seed, length, onOpen) {
   const c = CAIRO, rng = { rng: seed * 7919 + 17 }, roll = n => Math.floor(dice(rng) * n);
   const stops = c.stops.filter(st => st.id !== 'cairo').map(st => st.id);
   let s = newGame(c, { seed, length, house: ['spice', 'cloth', 'newcomer'][seed % 3] });
   const seen = new Set();
-  let turn = seed;
+  let turn = seed, late = 0;
   const watch = () => { for (const p of s.post) seen.add(`${p.expedition}:${p.id}:${p.written}`); };
   while (['desk', 'interlude'].includes(s.phase)) {
     if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
@@ -634,16 +639,19 @@ function cairoGame(seed, length) {
     }
     s = endSeason(s, c);
     watch();
+    for (const p of s.desk) if (p.kind === 'letter') late = Math.max(late, p.reached - p.written);
+    if (onOpen?.(s)) return { s, c, written: seen, late };
   }
   if (s.phase === 'recall') s = recall(s, c, Object.fromEntries(s.expeditions.map(x => [x.id, roll(2) ? 'recall' : 'stay'])));
-  return { s, c, written: seen };
+  return { s, c, written: seen, late };
 }
 /** Per letter over `n` games: written, on the desk, orders used, orders dropped; and the reports left in the post at the end. */
 function cairoMeasure(n, length) {
   const by = {}, row = id => (by[id] ??= { kind: CAIRO.letters.find(l => l.id === id).kind, written: 0, desk: 0, used: 0, dropped: 0 });
-  let answered = 0, took = 0, stranded = 0;
+  let answered = 0, took = 0, stranded = 0, late = 0;
   for (let seed = 1; seed <= n; seed++) {
-    const { s, written } = cairoGame(seed, length);
+    const { s, written, late: l } = cairoGame(seed, length);
+    late = Math.max(late, l);
     for (const k of written) row(k.split(':')[1]).written++;
     for (const e of s.log) {
       if (e.kind === 'letter') row(e.ref).desk++;
@@ -653,7 +661,7 @@ function cairoMeasure(n, length) {
     }
     stranded += s.post.filter(p => p.kind === 'report').length;
   }
-  return { by, answered, took, stranded };
+  return { by, answered, took, stranded, late };
 }
 test(`a cairo measure: ${GAMES} three-act games, at least 80 percent of answered questions take effect, no report written is left undelivered`, () => {
   const m = cairoMeasure(GAMES, 'acts');
@@ -662,6 +670,7 @@ test(`a cairo measure: ${GAMES} three-act games, at least 80 percent of answered
   ok(m.answered >= GAMES / 4, `questions answered: ${m.answered}`);
   ok(m.took >= 0.8 * m.answered, `answers that took effect: ${m.took} of ${m.answered}`);
   eq(m.stranded, 0, 'no report left in the post at the game\'s end');
+  ok(m.late <= 6, `the slowest letter took ${m.late} seasons from writing to the desk (a letter that crossed the act jump took ten years)`);
 });
 
 test('(MER-88) a later effect set by a letter\'s answer is named on the Accounts paper by the letter and the answer', () => {
@@ -784,6 +793,159 @@ test('(MER-118) a letter that could only come after its trip\'s return paper is 
   }
   ok(dropped >= 1, `only ${dropped} letters were dropped in 120 games with a turn-back answer`);
   ok(delivered > dropped, 'most letters still arrive');
+});
+
+// ---- MER-123: letters and cards that tell the truth
+
+test('(MER-123) a letter that says the agent sold is written only by an expedition that carries something to sell', () => {
+  const c = writing(trek(calm), report('r1', at('s1')));
+  const seeds = Array.from({ length: 40 }, (_, i) => i + 1);
+  CLAIMS.r1 = { sells: true };
+  try {
+    const wrote = plan => seeds.filter(sd => everPosted(play(c, sd, { plan, n: 4 }), 'r1'));
+    eq(wrote({ cargo: {}, purse: 40, buy: ['wool'] }), [], 'money only: nothing to sell, never written');
+    ok(wrote({ cargo: { wool: 2 } }).length > 5, 'with wool: written (the same seeds)');
+    CLAIMS.r1 = { sells: ['salt'] };
+    eq(wrote({ cargo: { wool: 2 } }), [], 'a letter about salt from a party carrying wool: never written');
+    ok(wrote({ cargo: { salt: 2 } }).length > 5, 'with salt: written');
+  } finally { delete CLAIMS.r1; }
+  ok(claimsHold({ id: 'no-claim' }, { cargo: {} }), 'a letter with no claim is not held back');
+  eq(CLAIMS, {}, 'the table is empty until the routes and venture pins are moved: see the comment on CLAIMS');
+});
+
+test('(MER-123) a letter is not written when a card or letter with the same note reached the desk in the last two seasons', () => {
+  const s = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
+  const sacks = CAIRO.letters.find(l => l.id === 'constantinople-sacks'), idx = seasonIndex(s, CAIRO);
+  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), false, 'nothing told yet');
+  s.log.push({ at: idx, kind: 'card', ref: 'broker-linen-constantinople' });   // the card that shares its note and its source line
+  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), true, 'the card told it this season');
+  s.log.at(-1).at = idx - 1;
+  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), true, 'and last season');
+  s.log.at(-1).at = idx - 2;
+  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), false, 'two seasons ago is far enough');
+  s.log.at(-1).ref = 'opening-letter';
+  s.log.at(-1).at = idx;
+  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), false, 'a card with another note does not count');
+  s.post.push({ id: 'broker-linen-constantinople', arrive: idx + 1 });
+  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), true, 'a letter in the post for the season it would arrive in counts');
+});
+
+/** A cairo state with a return paper on the desk, and the paper. Searched over seeds; fails if none has one. */
+function homeState() {
+  for (let seed = 1; seed <= 60; seed++) {
+    const { s } = cairoGame(seed, 'acts', st => st.desk.some(p => p.kind === 'return' && p.data?.account));
+    const p = s.desk.find(q => q.kind === 'return' && q.data?.account);
+    if (p) return { s: structuredClone(s), p: s.desk.indexOf(p) };
+  }
+  throw new Error('no cairo game in the search brought a trip home');
+}
+/** The facts the return paper at `k` of a state carries, set by hand: sold rows or none, the net and the hope. */
+function facts(base, k, { sold = true, net, hoped = null, agent = 'ali' }) {
+  const s = structuredClone(base), p = s.desk[k];
+  p.agent = agent; p.data.houseNet = net; p.data.hoped = hoped;
+  p.data.account = p.data.account.filter(r => r.label !== 'Sold');
+  if (sold) p.data.account.push({ label: 'Sold', text: '1 load', amount: 80, detail: true });
+  s.agents[agent].hired = true;
+  return s;
+}
+const reopen = (s, c) => { letters(s, c); return s; };
+
+test('(MER-123) the facts a card\'s words rely on are written when a trip comes home: the net, "undersold" only after a sale that fell short of the hope', () => {
+  const { s: base, p: k } = homeState();
+  const flagsOf = (o, agent = 'ali') => { const s = reopen(facts(base, k, { agent, ...o }), CAIRO); return { profit: s.flags[`${agent}-profit`], undersold: !!s.flags[`${agent}-undersold`] }; };
+  eq(flagsOf({ net: -12, hoped: 6 }), { profit: -12, undersold: true }, 'sold, and made less than hoped');
+  eq(flagsOf({ net: 24, hoped: 6 }), { profit: 24, undersold: false }, 'beat its estimate: not undersold (the play\'s case)');
+  eq(flagsOf({ net: -12, hoped: 6, sold: false }), { profit: -12, undersold: false }, 'sold nothing, only bought: not undersold (the play\'s other case)');
+  eq(flagsOf({ net: -12, hoped: null }), { profit: -12, undersold: false }, 'no estimate to fall short of');
+  const cleared = reopen(facts(base, k, { net: 5, hoped: 9 }), CAIRO);
+  cleared.desk.splice(k, 1);
+  eq([cleared.flags['ali-undersold'], cleared.flags['ali-profit']].map(Boolean), [true, true], 'set until the next opening');
+  reopen(cleared, CAIRO);
+  eq([cleared.flags['ali-undersold'], cleared.flags['ali-profit']], [undefined, undefined], 'and cleared at the next one, when no trip of his is home');
+});
+
+test('(MER-123) "Ali and the price" is drawn only after a sale that fell short; its words no longer give a loss or a number', () => {
+  const { s: base, p: k } = homeState(), card = CAIRO.cards.find(c => c.id === 'ali-beyond-the-paper');
+  const when = o => holds(card.when, reopen(facts(base, k, o), CAIRO), CAIRO);
+  eq(when({ net: -12, hoped: 6 }), true);
+  eq(when({ net: 24, hoped: 6 }), false, 'a trip that beat its estimate');
+  eq(when({ net: -12, hoped: 6, sold: false }), false, 'a trip that sold nothing');
+  ok(!/lost about \d+|\d+ dinars/.test(card.body), card.body);
+  ok(JSON.stringify(card.when).includes('ali-undersold'), 'the card requires the fact');
+});
+
+test('(MER-123) "Yusuf is home with news" says he was told he could go further, and only after that was told during this trip', () => {
+  const { s: base, p: k } = homeState(), card = CAIRO.cards.find(c => c.id === 'yusuf-aleppo');
+  const sent = base.log.find(e => e.kind === 'outfit' && e.ref === base.desk[k].expedition)?.at;
+  ok(Number.isInteger(sent), 'the paper\'s trip has an outfit line');
+  const widened = given => { const s = facts(base, k, { agent: 'yusuf', net: 10, hoped: 5 }); s.flags['yusuf-widened'] = given; reopen(s, CAIRO); return !!s.flags['yusuf-widened-trip']; };
+  eq(widened(sent), true, 'told in the season he left');
+  eq(widened(sent + 1), true, 'told while he was out');
+  eq(widened(sent - 1), false, 'told before he left, on an earlier trip: not this one');
+  eq(widened(undefined), false, 'never told');
+  const drawn = given => { const s = facts(base, k, { agent: 'yusuf', net: 10, hoped: 5 }); s.flags['yusuf-widened'] = given; return holds(card.when, reopen(s, CAIRO), CAIRO); };
+  eq([drawn(sent), drawn(sent - 1), drawn(undefined)], [true, false, false], 'the card itself is drawn only for a permission given during this trip');
+  ok(/You told him he could go further/.test(card.body) && !/You let him go further/.test(card.body), card.body);
+});
+
+test('(MER-123) the loss paper blames bad luck only when goods were lost on the road; a loss from the price says something else', () => {
+  const { s, p } = homeState(), k = p;
+  const pick = lost => pickEntry(s, CAIRO, 'return', { outcome: 'loss', agent: 'yusuf', to: 'damascus', good: 'pepper', seasons: 3, orders: false, contract: 'own', lost, brought: true });
+  eq(pick(true)?.id, 'return-loss-forgive');
+  eq(pick(false)?.id, 'return-loss-price');
+  ok(/bad luck/.test(pick(true).body), 'when the road took goods, bad luck is said');
+  ok(!/bad luck|road was/.test(pick(false).body), pick(false).body);
+  ok(k >= 0);
+});
+
+test('(MER-123) a return paper\'s bonus is never above the profit: cut to half of it, and left out under two dinars', () => {
+  const { s: base, p: k } = homeState();
+  const entry = CAIRO.returns.find(e => e.id === 'return-bonus');
+  const offer = net => {
+    const s = structuredClone(base), p = s.desk[k];
+    p.data.houseNet = net; p.data.choices = structuredClone(entry.choices); delete p.data.fitted;
+    reopen(s, CAIRO);
+    const b = p.data.choices.find(c => c.id === 'bonus');
+    return b && { label: b.label, cost: -b.now.find(e => e.money).money, requires: b.requires.money.gte };
+  };
+  eq(offer(13)?.cost, 6, 'the play\'s case: 13 dinars of profit, a bonus of 30 offered; now 6');
+  eq(offer(13)?.label, 'Pay {agent} a bonus of 6 dinars');
+  eq(offer(13)?.requires, 6, 'the requirement moves with it');
+  eq(offer(100)?.cost, 30, 'a profit of 100 pays the bonus as written');
+  eq(offer(30)?.cost, 30, 'a profit of 30 is the edge: as written');
+  eq(offer(29)?.cost, 14);
+  eq(offer(1), undefined, 'a profit of 1 offers none');
+  ok(offer(13).cost <= 13);
+});
+
+test('(MER-123) the go-further fee is taken at the choosing and the choice needs the money, so the house never goes below 0', () => {
+  const { s: base } = homeState();
+  const widen = CAIRO.cards.find(c => c.id === 'contract-limits').choices.find(ch => ch.id === 'widen');
+  eq([widen.now.find(e => e.money)?.money, widen.requires], [-4, { money: { gte: 4 } }]);
+  eq((widen.later ?? []).flatMap(l => l.do ?? []).filter(e => e.money).length, 0, 'no fee left to take later');
+  const answer = money => {
+    const s = structuredClone(base); s.money = money; s.desk = [];
+    addPaper(s, { kind: 'card', ref: 'contract-limits' }); s.desk[0].id = 'tp-0';
+    return choose(s, CAIRO, 'tp-0', 'widen');
+  };
+  eq(answer(4).money, 0, 'with 4 dinars the fee leaves 0');
+  throws(() => answer(3), /not available/);
+  ok(answer(4).queue.every(q => !(q.do ?? []).some(e => typeof e.money === 'number' && e.money < 0)), 'and nothing queued takes money');
+});
+
+test('(MER-123) every card choice that costs money later is closed to a house that cannot pay it', () => {
+  const { s: base } = homeState();
+  let n = 0;
+  for (const card of CAIRO.cards) for (const ch of card.choices) {
+    const later = (ch.later ?? []).flatMap(l => l.do ?? []).filter(e => typeof e.money === 'number' && e.money < 0).reduce((a, e) => a - e.money, 0);
+    if (!later) continue;
+    n++;
+    const now = (ch.now ?? []).filter(e => typeof e.money === 'number' && e.money < 0).reduce((a, e) => a - e.money, 0);
+    const s = structuredClone(base); s.money = now + later - 1; s.desk = [];
+    addPaper(s, { kind: 'card', ref: card.id }); s.desk[0].id = 'tp-0';
+    ok(!paperChoices(s, CAIRO, 'tp-0').some(c => c.id === ch.id && holds(c.requires, s, CAIRO)), `${card.id}/${ch.id} is open with ${s.money} dinars and costs ${now + later}`);
+  }
+  ok(n >= 11, `${n} choices cost money later`);
 });
 
 await done();
