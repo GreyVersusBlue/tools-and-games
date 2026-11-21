@@ -1645,6 +1645,7 @@ async function stairsProperties(page, floor) {
   await planOnFloor(page, floor);
   await stairsMenu(page, STAIRS_A, 'Properties of this cell');
   await page.waitForFunction(() => { const t = document.querySelector('#inspector-properties #inspector-title'); return Boolean(t) && t.textContent !== ''; });
+  await inspectorOpen(page);
 }
 
 const w7Duplicate = (what) => async (page) => {
@@ -1668,7 +1669,9 @@ const w7AutoNumber = (what) => async (page) => {
   await planReady(page);
   await page.click('[data-tool="room"]');
   await page.click('#auto-number');
-  await page.waitForFunction(() => document.getElementById('auto-number').checked && !document.getElementById('next-number-field').hidden && document.getElementById('next-number').value !== '');
+  await page.waitForFunction(() => document.getElementById('auto-number').checked, { timeout: 8000 });
+  await page.waitForFunction(() => !document.getElementById('next-number-field').hidden, { timeout: 8000 });
+  await page.waitForFunction(() => document.getElementById('next-number').value !== '', { timeout: 8000 });
   await fitsInWindow(page, what);
 };
 
@@ -1685,7 +1688,8 @@ async function roomWithFeatures(page) {
     document.querySelector('.bld').editor.select([room.id]);
   });
   await page.waitForSelector('#room-features-add');
-  await page.waitForFunction(() => document.querySelectorAll('#room-features-chips button').length === 3);
+  await inspectorOpen(page);
+  await page.waitForFunction(() => document.querySelectorAll('#room-features-chips button').length === 3 && document.getElementById('room-features-add').getBoundingClientRect().height > 0);
 }
 
 const w7Features = (what) => async (page) => {
@@ -1736,14 +1740,24 @@ const w7MakeStairwell = (what) => async (page) => {
   await fitsInWindow(page, what);
 };
 
-// Stairwell A whose two flights stop on Floor 2 at different cells: a file edited elsewhere, so a split one
+// Stairwell A in two parts, Floors 1 to 2 and Floors 3 to 4 (a Floor 4 added), as a file edited elsewhere could hold it
 const w7SplitStairwell = (what) => async (page) => {
   await planReady(page);
-  await page.evaluate(() => {
-    const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
-    for (const connection of project.building.connections) if (connection.id === 'csample00a' || connection.id === 'csample00b') connection.well = 'A';
-    globalThis.sv2.store.replace(project);
-  });
+  await page.evaluate(async (cell) => {
+    const actions = await import(new URL('engine/actions.js', location.href).href);
+    const { store } = globalThis.sv2;
+    store.apply(actions.addFloor, {});
+    const floors = store.project.building.floors;
+    const [three, four] = [floors[2], floors[3]];
+    store.apply(actions.paintCorridor, { floorId: four.id, from: 5 + 10 * 40, to: 12 + 10 * 40 });
+    for (const floor of [three, four]) store.apply(actions.placeStairs, { floorId: floor.id, cells: [cell] });
+    store.apply(actions.connectStairs, { a: { floorId: three.id, cell }, b: { floorId: four.id, cell } });
+    const project = JSON.parse(JSON.stringify(store.project));
+    const made = project.building.connections[project.building.connections.length - 1];
+    for (const connection of project.building.connections) if (connection.id === 'csample00a' || connection.id === made.id) connection.well = 'A';
+    store.replace(project);
+  }, STAIRS_A);
+  await inspectorOpen(page);
   await page.click('#inspector [data-tab="checks"]');
   await page.waitForSelector('#inspector-checks');
   await page.waitForFunction(() => Array.from(document.querySelectorAll('#inspector-checks button')).some((button) => button.textContent === 'Join the parts'));
@@ -1753,10 +1767,10 @@ const w7SplitStairwell = (what) => async (page) => {
 const w7DayOtherWord = (what) => async (page) => {
   await scheduleDrawn(page);
   await page.evaluate(() => {
-    const radio = Array.from(document.querySelectorAll('.sch-day input[type="radio"]')).find((input) => input.value === 'other');
+    const radio = document.querySelector('.sch input[type="radio"][value="other"]');
     radio.click();
   });
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('.sch-day input[type="text"]')).some((input) => input.getAttribute('aria-label') === 'Word' || /word/i.test(input.labels?.[0]?.textContent || '')));
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('.sch input[type="text"]')).some((input) => /^word$/i.test(input.labels?.[0]?.textContent.trim() || '')));
   await scheduleDrawn(page);
   await fitsInWindow(page, what);
 };
