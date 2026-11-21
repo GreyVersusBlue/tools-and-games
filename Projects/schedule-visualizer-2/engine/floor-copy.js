@@ -83,7 +83,7 @@ function numberedRooms(floor) {
 
 // The renumbering rule. Returns { possible, reason, rooms: [{ id, from, to }] }.
 // `reason` is why not, in the words of a sentence's tail, naming the number that
-// stops it: '"1-01" begins with 1 digit, too few to hold the level, 1, and a
+// stops it: '‘1-01’ begins with 1 digit, too few to hold the level, 1, and a
 // room's own digits after it: that needs at least 3'.
 function renumbering(building, source, newLevel) {
   const numbered = numberedRooms(source);
@@ -91,7 +91,8 @@ function renumbering(building, source, newLevel) {
   if (numbered.length === 0) return none;
   const level = String(source.level);
   const not = (reason) => ({ possible: false, reason, rooms: [] });
-  const quoted = (room) => '"' + room.number.trim() + '"';
+  // quoted as the rest of the tool quotes what a user typed: ‘Library’
+  const quoted = (room) => '\u2018' + room.number.trim() + '\u2019';
   const digits = (n) => plural(n, 'digit', 'digits');
   if (!(source.level >= 1)) return not(source.name + ' is not on a level of 1 or more, and numbers carry the level only from there');
   const runs = numbered.map((room) => /^[0-9]+/.exec(room.number.trim()));
@@ -222,7 +223,7 @@ function joinsFor(building, source, top) {
 //     numbered, renumber: { possible, reason, examples: [{ from, to }], count },
 //     unnumbered, notes, noteCounts: { <check kind>: n }, notesText,
 //     joins: [{ type, cell, text }], joinText, separateText,
-//     copied, notCopied, notJoinedText, sentence }
+//     copied, notCopied, notJoinedText, unjoinedText, sentence }
 export function describeFloorDuplicate(project, floorId, options) {
   const info = describeCopy(project, floorId, options);
   if (!info) return null;
@@ -336,6 +337,7 @@ function describeCopy(project, floorId, options) {
     copied,
     notCopied: notCopiedText(building, source),
     notJoinedText: notJoined(source, top),
+    unjoinedText: unjoined(building, source, top, joins, newName),
     sentence: 'The copy goes on top of the building, as ' + newName + ', with ' + source.name + '\'s corridors, stairs, rooms and other spaces: ' + copied + '.',
   };
 }
@@ -359,6 +361,67 @@ function notJoined(source, top) {
   if (top.width === source.width && top.height === source.height) return '';
   if (!source.cells.includes('S')) return '';
   return 'Nothing is joined: ' + top.name + ' is ' + top.width + ' × ' + top.height + ' cells and ' + source.name + ' is ' + source.width + ' × ' + source.height + ', so the copy\'s stairs and elevator stops do not line up with ' + top.name + '\'s.';
+}
+
+// The connected stairs and elevator stops of the source that the copy does not
+// join, each named, with why: joining is only ever to the same row and column
+// of the floor below the copy (22.17), so a stair whose flight runs down from
+// the source, where the old top floor has no stairs, is copied unconnected and
+// the building checks will say so. '' when every one is joined, or when the
+// sizes differ (notJoined says that for all of them).
+//   "Stairs A and C are copied but not joined: Floor 3 has no stairs in the same
+//    row and column. The building checks will list their copies on Floor 4 as not
+//    connected until you connect them."
+function unjoined(building, source, top, joins, newName) {
+  if (top.width !== source.width || top.height !== source.height) return '';
+  const joined = new Set(joins.map((join) => join.cell));
+  const cars = elevatorCars(building);
+  const groups = new Map();
+  const add = (why, kind, letter) => {
+    if (!groups.has(why)) groups.set(why, { stairs: [], cars: [] });
+    const group = groups.get(why)[kind];
+    if (letter !== '' && !group.includes(letter)) group.push(letter);
+  };
+  for (let cell = 0; cell < source.cells.length; cell += 1) {
+    if (source.cells[cell] !== 'S' || joined.has(cell)) continue;
+    const here = building.connections.filter((connection) => sameEnd(connection.a, source.id, cell) || sameEnd(connection.b, source.id, cell));
+    if (here.length === 0) continue;
+    const lift = isLiftCell(building, source.id, cell);
+    let why;
+    if (top.cells[cell] !== 'S') why = lift ? 'no-stop' : 'no-stairs';
+    else if (lift !== isLiftCell(building, top.id, cell)) why = lift ? 'stairs-there' : 'stop-there';
+    else why = lift ? 'stop-alone' : 'stairs-alone';
+    if (lift) {
+      const car = cars.find((candidate) => candidate.stops.some((stop) => stop.floorId === source.id && stop.cell === cell));
+      add(why, 'cars', car ? car.label : '');
+    } else {
+      for (const connection of here.filter(isStairs)) add(why, 'stairs', stairsLetter(connection));
+    }
+  }
+  const WHY = {
+    'no-stairs': top.name + ' has no stairs in the same row and column',
+    'no-stop': top.name + ' has no elevator stop in the same row and column',
+    'stairs-there': top.name + ' has stairs there, not an elevator stop',
+    'stop-there': top.name + ' has an elevator stop there, not stairs',
+    'stairs-alone': top.name + '\'s stairs there are not connected to any floor',
+    'stop-alone': top.name + '\'s elevator stop there is not on any car',
+  };
+  const sentences = [];
+  let named = 0;
+  for (const [why, group] of groups) {
+    const names = [];
+    const byLetter = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+    group.stairs.sort(byLetter);
+    group.cars.sort(byLetter);
+    if (group.stairs.length > 0) names.push('Stairs ' + list(group.stairs));
+    if (group.cars.length > 0) names.push(group.cars.length === 1 ? 'Elevator ' + group.cars[0] : 'Elevators ' + list(group.cars));
+    if (names.length === 0) continue;
+    const many = group.stairs.length + group.cars.length;
+    named += many;
+    sentences.push(list(names) + (many === 1 ? ' is' : ' are') + ' copied but not joined: ' + WHY[why] + '.');
+  }
+  if (sentences.length === 0) return '';
+  return sentences.join(' ') + ' The building checks will list ' + (named === 1 ? 'its copy' : 'their copies') + ' on ' + newName + ' as not connected until you connect ' + (named === 1 ? 'it' : 'them') + '.';
 }
 
 // A clause for one join, starting with a capital (each names its stairs or

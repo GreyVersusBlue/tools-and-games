@@ -52,12 +52,27 @@ function pin(dialog) {
   return { body, buttons: Array.from(buttons.querySelectorAll('button')) };
 }
 
-// The words of what the copy will have no numbers for.
+// The words of what the copy will have no numbers for. The numbers carry over
+// all together or not at all (ARCHITECTURE 22.8 and 22.17: "every numbered
+// room"), so the line says why, and how many numbered rooms that leaves without
+// one: "…(‘Library’ does not begin with a digit, and the numbers carry over only
+// when every one can), so all 5 numbered rooms lose their numbers on the copy."
 function numbersLine(info) {
   const reason = info.renumber.reason;
   if (info.rooms === 0) return null;
   if (reason === 'none') return info.name + '\'s rooms have no numbers yet, so the copies have none either.';
-  return 'The copies will have no numbers (' + reason + '), so ' + count(info.rooms, 'room') + ' will need one.';
+  const lose = info.numbered;
+  let lost;
+  if (lose === 1) lost = info.rooms === 1 ? 'the room loses its number on the copy and will need one' : '1 numbered room loses its number on the copy, and ' + count(info.rooms, 'room') + ' will need one';
+  else lost = lose === info.rooms ? (lose === 2 ? 'both' : 'all ' + lose) + ' numbered rooms lose their numbers on the copy and will need one each' : lose + ' numbered rooms lose their numbers on the copy, and ' + count(info.rooms, 'room') + ' will need one';
+  return 'The copies will have no numbers (' + reason + (lose > 1 ? ', and the numbers carry over only when every one can' : '') + '), so ' + lost + '.';
+}
+
+// A coarse pointer (a phone, a tablet): the Name field is not focused as the
+// dialog opens, since the keyboard it raises would cover the dialog (as DESIGN
+// 5.1 and 16.3 keep it off the plan); a fine pointer keeps it.
+function coarsePointer() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
 }
 
 // "201 becomes 401, 214B becomes 414B".
@@ -153,6 +168,7 @@ export function floorMenu(ed) {
     const joinWords = h('span', { id: 'duplicate-join-words', dir: 'auto' });
     const joinRow = h('div', { class: 'bld-dup__row bld-dup__row--join' }, join, h('label', { for: 'duplicate-join' }, 'Join the stairs and elevators'));
     const joinBlock = h('div', { class: 'bld-dup__join', id: 'duplicate-join-block' }, joinRow, h('p', { class: 'bld-dup__sentence', id: 'duplicate-join-sentence', dir: 'auto' }, joinWords));
+    const unjoinedLine = h('p', { id: 'duplicate-unjoined', class: 'bld-inspector__small', dir: 'auto' });
     const left = h('p', { id: 'duplicate-left', class: 'bld-inspector__small' });
     const notes = h('p', { id: 'duplicate-notes', class: 'bld-inspector__small' });
 
@@ -168,6 +184,7 @@ export function floorMenu(ed) {
         numbersFieldset,
         numbersNote,
         joinBlock,
+        unjoinedLine,
         left,
         notes,
       ],
@@ -196,6 +213,8 @@ export function floorMenu(ed) {
       joinBlock.hidden = info.joins.length === 0;
       joinWords.textContent = info.joinText;
       left.textContent = 'Not copied: ' + info.notCopied + '.' + (info.notJoinedText === '' ? '' : ' ' + info.notJoinedText);
+      unjoinedLine.hidden = info.unjoinedText === '';
+      unjoinedLine.textContent = info.unjoinedText;
       const level = info.renumber.possible && keepRadio.checked && info.notes > 0;
       notes.hidden = !level;
       notes.textContent = level ? info.notesText : '';
@@ -226,8 +245,19 @@ export function floorMenu(ed) {
       }
     });
     reread();
-    name.focus();
-    name.select();
+    if (coarsePointer()) {
+      // the first control that is not a text field, else the dialog itself
+      const control = Array.from(dialog.element.querySelectorAll('.dialog__body input[type="radio"], .dialog__body input[type="checkbox"]'))
+        .find((input) => input.closest('[hidden]') === null && (input.type !== 'radio' || input.checked));
+      if (control) control.focus();
+      else {
+        dialog.element.tabIndex = -1;
+        dialog.element.focus();
+      }
+    } else {
+      name.focus();
+      name.select();
+    }
 
     return dialog.closed.then((answer) => {
       if (answer !== 'yes') {

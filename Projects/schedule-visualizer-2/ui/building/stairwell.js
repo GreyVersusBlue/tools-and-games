@@ -8,7 +8,9 @@
 //   openStairwellThrough(ed, { floorId, cell }, opener)
 //     "Stairwell through floors…": every floor by level with a tick, each row
 //     saying what is at that row and column ("empty, will become stairs",
-//     "corridor, cannot join here"); the button names what it will do.
+//     "corridor, cannot join here"); a floor the stairs already join at that
+//     place is ticked and fixed ("Stairs C, joined"); the button names the
+//     letter the engine will give, and a sentence names every letter that changes.
 //   stairwellFacts(project, letter) -> the words of one stairwell, or null
 //   offerOfRun(project, connectionId) -> what Make one stairwell would do, or null
 //
@@ -19,10 +21,10 @@
 // itself, so at 844 × 390 the buttons are always on screen.
 
 import { h } from '../components/dom.js';
-import { list, pendingElevatorLetter } from '../components/words.js';
+import { list } from '../components/words.js';
 import { ActionError, scheduleOutcome } from '../../engine/actions.js';
 import { makeStairwell, stairwellThrough } from '../../engine/stairwells.js';
-import { cellKind, stairwells, stairsLetter, nameKey, WELL_MOST } from '../../engine/schema.js';
+import { cellKind, stairwells, stairsLetter, nameKey, WELL_MOST, ELEVATOR_KIND } from '../../engine/schema.js';
 
 // An action run on a copy of the project to read what it would say, with ids
 // that are only for this look.
@@ -283,6 +285,42 @@ function placeWords(building, origin, floor, cell) {
   return { ok: false, text: (other && other.label.trim() !== '' ? other.label : 'another space') + ', cannot join here' };
 }
 
+// The floors the stairs at the starting stop already join at the same row and
+// column, through plain flights: Map floorId -> the letter of the flight that
+// reaches it. They are part of the stairwell from the start.
+function joinedHere(building, origin, cell) {
+  const x = cell % origin.width;
+  const y = Math.floor(cell / origin.width);
+  const at = (end) => {
+    const floor = building.floors.find((each) => each.id === end.floorId);
+    return Boolean(floor) && end.cell % floor.width === x && Math.floor(end.cell / floor.width) === y;
+  };
+  const flights = building.connections.filter((connection) => connection.kind !== ELEVATOR_KIND && !hasWell(connection) && at(connection.a) && at(connection.b));
+  const joined = new Map();
+  const reached = new Set([origin.id]);
+  for (let grown = true; grown;) {
+    grown = false;
+    for (const flight of flights) {
+      const [p, q] = [flight.a.floorId, flight.b.floorId];
+      if (reached.has(p) === reached.has(q)) continue;
+      const other = reached.has(p) ? q : p;
+      reached.add(other);
+      joined.set(other, stairsLetter(flight));
+      grown = true;
+    }
+  }
+  return joined;
+}
+
+// What the letters line says: every letter that changes (DESIGN 16.12 item 2),
+// or that the letter is kept. Empty for new stairs.
+export function throughLettersSentence(kept, letter) {
+  if (kept.length === 0) return '';
+  const changed = kept.filter((each) => nameKey(each) !== nameKey(letter));
+  if (changed.length === 0) return stairsList(kept) + (kept.length === 1 ? ' keeps its letter' : ' keep their letter') + ' on every floor, map, poster and set of directions.';
+  return stairsList(changed) + (changed.length === 1 ? ' will be called ' : ' will all be called ') + letter + ' on every floor, map, poster and set of directions.';
+}
+
 // Stairwell through floors…: resolves true once joined.
 export function openStairwellThrough(ed, where, opener) {
   const building = ed.project.building;
@@ -294,18 +332,21 @@ export function openStairwellThrough(ed, where, opener) {
   // every floor by level, the highest first, as the building stands
   const order = building.floors.map((floor, index) => ({ floor, index })).sort((a, b) => b.floor.level - a.floor.level || b.index - a.index);
   const ticks = new Map();
+  const joined = joinedHere(building, origin, cell);
   const rows = order.map(({ floor }) => {
     const here = floor.id === origin.id;
-    const what = placeWords(building, origin, floor, cell);
+    const fixed = here || joined.has(floor.id);
+    const what = joined.has(floor.id) ? { ok: true, text: 'Stairs ' + joined.get(floor.id) + ', joined' } : placeWords(building, origin, floor, cell);
     const box = h('input', { type: 'checkbox', class: 'stairwell-tick', data: { floor: floor.id }, style: 'flex: none; width: 24px; height: 24px; margin: 0' });
-    box.checked = here;
-    box.disabled = here || !what.ok;
+    box.checked = fixed;
+    box.disabled = fixed || !what.ok;
     ticks.set(floor.id, { box, ok: what.ok, here });
     const words = floor.name + ': ' + (here ? 'this floor, ' : '') + what.text;
     return h('li', { class: 'stairwell-row', style: 'list-style: none; margin: 0; padding: 0' },
       h('label', { style: 'display: flex; align-items: center; gap: var(--s-2); min-height: 44px' }, box, h('span', { dir: 'auto' }, words)));
   });
   const note = h('p', { class: 'bld-inspector__small', id: 'stairwell-through-note', role: 'status' });
+  const letters = h('p', { id: 'stairwell-through-letters', dir: 'auto', hidden: true });
   const dialog = ed.ctx.openDialog({
     id: 'stairwell-through-dialog',
     title: 'Stairwell through floors',
@@ -313,6 +354,7 @@ export function openStairwellThrough(ed, where, opener) {
     body: [
       h('p', null, 'A stairwell has its stairs at the same row and column on every floor. These stairs are at row ' + row + ', column ' + column + ' on ' + origin.name + '. Tick the floors it runs through.'),
       h('ul', { id: 'stairwell-floors', style: 'margin: 0; padding: 0; display: grid; gap: var(--s-1)', 'aria-label': 'Floors the stairwell runs through' }, rows),
+      letters,
       note,
     ],
     buttons: [
@@ -322,14 +364,30 @@ export function openStairwellThrough(ed, where, opener) {
   });
   const { buttons } = pin(dialog);
   const join = buttons[0];
-  const letter = pendingElevatorLetter(building);
   const chosen = () => order.map(({ floor }) => floor).filter((floor) => ticks.get(floor.id).box.checked);
+  // the letter, and the letters that change, as the engine would do it, on a copy
+  const preview = (floors) => {
+    const project = ed.project;
+    try {
+      const { after, outcome } = look(project, stairwellThrough, { floorId: origin.id, cell, floorIds: floors.map((floor) => floor.id).filter((id) => id !== origin.id) });
+      const before = new Map(project.building.connections.map((connection) => [connection.id, connection]));
+      const kept = after.building.connections.filter((connection) => hasWell(connection) && before.has(connection.id) && !hasWell(before.get(connection.id))).map((connection) => stairsLetter(before.get(connection.id)));
+      return { letter: outcome.letter, kept: Array.from(new Set(kept)) };
+    } catch (error) {
+      if (!(error instanceof ActionError)) throw error;
+      return { refusal: error.message };
+    }
+  };
   const reread = () => {
     const floors = chosen().slice().reverse();
     const enough = floors.length >= 3;
-    setOff(join, !enough, note);
-    join.textContent = enough ? 'Join ' + floorsSentence(floors.map((floor) => floor.name)) + ' as Stairwell ' + letter : 'Join floors as a stairwell';
-    note.textContent = enough ? '' : 'Tick at least one more floor: a stairwell is for three or more.';
+    const plan = enough ? preview(floors) : null;
+    const ready = Boolean(plan && !plan.refusal);
+    setOff(join, !ready, note);
+    join.textContent = ready ? 'Join ' + floorsSentence(floors.map((floor) => floor.name)) + ' as Stairwell ' + plan.letter : 'Join floors as a stairwell';
+    note.textContent = ready ? '' : plan ? plan.refusal : 'Tick at least one more floor: a stairwell is for three or more.';
+    letters.textContent = ready ? throughLettersSentence(plan.kept, plan.letter) : '';
+    letters.hidden = letters.textContent === '';
   };
   for (const { box } of ticks.values()) box.addEventListener('change', reread);
   reread();

@@ -269,7 +269,10 @@ function reportedLetter(project) {
 // the summary); a corridor, a room, another space or an elevator stop there
 // refuses, naming the floor and what is there. Flights join consecutive floors
 // by level: a flight that already joins those two cells is kept and given the
-// well; a missing one is made. The letter is the first no label or well uses.
+// well; a missing one is made. The letter is the kept flights' own, the one at
+// the starting stop first (DESIGN 16.7, 16.12 item 2), when nothing outside the
+// well uses it; else the first no label or well uses. `renamed` in the outcome
+// is every letter that stops being shown.
 export const stairwellThrough = action(
   { label: (before, payload, after) => 'Join ' + floorsWords(throughNames(before, payload)) + ' as one stairwell' + (reportedLetter(after) === '' ? '' : ', Stairwell ' + reportedLetter(after)), bumps: [GEOMETRY, BUILDING], focus: focusOn },
   (project, payload, ctx) => {
@@ -321,9 +324,15 @@ export const stairwellThrough = action(
       if (holder) refuse(stop.floor.name + ', ' + cellWords(stop.floor, stop.cell) + ' is already a stop of Stairwell ' + holder.well.trim() + '.', 'already-well');
     }
     const pool = lettersInUse(building);
-    const letter = nextConnectionLabel(pool);
+    const keptFlights = Array.from(kept.values());
+    const keptIds = new Set(keptFlights.map((flight) => flight.id));
+    const letter = throughLetter(building, { floorId: origin.id, cell: payload.cell }, keptFlights, keptIds) || nextConnectionLabel(pool);
+    // the kept flights whose letter the well's letter replaces, named in the summary
+    const renamed = Array.from(new Set(keptFlights.map((flight) => stairsLetter(flight)).filter((word) => nameKey(word) !== nameKey(letter))));
     // a new flight's own label is the first free one after the well's letter, so
-    // each flight shows its own letter again when the stairwell is split
+    // each flight shows its own letter again when the stairwell is split; the
+    // first new flight is labelled with the letter only when no kept flight is
+    const letterIsLabel = keptFlights.some((flight) => nameKey(flight.label) === nameKey(letter));
     const used = pool.concat([{ label: letter }]);
     let connections = building.connections;
     const taken = new Set(connections.map((connection) => connection.id));
@@ -333,12 +342,11 @@ export const stairwellThrough = action(
       taken.add(id);
       return id;
     };
-    const keptIds = new Set(Array.from(kept.values(), (flight) => flight.id));
     connections = connections.map((connection) => (keptIds.has(connection.id) ? { ...connection, well: letter } : connection));
     const added = [];
     for (let i = 0; i + 1 < ends.length; i += 1) {
       if (kept.has(i)) continue;
-      const label = added.length === 0 ? letter : nextConnectionLabel(used);
+      const label = added.length === 0 && !letterIsLabel ? letter : nextConnectionLabel(used);
       used.push({ label });
       added.push({ id: ids('c'), label, well: letter, a: ends[i], b: ends[i + 1], direction: 'both' });
     }
@@ -348,10 +356,35 @@ export const stairwellThrough = action(
       return stop ? { ...floor, cells: floor.cells.slice(0, stop.cell) + CELL_STAIRS + floor.cells.slice(stop.cell + 1) } : floor;
     }) : null;
     const names = floors.map((floor) => floor.name);
-    const text = 'Stairwell ' + letter + ' now runs through ' + floorsWords(names) + ' at ' + cellWords(origin, payload.cell) + ' (' + (added.length === 1 ? '1 flight made' : added.length + ' flights made') + (kept.size > 0 ? ', ' + (kept.size === 1 ? '1 kept' : kept.size + ' kept') : '') + ')' + (made.length > 0 ? '. Stairs were drawn on ' + sentenceList(made.map((stop) => stop.floor.name)) + '.' : '.');
-    return report(project, withConnections(project, connections, changed), text, origin.id, { letter, flights: ends.length - 1, made: made.map((stop) => ({ floorId: stop.floor.id, cell: stop.cell })), floors: names });
+    const text = 'Stairwell ' + letter + ' now runs through ' + floorsWords(names) + ' at ' + cellWords(origin, payload.cell) + ' (' + (added.length === 1 ? '1 flight made' : added.length + ' flights made') + (kept.size > 0 ? ', ' + (kept.size === 1 ? '1 kept' : kept.size + ' kept') : '') + ')' + (made.length > 0 ? '. Stairs were drawn on ' + sentenceList(made.map((stop) => stop.floor.name)) + '.' : '.') + (renamed.length > 0 ? ' It reads ' + letter + ' on every floor; ' + sentenceList(renamed) + (renamed.length === 1 ? ' is' : ' are') + ' not shown any more.' : '');
+    return report(project, withConnections(project, connections, changed), text, origin.id, { letter, renamed, flights: ends.length - 1, made: made.map((stop) => ({ floorId: stop.floor.id, cell: stop.cell })), floors: names });
   },
 );
+
+// The letter a stairwell through floors takes from the stairs already there
+// (DESIGN 16.7: "…as Stairwell C" for Stairs C): the label of a kept flight at
+// the starting stop, else of the lowest kept flight, so no letter changes that
+// need not. A letter is passed over when anything outside the well uses it (a
+// stairs label, a well's letter, an elevator's letter, by nameKey); null when
+// none will do, and the well takes the first unused letter instead.
+function throughLetter(building, start, keptFlights, keptIds) {
+  const atStart = keptFlights.filter((flight) => sameEnd(flight.a, start) || sameEnd(flight.b, start));
+  const rest = keptFlights.filter((flight) => !atStart.includes(flight)).sort((x, y) => lowerFirst(building, lowerEnd(building, x), lowerEnd(building, y)));
+  const free = (word) => building.connections.every((connection) => {
+    if (keptIds.has(connection.id)) return true;
+    const words = connection.kind === ELEVATOR_KIND ? [connection.label, connection.car] : [connection.label, connection.well];
+    return !words.some((each) => typeof each === 'string' && each.trim() !== '' && nameKey(each) === nameKey(word));
+  });
+  for (const flight of atStart.concat(rest)) {
+    const word = typeof flight.label === 'string' ? flight.label.trim() : '';
+    if (word !== '' && textLength(word) <= WELL_MOST && free(word)) return word;
+  }
+  return null;
+}
+
+function lowerEnd(building, flight) {
+  return lowerFirst(building, flight.a, flight.b) <= 0 ? flight.a : flight.b;
+}
 
 function throughNames(project, payload) {
   const building = project.building;
