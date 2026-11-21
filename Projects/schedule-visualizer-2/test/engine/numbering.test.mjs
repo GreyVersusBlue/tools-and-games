@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRoomNumber, firstRoomNumber, plainNext, splitNumber, SKIP_MOST } from '../../engine/numbering.js';
+import { nextRoomNumber, firstRoomNumber, plainNext, splitNumber, copyNumber, SKIP_MOST } from '../../engine/numbering.js';
 import { newFloor, newRoom } from '../../engine/schema.js';
 import { school, clone } from './helpers.mjs';
 
@@ -151,4 +151,17 @@ test('firstRoomNumber: a floor of rooms with no digits starts from the level', (
   const floor = project.building.floors[0];
   floor.spaces.push(Object.assign(newRoom('rgym0000001', [0]), { number: 'Gym' }));
   assert.equal(firstRoomNumber(project, floor.id), '201');
+});
+
+// A duplicated floor's room that cannot take the new level (ARCHITECTURE 22.17;
+// Devon 2026-11-21, SV2-141): its own number with a count after it.
+test('copyNumber: "Library" is "Library 2", "Library 3" when that is taken in any case, and the one given is kept as used', () => {
+  const used = new Set(['library']);
+  assert.equal(copyNumber('Library', used), 'Library 2');
+  assert.ok(used.has('library 2'), 'added to the used set');
+  assert.equal(copyNumber('  Library ', used), 'Library 3', 'trimmed, and the next count once 2 is taken');
+  assert.equal(copyNumber('Library', new Set(['LIBRARY 2'.toLowerCase()])), 'Library 3');
+  assert.equal(copyNumber('B-201', new Set()), 'B-201 2', 'the form as typed, a space and the count');
+  assert.equal(copyNumber('Library 2', new Set()), 'Library 3', 'a copy\'s copy goes on counting');
+  assert.equal(copyNumber('201', new Set()), '201 2', 'digits with no space before them are the number, not a count');
 });
