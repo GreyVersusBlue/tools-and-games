@@ -432,6 +432,7 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 .good-text { display: flex; flex-direction: column; font-family: var(--font-chrome); min-width: 0; flex: 1 1 14rem; }
 .good-text strong { font-family: var(--font-paper); font-size: var(--step-1); }
 .good-text span { font-size: var(--step--1); color: var(--ink-soft); }
+.good-text .purse-flat { color: var(--lapis); }   /* MER-122: one more press of the purse buys no more loads */
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--ink-soft); border-radius: var(--radius); background: var(--paper); font-family: var(--font-chrome); }
 .step-btn { min-width: var(--hit); min-height: var(--hit); background: var(--paper-shade); color: var(--brass-dark); font-weight: 700; font-size: var(--step-1); }
 .step-btn[aria-disabled="true"] { color: var(--ink-soft); opacity: .6; cursor: not-allowed; }

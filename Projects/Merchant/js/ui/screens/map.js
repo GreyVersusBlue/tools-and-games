@@ -53,6 +53,21 @@ function homeBy(app, list) {
 
 /** app: the page's app object. nav: { toDesk(), openOutfit() }. Returns { el, key, draw, hasDraft,
     showOutfit, hideOutfit, destroy }. */
+/** MER-122: why the list of best trades is empty, in the house's terms; the engine's list is empty for four reasons (MER-121) and the
+    line used to say only the third. In the order a player can mend them: nobody free, too little money, no news, nothing pays.
+    `app` needs `content` and `state`; `v` is its view(). { id, text } */
+export function noTradesWhy(app, v) {
+  const home = app.content.city.home;
+  if (!freeAgents(app).length) return { id: 'nobody', text: 'Nobody is free to go, so no trade is listed. Agents ask for work at the start of a season.' };
+  const homePrices = Object.entries(v.prices[home] ?? {}).map(([g, p]) => [g, p?.p]).filter(([, p]) => p != null);
+  const loadCost = Math.min(...homePrices.map(([, p]) => p));
+  const stocked = homePrices.some(([g]) => (app.state.stock[g] ?? 0) > 0);
+  if (!stocked && Number.isFinite(loadCost) && v.money < loadCost) return { id: 'money', text: `The house has too little money for even one load (${dinars(loadCost)}), so no trade is listed.` };
+  const news = Object.entries(v.prices).some(([stopId, goods]) => stopId !== home && Object.values(goods ?? {}).some(p => p?.p != null));
+  if (!news) return { id: 'news', text: 'The house has no news yet of what goods sell for in other stops. Letters from far stops arrive late.' };
+  return { id: 'pays', text: 'The house knows the prices in other stops, and no trade pays after the road and the wage. Check again when a letter brings new prices.' };
+}
+
 export function createMap(app, nav) {
   const { content } = app;
   const home = content.city.home;
@@ -361,7 +376,7 @@ export function createMap(app, nav) {
       ? h('ol', { class: 'trades', id: 'best-trades' }, trades.map(t => h('li', { class: 'trade', dataset: { stop: t.stop, good: t.good } },
         h('strong', null, t.text), ' ',
         h('span', { class: 'when' }, `${t.road}, about ${t.seasons} ${t.seasons === 1 ? 'season' : 'seasons'}. News ${t.ageWords === 'this season' ? 'from this season' : t.ageWords}; the road is ${t.riskWord}.`))))
-      : h('p', { class: 'none', id: 'best-trades' }, 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.');
+      : h('p', { class: 'none', id: 'best-trades', dataset: { why: noTradesWhy(app, v).id } }, noTradesWhy(app, v).text);
     const table = h('table', { class: 'prices', id: 'prices' },
       h('caption', { class: 'visually-hidden' }, `Prices for each good ${s.name} trades, with the season the news was written and how old it is`),
       h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Good'), h('th', { scope: 'col' }, s.name), isHome ? null : h('th', { scope: 'col' }, homeLabel()))),

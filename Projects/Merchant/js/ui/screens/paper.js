@@ -1,7 +1,7 @@
 // What a paper says and how it reads (DESIGN 4.4 to 4.6). Pure functions from the engine's
 // content and a paper to words and DOM; no state is changed here and no rule is computed.
 // "Can the player afford it" is asked of the engine itself, by trying `choose` on a copy.
-import { h } from '../dom.js';
+import { h, qs } from '../dom.js';
 import * as engine from '../../engine/index.js';
 
 export const num = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -32,13 +32,15 @@ export function seenEffects(content, effects) {
 }
 
 const REP_WORDS = { partners: 'your partners', agents: 'your agents', court: 'the court', foreign: 'foreign merchants' };
+/** Whether a group's name takes "think" or "thinks" (MER-122: "The court think better of the house"). */
+const REP_SINGULAR = new Set(['court']);
 
 /** Sentences for "what happened now": money and goods first, then whose trust or standing moved
     (`app` is optional; with it a reputation also says where it stands now, in the engine's words from
     view()), else the plain line when nothing a player can see changed. `agent` is the paper's own agent:
     an effect written for `$agent` is said with that agent's name, never the raw token. Moves of one group
     in one result are added into one net line, so a result never says "think less" and "speak well" of the
-    same group back to back. `result` is the choice's own sentence, when its card wrote one: it is said
+    same group back to back, and the verb agrees with the group ("The court thinks", "Your agents think"). `result` is the choice's own sentence, when its card wrote one: it is said
     after the numbers, and then "Nothing changed at once." is never printed. */
 export function happened(content, effects, app = null, { agent = null, result = null } = {}) {
   const parts = seenEffects(content, effects).map(s => s.said);
@@ -62,9 +64,10 @@ export function happened(content, effects, app = null, { agent = null, result = 
     } else {
       const who = cap(REP_WORDS[m.rep] ?? m.rep);
       let now = view?.rep?.[m.rep]?.words;
-      // a drop that still leaves a good standing says "Still,": a bare "They speak well of you." after "think less" reads as a contradiction (MER-99)
-      if (now && !up && /^They (speak well of you|come to you first)$/.test(now)) now = `Still, they${now.slice(4)}`;
-      parts.push(`${who} think ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
+      // a drop that still leaves a good standing says nothing more: "think less" and then "speak well of you" in one breath reads as a
+      // contradiction, and "Still," did not mend it (MER-99, MER-122). A drop to a worse standing still says where it stands.
+      if (now && !up && /^They (speak well of you|come to you first)$/.test(now)) now = null;
+      parts.push(`${who} ${REP_SINGULAR.has(m.rep) ? 'thinks' : 'think'} ${up ? 'better' : 'less'} of the house.${now ? ` ${now}.` : ''}`);
     }
   }
   if (result) parts.push(result);
@@ -430,7 +433,9 @@ const sumRow = r => {
 
 /** The engine's own papers (DESIGN 4.6, 2): a return, a loss, price letters and the folded
     Accounts paper. Each is read and set aside with one press. `open` says whether a return's
-    account starts unfolded (it is folded shut on the first return of a game). */
+    account starts unfolded. MER-122: it never does now. An open account made the paper taller than the stack, the desk scrolled
+    the stack down to the choice, and the headline sat above the top (play a062, b070: focused headline at y=-292). The account is
+    one press away, and the ledger keeps every trip's account. `open` is still passed by the desk and no longer read. */
 export function record(app, paper, { onDone, open, onChoose = () => {}, locked = () => false }) {
   const { content } = app;
   const titleId = `paper-${paper.id}-title`;
@@ -445,7 +450,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
       // Profit row to the dinar (MER-119); the road's detail rows say what happened, and their money is inside the next sum
       const table = h('table', { class: 'accounts-table' }, h('tbody', null, rows.map(r => paper.kind === 'return' ? sumRow(r) : row(r.label, r.text))));
       body.push(paper.kind === 'return'
-        ? h('details', { class: 'account', open: open ? true : null }, h('summary', null, 'Show the account'), table)
+        ? h('details', { class: 'account' }, h('summary', null, 'Show the account'), table)
         : table);
     }
     // DESIGN 2.1 rules 3 and 4: the paper ends by asking, when returns.json has an entry for the trip
@@ -482,13 +487,27 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
     onDone();
   };
   const slot = paper.kind === 'lost' ? pictureSlot(app) : null;
-  return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId, onkeydown: onKey },
+  const sheet = h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId, onkeydown: onKey },
     head(app, senderOf(content, paper)),
     slot,
     h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, returnHeadline(content, paper)),
     paper.kind === 'return' && returnLead(content, paper) ? h('p', { class: 'return-lead' }, returnLead(content, paper)) : null,
     ...body,
     asking ? null : h('button', { class: 'button next', type: 'button', id: 'btn-next', onclick: onDone }, paper.kind === 'return' ? 'Into the ledger' : 'Noted'));
+  // MER-122: the desk scrolls a raised paper's stack down to its first choice (revealChoice), and on a short frame that leaves the headline
+  // above the top (play a062, b070: y=-292). A record opens on its headline, whatever else is cut: this runs after the desk's own pass and
+  // again when the sheet's rise ends, which is the desk's second pass.
+  const headline = () => {
+    const box = sheet.closest('.stack-papers'), title = qs('.sheet-title', sheet);
+    if (!box || !title || getComputedStyle(box).overflowY !== 'auto') return;
+    if (title.getBoundingClientRect().top < box.getBoundingClientRect().top) box.scrollTop = 0;
+  };
+  queueMicrotask(() => {
+    if (!sheet.isConnected) return;
+    headline();
+    sheet.addEventListener('animationend', headline, { once: true });
+  });
+  return sheet;
 }
 
 /** The edge of a paper lower in the stack: seal and title, pressed to raise it. */
