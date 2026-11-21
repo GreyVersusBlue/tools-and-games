@@ -346,7 +346,8 @@ test('removeStairwellStop: the middle stop out, the stops either side rejoined w
   assert.equal(joined.well, 'A');
   assert.equal(joined.direction, joined.a.floorId === floorId(1) ? 'ab' : 'ba', 'up only still');
   assert.equal(after.building.floors[1].cells[CELL], 'S', 'the stairs cell stays');
-  assert.match(text, /^Floor 2 is out of Stairwell A: Floor 1 and Floor 3 are joined directly, and the stairs on Floor 2 stay, not connected\.$/);
+  assert.equal(joined.label, 'A', 'SV2-142: the joining flight takes the lowest removed flight\'s label, so no letter is used up');
+  assert.equal(text, 'Floor 2 is out of Stairwell A: Floor 1 and Floor 3 are joined directly by one flight that is still Stairwell A (no new letter), and the stairs on Floor 2 stay, connected to nothing, so Checks will warn about them until you connect or remove them.');
   // joined with both ways when the flights did not agree
   const disagreeing = clone(made);
   disagreeing.building.connections.find((connection) => connection.id === 'cwell00002').direction = 'both';

@@ -468,10 +468,14 @@ export const removeStairwellStop = action(
         connections = connections.map((connection) => (connection.id === already.id ? { ...already, well: well.letter, direction: directionForWay(building, already, way) } : connection));
         text = floor.name + ' is out of Stairwell ' + well.letter + ': stairs ' + stairsLetter(already) + ' already joined ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ', so it joins the stairwell, and the stairs on ' + floor.name + ' stay, not connected.';
       } else if (!already) {
-        const joinedFlight = { id: freshId(building, ctx), label: nextConnectionLabel(lettersInUse(building)), well: well.letter, a: { floorId: low.floorId, cell: low.cell }, b: { floorId: high.floorId, cell: high.cell }, direction: 'both' };
+        // the joining flight takes the label of the lowest flight it replaces, so a
+        // removal uses up no new letter (ARCHITECTURE 22.4); it shows the well's letter
+        const lowEnd = (flight) => (lowerFirst(building, flight.a, flight.b) <= 0 ? flight.a : flight.b);
+        const lowest = touching.slice().sort((p, q) => lowerFirst(building, lowEnd(p), lowEnd(q)))[0];
+        const joinedFlight = { id: freshId(building, ctx), label: lowest ? lowest.label : nextConnectionLabel(lettersInUse(building)), well: well.letter, a: { floorId: low.floorId, cell: low.cell }, b: { floorId: high.floorId, cell: high.cell }, direction: 'both' };
         joinedFlight.direction = directionForWay(building, joinedFlight, way);
         connections = connections.concat([joinedFlight]);
-        text = floor.name + ' is out of Stairwell ' + well.letter + ': ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ' are joined directly, and the stairs on ' + floor.name + ' stay, not connected.';
+        text = floor.name + ' is out of Stairwell ' + well.letter + ': ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ' are joined directly by one flight that is still Stairwell ' + well.letter + ' (no new letter), and the stairs on ' + floor.name + ' stay, connected to nothing, so Checks will warn about them until you connect or remove them.';
       }
     }
     const next = { ...building, connections };
