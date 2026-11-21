@@ -8,7 +8,6 @@ import * as engine from '../../engine/index.js';
 import { dinars } from './paper.js';
 import { createOutfit, firstLegState, freeAgents, stopOf, stopName, cap } from './outfit.js';
 
-const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 const NEAR = 48;                 // a press goes to the closest stop within this many px (DESIGN 4.7)
 const TOAST_MS = 5000;           // how long the set-out toast stays
 const CLUSTER_BELOW = 700;       // px of screen width under which close stops show as one label
@@ -45,17 +44,11 @@ const GAP = 3;                   // px kept clear around a label, so two never t
 const hits = (a, b) => a.left < b.right + GAP && b.left < a.right + GAP && a.top < b.bottom + GAP && b.top < a.bottom + GAP;
 const inside = (a, f) => a.left >= f.left && a.right <= f.right && a.top >= f.top && a.bottom <= f.bottom;
 
-/** When an expedition is expected home, in words: "Winter 1325". Seasons count from the one being played. */
-function homeBy(app, seasonsAway) {
-  const v = app.view(), at = SEASONS.indexOf(v.season) + seasonsAway;
-  return `${cap(SEASONS[at % 4])} ${v.year + Math.floor(at / 4)}`;
-}
-/** Seasons until this expedition's last leg ends: what is left of the leg it is on, and every leg after. */
-function seasonsLeft(app, x) {
-  const legs = app.content.routes.find(r => r.id === x.route).legs;
-  let n = x.status === 'out' ? x.left : legs[x.leg].seasons;
-  for (let i = x.leg + 1; i < legs.length; i++) n += legs[i].seasons;
-  return n;
+/** When the soonest expedition of a group is expected home, in words ("Winter 1325"): the engine's own answer, view().homeBy. */
+function homeBy(app, list) {
+  const by = app.view().homeBy ?? {};
+  const best = list.map(x => by[x.id]).filter(Boolean).sort((p, q) => p.in - q.in)[0];
+  return best?.season ?? 'a season not yet known';
 }
 
 /** app: the page's app object. nav: { toDesk(), openOutfit() }. Returns { el, key, draw, hasDraft,
@@ -213,8 +206,8 @@ export function createMap(app, nav) {
       const first = g.list[0], agent = content.agents.find(ag => ag.id === first.agent), n = g.list.length;
       const tok = app.art.get(`token-${g.leg.by}`) ?? app.art.get('token-caravan');
       const seal = agent && app.art.get(agent.seal);
-      const text = n === 1 ? `${agent?.name ?? 'An agent'}, home about ${homeBy(app, seasonsLeft(app, first))}`
-        : `${n} expeditions, home about ${homeBy(app, Math.min(...g.list.map(e => seasonsLeft(app, e))))}`;
+      const text = n === 1 ? `${agent?.name ?? 'An agent'}, home about ${homeBy(app, [first])}`
+        : `${n} expeditions, home about ${homeBy(app, g.list)}`;
       out.push(h('div', { class: 'token', style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n) } },
         h('div', { class: 'token-piece' }, h('img', { src: `assets/art/${tok.file}`, alt: '', width: 64, height: 64 }), n > 1 ? h('span', { class: 'token-count' }, String(n)) : null),
         h('p', { class: 'token-label' }, seal ? h('img', { class: 'token-seal', src: `assets/art/${seal.file}`, alt: '', width: 20, height: 20 }) : null, text)));
@@ -349,10 +342,11 @@ export function createMap(app, nav) {
   }
 
   // ---- the price board
+  let allPrices = false;       // the full table of the selected stop, one press away from Best known trades
   function drawBoard() {
     const v = app.view(), s = stopOf(content, selected), isHome = selected === home;
     boardTitle.textContent = `Prices in ${s.name}`;
-    pricesBtn.textContent = `Prices in ${s.name}`;
+    pricesBtn.textContent = 'Prices and best trades';
     const goods = Object.keys(s.sells ?? {});
     const cell = p => (p?.p == null ? h('span', { class: 'nonews' }, 'no news') : [h('strong', null, dinars(p.p)), h('span', { class: 'when' }, ` ${p.written}, ${p.ageWords}`)]);
     const rows = goods.map(g => {
@@ -362,13 +356,26 @@ export function createMap(app, nav) {
         h('td', { dataset: { label: s.name }, class: 'here' }, cell(v.prices[selected]?.[g])),
         isHome ? null : h('td', { dataset: { label: homeLabel() }, class: 'there' }, cell(v.prices[home]?.[g])));
     });
+    const trades = v.bestTrades ?? [];
+    const best = trades.length
+      ? h('ol', { class: 'trades', id: 'best-trades' }, trades.map(t => h('li', { class: 'trade', dataset: { stop: t.stop, good: t.good } },
+        h('strong', null, t.text), ' ',
+        h('span', { class: 'when' }, `${t.road}, about ${t.seasons} ${t.seasons === 1 ? 'season' : 'seasons'}. News ${t.ageWords === 'this season' ? 'from this season' : t.ageWords}; the road is ${t.riskWord}.`))))
+      : h('p', { class: 'none', id: 'best-trades' }, 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.');
+    const table = h('table', { class: 'prices', id: 'prices' },
+      h('caption', { class: 'visually-hidden' }, `Prices for each good ${s.name} trades, with the season the news was written and how old it is`),
+      h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Good'), h('th', { scope: 'col' }, s.name), isHome ? null : h('th', { scope: 'col' }, homeLabel()))),
+      h('tbody', null, rows));
     pricesBox.replaceChildren(
-      h('h3', { class: 'prices-head', id: 'prices-head', tabindex: '-1' }, `Prices in ${s.name}`),
-      h('table', { class: 'prices', id: 'prices' },
-        h('caption', { class: 'visually-hidden' }, `Prices for each good ${s.name} trades, with the season the news was written and how old it is`),
-        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Good'), h('th', { scope: 'col' }, s.name), isHome ? null : h('th', { scope: 'col' }, homeLabel()))),
-        h('tbody', null, rows)),
-      h('p', { class: 'prices-note' }, 'A price with no news has not reached the house yet. Letters from far stops arrive late.'),
+      h('h3', { class: 'prices-head', id: 'prices-head', tabindex: '-1' }, 'Best known trades'),
+      h('p', { class: 'prices-note', id: 'best-note' }, 'The widest gaps the house has news of, from the prices it last heard.'),
+      best,
+      h('button', { class: 'button all-prices', type: 'button', id: 'btn-all-prices', 'aria-expanded': allPrices ? 'true' : 'false', 'aria-controls': 'prices-all',
+        onclick: () => { allPrices = !allPrices; drawBoard(); qs('#btn-all-prices', pricesBox)?.focus(); } },
+      allPrices ? `Hide the prices in ${s.name}` : `Every price in ${s.name}`),
+      h('div', { id: 'prices-all', class: 'prices-all', hidden: allPrices ? null : '' }, allPrices ? [
+        table,
+        h('p', { class: 'prices-note' }, 'A price with no news has not reached the house yet. Letters from far stops arrive late.')] : null),
       h('div', { class: 'panel-actions prices-close' }, h('button', { class: 'button', type: 'button', id: 'prices-close', onclick: () => closePrices() }, 'Close')));
     const o = outfitState(selected);
     outfitBtn.textContent = isHome ? 'Outfit an expedition' : `Outfit an expedition to ${s.name}`;

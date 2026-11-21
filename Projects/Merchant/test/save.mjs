@@ -105,7 +105,7 @@ test('repair: a repaired fresh state is the fresh state', () => {
 });
 test('repair: missing fields come back from a fresh state', () => {
   const s = copy(fresh());
-  for (const k of ['loans', 'stock', 'market', 'known', 'expeditions', 'post', 'agents', 'rep', 'desk', 'done', 'queue', 'flags', 'seen', 'notebook', 'log', 'score', 'money', 'rng']) delete s[k];
+  for (const k of ['loans', 'stock', 'market', 'known', 'expeditions', 'post', 'agents', 'rep', 'desk', 'done', 'queue', 'flags', 'seen', 'notebook', 'notebookRead', 'log', 'score', 'money', 'rng']) delete s[k];
   eq(repair(s, content), fresh());
 });
 // a game with one expedition on the road and one letter in the house's post, as the engine writes them
@@ -184,6 +184,29 @@ test('repair: unknown agents, goods, stops and notebook entries are dropped', ()
   ok(!r.market.harbour.gold);
   eq(r.known, { harbour: { salt: { p: 9, at: 1 } } });
   eq(r.notebook, ['harbour']);
+});
+test('repair: an old save shape with no notebookRead loads as having read nothing, under the same key', () => {
+  const { store, game: g } = slotsOnMemory();
+  const old = copy(fresh()); delete old.notebookRead; old.notebook = [];   // a save written before MER-95
+  const c = content.notebook?.[0]?.id;
+  if (c) old.notebook = [c];
+  store.setItem('merchant-save', JSON.stringify({ ...old, __v: 1 }));
+  const s = g.load();
+  ok(s, 'loaded, not refused');
+  eq(s.notebookRead, [], 'an empty list, so the notebook scores nothing');
+  eq(s.notebook, old.notebook, 'what was found stays found');
+  eq(SAVE_KEY, 'merchant-save');
+  eq(s.v, 1, 'the version did not move');
+});
+test('repair: notebookRead keeps only found entries, once each, and survives a second repair', () => {
+  const c = variant(c2 => { c2.notebook = [{ id: 'harbour' }, { id: 'salt' }]; });
+  const s = copy(fresh());
+  s.notebook = ['harbour']; s.notebookRead = ['harbour', 'harbour', 'salt', 'nope', 7];
+  const r = repair(s, c);
+  eq(r.notebookRead, ['harbour'], 'salt was never found, nope is not in the content');
+  eq(repair(r, c), r, 'idempotent');
+  s.notebookRead = 'harbour';
+  eq(repair(s, c).notebookRead, [], 'a list that is not a list becomes empty');
 });
 test('repair: papers for a card or event the content lacks leave the desk; the log keeps its history', () => {
   const s = game();

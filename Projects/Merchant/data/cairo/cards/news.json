@@ -35,12 +35,12 @@
         "hint": "He sells to the Malians. You share the profit.",
         "requires": {
           "money": {
-            "gte": 100
+            "gte": 9
           }
         },
         "now": [
           {
-            "money": -100
+            "money": -9
           }
         ],
         "later": [
@@ -48,7 +48,7 @@
             "in": 1,
             "do": [
               {
-                "money": 180
+                "money": 16
               }
             ]
           }
@@ -57,7 +57,7 @@
       {
         "id": "gold",
         "label": "Buy two chests of gold now",
-        "hint": "A chest of gold costs 100.",
+        "hint": "A chest of gold costs 100. Two chests are a venture on one price, so the sum is large.",
         "requires": {
           "money": {
             "gte": 200
@@ -142,7 +142,7 @@
       {
         "id": "sail",
         "label": "Buy four loads of sugar and ship them",
-        "hint": "The first boats sell first, and other owners will grumble.",
+        "hint": "Four loads cost 220 dinars, and the boat brings back 230 in two seasons. The first boats sell first, and other owners will grumble.",
         "requires": {
           "money": {
             "gte": 220
@@ -162,7 +162,7 @@
             "in": 2,
             "do": [
               {
-                "money": 260
+                "money": 230
               }
             ],
             "card": "kamil-boat-arrived"
@@ -193,6 +193,9 @@
         "src": "sato-2006",
         "at": "p. 150; al-Maqrizi on the Alexandria canal and the flood"
       }
+    ],
+    "unlocks": [
+      "term-dinar"
     ]
   },
   {
@@ -217,7 +220,7 @@
           "all": [
             {
               "money": {
-                "gte": 30
+                "gte": 4
               }
             },
             {
@@ -228,7 +231,7 @@
         },
         "now": [
           {
-            "money": -30
+            "money": -4
           },
           {
             "rep": "partners",
@@ -240,7 +243,7 @@
             "in": 2,
             "do": [
               {
-                "money": 60
+                "money": 9
               }
             ],
             "card": "zubayda-fee"
@@ -262,7 +265,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -304,10 +307,10 @@
       {
         "id": "carts",
         "label": "Lend two carts for a fee",
-        "hint": "You earn 20 dinars. The street will talk, and the officers will remember.",
+        "hint": "You earn 5 dinars. The street will talk, and the officers will remember.",
         "now": [
           {
-            "money": 20
+            "money": 5
           },
           {
             "rep": "partners",
@@ -329,15 +332,15 @@
       {
         "id": "bread",
         "label": "Give bread money to your street",
-        "hint": "It costs 20 dinars. Your neighbours will remember.",
+        "hint": "It costs 5 dinars. Your neighbours will remember.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -5
           }
         ],
         "later": [
@@ -405,15 +408,15 @@
       {
         "id": "ask",
         "label": "Ask Yusuf if he is content",
-        "hint": "It costs 5 dinars for the visit. He will tell you the truth.",
+        "hint": "It costs 4 dinars for the visit. He will tell you the truth.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -4
           }
         ],
         "later": [
@@ -431,15 +434,15 @@
       {
         "id": "raise",
         "label": "Raise his pay a little and tell him why",
-        "hint": "It costs 15 dinars. Other agents will hear of it.",
+        "hint": "It costs 5 dinars. Other agents will hear of it.",
         "requires": {
           "money": {
-            "gte": 15
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -15
+            "money": -5
           },
           {
             "trust": "yusuf",
@@ -461,7 +464,7 @@
       {
         "id": "silent",
         "label": "Say nothing and watch",
-        "hint": "It costs nothing now. Yusuf may feel unseen.",
+        "hint": "It costs nothing now. Partners like a steady house, though Yusuf may feel unseen.",
         "now": [
           {
             "flag": "yusuf-watched",
@@ -473,8 +476,8 @@
             "in": 2,
             "do": [
               {
-                "trust": "yusuf",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }

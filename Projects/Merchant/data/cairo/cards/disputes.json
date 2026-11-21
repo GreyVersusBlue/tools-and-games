@@ -19,12 +19,12 @@
         "hint": "A weigher takes a small fee.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -4
           }
         ]
       },
@@ -34,12 +34,12 @@
         "hint": "Rahel will remember a fair offer.",
         "requires": {
           "money": {
-            "gte": 25
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -25
+            "money": -5
           },
           {
             "rep": "partners",
@@ -56,7 +56,7 @@
       {
         "id": "walk",
         "label": "Say nothing and buy elsewhere",
-        "hint": "Rahel will hear that you left.",
+        "hint": "You buy elsewhere, and other sellers hear of it.",
         "now": [
           {
             "rep": "partners",
@@ -68,7 +68,11 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 4
+              },
+              {
+                "rep": "foreign",
+                "by": 1
               }
             ]
           }
@@ -93,7 +97,7 @@
       "seal": null
     },
     "title": "Two partners, one share",
-    "body": "Idris and Binyamin both put money into your last venture. Each says he put in more. Your ledger says they paid the same.",
+    "body": "Idris and Binyamin put money into a venture together. Each says he put in more. Their own ledger says they paid the same. They ask your house, which keeps honest books, to settle it.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -125,12 +129,12 @@
         "hint": "It costs you. Generous houses are remembered.",
         "requires": {
           "money": {
-            "gte": 80
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -80
+            "money": -5
           }
         ],
         "later": [
@@ -152,12 +156,12 @@
         "hint": "The judge takes a fee, and his word is final.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -4
           }
         ],
         "later": [
@@ -195,7 +199,7 @@
       "seal": null
     },
     "title": "Samir counts his share again",
-    "body": "Samir is home from {to}. He says your clerk counted his share 10 dinars too low. Your clerk says the cost of the trip comes out of the profit first. Samir kept no book, but he remembers every sale.",
+    "body": "Samir is home from {to}. He says your clerk counted what he is owed 5 dinars too low. Your clerk says the cost of the trip comes off first. Samir kept no book, but he remembers every sale.",
     "when": {
       "all": [
         {
@@ -214,16 +218,16 @@
     "choices": [
       {
         "id": "his-count",
-        "label": "Pay the 10 dinars he asks for",
+        "label": "Pay the 5 dinars he asks for",
         "hint": "It costs a little. Samir will go again gladly.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -5
           },
           {
             "trust": "samir",
@@ -244,11 +248,11 @@
       },
       {
         "id": "hold",
-        "label": "Keep your clerk's count and take back 15 for the trip's costs",
-        "hint": "You gain 15 dinars. Samir will not forget it.",
+        "label": "Keep your clerk's count and take back 4 for the trip's costs",
+        "hint": "You gain 4 dinars. Samir will not forget it.",
         "now": [
           {
-            "money": 15
+            "money": 4
           },
           {
             "trust": "samir",
@@ -292,8 +296,8 @@
       "role": "Cairo",
       "seal": null
     },
-    "title": "Ali broke his orders",
-    "body": "Ali is home from {to}. Your orders said to sell at {to}. Ali sold part of the load on the way instead, to a buyer whose price looked better. Your clerk says that sale came to 60 dinars less than {to} would have paid. Ali says he did it for the house.",
+    "title": "Ali and the price",
+    "body": "Ali is home from {to}. Your clerk thinks Ali sold too cheaply, and says the house lost about 12 dinars. Ali says the prices were fair and that he did it for the house.",
     "when": {
       "trip": {
         "agent": "ali",
@@ -306,10 +310,10 @@
       {
         "id": "pay",
         "label": "Make Ali pay what he can",
-        "hint": "You win back 40 dinars. Ali is bitter.",
+        "hint": "You win back 7 dinars. Ali is bitter.",
         "now": [
           {
-            "money": 40
+            "money": 7
           },
           {
             "trust": "ali",
@@ -331,10 +335,10 @@
       {
         "id": "share",
         "label": "Share the loss with him",
-        "hint": "You win back 20 dinars. He promises to keep to his orders.",
+        "hint": "You win back 4 dinars. He promises to keep to his orders.",
         "now": [
           {
-            "money": 20
+            "money": 4
           },
           {
             "trust": "ali",
@@ -357,7 +361,7 @@
             "in": 2,
             "do": [
               {
-                "money": -5
+                "money": -2
               }
             ]
           }
@@ -387,7 +391,7 @@
       "seal": null
     },
     "title": "Two judges for one quarrel",
-    "body": "Jabir is Muslim and Ezra is Jewish. Each put money into a venture with your house, and now they quarrel over 50 dinars. Each wants his own judge. Your house is asked to say where they go.",
+    "body": "Jabir is Muslim and Ezra is Jewish. Each put money into the same venture, and now they quarrel over 20 dinars. Each wants his own judge. Your house is asked to say where they go.",
     "when": {
       "rep": "court",
       "gte": 1
@@ -401,12 +405,12 @@
         "hint": "It costs two fees. Both men will trust the answer.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -30
+            "money": -5
           }
         ],
         "later": [
@@ -415,10 +419,6 @@
             "do": [
               {
                 "rep": "court",
-                "by": 1
-              },
-              {
-                "rep": "partners",
                 "by": 1
               }
             ]
@@ -431,12 +431,12 @@
         "hint": "It costs one fee. One of them will feel slighted.",
         "requires": {
           "money": {
-            "gte": 15
+            "gte": 3
           }
         },
         "now": [
           {
-            "money": -15
+            "money": -3
           }
         ],
         "later": [
@@ -454,14 +454,25 @@
       {
         "id": "settle",
         "label": "Settle it yourselves over a meal",
-        "hint": "It costs 25 dinars. The quarrel may come back.",
+        "hint": "It costs 4 dinars, and the street likes a quarrel ended. It may come back.",
         "now": [
           {
-            "money": -25
+            "money": -4
           },
           {
             "flag": "two-judges-settled",
             "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
           }
         ]
       }

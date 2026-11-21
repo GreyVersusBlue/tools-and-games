@@ -3,10 +3,12 @@
 // game is balanced: the thresholds in tools/bots.mjs are judged by `node tools/bots.mjs`, which needs
 // thousands of games to mean anything and is run by hand. Plain Node, no browser, no clock.
 import os from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
 import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
-import { BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf } from '../tools/bots.mjs';
+import { holds } from '../js/engine/conditions.js';
+import { BOTS, EXTRA_BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf, standingOf, venturePlan, dice, priceDraw, STANDING_PRICE } from '../tools/bots.mjs';
 
 const content = await loadContent('cairo', { fs });
 const PER_BOT = 50;
@@ -56,6 +58,17 @@ test('smoke: a game on a worker thread equals the same game in this thread', asy
   const line = g => `${g.bot}/${g.seed}/${g.house}: worth ${g.worth}, routes ${JSON.stringify(g.routes)}`;
   eq(Object.values(b.results).flat().map(line), Object.values(a.results).flat().map(line));
   eq(b.results, a.results);
+});
+
+test('smoke: the bots read the notebook as their players would (DECISIONS 2026-11-20 13:3x): careful, greedy and qirad every page found, random about half, first none', () => {
+  const sum = (b, k) => res.results[b].reduce((n, g) => n + g.raw[k], 0);
+  for (const b of ['careful', 'greedy', 'qirad']) ok(sum(b, 'pages') > 0 && sum(b, 'read') === sum(b, 'pages'), `${b} read ${sum(b, 'read')} of ${sum(b, 'pages')}`);
+  const firsts = [1, 2, 3, 4, 5, 6].map(seed => playGame(content, { bot: 'first', seed, house: content.houses[seed % content.houses.length].id }));   // first is not in BOTS, so it is played here
+  ok(firsts.reduce((n, g) => n + g.raw.pages, 0) > 0, 'first found no page, so the case proves nothing');
+  eq(firsts.reduce((n, g) => n + g.raw.read, 0), 0);
+  const share = sum('random', 'read') / sum('random', 'pages');
+  ok(share > 0.3 && share < 0.7, `random read ${(share * 100).toFixed(0)} percent of its pages`);
+  for (const g of res.results.random) ok(g.raw.read <= g.raw.pages, `${g.seed}`);
 });
 
 test('smoke: an unknown bot and an unknown house are refused, not played as something else', () => {
@@ -209,10 +222,32 @@ test('policy: a follow-up card counts at its best answer for greedy, scaled by h
 test('policy: standing breaks a money tie for careful and is bought with cash by greedy', () => {
   const list = [choice('cold', [{ rep: 'partners', by: -1 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
   eq(pick('careful', list)[0], 'warm');
-  eq(pick('greedy', list, { money: 1000, stock: {} }, { partners: 0.1 })[0], 'warm');
+  eq(pick('greedy', list, { money: 1000, stock: {} }, { partners: 10 })[0], 'warm');
   const paid = [choice('cash', [{ money: 50 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
-  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 0.01 })[0], 'cash');
-  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 0.1 })[0], 'warm', 'a house that values standing flips the same card');
+  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 1 })[0], 'cash');
+  eq(pick('greedy', paid, { money: 1000, stock: {} }, { partners: 100 })[0], 'warm', 'a house that values standing flips the same card');
+});
+
+test('policy: greedy prices standing in dinars a point, so the price does not move with the money the house holds (MER-101b)', () => {
+  const paid = [choice('cash', [{ money: 50 }]), choice('warm', [{ rep: 'partners', by: 1 }])];
+  const temper = { partners: 50 };   // a point is worth 50 dinars: a tie, and list order keeps cash first
+  for (const money of [100, 1000, 9000]) eq(pick('greedy', paid, { money, stock: {} }, temper)[0], 'cash', `${money} dinars held`);
+  for (const money of [0, 1000, 90000]) eq(standingOf(worthOf({ money, stock: {} }, content, paid[1]), { money }, { partners: 12 }), 12, `${money} dinars held`);
+});
+
+test('policy: the price draw spans both sides of a 5-dinar choice across seeds, and stays inside its range (MER-101b)', () => {
+  const prices = [];
+  for (let seed = 1; seed <= 200; seed++) { const tdice = dice(seed + 77); tdice(); tdice(); prices.push(priceDraw(tdice())); }
+  ok(prices.every(p => p >= STANDING_PRICE[0] && p <= STANDING_PRICE[1]), 'inside the range');
+  const below = prices.filter(p => p < 5).length, above = prices.filter(p => p > 5).length;
+  ok(below >= 40 && above >= 40, `${below} below 5 and ${above} above in 200 games`);
+  eq(priceDraw(0), STANDING_PRICE[0]);
+  ok(Math.abs(priceDraw(1) - STANDING_PRICE[1]) < 1e-9);
+});
+
+test('games: each game record keeps the house\'s money at the first season, and it is not the money at the end (MER-101)', () => {
+  for (const g of res.results.greedy.slice(0, 10)) eq(g.startMoney, content.houses.find(h => h.id === g.house).money ?? 0, `${g.house} game ${g.seed}`);
+  ok(res.results.greedy.some(x => x.startMoney !== x.worth), 'the record is its own figure');
 });
 
 test('policy: random shuffles the open choices and never reads their worth', () => {
@@ -304,9 +339,10 @@ test('score check: no game in the top rank is a breach, and so is more than one 
   const top = content.city.score.ranks.at(-1).from;
   const none = doctored(r => { for (const l of Object.values(r.results)) for (const g of l) g.score = Math.min(g.score, top - 1); });
   ok(!rowOf(none, 'the top rank is reached by the best game').ok);
-  const one = doctored(r => { r.results.greedy[0].score = top; });
+  const below = r => { for (const l of Object.values(r.results)) for (const g of l) g.score = Math.min(g.score, top - 1); };   // no natural top game in the sample, however many it has
+  const one = doctored(r => { below(r); r.results.greedy[0].score = top; });
   ok(rowOf(one, 'the top rank is reached by the best game').ok && rowOf(one, 'the top rank is reached by at most').ok);
-  const many = doctored(r => { for (const g of r.results.greedy.slice(0, 10)) g.score = top; });
+  const many = doctored(r => { below(r); for (const g of r.results.greedy.slice(0, Math.ceil(0.02 * Object.values(r.results).flat().length))) g.score = top; });
   ok(!rowOf(many, 'the top rank is reached by at most').ok, JSON.stringify(rowOf(many, 'the top rank is reached by at most')));
 });
 
@@ -318,5 +354,98 @@ test('score check: one part over half of a sensible bot\'s median total is a bre
   ok(!row(c).ok && row(c).note.startsWith('wealth 51%') && !c.ok, JSON.stringify(row(c)));
   ok(rowOf(lever('random', 90), 'random: no one part') === undefined, 'random is not a sensible bot and is not judged');
 });
+
+// ---- trade that pays (MER-92)
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, proposePlan, estimate, destinations } from '../js/engine/index.js';
+
+/** A desk with news in it: a few seasons of the first choice on every paper, and no one sent. */
+function seasoned(seed, seasons) {
+  let s = newGame(content, { seed, length: 'acts', house: content.houses[0].id });
+  for (let i = 0; i < seasons; i++) {
+    for (const p of s.desk) if (p.state === 'open') { const ch = paperChoices(s, content, p.id).find(c => holds(c.requires, s, content)); s = choose(s, content, p.id, ch.id); }
+    s = endSeason(s, content);
+    if (s.phase === 'interlude') s = openSeason(s, content);
+  }
+  return s;
+}
+
+test('venture bots: careful and greedy send what proposePlan proposes for the road they chose, and the engine takes it', () => {
+  let sent = 0;
+  for (const bot of ['careful', 'greedy']) {
+    for (const seed of [5, 6, 7]) {
+      const s = seasoned(seed, 5);
+      for (const a of content.agents) {
+        const r = s.agents[a.id];
+        if (!r?.hired || r.where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+        const plan = venturePlan(bot, s, content, a);
+        if (!plan) continue;
+        sent++;
+        // the plan is the engine's default for that road at one of the shares the bot tries (its own, then a bigger one if the wage bill wants it)
+        const share = [0.2, 0.35, 0.5, 0.65, 0.8].find(x => isDeepStrictEqual(plan, proposePlan(s, content, a, plan.route, { share: x })));
+        ok(share !== undefined, `${bot}/${seed}: the plan is the engine's default for that road: ${JSON.stringify(plan)}`);
+        ok(share >= (bot === 'careful' ? 0.5 : 0.2), `${bot} starts from its own share, not a smaller one: ${share}`);
+        outfit(s, content, plan);
+        const e = estimate(s, content, plan);
+        ok(e.net > 0, `${bot} sends only what the estimate says pays: ${e.net}`);
+      }
+    }
+  }
+  ok(sent >= 4, `${sent} ventures were chosen`);
+});
+
+test('venture bots: careful takes a road with no waiting and at most six seasons there and back, and never has more than one out', () => {
+  for (const seed of [5, 6, 7, 8]) {
+    const s = seasoned(seed, 5);
+    for (const a of content.agents) {
+      const r = s.agents[a.id];
+      if (!r?.hired || r.where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+      const plan = venturePlan('careful', s, content, a);
+      if (!plan) continue;
+      const d = destinations(s, content, a).find(x => x.route === plan.route);
+      ok(d.waits === 0 && d.seasons <= 6, `${plan.route}: ${d.waits} waits, ${d.seasons} seasons`);
+    }
+    const one = structuredClone(s);
+    one.expeditions = [{ route: 'cairo-qus', agent: 'ghost1' }];
+    for (const a of content.agents) eq(venturePlan('careful', one, content, a), null, 'one out already: no second');
+  }
+});
+
+test('venture bots: a careful game earns a venture profit in dinars and the cards put a sum on the table every season they come', () => {
+  const g = playGame(content, { bot: 'careful', seed: 1000, house: content.houses[0].id });
+  ok(g.profits.length > 3 && g.profits.length === g.trips.length, `${g.profits.length} profits for ${g.trips.length} trips`);
+  ok(g.profits.every(Number.isInteger), 'whole dinars');
+  ok(g.cardMoney.length > 3 && g.cardMoney.every(n => Number.isFinite(n) && n >= 0), JSON.stringify(g.cardMoney));
+});
+
+test('first: it is played by the command line with the rest, not by BOTS, sends no one and recalls no one', () => {
+  ok(EXTRA_BOTS.includes('first') && !BOTS.includes('first'));
+  const g = playGame(content, { bot: 'first', seed: 1000, house: content.houses[0].id });
+  eq([g.trips.length, g.profits.length, Object.keys(g.routes).length], [0, 0, 0]);
+  ok(Number.isFinite(g.score) && g.cardMoney.length > 3);
+});
+
+const withFirst = (firstScore, edit = () => {}) => doctored(r => {
+  r.results.first = r.results.careful.map(g => ({ ...g, bot: 'first', score: firstScore }));
+  edit(r);
+});
+
+test('check: careful\'s median venture profit under five times one season\'s cards is a breach, at it is not, and the row says what the cards move', () => {
+  const at = (profit, cards) => doctored(r => { for (const g of r.results.careful) { g.profits = [profit]; g.cardMoney = [cards]; } });
+  const row = c => rowOf(c, 'careful: median venture profit');
+  ok(!row(at(149, 30)).ok, JSON.stringify(row(at(149, 30))));
+  ok(row(at(150, 30)).ok, 'exactly five times is allowed');
+  ok(row(at(150, 30)).note.startsWith('cards move 30 a season'), row(at(150, 30)).note);
+  ok(row(at(150, 30)).name.includes('at least 5 times'));
+});
+
+test('check: first no better than careful is a breach of its row, and a run without first has no row', () => {
+  const row = c => rowOf(c, "first: median score below careful's");
+  ok(row(withFirst(0)).ok, JSON.stringify(row(withFirst(0))));
+  ok(!row(withFirst(10000)).ok);
+  const careful = quantileOf(res.results.careful.map(g => g.score));
+  ok(!row(withFirst(careful)).ok, 'equal is a breach: first must be below');
+  eq(row(check({ ...res, content })), undefined, 'the four sensible and random bots alone are not judged against first');
+});
+const quantileOf = xs => { const a = [...xs].sort((x, y) => x - y), i = (a.length - 1) / 2; return (a[Math.floor(i)] + a[Math.ceil(i)]) / 2; };
 
 await done();

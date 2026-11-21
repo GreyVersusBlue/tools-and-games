@@ -136,7 +136,7 @@ export const wary = (s, agentId) => (s.agents[agentId]?.trust ?? 0) <= WARY_AT;
 
 /** Two or more `unfair` memories: the agent will not go on a wage again and asks for a qirad share.
     The words `outfit` gives, or null when the agent will go. */
-export function refusesOwn(s, agent, qirad = true) {
+export function refusesOwn(s, agent, qirad) {
   if (unfairCount(s.agents[agent.id]) < UNFAIR_LIMIT) return null;
   const why = `${agent.name} will not go for a wage again, because the house did not pay what it promised before.`;
   return qirad ? `${why} ${agent.name} asks for a qirad share.` : why;

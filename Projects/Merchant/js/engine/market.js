@@ -12,6 +12,7 @@
 import { normal } from './rng.js';
 import { seasonIndex, seasonName, year, actOfSeason, playedSeasons } from './calendar.js';
 import { cityOf, addPaper } from './state.js';
+import { routeFor } from './routes.js';
 
 export const HISTORY = 12;           // seasons of true prices kept per stop and good
 export const F_MIN = 0.5, F_MAX = 2.0;
@@ -124,8 +125,9 @@ export function priceAt(state, stopId, goodId, idx) {
 /** Opening step "news": the home stop's price is always current; each other stop whose news
     is due sends a price letter carrying its prices as they were `lag` seasons ago. A stop
     `lag` seasons away is due every `lag` seasons (season index divisible by it). Every letter
-    that arrives goes onto one paper, kind "news"; in the first year it carries a one-line
-    `line` as well (DESIGN 4.7). */
+    that arrives updates `known` in full and goes onto one paper, kind "news". The paper's
+    `line` is at most two leads (DESIGN 2.2 rule 3, `leadLine` below), so the desk never reads
+    a wall of prices; the full table stays on the map. */
 export function news(s, content) {
   const idx = seasonIndex(s, content);
   const home = cityOf(content, 'market').home;
@@ -148,29 +150,39 @@ export function news(s, content) {
     if (Object.keys(prices).length) letters.push({ stop: stop.id, at: written, writtenIn: writeSeason(content, written), prices });
   }
   if (!letters.length) return;
-  const paper = { kind: 'news', ref: 'news', letters };
-  if (idx < playedSeasons(content.calendar, s.length)[0] + 4) paper.line = firstYearLine(s, content, letters, home);
-  addPaper(s, paper);
+  const leads = leadsOf(s, content, letters, home);
+  addPaper(s, { kind: 'news', ref: 'news', letters, leads, line: leadLine(content, leads, home) });
 }
 
-/** The first year's one line (DESIGN 4.7): "<Stop> pays 164 for <good> and 98 for <good>." for each
-    stop, on every good the house holds in its warehouse that the stop sells (else the first good
-    both trade), then one sentence for home with the home price of each good named. A house that
-    carries a good reads that good's price whatever else the letter holds. */
-function firstYearLine(s, content, letters, home) {
+export const MAX_LEADS = 2;   // price lines on one season's paper
+
+/** The leads in this season's letters: a good the house holds or can buy at home, at a stop it can
+    send someone to now (an open route), where the letter's price beats home's price now. Widest
+    margin first, ties by stop then good so the order never depends on object key order. At most
+    MAX_LEADS. Each is { stop, good, p, home, at, writtenIn }. */
+function leadsOf(s, content, letters, home) {
+  const open = {};
+  const reach = id => (open[id] ??= routeFor(s, content, id) !== null);
+  const out = [];
+  for (const l of letters) {
+    for (const [g, p] of Object.entries(l.prices)) {
+      if (!s.market[home]?.[g]) continue;           // the house can neither hold nor buy what home does not trade
+      const here = truePrice(s, content, home, g);
+      if (p - here <= 0 || !reach(l.stop)) continue;
+      out.push({ stop: l.stop, good: g, p, home: here, at: l.at, writtenIn: l.writtenIn });
+    }
+  }
+  out.sort((a, b) => (b.p - b.home) - (a.p - a.home) || (a.stop < b.stop ? -1 : a.stop > b.stop ? 1 : a.good < b.good ? -1 : 1));
+  return out.slice(0, MAX_LEADS);
+}
+
+/** "<Stop> pays 38 for <good>. <Home> pays 25." for each lead, then the season the news was written
+    in. With no lead the paper says so in a sentence, so the desk is not handed the whole table. */
+function leadLine(content, leads, home) {
+  if (!leads.length) return 'The letters hold no price worth a road this season.';
   const name = id => (content.goods ?? []).find(g => g.id === id)?.name.toLowerCase() ?? id;
   const homeName = stopOf(content, home).name;
-  const join = parts => parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-  const named = [];
-  const lines = letters.map(l => {
-    const both = Object.keys(l.prices).filter(g => s.market[home]?.[g]);
-    const held = Object.keys(l.prices).filter(g => s.stock[g] > 0 && s.market[home]?.[g]);
-    const goods = held.length ? held : [both[0] ?? Object.keys(l.prices)[0]];
-    for (const g of goods) if (s.market[home]?.[g] && !named.includes(g)) named.push(g);
-    return `${stopOf(content, l.stop).name} pays ${join(goods.map(g => `${l.prices[g]} for ${name(g)}`))}.`;
-  });
-  const here = named.length ? ` ${homeName} pays ${join(named.map(g => `${truePrice(s, content, home, g)} for ${name(g)}`))}.` : '';
-  return lines.join(' ') + here;
+  return leads.map(l => `${stopOf(content, l.stop).name} pays ${l.p} for ${name(l.good)}. ${homeName} pays ${l.home}. News of ${l.writtenIn}.`).join(' ');
 }
 
 /** What the house expects a good to fetch at `stopId` now, from what it knows and nothing it should
