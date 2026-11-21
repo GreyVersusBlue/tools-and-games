@@ -7,7 +7,7 @@
 //
 // Duplicate floor… opens a dialog that says, before anything changes, where the
 // copy goes, what it is called, what is copied and what is not, how the room
-// numbers will come out and what joining the stairs will do. The engine decides
+// numbers will come out (room by room) and what joining the stairs will do. The engine decides
 // (engine/floor-copy.js); the dialog only reads its description and sends its
 // choices. The dialog has a scrolling body and a footer pinned at the bottom
 // (16.12 item 10), so at 844 × 390 the buttons are always on screen.
@@ -52,20 +52,15 @@ function pin(dialog) {
   return { body, buttons: Array.from(buttons.querySelectorAll('button')) };
 }
 
-// The words of what the copy will have no numbers for. The numbers carry over
-// all together or not at all (ARCHITECTURE 22.8 and 22.17: "every numbered
-// room"), so the line says why, and how many numbered rooms that leaves without
-// one: "…(‘Library’ does not begin with a digit, and the numbers carry over only
-// when every one can), so all 5 numbered rooms lose their numbers on the copy."
-function numbersLine(info) {
-  const reason = info.renumber.reason;
+// The line under the room-number rows: with Renumber chosen, the engine's one
+// sentence of what happens to each numbered room, room by room (ARCHITECTURE
+// 22.17; Devon 2026-11-21): "Rooms 201 to 204 become 401 to 404; Library
+// becomes Library 2." With no numbered room there are no rows, and the line
+// says so; with Leave them without numbers chosen, the row's own words say it.
+function numbersLine(info, level) {
   if (info.rooms === 0) return null;
-  if (reason === 'none') return info.name + '\'s rooms have no numbers yet, so the copies have none either.';
-  const lose = info.numbered;
-  let lost;
-  if (lose === 1) lost = info.rooms === 1 ? 'the room loses its number on the copy and will need one' : '1 numbered room loses its number on the copy, and ' + count(info.rooms, 'room') + ' will need one';
-  else lost = lose === info.rooms ? (lose === 2 ? 'both' : 'all ' + lose) + ' numbered rooms lose their numbers on the copy and will need one each' : lose + ' numbered rooms lose their numbers on the copy, and ' + count(info.rooms, 'room') + ' will need one';
-  return 'The copies will have no numbers (' + reason + (lose > 1 ? ', and the numbers carry over only when every one can' : '') + '), so ' + lost + '.';
+  if (info.renumber.reason === 'none') return info.name + '\'s rooms have no numbers yet, so the copies have none either.';
+  return level ? info.renumber.text : null;
 }
 
 // A coarse pointer (a phone, a tablet): the Name field is not focused as the
@@ -73,11 +68,6 @@ function numbersLine(info) {
 // 5.1 and 16.3 keep it off the plan); a fine pointer keeps it.
 function coarsePointer() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-}
-
-// "201 becomes 401, 214B becomes 414B".
-function examplesWords(info) {
-  return info.renumber.examples.map((each) => each.from + ' becomes ' + each.to).join(', ');
 }
 
 // floorMenu(ed) -> { items(floorId), open(floorId, anchor, opener), duplicate(floorId, opener) }
@@ -163,6 +153,7 @@ export function floorMenu(ed) {
       h('div', { class: 'bld-dup__row' }, keepRadio, levelLabel),
       h('div', { class: 'bld-dup__row' }, blankRadio, blankLabel));
     const numbersNote = h('p', { id: 'duplicate-numbers-note', dir: 'auto' });
+    keepRadio.setAttribute('aria-describedby', 'duplicate-numbers-note');
 
     const join = h('input', { type: 'checkbox', id: 'duplicate-join', checked: true });
     const joinWords = h('span', { id: 'duplicate-join-words', dir: 'auto' });
@@ -202,12 +193,12 @@ export function floorMenu(ed) {
     function say(info) {
       sentence.textContent = 'The copy goes on top of the building, as ' + info.newName + '.';
       copied.textContent = 'It has ' + floor.name + '\'s corridors, stairs, rooms and other spaces: ' + info.copied + '.';
-      const line = numbersLine(info);
+      const line = numbersLine(info, keepRadio.checked);
       numbersFieldset.hidden = !info.renumber.possible;
-      numbersNote.hidden = info.renumber.possible || line === null;
+      numbersNote.hidden = line === null;
       numbersNote.textContent = line || '';
       if (info.renumber.possible) {
-        levelLabel.textContent = 'Renumber them for ' + info.newName + ': ' + examplesWords(info);
+        levelLabel.textContent = 'Renumber them for ' + info.newName;
         blankLabel.textContent = 'Leave them without numbers (' + count(info.rooms, 'room') + ' to number)';
       }
       joinBlock.hidden = info.joins.length === 0;

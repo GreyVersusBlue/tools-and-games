@@ -161,7 +161,8 @@ test('the dialog says where the copy goes, what it has, how the numbers come out
   assert.equal(await page.$eval('#duplicate-name', (el) => el.value), 'Floor 4');
   assert.equal(await text(page, '#duplicate-copied'), 'It has Floor 2\'s corridors, stairs, rooms and other spaces: 3 rooms.');
   assert.equal(await page.$eval('#duplicate-numbers-level', (el) => el.checked), true);
-  assert.equal(await text(page, 'label[for="duplicate-numbers-level"]'), 'Renumber them for Floor 4: 201 becomes 401, 202 becomes 402');
+  assert.equal(await text(page, 'label[for="duplicate-numbers-level"]'), 'Renumber them for Floor 4');
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'The 3 rooms from 201 to 214B become 401 to 414B.', 'one sentence of what happens');
   assert.equal(await text(page, 'label[for="duplicate-numbers-blank"]'), 'Leave them without numbers (3 rooms to number)');
   assert.equal(await page.$eval('#duplicate-join', (el) => el.checked), true);
   assert.equal(await text(page, '#duplicate-join-words'), 'Stairs A will run from Floor 2 to Floor 4 as one stairwell.', 'it names no letter change');
@@ -232,26 +233,46 @@ test('Leave without numbers and Join off: the copy has blank numbers and no new 
   await showFloor(page, 'Floor 2');
 });
 
-test('numbers that cannot carry over are one line, not two rows; a floor with nothing joined has no join checkbox', async () => {
-  await build(page, { numbers: ['A-1', 'B-2'], flight: false });
+test('a floor with no numbered rooms has one line, not two rows; a floor with nothing joined has no join checkbox', async () => {
+  await build(page, { numbers: ['', ''], flight: false });
   await openDialogByButton(page);
   assert.equal(await page.$eval('#duplicate-numbers', (el) => el.hidden), true);
-  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers (‘A-1’ does not begin with a digit, and the numbers carry over only when every one can), so both numbered rooms lose their numbers on the copy and will need one each.');
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'Floor 2\'s rooms have no numbers yet, so the copies have none either.');
   assert.equal(await page.$eval('#duplicate-join-block', (el) => el.hidden), true, 'nothing is connected, so nothing to join');
   await page.keyboard.press('Escape');
   await dialogGone(page);
 });
 
-test('one room numbered with a word stops the numbers for all, as 22.8 and 22.17 say, and the line says how many rooms lose theirs and why (SV2-139)', async () => {
-  await build(page, { numbers: ['201', '202', 'Library'], flight: false });
+// Devon, 2026-11-21 (QUESTIONS 19): "Duplicates should be 'library 2'".
+test('room by room: a word keeps its own number with " 2" (" 3" when taken), the sentence says so, blank only when chosen, and one Undo (SV2-141)', async () => {
+  await build(page, { numbers: ['201', '202', 'Library', ''], flight: false });
+  const start = await building(page);
+  const before = (await state(page)).entries;
   await openDialogByButton(page);
-  assert.equal(await page.$eval('#duplicate-numbers', (el) => el.hidden), true);
-  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers (‘Library’ does not begin with a digit, and the numbers carry over only when every one can), so all 3 numbered rooms lose their numbers on the copy and will need one each.');
-  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('#duplicate-numbers', (el) => el.hidden), false, 'the rows are offered');
+  assert.equal(await page.$eval('#duplicate-numbers-level', (el) => el.checked), true, 'renumbering is the default');
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'Rooms 201 and 202 become 401 and 402; Library becomes Library 2.');
+  assert.equal(await page.$eval('#duplicate-numbers-level', (el) => el.getAttribute('aria-describedby')), 'duplicate-numbers-note');
+  await page.click('#duplicate-numbers-blank');
+  assert.equal(await page.$eval('#duplicate-numbers-note', (el) => el.hidden), true, 'Leave them without numbers says it in its own row');
+  await page.click('#duplicate-numbers-level');
+  assert.equal(await page.$eval('#duplicate-numbers-note', (el) => el.hidden), false);
+  await page.evaluate(() => document.querySelector('#duplicate-floor-dialog .dialog__buttons button').click());
   await dialogGone(page);
-  await build(page, { numbers: ['201', 'Library', ''], flight: false });
+  await floorIs(page, 'Floor 4');
+  assert.equal((await state(page)).entries, before + 1, 'one undo step');
+  assert.deepEqual((await building(page)).floors[3].spaces.map((space) => space.number), ['401', '402', 'Library 2', '']);
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  assert.deepEqual(await building(page), start, 'one Undo gives back the building as it was');
+  // "Library 2" already in the school: Library 3
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    store.apply(actions.placeRoom, { floorId: store.project.building.floors[0].id, rect: { x: 5, y: 2, w: 2, h: 1 }, number: 'library 2' });
+  });
+  await showFloor(page, 'Floor 2');
   await openDialogByButton(page);
-  assert.equal(await text(page, '#duplicate-numbers-note'), 'The copies will have no numbers (‘Library’ does not begin with a digit, and the numbers carry over only when every one can), so 2 numbered rooms lose their numbers on the copy, and 3 rooms will need one.');
+  assert.equal(await text(page, '#duplicate-numbers-note'), 'Rooms 201 and 202 become 401 and 402; Library becomes Library 3.');
   await page.keyboard.press('Escape');
   await dialogGone(page);
 });
@@ -387,7 +408,7 @@ test('on a phone at 390 px: the ⋯ button is 44 px, the dialog fits with no sid
 test('on a phone, a dialog with no radio or checkbox to show takes the focus itself, never the Name field; Escape still gives it back (SV2-139)', async () => {
   const p = phone.page;
   await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
-  await build(p, { numbers: ['A-1'], flight: false });
+  await build(p, { numbers: [''], flight: false });
   await p.click('#floor-actions');
   await menuOpen(p);
   await p.evaluate(() => Array.from(document.querySelectorAll('.menu [role="menuitem"]')).find((item) => item.textContent.includes('Duplicate floor')).click());
