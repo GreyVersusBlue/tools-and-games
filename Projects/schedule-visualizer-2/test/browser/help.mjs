@@ -34,6 +34,7 @@ import path from 'node:path';
 import { openPlanner, startServer, launch, go, TOOL_DIR } from './harness.mjs';
 import { HELP_TITLE } from '../../ui/help/index.js';
 import { contrast } from '../../ui/colour.js';
+import { DEAD_END_CELLS, DEAD_END_FEET, DEAD_END_METRES } from '../../engine/building-checks.js';
 
 const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
@@ -570,7 +571,7 @@ test('Search help: words in any order, case and accents ignored, results are but
     assert.equal(dead[0].title, 'Dead end');
     assert.equal(dead[0].section, 'The words the planner uses');
     assert.ok(dead[0].marks.length > 0, 'the matched words are marked');
-    assert.match(dead[0].text, /6 cells/);
+    assert.ok(dead[0].text.includes(DEAD_END_CELLS + ' cells'), dead[0].text);
     assert.equal(await page.$eval('#help-dialog .help__count', (el) => el.textContent), dead.length + ' results');
     // every result is a native button in the Tab order, and is 44 px tall
     const kinds = await page.$$eval('#help-dialog .help__result', (all) => all.map((el) => ({ tag: el.tagName, type: el.type, tab: el.tabIndex, height: el.getBoundingClientRect().height })));
@@ -894,7 +895,7 @@ test('Help\'s Building part names the W7 controls as the screens label them, and
     for (const label of [...options, 'Features', 'Edit the features list…', 'Add a feature', 'Add common ones', 'Stairwell through floors…', 'Make one stairwell', 'Connect another floor…', 'Remove from stairwell', 'Split into separate stairs', 'Join the parts', 'Show me', 'Which way', 'Join the stairs and elevators', 'teachers in rooms']) {
       assert.ok(said.includes(label), 'Help\'s Building part lacks "' + label + '"');
     }
-    for (const phrase of ['on top of the building', 'same row and column', 'highest number on the floor', 'longer than 6 cells', 'longer than 20 feet (6.1 metres)', 'a note when it is longer', 'a warning when it leads to no room, other space, stair or exit', 'with a door or without']) {
+    for (const phrase of ['on top of the building', 'same row and column', 'highest number on the floor', 'longer than ' + DEAD_END_CELLS + ' cells', 'longer than ' + DEAD_END_FEET + ' feet (' + DEAD_END_METRES + ' metres)', 'a note when it is longer', 'a warning when it leads to no room, other space, stair or exit', 'with a door or without']) {
       assert.ok(said.includes(phrase), 'Help\'s Building part lacks "' + phrase + '"');
     }
     // a stairwell whose parts both stop on one floor: the inspector offers no
@@ -944,9 +945,9 @@ test('Help\'s glossary has the six W7 words, each one sentence, and the threshol
     const flight = await page.$eval('#help-dialog dt[data-term="Flight"] + dd', (el) => el.textContent);
     assert.equal(flight, 'The stairs between two floors of a stairwell.');
     const dead = await page.$eval('#help-dialog dt[data-term="Dead end"] + dd', (el) => el.textContent);
-    assert.match(dead, /longer than 6 cells, or 20 feet \(6\.1 metres\) when the Cell scale is set/);
+    assert.ok(dead.includes('longer than ' + DEAD_END_CELLS + ' cells, or ' + DEAD_END_FEET + ' feet (' + DEAD_END_METRES + ' metres) when the Cell scale is set'), 'the glossary\'s Dead end does not give the thresholds Checks uses: ' + dead);
     const travel = await page.$eval('#help-dialog [data-numbers="travel"]', (el) => el.textContent);
-    assert.match(travel, /longer than 6 cells, or, with a Cell scale, longer than 20 feet \(6\.1 metres\)/);
+    assert.ok(travel.includes('longer than ' + DEAD_END_CELLS + ' cells, or, with a Cell scale, longer than ' + DEAD_END_FEET + ' feet (' + DEAD_END_METRES + ' metres)'), 'the travel numbers do not give the thresholds Checks uses: ' + travel);
     assert.match(travel, /counts as served, with a door or without/);
     await page.keyboard.press('Escape');
     await helpGone(page);
