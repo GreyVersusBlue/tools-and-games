@@ -160,6 +160,7 @@ async function holdsItsEnds(page, what) {
       close: box(close),
       scroller: box(scroller),
       dialog: box(dialog),
+      bar: box(dialog.querySelector('.help__search')),
       scroll: { top: rolls.scrollTop, height: rolls.scrollHeight, client: rolls.clientHeight, width: scroller.scrollWidth, clientWidth: scroller.clientWidth },
       window: { width: innerWidth, height: innerHeight },
       page: document.documentElement.scrollWidth,
@@ -199,7 +200,7 @@ async function holdsItsEnds(page, what) {
   }
   if (end.short) {
     // the dialog scrolls, so the field rises to the dialog's own top edge and stays there
-    assert.ok(Math.abs(end.field.top - end.dialog.top) <= 2 && end.field.bottom <= end.window.height, what + ': the search field is not pinned at the top of the dialog ' + JSON.stringify({ field: end.field, dialog: end.dialog }));
+    assert.ok(Math.abs(end.bar.top - end.dialog.top) <= 2 && end.field.bottom <= end.window.height, what + ': the search field is not pinned at the top of the dialog ' + JSON.stringify({ bar: end.bar, dialog: end.dialog }));
   } else {
     assert.deepEqual(end.field, first.field, what + ': the search field moved as the body scrolled (it stays pinned)');
   }

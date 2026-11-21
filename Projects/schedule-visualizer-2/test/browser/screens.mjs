@@ -1668,7 +1668,9 @@ const w7FloorMenu = (what) => async (page) => {
 const w7AutoNumber = (what) => async (page) => {
   await planReady(page);
   await page.click('[data-tool="room"]');
-  await page.click('#auto-number');
+  await page.waitForFunction(() => document.getElementById('auto-number').getClientRects().length > 0, { timeout: 8000 });
+  // the device remembers the switch, so an earlier screen may have left it on
+  if (!(await page.$eval('#auto-number', (el) => el.checked))) await page.click('#auto-number');
   await page.waitForFunction(() => document.getElementById('auto-number').checked, { timeout: 8000 });
   await page.waitForFunction(() => !document.getElementById('next-number-field').hidden, { timeout: 8000 });
   await page.waitForFunction(() => document.getElementById('next-number').value !== '', { timeout: 8000 });
