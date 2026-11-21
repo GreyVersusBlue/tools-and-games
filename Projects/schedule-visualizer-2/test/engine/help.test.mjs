@@ -158,13 +158,15 @@ const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 
   // DESIGN 14.1's words (SV2-112)
   'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack',
   // DESIGN 15.1's words (SV2-124)
-  'Label', 'Kept scenario', 'Building comparison'];
+  'Label', 'Kept scenario', 'Building comparison',
+  // DESIGN 16.1's words (SV2-136)
+  'Feature', 'Period name', 'Not in school', 'Stairwell', 'Flight', 'Dead end'];
 const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
   assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
   for (const each of words(defaultSettings())) assert.ok(each.meaning.endsWith('.') && each.meaning.length > 20, each.term + ' is not explained in a sentence');
   const block = words({ ...defaultSettings(), periodWord: 'Block' });
-  assert.deepEqual(block.map((each) => each.term), ALL_WORDS.map((term) => (term === 'Period' ? 'Block' : term)));
+  assert.deepEqual(block.map((each) => each.term), ALL_WORDS.map((term) => (term === 'Period' ? 'Block' : term === 'Period name' ? 'Block name' : term)));
   assert.match(block.find((each) => each.term === 'Block').meaning, /This school’s word for it is block, and the planner says block everywhere\./);
   assert.match(block.find((each) => each.term === 'Passing time').meaning, /one block and the start of the next/);
   assert.equal(words(undefined).length, ALL_WORDS.length);
@@ -514,7 +516,7 @@ test('Elevator is no longer "planned": ordinary routes, step-free routes and an 
   assert.match(meaning('Area of refuge'), /a place to wait for help in an evacuation/i);
   assert.match(meaning('Route sheet'), /One person’s day, printed/);
   assert.equal(all.filter((each) => each.term === 'Elevator').length, 1, 'no new entry for the elevator: its meaning changed');
-  assert.equal(all.length, 42, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three, DESIGN 14.1 four, DESIGN 15.1 three');
+  assert.equal(all.length, 48, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three, DESIGN 14.1 four, DESIGN 15.1 three, DESIGN 16.1 six');
   assert.doesNotMatch(all.map((each) => each.meaning).join(' '), /\blifts?\b/i, 'the code says lift; Help says elevator');
 });
 

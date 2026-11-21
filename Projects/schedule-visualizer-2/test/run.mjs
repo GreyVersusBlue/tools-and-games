@@ -119,6 +119,7 @@ export const GROUPS = {
     'engine/transfer.test.mjs', // SV2-29a
     'engine/transfer-qr.test.mjs', // SV2-29a
     'engine/help.test.mjs', // SV2-30a
+    'engine/help-search.test.mjs', // SV2-136
     'engine/prints-schedule.test.mjs', // SV2-32d
     'engine/prints-travel.test.mjs', // SV2-32d
     'engine/vocabulary.test.mjs', // SV2-32f

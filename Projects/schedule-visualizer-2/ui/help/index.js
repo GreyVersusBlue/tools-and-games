@@ -5,6 +5,17 @@
 //
 //   openHelp(ctx, { sections, current, opener }) -> { element, close, closed }
 //
+// A Search help field sits at the top of the body (ARCHITECTURE 22.12, DESIGN
+// 16.10 and 16.12 item 7; the index and matcher are ./search.js). Typing two
+// letters or more replaces the body with a list of results, a button each; one
+// opens its part in the full body, its heading focused, and Back to results
+// (the next Tab stop after the field) returns to the list. Escape clears a
+// non-empty field first, then closes Help as before; Ctrl or ⌘ with F inside
+// Help focuses the field. The dialog's data-mode says where it is (browse,
+// results, opened), data-found how many results, data-pending while the
+// 150 ms of typing has not settled, and the status line is a live region that
+// speaks the count after 500 ms of quiet, once for each change.
+//
 // `sections` is the rail's list (ui/app.js's SECTIONS) and `current` the id
 // of the section open now; the shortcuts come from ctx.shortcuts.list() and
 // the numbers from the project's settings, so Help says what the planner has
@@ -16,6 +27,7 @@
 import { h, uid } from '../components/dom.js';
 import { table } from '../components/table.js';
 import { helpModel } from './content.js';
+import { buildIndex, search, announcement, partTitles } from './search.js';
 
 export const HELP_TITLE = 'This is how the planner works.';
 
@@ -52,8 +64,8 @@ function part(id, title, ...children) {
     children);
 }
 
-function sectionsPart(model) {
-  return part('sections', 'The ' + model.sections.length + ' sections',
+function sectionsPart(model, titles) {
+  return part('sections', titles.sections,
     h('p', null, 'The rail on the left (along the bottom on a phone) has one item for each. The digit in its corner opens it from anywhere.'),
     h('ol', { class: 'help__sections' }, model.sections.map((section) => h('li', { class: 'help__section', data: { section: section.id, here: String(section.here) } },
       h('h4', { class: 'help__name' }, h('kbd', null, section.key), ' ', name(section.name), section.here ? h('span', { class: 'help__here' }, ' · open now') : null),
@@ -64,7 +76,7 @@ function sectionsPart(model) {
     ))));
 }
 
-function keysPart(model) {
+function keysPart(model, titles) {
   const list = table({
     caption: 'Keyboard shortcuts',
     key: (row) => row.id,
@@ -75,7 +87,7 @@ function keysPart(model) {
     ],
     rows: model.keys.rows,
   });
-  return part('keys', 'Keyboard shortcuts',
+  return part('keys', titles.keys,
     h('p', null, model.keys.guard),
     h('div', { class: 'help__table' }, list.element),
     h('dl', { class: 'help__groups' }, model.keys.groups.map((each) => [
@@ -84,16 +96,16 @@ function keysPart(model) {
     ])));
 }
 
-function gesturesPart(model) {
-  return part('gestures', 'Mouse, touch, pen and keyboard on a map',
+function gesturesPart(model, titles) {
+  return part('gestures', titles.gestures,
     h('p', null, 'The Building plan, the Movement map, the scenario lab’s map and the Safety map all answer the same way.'),
     model.gestures.map((each) => h('div', { class: 'help__device', data: { device: each.id } },
       h('h4', { class: 'help__name' }, each.device),
       h('ul', null, each.items.map((item) => h('li', null, item))))));
 }
 
-function wordsPart(model) {
-  return part('words', 'The words the planner uses',
+function wordsPart(model, titles) {
+  return part('words', titles.words,
     h('p', null, 'Each thing has one name, and the planner uses it everywhere.'),
     h('dl', { class: 'help__words' }, model.words.map((each) => [
       h('dt', { data: { term: each.term } }, name(each.term)),
@@ -101,13 +113,47 @@ function wordsPart(model) {
     ])));
 }
 
-function numbersPart(model) {
-  return part('numbers', 'How the numbers are worked out',
+function numbersPart(model, titles) {
+  return part('numbers', titles.numbers,
     h('p', null, 'Every figure on every screen, print and published file comes from these rules. The numbers in them are this project’s settings.'),
     model.numbers.map((each) => h('div', { class: 'help__numbers', data: { numbers: each.id } },
       h('h4', { class: 'help__name' }, each.title),
       each.sentences.map((sentence) => h('p', null, sentence)))));
 }
+
+// The element a result opens, in the full body: a section's, a gesture's, a
+// word's or a numbers block's heading, a shortcut's row, a group's term, or
+// the part's own heading. Compared as text, never as a selector, since a word
+// can be the school's own.
+function locate(root, entry) {
+  const all = (selector) => Array.from(root.querySelectorAll(selector));
+  const same = (list, name, value) => list.find((el) => el.dataset[name] === value);
+  if (entry.part === 'sections') {
+    const item = same(all('.help__section'), 'section', entry.key);
+    return item && item.querySelector('.help__name');
+  }
+  if (entry.part === 'keys') {
+    if (entry.key.startsWith('key:')) return same(all('tbody tr[data-key]'), 'key', entry.key.slice(4));
+    if (entry.key.startsWith('group:')) {
+      const says = same(all('dd[data-group]'), 'group', entry.key.slice(6));
+      return says && says.previousElementSibling;
+    }
+    return root.querySelector('[data-part="keys"] .help__title');
+  }
+  if (entry.part === 'gestures') {
+    const item = same(all('.help__device'), 'device', entry.key);
+    return item && item.querySelector('.help__name');
+  }
+  if (entry.part === 'words') return same(all('dt[data-term]'), 'term', entry.key);
+  if (entry.part === 'numbers') {
+    const item = same(all('.help__numbers'), 'numbers', entry.key);
+    return item && item.querySelector('.help__name');
+  }
+  return null;
+}
+
+const PENDING_MS = 150;
+const SPEAK_MS = 500;
 
 export function openHelp(ctx, options) {
   const styled = loadSheet();
@@ -117,7 +163,8 @@ export function openHelp(ctx, options) {
     shortcuts: ctx.shortcuts ? ctx.shortcuts.list() : [],
     settings: ctx.store.project.settings,
   });
-  const parts = [sectionsPart(model), keysPart(model), gesturesPart(model), wordsPart(model), numbersPart(model)];
+  const titles = partTitles(model);
+  const parts = [sectionsPart(model, titles), keysPart(model, titles), gesturesPart(model, titles), wordsPart(model, titles), numbersPart(model, titles)];
   const scroller = h('div', { class: 'help__scroll', tabindex: '0', role: 'region', 'aria-label': 'Help' });
   // Buttons, not links: a link's address would change the page's hash, which
   // is how the planner moves between sections.
@@ -132,22 +179,216 @@ export function openHelp(ctx, options) {
   const here = model.current
     ? h('p', { class: 'help__lead', data: { lead: model.current.id } }, 'You are in ', name(model.current.name), '. ', model.current.purpose)
     : h('p', { class: 'help__lead' }, 'The planner has ' + model.sections.length + ' sections.');
-  scroller.append(here, jump, ...parts);
+  const bodyNodes = [here, jump, ...parts];
+  scroller.append(...bodyNodes);
+
+  // ---- Search help
+  const index = buildIndex(model);
+  const fieldId = uid('help-search');
+  const hintId = uid('help-search-hint');
+  const field = h('input', {
+    class: 'field__input help__field', id: fieldId, type: 'text', inputmode: 'search', enterkeyhint: 'search', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
+    title: 'Search help (Ctrl+F)', 'aria-describedby': hintId,
+  });
+  const back = h('button', { type: 'button', class: 'btn help__back', hidden: true }, 'Back to results');
+  const clear = h('button', { type: 'button', class: 'btn help__clear', hidden: true, 'aria-label': 'Clear search', title: 'Clear search' }, h('span', { 'aria-hidden': 'true' }, '✕'));
+  const status = h('div', { class: 'vh', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' });
+  const bar = h('div', { class: 'help__search', role: 'search' },
+    h('div', { class: 'help__label' },
+      h('label', { for: fieldId }, 'Search help'),
+      h('span', { class: 'help__hint', id: hintId }, 'Two letters or more. Escape clears the search.')),
+    h('div', { class: 'help__row' }, field, back, clear),
+    status);
+
+  let mode = 'browse';
+  let current = null;       // the search last drawn
+  let opened = null;        // the entry last opened, for Back to results
+  let typing = 0;
+  let speaking = 0;
+  let said = '';
+  let landed = null;
+  let dialog = null;
+
+  const setMode = (next) => {
+    mode = next;
+    if (dialog) dialog.element.dataset.mode = next;
+    back.hidden = next !== 'opened';
+  };
+
+  function unland() {
+    if (landed) delete landed.dataset.landed;
+    landed = null;
+  }
+
+  function showBody() {
+    unland();
+    scroller.setAttribute('aria-label', 'Help');
+    scroller.replaceChildren(...bodyNodes);
+  }
+
+  // The results, as a list of buttons in the Tab order.
+  function showResults(found) {
+    unland();
+    current = found;
+    scroller.setAttribute('aria-label', 'Search results');
+    if (found.results.length === 0) {
+      scroller.replaceChildren(h('p', { class: 'help__none' }, announcement(0, found.query)));
+    } else {
+      scroller.replaceChildren(
+        h('p', { class: 'help__count' }, announcement(found.results.length, found.query)),
+        h('ul', { class: 'help__results', on: { keydown: moveAmong } }, found.results.map((result, at) => h('li', null,
+          h('button', { type: 'button', class: 'help__result', data: { result: String(at) }, on: { click: () => open(result.entry, at) } },
+            h('span', { class: 'help__result-head' },
+              h('span', { class: 'help__result-title' }, name(result.entry.title)),
+              h('span', { class: 'help__result-section' }, result.entry.section)),
+            h('span', { class: 'help__result-text' }, result.segments.map((piece) => (piece.mark ? h('mark', null, piece.text) : piece.text))))))));
+    }
+    scroller.scrollTop = 0;
+    if (dialog) dialog.element.dataset.found = String(found.results.length);
+    setMode('results');
+  }
+
+  const resultButtons = () => Array.from(scroller.querySelectorAll('.help__result'));
+
+  // ArrowDown and ArrowUp move between results; ArrowUp from the first goes
+  // back to the field.
+  function moveAmong(event) {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const all = resultButtons();
+    const at = all.indexOf(document.activeElement);
+    if (at === -1) return;
+    event.preventDefault();
+    if (event.key === 'ArrowDown') {
+      if (at < all.length - 1) all[at + 1].focus();
+    } else if (at === 0) field.focus();
+    else all[at - 1].focus();
+  }
+
+  function open(entry, at) {
+    opened = { entry, at };
+    showBody();
+    setMode('opened');
+    const target = locate(scroller, entry);
+    if (!target) return;
+    target.setAttribute('tabindex', '-1');
+    target.dataset.landed = 'true';
+    landed = target;
+    target.scrollIntoView({ block: 'start' });
+    target.focus({ preventScroll: true });
+  }
+
+  // What the field says now: nothing under MIN_CHARS characters is searched.
+  function settle() {
+    typing = 0;
+    if (dialog) delete dialog.element.dataset.pending;
+    const found = search(index, field.value);
+    if (found.short) {
+      current = null;
+      if (mode !== 'browse') showBody();
+      if (dialog) delete dialog.element.dataset.found;
+      setMode('browse');
+      return found;
+    }
+    showResults(found);
+    return found;
+  }
+
+  // The count is spoken once for each change, after 500 ms of quiet.
+  function speak() {
+    clearTimeout(speaking);
+    speaking = setTimeout(() => {
+      const found = current;
+      const text = found ? announcement(found.results.length, found.query) : '';
+      if (text === said) return;
+      said = text;
+      status.textContent = text;
+      if (dialog) dialog.element.dataset.said = text;
+    }, SPEAK_MS);
+  }
+
+  field.addEventListener('input', () => {
+    clear.hidden = field.value === '';
+    clearTimeout(typing);
+    if (dialog) dialog.element.dataset.pending = 'true';
+    typing = setTimeout(() => {
+      settle();
+      speak();
+    }, PENDING_MS);
+  });
+
+  function clearField(focus) {
+    clearTimeout(typing);
+    field.value = '';
+    clear.hidden = true;
+    opened = null;
+    settle();
+    speak();
+    if (focus) field.focus();
+  }
+
+  field.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && field.value !== '') {
+      // clears first; closing is for the next Escape
+      event.preventDefault();
+      event.stopPropagation();
+      clearField(false);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (typing) {
+        clearTimeout(typing);
+        settle();
+        speak();
+      }
+      const first = current && current.results[0];
+      if (first) open(first.entry, 0);
+    } else if (event.key === 'ArrowDown' && mode === 'results') {
+      const all = resultButtons();
+      if (all.length > 0) {
+        event.preventDefault();
+        all[0].focus();
+      }
+    }
+  });
+  clear.addEventListener('click', () => clearField(true));
+  back.addEventListener('click', () => {
+    if (!opened) return;
+    const found = search(index, field.value);
+    if (found.short) return;
+    showResults(found);
+    const at = Math.min(opened.at, found.results.length - 1);
+    const button = resultButtons()[at];
+    if (button) button.focus();
+    else field.focus();
+  });
 
   // The class is on before the dialog is shown, so help.css lays it out as
   // it opens: openDialog's focus on Close then scrolls the body, never the
   // whole dialog, and the title stays at the top with no scroll put back by
   // hand (SV2-32b; the sheet is asked for as the page boots).
-  const dialog = ctx.openDialog({
+  dialog = ctx.openDialog({
     id: 'help-dialog',
     class: 'help',
     title: HELP_TITLE,
     opener: options.opener,
-    body: scroller,
+    body: [bar, scroller],
     buttons: [
       { label: 'Show Getting started', value: 'start' },
       { label: 'Close help', value: null },
     ],
+  });
+  dialog.element.dataset.mode = 'browse';
+  // Ctrl or ⌘ with F inside Help is Help's search, never the planner's.
+  dialog.element.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      event.stopPropagation();
+      field.focus();
+      field.select();
+    }
+  });
+  dialog.closed.then(() => {
+    clearTimeout(typing);
+    clearTimeout(speaking);
   });
   styled.then(() => {
     dialog.element.dataset.styled = 'true';
