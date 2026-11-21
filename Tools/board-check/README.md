@@ -126,6 +126,13 @@ resolver is `link-guard.mjs`, proved on fixtures every run; its `EXEMPT` table
 FAIL line. Pathfinder's campaigns and characters pages linked "Back to
 greyversusblue.com" to a `Pathfinder/index.html` that never existed (TG-60).
 
+It also fails a `Projects/` card in the root `index.html` whose page, or a script in
+its folder, holds no link that resolves to the site root: a visitor from a
+shared link needs a way back to the board (TG-97, #1084). `linksHome()` in
+`link-guard.mjs` is proved on fixtures every run; `HOME_EXEMPT` there lists
+Merchant and Schedule Visualizer 2 (their streams add their own), and an entry
+whose page now links home is a FAIL line.
+
 This is here because a game's `src/npc.js` contained JSON instead of
 JavaScript, which meant `main.js` could not `import { NPC }` and the game hung
 on its loading screen. (That was Castle Conundrum, which is its own repository
@@ -253,12 +260,14 @@ reports the sizes without writing.
 
 ### `sync-social-tags.mjs`
 
-Regenerates the favicon + Open Graph block on every page linked from the board,
+Regenerates the favicon, canonical + Open Graph block on every page linked from the board,
 taking each page's title and description from its own `<a class="notice">` in
 `index.html`. Reword a notice, re-run this, and the share card matches. Bounded by
 `<!-- gvb:social:start -->` / `<!-- gvb:social:end -->` markers, so it's
-idempotent. `npm run social:check` reports drift and exits non-zero without
-writing.
+idempotent. It also writes the root `sitemap.xml` (the board plus every onsite
+notice page, minus `noindex` ones). `npm run social:check` reports drift, a
+missing or mismatched canonical, a stale sitemap or a `robots.txt` that does not
+name it, and exits non-zero without writing.
 
 ### `ci-touched.mjs`
 
@@ -394,6 +403,8 @@ taking a new one.
 | 8179 | `Projects/golden-hour-beach/test/bar.mjs` |
 | 8178 | `Projects/Closing Time/tools/browser.mjs` |
 | 8191 | `Projects/throneshard/tools/scripts/vfx_measure.mjs` (`VFX_PORT` moves it) |
+| 8190 | `Projects/Merchant/test/journey.mjs` |
+| 8193 | `Projects/Merchant/test/layout.mjs` |
 
 8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are
 never run in the same process, and neither is in the other's CI job. It is on the

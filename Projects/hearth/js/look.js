@@ -3,6 +3,24 @@
 /* A2: the hour is a colour. The scene is multiplied by one colour that depends on the hour, the season and the weather (skyAt), and the
    lights are stamped into that colour first, so a lit window shows the true colour of what is round it. Nothing here calls R() or writes
    anything the simulation reads: it reads state, and assigns only its own variables and underscore fields. */
+/* A14: three quality tiers, chosen by measurement and never by the simulation (it must not read any of this). lookQ 2 is everything; 1 drops the shadows and the
+   rings on the water and builds the light map at half resolution; 0 is the cost the look rig started from: the hour's colour, the lights and the weather, and none of
+   the wet, the smoke or the far island's life. lookEma is a moving average of what draw() costs; over 20 ms for 2 s steps down a tier, under 10 ms for 10 s steps up one.
+   lookAuto false pins the tier, which is how a test or setLookQ holds it. Presentation only: assigns its own variables. */
+let lookQ=2,lookAuto=true,lookEma=0,lookOver=0,lookUnder=0;
+/* the tier after one frame that took ms, with dt seconds of the clock passing: st is {ema,over,under}, q the tier now. Pure but for st. */
+function lookQNext(q,st,ms,dt){
+  st.ema=st.ema?st.ema+(ms-st.ema)*.1:ms;
+  st.over=st.ema>20?st.over+dt:0;st.under=st.ema<10?st.under+dt:0;
+  if(st.over>=2&&q>0){st.over=0;st.under=0;return q-1}
+  if(st.under>=10&&q<2){st.over=0;st.under=0;return q+1}
+  return q}
+const lookSt={ema:0,over:0,under:0};
+function lookQTick(ms,dt){if(!lookAuto)return;lookQ=lookQNext(lookQ,lookSt,ms,dt);lookEma=lookSt.ema}
+function setLookQ(q){lookQ=q;lookAuto=false}
+/* A14 (speed): lookFast false draws the way draw() did before the caches (every path built each frame, the light map and the shadows blitted whole), so a test can ask whether the fast
+   frame is the same picture. Never set by the game. */
+let lookFast=true;function setLookFast(b){lookFast=b}
 const SKYH=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 /* name, what the hour is counted from (0 sunrise edge, 1 sunset edge, 2 the day itself), offset in day fractions, multiply colour */
 const SKY=[['night0',0,-.06,'#34406e'],['first',0,-.04,'#5a5f8a'],['dawn',0,.02,'#f0b292'],['morning',0,.10,'#fff0dc'],['noon',2,.5,'#ffffff'],
@@ -21,7 +39,7 @@ function skyAt(f,season,wx,snowLying){
   const w=SKYWX[wx];if(w){const y=.299*c[0]+.587*c[1]+.114*c[2];c=c.map(v=>(v+(y-v)*w[0])*w[1])}
   return c.map(v=>Math.max(0,Math.min(255,Math.round(v))))}
 /* when each of the three warm lights is lit, in the pre-rendered falloff sprites: built the first time they are wanted, never in a frame */
-const LSPR={win:'#ffd69a',fire:'#ffb45a',lamp:'#fff2b0'},LRAD=[8,18,28,46];let lightSp=null,lmCv=null,lmG=null,litHouses=new Set(),skyLum=1;
+const LSPR={win:'#ffd69a',fire:'#ffb45a',lamp:'#fff2b0'},LRAD=[8,18,28,46];let lightSp=null,lmCv=null,lmG=null,lmSolid=null,lmBase='',lmBoxes=[],litHouses=new Set(),skyLum=1;
 function lightSprites(){
   if(lightSp)return lightSp;lightSp={};
   for(const k in LSPR){const c3=SKYH(LSPR[k]);lightSp[k]={};
@@ -40,14 +58,46 @@ function houseLights(L,f,e){
     if(!evening&&!morning)return;
     if(people.some(p=>!p.dead&&p.home===h&&(p.task==='sleep'||Math.hypot(p.x-(h.x+1),p.y-(h.y+2))<2)))out.add(h)});
   return out}
-/* the light map: the hour's colour over a canvas the size of the world, the lights stamped on with lighter. Returns the canvas. */
+/* the light map: the hour's colour over a canvas the size of the world, the lights stamped on with lighter. Returns the canvas. A14: lmSolid is the colour when
+   nothing was stamped (the whole map is that one colour, and the picture multiplies by a fill instead of by a map, which costs half), and null when something was. */
+/* does the world, under the view's transform, cover every pixel of the canvas? A fill and a map agree there; where the world's edge is on the canvas an edge pixel is covered
+   by a fraction, and a fill and a blit round it differently by a level or two, so the map is blitted */
+/* a clipped blit starts its run of texels at the clip's edge instead of the canvas's, and where the step from one pixel to the next (1/vk) is not a binary fraction the two
+   runs round differently now and then (one pixel in 700,000, measured at vk .83, a level to nine off). So a clipped blit is used only where the step is exact in a float. */
+function exactStep(vk){const q=4096/vk;return q===Math.round(q)}
+function worldFills(vk){const x0=cv.width/2-camX*T*vk,y0=cv.height/2-camY*T*vk;return x0<=0&&y0<=0&&x0+W*T*vk>=cv.width&&y0+H*T*vk>=cv.height}
+/* the picture multiplies by the map. Most of the map is the hour's one colour and the lights are small, so the colour goes on as fills over everything the lights do not
+   touch and the map goes on only over boxes round the lights, in whole device pixels: the same value in every pixel, at a third of the cost of blitting all of it. Falls
+   back to the whole map when the world does not fill the canvas, when there are many boxes, or when they cover over half of it. The transform is the view's and is put back. */
+function lightMultiply(lm,vk){
+  const cw=cv.width,ch=cv.height,tx=cw/2-camX*T*vk,ty=ch/2-camY*T*vk;
+  if(!lookFast||!worldFills(vk)){g.drawImage(lm,0,0,W*T,H*T);return}
+  if(lmSolid){g.fillStyle=lmSolid;g.fillRect(0,0,W*T,H*T);return}
+  const bx=[];
+  for(let i=0;i<lmBoxes.length;i+=4){let x0=Math.max(0,Math.floor(tx+lmBoxes[i]*vk)-1),y0=Math.max(0,Math.floor(ty+lmBoxes[i+1]*vk)-1),x1=Math.min(cw,Math.ceil(tx+lmBoxes[i+2]*vk)+1),y1=Math.min(ch,Math.ceil(ty+lmBoxes[i+3]*vk)+1);
+    if(x1>x0&&y1>y0)bx.push([x0,y0,x1,y1])}
+  for(let again=true;again;){again=false; /* overlapping or touching boxes become one, so no pixel is blitted twice */
+    for(let i=0;i<bx.length&&!again;i++)for(let j=i+1;j<bx.length;j++){const a=bx[i],b=bx[j];
+      if(a[0]<=b[2]&&b[0]<=a[2]&&a[1]<=b[3]&&b[1]<=a[3]){a[0]=Math.min(a[0],b[0]);a[1]=Math.min(a[1],b[1]);a[2]=Math.max(a[2],b[2]);a[3]=Math.max(a[3],b[3]);bx.splice(j,1);again=true;break}}}
+  let area=0;for(const b of bx)area+=(b[2]-b[0])*(b[3]-b[1]);
+  if(!exactStep(vk)||bx.length>24||area>cw*ch*.5){g.drawImage(lm,0,0,W*T,H*T);return}
+  g.setTransform(1,0,0,1,0,0);g.fillStyle=lmBase;
+  const ys=[0,ch];for(const b of bx){ys.push(b[1],b[3])}ys.sort((p,q)=>p-q); /* the rest of the canvas, as bands of fills on whole pixels */
+  for(let i=0;i<ys.length-1;i++){const y0=ys[i],y1=ys[i+1];if(y1<=y0)continue;
+    const row=bx.filter(b=>b[1]<=y0&&b[3]>=y1).sort((p,q)=>p[0]-q[0]);let x=0;
+    for(const b of row){if(b[0]>x)g.fillRect(x,y0,b[0]-x,y1-y0);x=Math.max(x,b[2])}
+    if(x<cw)g.fillRect(x,y0,cw-x,y1-y0)}
+  g.save();g.beginPath();for(const b of bx)g.rect(b[0],b[1],b[2]-b[0],b[3]-b[1]);g.clip(); /* the map itself goes through the same transform as before, clipped to the boxes: the same texel in every pixel */
+  g.setTransform(vk,0,0,vk,tx,ty);g.drawImage(lm,0,0,W*T,H*T);g.restore();g.setTransform(vk,0,0,vk,tx,ty)}
 function lightMap(L,f,e,s){
-  if(!lmCv){lmCv=document.createElement('canvas');lmCv.width=W*T;lmCv.height=H*T;lmG=lmCv.getContext('2d')}
-  const m=lmG,c=skyAt(f,s,wx,snowD),k=flash,fk=1+.5*Math.min(1,fogA),fd=Math.min(1,fogA)*.6; /* A7: fog takes the colour out of the map and swells every light */
+  const lsc=lookQ<2?.5:1; /* A14: below tier 2 the map is built at half size and the picture stretches it back */
+  if(!lmCv){lmCv=document.createElement('canvas');lmG=lmCv.getContext('2d')}
+  if(lmCv.width!==W*T*lsc){lmCv.width=W*T*lsc;lmCv.height=H*T*lsc}
+  const m=lmG;m.setTransform(lsc,0,0,lsc,0,0);const c=skyAt(f,s,wx,snowD),k=flash,fk=1+.5*Math.min(1,fogA),fd=Math.min(1,fogA)*.6; /* A7: fog takes the colour out of the map and swells every light */
   if(fd>0){const y=.299*c[0]+.587*c[1]+.114*c[2];for(let q=0;q<3;q++)c[q]=Math.round(c[q]+(y-c[q])*fd)}skyLum=Math.min(1,(.299*c[0]+.587*c[1]+.114*c[2])/255+k);
   m.globalCompositeOperation='source-over';
-  m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);
-  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{m.globalAlpha=a;m.drawImage(sp[kind][r],Math.round(x-r*fk),Math.round(y-r*fk),Math.round(r*2*fk),Math.round(r*2*fk));m.globalAlpha=1};
+  m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);lmSolid=lmBase=m.fillStyle;lmBoxes.length=0;
+  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{lmSolid=null;const bx=Math.round(x-r*fk),by=Math.round(y-r*fk),bs=Math.round(r*2*fk);lmBoxes.push(bx,by,bx+bs,by+bs);m.globalAlpha=a;m.drawImage(sp[kind][r],bx,by,bs,bs);m.globalAlpha=1};
   m.globalCompositeOperation='lighter';
   const dark=1-L;
   if(L<.7)stamp('fire',46,center.x*T,center.y*T-2,Math.min(1,(.7-L)/.4));
@@ -55,10 +105,10 @@ function lightMap(L,f,e,s){
   const hall=getB('hall');
   if(hall&&L<.5&&(storyDay===dayCount||people.some(p=>p.task==='abed'&&p.abedH)))stamp('win',28,hall.x*T+8,hall.y*T+10,1);
   const lh=getB('light');
-  if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=animT*.9,al=(dark-.35)*.5*(wx==='fog'?1.6:1);stamp('lamp',18,lx,ly,Math.min(1,(dark-.35)*3));
-    m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
+  if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=RM?.6:animT*.9,al=(dark-.35)*.5*(wx==='fog'?1.6:1);stamp('lamp',18,lx,ly,Math.min(1,(dark-.35)*3));
+    lmSolid=null;lmBoxes.push(lx-121,ly-121,lx+121,ly+121);m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
   for(const q of farLamps(L,f,e))stamp('lamp',8,q.x,q.y,q.a); /* B5: one for each person over there, until the small hours */
-  for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
+  for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;lmSolid=null;lmBoxes.push(Math.round(fl.x*T-1)-1,Math.round(fl.y*T-3)-1,Math.round(fl.x*T-1)+4,Math.round(fl.y*T-3)+4);m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
   if(dark>.65&&speed<FAST)for(const p of people){if(p.dead||p.inside||p.task!=='gohome'&&p.task!=='nurse'&&p.task!=='visit'&&p.task!=='voyage')continue;stamp('fire',8,p.x*T,p.y*T-3,Math.min(1,(dark-.65)*4))}
   m.globalCompositeOperation='source-over';
   return lmCv}
@@ -72,13 +122,29 @@ function sunAt(f,season,wx){
   return{dir,len,str:wx==='clear'?.28*fade:0}}
 /* shadows: the things that do not move go on a world-sized canvas once per change of sun (black, opaque, so two shadows that overlap are not twice as
    dark) and it is laid over the ground at the sun's strength; people, who move, are three-by-one marks put straight on the picture. */
-let shCv=null,shG=null,shKey='';const SILS={};
+let shCv=null,shG=null,shKey='',shBoxes=null;const SILS={};
 function silhouette(name){
   if(SILS[name])return SILS[name];const f=BSHEET.frames[name],cv2=document.createElement('canvas');cv2.width=f.w;cv2.height=f.h;
   const c=cv2.getContext('2d');c.drawImage(BIMG,f.x,f.y,f.w,f.h,0,0,f.w,f.h);c.globalCompositeOperation='source-in';c.fillStyle='#000';c.fillRect(0,0,f.w,f.h);
   let top=0;try{const d=c.getImageData(0,0,f.w,f.h).data;top=f.h;for(let i=3;i<d.length;i+=4)if(d[i]>0){top=Math.floor(i/4/f.w);break}}catch(e){top=0} /* the first row with anything in it: the height a shadow is measured from */
   cv2.top=top;return SILS[name]=cv2}
 const SHADOW_FRAME={hut:'hut',well:'well',market:'market',mill:'mill',smoke:'smoke',hall:'hall',light:'light'};
+/* A14 (speed): the shadow canvas is 3 to 9 per cent ink and a blit of it all costs what a blit of anything the size of the screen costs. When it is rebuilt, the boxes that hold
+   its ink are found (8 px cells, a margin of empty cells round each box, overlapping boxes made one so nothing is drawn twice), and a frame blits only those, at the same
+   world coordinates under the same transform: every pixel is sampled from the same texel, and what is left out is transparent. null (blit it all) if the canvas cannot be read. */
+function shadowBoxes(m){
+  let d;try{d=m.getImageData(0,0,W*T,H*T).data}catch(e){return null}
+  const C=8,cw=(W*T/C)|0,ch=(H*T/C)|0,occ=new Uint8Array(cw*ch);
+  for(let y=0;y<H*T;y++)for(let x=0;x<W*T;x++)if(d[(y*W*T+x)*4+3])occ[((y/C)|0)*cw+((x/C)|0)]=1;
+  const seen=new Uint8Array(cw*ch),out=[];
+  for(let i=0;i<occ.length;i++){if(!occ[i]||seen[i])continue;let x0=cw,y0=ch,x1=-1,y1=-1;const st=[i];seen[i]=1;
+    while(st.length){const c=st.pop(),cx=c%cw,cy=(c/cw)|0;if(cx<x0)x0=cx;if(cx>x1)x1=cx;if(cy<y0)y0=cy;if(cy>y1)y1=cy;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=cw||ny>=ch)continue;const n=ny*cw+nx;if(occ[n]&&!seen[n]){seen[n]=1;st.push(n)}}}
+    out.push([Math.max(0,(x0-1)*C),Math.max(0,(y0-1)*C),Math.min(W*T,(x1+2)*C),Math.min(H*T,(y1+2)*C)])}
+  for(let again=true;again;){again=false;
+    for(let i=0;i<out.length&&!again;i++)for(let j=i+1;j<out.length;j++){const a=out[i],b=out[j];
+      if(a[0]<b[2]&&b[0]<a[2]&&a[1]<b[3]&&b[1]<a[3]){a[0]=Math.min(a[0],b[0]);a[1]=Math.min(a[1],b[1]);a[2]=Math.max(a[2],b[2]);a[3]=Math.max(a[3],b[3]);out.splice(j,1);again=true;break}}}
+  return out}
 function drawShadows(){
   if(typeof lookQ!=='undefined'&&lookQ<2)return;
   const sun=sunAt(dayFrac(),sea(),wx);if(sun.str<=.005)return;
@@ -98,8 +164,12 @@ function drawShadows(){
       if(ls>1){const e=off<0?x-ls:x1+ls,a=off<0?x1:x;m.beginPath();m.moveTo(a,fy-dp);m.lineTo(e,fy-dp*.85);m.lineTo(e,fy-dp*.15);m.lineTo(a,fy);m.fill()}};
     for(const h of houses)cast(roofFrame(h.r),h.x*T,h.y*T,h.y*T+2*T,2);
     for(const b of bl)if(b.done&&SHADOW_FRAME[b.kind])cast(SHADOW_FRAME[b.kind],b.x*T,b.y*T,(b.y+b.h)*T,b.w);
-    m.setTransform(1,0,0,1,0,0)}
-  g.globalAlpha=sun.str;g.drawImage(shCv,0,0);
+    m.setTransform(1,0,0,1,0,0);shBoxes=shadowBoxes(m)}
+  g.globalAlpha=sun.str;
+  if(shBoxes&&lookFast&&exactStep(vScale())){const vk=vScale(),tx=cv.width/2-camX*T*vk,ty=cv.height/2-camY*T*vk;
+    g.save();g.setTransform(1,0,0,1,0,0);g.beginPath(); /* the clip is in whole device pixels, so its edge is not a fraction of one */
+    for(const b of shBoxes){const x0=Math.floor(tx+b[0]*vk),y0=Math.floor(ty+b[1]*vk);g.rect(x0,y0,Math.ceil(tx+b[2]*vk)-x0,Math.ceil(ty+b[3]*vk)-y0)}
+    g.clip();g.setTransform(vk,0,0,vk,tx,ty);g.drawImage(shCv,0,0);g.restore();g.setTransform(vk,0,0,vk,tx,ty)}else g.drawImage(shCv,0,0);
   g.fillStyle='#000';for(const p of people){if(p.dead||p.inside||p.inBoat)continue;g.fillRect(Math.round(p.x*T+off*1.2)-1,Math.round(p.y*T),3,1)}
   g.globalAlpha=1}
 /* A6: weather that lands. The rain is not only streaks over the picture: it rings the water, it darkens the ground and the ground keeps it a while, it
@@ -116,14 +186,15 @@ function drawWet(){
     if(wetKey!==tiles){wetKey=tiles;if(!wetCv){wetCv=document.createElement('canvas');wetCv.width=W*T;wetCv.height=H*T}
       const m=wetCv.getContext('2d');m.clearRect(0,0,W*T,H*T);m.fillStyle=WETC;
       for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(tiles[idx(x,y)]!==WATER)m.fillRect(x*T,y*T,T,T)}
+    if(lookQ<1)return; /* A14: tier 0 has no wet land and no puddles */
     g.globalCompositeOperation='multiply';g.globalAlpha=wetA;g.drawImage(wetCv,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';
     /* puddles: thirty road tiles, fixed for the island, each with a pale glint that comes and goes */
     const pk=seed+'|'+roadV;
     if(puddleKey!==pk){puddleKey=pk;puddles=[];const rd=[];for(let i=0;i<W*H;i++)if(road[i]===1)rd.push(i);
       const r=mulberry(seed^0x5ad1e);for(let i=rd.length-1;i>0;i--){const j=(r()*(i+1))|0,t=rd[i];rd[i]=rd[j];rd[j]=t}
       for(const i of rd.slice(0,30))puddles.push({x:(i%W)*T+((r()*4)|0),y:((i/W)|0)*T+1+((r()*5)|0),ph:r()*6.283})}
-    if(wetA>.25)for(const p of puddles){const a=wetA*(.3+.3*Math.sin(animT*1.6+p.ph));g.fillStyle=`rgba(214,230,250,${a.toFixed(2)})`;g.fillRect(p.x,p.y,3,1);g.fillRect(p.x+1,p.y+1,2,1)}}
-  if(rain)drawSplashes()}
+    if(wetA>.25)for(const p of puddles){const a=wetA*(.3+.3*(RM?0:Math.sin(animT*1.6+p.ph)));g.fillStyle=`rgba(214,230,250,${a.toFixed(2)})`;g.fillRect(p.x,p.y,3,1);g.fillRect(p.x+1,p.y+1,2,1)}}
+  if(rain&&lookQ>=2)drawSplashes()}
 /* rings on open water, only in view: up to sixty (forty in plain rain, half that under reduced motion) from a stream that is reseeded every quarter second,
    each growing through three frames, 2 then 3 then 4 px, in that quarter second */
 function drawSplashes(){
@@ -149,7 +220,7 @@ function roofEdge(name){
     for(let i=0;i<sl.width;i++)for(let j=0;j<sl.height;j++)if(d[(j*sl.width+i)*4+3]>0){pts.push([i,j]);break}}catch(e){}
   return ROOFPTS[name]=pts}
 function drawRoofWet(){
-  if(wetA<.02||typeof BSHEET==='undefined')return;
+  if(wetA<.02||lookQ<1||typeof BSHEET==='undefined')return;
   g.fillStyle=`rgba(234,243,255,${(.65*wetA).toFixed(2)})`;
   for(const h of houses){const name=roofFrame(h.r),f=BSHEET.frames[name];if(!f)continue;const ox=h.x*T-f.ax,oy=h.y*T-f.ay;for(const p of roofEdge(name))g.fillRect(ox+p[0],oy+p[1],1,1)}}
 /* A7: weather that lands, the cold half. Fog has depth (look.js: the light map loses colour and its lights swell; render.js: a ring of fog that is thickest at the
@@ -166,11 +237,11 @@ function houseOccupied(h){return people.some(p=>!p.dead&&(p.inside&&p.shelterH==
 function smokeColumn(x,y,n,k,col,wk,dir){
   const storm2=wk>=2,rise=storm2?11:wk>=1.3?15:24,lean=wk*(storm2?9:5);
   g.fillStyle=col;
-  for(let i=0;i<n;i++){const t=(animT*.3+i/n+k)%1,sw=Math.round(Math.sin(animT*.8+i*1.9+k*9)*(.4+wk*.5)),sz=t>(storm2?.3:.7)?2:1;
+  for(let i=0;i<n;i++){const t=(animT*.3+i/n+k)%1,sw=RM?0:Math.round(Math.sin(animT*.8+i*1.9+k*9)*(.4+wk*.5)),sz=t>(storm2?.3:.7)?2:1;
     g.globalAlpha=.9*(1-t*.75);g.fillRect(Math.round(x+dir*t*t*lean+sw),Math.round(y-t*rise),sz,sz)}
   g.globalAlpha=1}
 function drawSmoke(L,s){
-  if(speed>=FAST||lookOff.smoke)return;
+  if(speed>=FAST||lookOff.smoke||lookQ<1)return;
   const wk=WINDK[wx]||1,dir=wind<0?-1:1,dark=L<.5,col=dark?SMOKEC.night:SMOKEC.day,n0=RM?5:8;
   if(s==='winter'||dark&&s!=='summer')houses.forEach((h,i)=>{if(houseOccupied(h))smokeColumn(h.x*T+12,h.y*T+1,5+((i*3+h.x)%4)*(n0-5)/3|0,i*.37,col,wk,dir)});
   const sm=getB('smoke');if(sm&&sm.done)smokeColumn(sm.x*T+13,sm.y*T+1,n0-1,.5,col,wk,dir);
@@ -189,7 +260,7 @@ function eavePts(name){
     for(let i=0;i<sl.width;i++)for(let j=sl.height-1;j>=0;j--)if(d[(j*sl.width+i)*4+3]>0){pts.push([i,j]);break}}catch(e){}
   return EAVEPTS[name]=pts}
 /* while the snow is going (it is not snowing, it lies under .3 and there is some; the cap is under .5 there, so the light frame, A10), six white pixels per roof slide off the south eave and drop three */
-function snowSheds(){return !lookOff.shed&&wx!=='snow'&&snowD>.01&&snowD<.3&&typeof BSHEET!=='undefined'&&!!BSHEET.frames['house-snow1']}
+function snowSheds(){return !lookOff.shed&&lookQ>=1&&wx!=='snow'&&snowD>.01&&snowD<.3&&typeof BSHEET!=='undefined'&&!!BSHEET.frames['house-snow1']}
 function drawRoofSlide(h,x,y){
   const f=BSHEET.frames['house-snow1'],pts=eavePts('house-snow1');if(!pts.length)return;
   const r=mulberry(h.x*131+h.y*7+seed),ox=x-f.ax,oy=y-f.ay;g.fillStyle='#f4f8ff';
@@ -227,12 +298,12 @@ function farLamps(L,f,e){
   return out}
 /* by day: a pale thread of smoke over each lamp's place, and a sail for each crossing of the last two days */
 function drawFarLife(L){
-  if(!farIsle||!farRec||!farRec.kn||fogA>=.9)return;
+  if(!farIsle||!farRec||!farRec.kn||fogA>=.9||lookQ<1)return;
   const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,wxk=Math.max(0,1-fogA*1.5)*(rain||wx==='snow'||wx==='thunder'?.5:wx==='overcast'?.8:1);
   if(wxk<=.02)return;
   const n=Math.min(6,farPeople()),rr=mulberry(farRec.s^0xB5);
   if(n>0&&L>=.5){g.fillStyle='#dbe2ea';
-    for(let i=0;i<n;i++){const u=.16+.68*rr(),bx=Math.round(x0+u*w),by=Math.round(farEdgeY(u,h))-1,sw=Math.sin(animT*.7+i*1.9);
+    for(let i=0;i<n;i++){const u=.16+.68*rr(),bx=Math.round(x0+u*w),by=Math.round(farEdgeY(u,h))-1,sw=RM?0:Math.sin(animT*.7+i*1.9);
       for(let k=1;k<=5;k++){g.globalAlpha=(.34-k*.05)*wxk;g.fillRect(bx+Math.round(sw*k*.5),by-k,1,1)}}
     g.globalAlpha=1}
   let ln=null;for(const l of landings)if(!ln||Math.abs(l.x-(fi.x+fi.w/2))<Math.abs(ln.x-(fi.x+fi.w/2)))ln=l;
@@ -240,3 +311,27 @@ function drawFarLife(L){
   for(const c of farRec.cr){if(c.k==='name'||dayCount-c.d>=2)continue;
     const s2=mulberry(farRec.s^c.d*131),sx=x0+w/2+side*w*(.5+s2()*.25),sy=Math.round(h*2.3+s2()*3);
     g.globalAlpha=.85*wxk;g.fillStyle='#ece8dc';g.fillRect(Math.round(sx),sy-2,1,2);g.fillRect(Math.round(sx)+1,sy-1,1,1);g.fillStyle='#5a4a3a';g.fillRect(Math.round(sx)-1,sy,3,1);g.globalAlpha=1}}
+/* A14 (speed): a bare winter tree is about thirty one-pixel rects, 240 trees a frame, and building that path rect by rect cost more than filling it. The outline
+   depends on five things only (the tier, the wind's pixel, the radius, the shape, and where the tree stands), so it is built once as a Path2D, kept on the tree in
+   underscore fields (presentation reads the tree and writes only those), and rebuilt when one of the five moves. Runs of pixels are one rect: the same pixels
+   as before, the same fill rule, one path. Reads trees, draws nothing, never calls R(). */
+function pxLine(p,x0,y0,x1,y1){const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0,m=n||1;
+  for(let i=0;i<=n;i++)p.rect(Math.round(x0+(x1-x0)*i/m),Math.round(y0+(y1-y0)*i/m),1,1)}
+function bareTree(t,r,sh,sx,tips){
+  if(lookFast&&t._bq===lookQ&&t._bsx===sx&&t._br===r&&t._bsh===sh&&t._bx===t.x&&t._by===t.y)return t;
+  const tx0=t.x*T,by=t.y*T,cx=tx0+sx,fy=by-r*.9,p=new Path2D(),sn=new Path2D();
+  p.rect(tx0-1,by-r*1.0,2,r*1.3);
+  for(const [tx,ty] of tips){const ex=Math.round(cx+tx*r),ey=Math.round(by+ty*r);
+    if(lookQ<1){p.rect(ex,ey,1,1);p.rect((tx0+ex)>>1,(fy+ey)/2|0,1,1);continue}
+    pxLine(p,tx0,fy,ex,ey);if(lookQ>=2)pxLine(p,(tx0+ex)/2,(fy+ey)/2,(tx0+ex)/2+(tx<0?-.4:.4)*r,(fy+ey)/2-.35*r)}
+  for(const [tx,ty] of tips)sn.rect(Math.round(cx+tx*r)-1,Math.round(by+ty*r)-1,3,1);
+  sn.rect(Math.round(tx0)-1,Math.round(fy)-1,3,1);
+  t._bq=lookQ;t._bsx=sx;t._br=r;t._bsh=sh;t._bx=t.x;t._by=t.y;t._bp=p;t._bs=sn;return t}
+/* A14 (speed): a leafy tree's two canopy shapes, kept the same way as the bare tree's outline (the tier, the wind's pixel, the radius, the shape and where it stands). */
+function leafTree(t,r,sh,sx){
+  if(lookFast&&t._lq===lookQ&&t._lsx===sx&&t._lr===r&&t._lsh===sh&&t._lx===t.x&&t._ly===t.y)return t;
+  const cx=t.x*T+sx,by=t.y*T,p0=new Path2D(),p1=lookQ>=2?new Path2D():null;
+  if(sh===0){p0.arc(cx,by-r,r,0,6.283);if(p1)p1.arc(cx-r*.3,by-r*1.2,r*.6,0,6.283)}
+  else if(sh===1){p0.ellipse(cx,by-r*1.3,r*.62,r*1.2,0,0,6.283);if(p1)p1.ellipse(cx-r*.2,by-r*1.6,r*.36,r*.7,0,0,6.283)}
+  else{p0.ellipse(cx,by-r*.9,r*1.35,r*.85,0,0,6.283);if(p1)p1.ellipse(cx-r*.35,by-r*1.1,r*.8,r*.5,0,0,6.283)}
+  t._lq=lookQ;t._lsx=sx;t._lr=r;t._lsh=sh;t._lx=t.x;t._ly=t.y;t._lp0=p0;t._lp1=p1;return t}

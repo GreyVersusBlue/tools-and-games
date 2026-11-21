@@ -130,13 +130,16 @@
   #pa p{font:400 14px/1.4 Helvetica,Arial,sans-serif}
 
   /* ---------- screens ---------- */
-  .screen{position:fixed;inset:0;background:#141610;display:flex;align-items:center;justify-content:center;
+  .screen{position:fixed;inset:0;background:#141610;display:flex;align-items:safe center;justify-content:center;
     z-index:30;padding:24px;overflow:auto}
   .card{background:var(--manila);max-width:620px;width:100%;border:1px solid #A2977A;
     box-shadow:0 10px 0 rgba(0,0,0,.5)}
   .card .top{border-bottom:3px solid var(--rule);padding:20px 26px 16px}
   .card h1{font:700 34px/.95 "Arial Narrow",Arial,sans-serif;letter-spacing:.02em;text-transform:uppercase}
   .card .sub{font:400 11px/1.5 "SFMono-Regular",Consolas,monospace;color:#6B6455;margin-top:6px}
+  /* TG-101: a phone or tablet is told once, on the start card. Not a touch layer (#940): it adds no input. */
+  .touch-note{display:none;font:600 12px/1.4 "SFMono-Regular",Consolas,monospace;color:#7A4A10;margin-top:6px}
+  @media (pointer:coarse){.touch-note{display:block}}
   .card .body{padding:18px 26px 24px}
   .card p{font:400 13px/1.6 Helvetica,Arial,sans-serif;margin-bottom:11px}
   .card .keys{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:14px 0 18px;
@@ -297,6 +300,11 @@
 
 /* ---------- Phase 3: the semester ---------- */
 .card .startover{margin-left:12px;opacity:.7}
+/* TG-97: the way back to the board; ink on manila, 44px tall, below the buttons so nothing moves. */
+.card .homelink{display:inline-flex;align-items:center;min-height:44px;margin-left:12px;padding:0 6px;color:var(--ink);
+  font:700 11px/1 "Arial Narrow",Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;text-decoration:underline;text-underline-offset:3px}
+.card .homelink:hover{color:var(--rule)}
+.card .homelink:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .card .startover:hover{opacity:1}
 .rubricline.weekhead{border-bottom:1px solid var(--ink);opacity:.7}
 

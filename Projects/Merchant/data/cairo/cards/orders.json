@@ -1,0 +1,1353 @@
+[
+  {
+    "id": "first-expedition",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf is ready to go",
+    "body": "Yusuf has packed for the road. He says linen sells for more in Damascus, where the weavers want good plain cloth. He asks to take ten loads of your linen. The caravan, the group of travellers he will join, charges a fee for a place in the line.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "go",
+        "ui": "outfit-first",
+        "label": "Send Yusuf with ten loads of linen",
+        "hint": "Damascus may pay more than Cairo does.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Not this season",
+        "hint": "Nothing now. Yusuf will be disappointed.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Cairo's merchants sent goods by river, desert road and sea. They had long used agents to buy and sell for them in other towns.",
+    "unlocks": [
+      "term-load",
+      "term-caravan"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 41 to 59 and p. 80 n. 48; Cairo, the Nile boats and the caravan to Damascus"
+      },
+      {
+        "src": "goitein-1973",
+        "at": "the Geniza letters, mostly 950 to 1250: agents writing home"
+      }
+    ]
+  },
+  {
+    "id": "linen-neighbour",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Abu Bakr, your neighbour",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A neighbour wants your linen",
+    "body": "Abu Bakr makes sails and needs cloth today. He offers Cairo's price for ten loads of your linen. He will pay in coin at once.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell them now",
+        "requires": {
+          "stock": "linen",
+          "gte": 10
+        },
+        "hint": "Abu Bakr will remember a good neighbour.",
+        "now": [
+          {
+            "money": 450
+          },
+          {
+            "stock": "linen",
+            "by": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "abu-bakr-again"
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep them for the next trip",
+        "requires": {
+          "stock": "linen",
+          "gte": 10
+        },
+        "hint": "Nothing now. Far away they may sell for 20 dinars more.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gone",
+        "label": "Say no, and thank him",
+        "hint": "He will think well of a polite answer.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ]
+      }
+    ],
+    "note": "Egyptian linen was woven for export. Ports across the Mediterranean paid more for it than Cairo did, though how much more is a guess.",
+    "unlocks": [
+      "term-load",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "walker-2000",
+        "at": "the direction of the price gap only"
+      },
+      {
+        "src": "ashtor-1976",
+        "at": "the direction of the price gap only"
+      }
+    ],
+    "when": {
+      "stock": "linen",
+      "gte": 10
+    }
+  },
+  {
+    "id": "silk-order",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Nabil, the broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "One load of silk by spring",
+    "body": "Nabil is a broker, a go-between who finds buyers. He knows a rich family that wants one load of silk before spring. They will pay well, but you have no silk.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "summer",
+            "autumn"
+          ]
+        },
+        {
+          "notebook": "term-load"
+        },
+        {
+          "flag": "silk-order-done",
+          "not": true
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "agree",
+        "label": "Send to Damascus for the silk",
+        "hint": "The family may come back.",
+        "requires": {
+          "money": {
+            "gte": 410
+          }
+        },
+        "now": [
+          {
+            "money": -410
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ],
+            "card": "silk-order-due"
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Say no politely",
+        "hint": "Nabil trusts you a little less.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "flag": "silk-order-done",
+                "set": "now"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1326 the sultan owned a silk funduq in Alexandria. A funduq was a warehouse and inn for merchants.",
+    "unlocks": [
+      "term-broker"
+    ],
+    "sources": [
+      {
+        "src": "christie-2004",
+        "at": "the property list of 16 April 1326"
+      },
+      {
+        "src": "agir-2017",
+        "at": "Background n. 17; qaysariyya, funduq, khan and wikala as one type of building"
+      }
+    ]
+  },
+  {
+    "id": "sugar-pots",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Amina, a sugar maker",
+      "role": "Fustat",
+      "seal": null
+    },
+    "title": "Amina needs money for fuel",
+    "body": "Amina runs a sugar refinery in Fustat. She needs money now for fuel and cane. She will sell you three loads of sugar for 140 dinars if you pay today.",
+    "when": {
+      "all": [
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy three loads of her sugar",
+        "hint": "Sugar keeps well. The price may rise.",
+        "requires": {
+          "money": {
+            "gte": 140
+          }
+        },
+        "now": [
+          {
+            "money": -140
+          },
+          {
+            "stock": "sugar",
+            "by": 3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "amina-thanks"
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Wish her luck and pass",
+        "hint": "Your 140 dinars go into your own goods. Amina will find another buyer.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 25
+              }
+            ]
+          },
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In about 1400 a writer in Cairo counted 65 places that refined sugar in Fustat. Thirteen belonged to merchants.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 149; the count of Ibn Duqmaq, who died in 1406"
+      }
+    ]
+  },
+  {
+    "id": "shared-stay",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Khalid, a spice merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Share a funduq",
+    "body": "Khalid is one of the Karimi, a loose group of great spice merchants. He and his friends are building a funduq, a warehouse and inn for merchants, in a port on the spice road. He offers your house a share of the rooms for one trip.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Take a share of the rooms",
+        "hint": "You share the costs, and the news.",
+        "requires": {
+          "money": {
+            "gte": 80
+          }
+        },
+        "now": [
+          {
+            "money": -80
+          },
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "card": "khalid-news"
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Keep your own lodging",
+        "hint": "You pay no share, and you hear less.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The Karimi were a loose group of spice merchants. Now and then they built funduqs together, for shared use.",
+    "unlocks": [
+      "person-karimi",
+      "term-caravanserai"
+    ],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "pp. 149 and 150; the loose confederation and the funduqs built for common purposes"
+      }
+    ]
+  },
+  {
+    "id": "broker-bales",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Salih, a broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Salih will buy the linen",
+    "body": "Salih is a broker, a go-between who finds goods and buyers. He knows a grower with six loads of linen to sell. He offers to buy all of it for your house while you stay at your desk.",
+    "when": {
+      "notebook": "term-load"
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "alone",
+        "label": "Let Salih buy it alone",
+        "hint": "It is quick, but some bales may be poor.",
+        "requires": {
+          "money": {
+            "gte": 180
+          }
+        },
+        "now": [
+          {
+            "money": -180
+          },
+          {
+            "stock": "linen",
+            "by": 6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "bales-middling"
+          }
+        ]
+      },
+      {
+        "id": "look",
+        "label": "Go with him and look at every bale",
+        "hint": "It costs a day, and you get good linen.",
+        "requires": {
+          "money": {
+            "gte": 170
+          }
+        },
+        "now": [
+          {
+            "money": -170
+          },
+          {
+            "stock": "linen",
+            "by": 5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Not this time",
+        "hint": "Salih will look for another buyer.",
+        "now": [
+          {
+            "flag": "broker-bales-passed",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "A Geniza letter asked a merchant in a flax town to watch a broker. Flax is the plant that linen is made from. He was not to let the broker buy middling flax for the writer. He was also not to pay the broker in debased coins, so the broker would not turn against the writer.",
+    "unlocks": [
+      "term-broker",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "udovitch-1999",
+        "at": "pp. 278 to 279; the broker, the middling flax and the debased dinars"
+      }
+    ]
+  },
+  {
+    "id": "yusuf-carries-cloth",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Rizq, a draper",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Rizq has a job for Yusuf",
+    "body": "Rizq is a draper, a cloth seller. He asks Yusuf to take a bundle of fine cloth to {to} and sell it. For this special job he will pay a fee of 30 dinars. He pays it to the house, but the job is Yusuf's.",
+    "when": {
+      "all": [
+        {
+          "trip": {
+            "agent": "yusuf",
+            "is": "ready"
+          }
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "his-fee",
+        "label": "Tell Rizq the fee is Yusuf's",
+        "hint": "You gain nothing. Yusuf will feel it.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "split",
+        "label": "Split the fee with Yusuf",
+        "hint": "You gain 15 dinars now. Yusuf is content.",
+        "now": [
+          {
+            "money": 15
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep the whole fee for the house",
+        "hint": "You gain 30 dinars. Yusuf will know.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": -1
+          },
+          {
+            "memory": "yusuf",
+            "kind": "unfair"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ],
+            "card": "yusuf-asks-in-writing"
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers an agent who did a special job was paid a commission, a fee for that job alone. It did not pay for the friendship.",
+    "unlocks": [
+      "term-agent-pay",
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the commission paid for a special service, not for the relationship"
+      }
+    ]
+  },
+  {
+    "id": "cloth-for-the-east",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Wadud, a cloth dealer",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Wadud wants linen for the east",
+    "body": "Wadud sells cloth to merchants who ship it far to the east. He has heard that your house keeps its word. He asks for four loads of linen from your warehouse. He offers 200 dinars, or he will take two loads now and ask for more later.",
+    "when": {
+      "all": [
+        {
+          "rep": "partners",
+          "gte": 1
+        },
+        {
+          "notebook": "term-load"
+        },
+        {
+          "stock": "linen",
+          "gte": 2
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "four",
+        "label": "Sell him four loads",
+        "hint": "He pays at once. He will tell others.",
+        "requires": {
+          "stock": "linen",
+          "gte": 4
+        },
+        "now": [
+          {
+            "stock": "linen",
+            "by": -4
+          },
+          {
+            "money": 200
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "two",
+        "label": "Sell him two loads",
+        "hint": "You keep the rest of your linen. He comes back for more and pays 20 more.",
+        "requires": {
+          "stock": "linen",
+          "gte": 2
+        },
+        "now": [
+          {
+            "stock": "linen",
+            "by": -2
+          },
+          {
+            "money": 100
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep the linen for your own trips",
+        "hint": "Wadud will buy from someone else.",
+        "now": [
+          {
+            "flag": "wadud-passed",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "A historian of Mamluk cloth writes that cloth and metalwork were the largest Mamluk exports to the Far East. This was from the 1200s to the 1400s. She takes it from two earlier writers. She does not say which cloths.",
+    "unlocks": [
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "walker-2000",
+        "at": "p. 168, citing Mackie 1984 and Bloom 1999; Mamluk fabrics and metalwork among the largest exports to the Far East"
+      }
+    ]
+  },
+  {
+    "id": "samir-comes-home",
+    "group": "orders",
+    "kind": "people",
+    "from": {
+      "name": "Samir, your agent",
+      "role": "Cairo",
+      "seal": "seal-3"
+    },
+    "title": "Samir is home from {to}",
+    "body": "Samir carried {good} for you and kept his share, as agreed. Now he asks to go again.",
+    "when": {
+      "all": [
+        {
+          "trip": {
+            "agent": "samir",
+            "is": "home"
+          }
+        },
+        {
+          "notebook": "term-qirad"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "same",
+        "label": "Send him again on the same terms",
+        "hint": "He keeps a third. The next sheet shows the cost.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": 1
+          },
+          {
+            "outfit": "samir",
+            "contract": "qirad"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "more",
+        "label": "Give him a bonus of 30 dinars first",
+        "hint": "It costs 30 dinars. He will be loyal.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          },
+          {
+            "trust": "samir",
+            "by": 2
+          },
+          {
+            "outfit": "samir",
+            "contract": "qirad"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rest",
+        "label": "Let him rest a season",
+        "hint": "He is glad of it. He can go out later.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": 2
+          }
+        ]
+      }
+    ],
+    "note": "In the contracts Goitein read, the traveller's share was normally one third.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's smaller share, normally one third"
+      }
+    ]
+  },
+  {
+    "id": "yusuf-aleppo",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf is home with news",
+    "body": "Yusuf is home from {to}. You let him go further if the price was better. He says a merchant from Persia heard of your house on the road and wants to deal with it.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "meet",
+        "label": "Meet the Persian merchant",
+        "hint": "It costs a gift. It may pay.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 80
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Turn him down",
+        "hint": "Yusuf will be glad of a safe road.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 71 n. 1, pp. 71 to 72, and p. 118 n. 182; the stations in the sands of Sinai, and the days counted by Gibb from the dates"
+      }
+    ],
+    "when": {
+      "all": [
+        {
+          "trip": {
+            "agent": "yusuf",
+            "is": "home"
+          }
+        },
+        {
+          "flag": "yusuf-widened"
+        }
+      ]
+    }
+  },
+  {
+    "id": "broker-pepper-damascus",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Zayd, a broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Pepper is dear in Damascus",
+    "body": "Zayd is a broker, a go-between who finds goods and buyers. He says pepper sells for far more in Damascus than in Cairo. It comes up from Aden by the Red Sea. He has two loads to sell you at today's price.",
+    "when": {
+      "notebook": "term-load"
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy two loads of pepper",
+        "hint": "It costs 250 dinars. Sending it to Damascus is up to you.",
+        "requires": {
+          "money": {
+            "gte": 250
+          }
+        },
+        "now": [
+          {
+            "money": -250
+          },
+          {
+            "stock": "pepper",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "watch",
+        "label": "Pay Zayd to watch Damascus",
+        "hint": "It costs 10 dinars. He writes to you when the price moves.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Not now",
+        "hint": "Zayd will find another buyer.",
+        "now": [
+          {
+            "flag": "zayd-pepper-passed",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "The Karimi merchants brought spices from Aden to Cairo, Alexandria and Damascus. A lawsuit of 1097 to 1098 tells of a merchant in Fustat. He had told his agent to hand half the goods to the trustee of the merchants at Aden. The trustee was to buy pepper on the Malabar coast of India.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "term-load",
+      "good-pepper"
+    ],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 149; the Karimi brought spices from Aden to Cairo, Alexandria and Damascus"
+      },
+      {
+        "src": "goitein-1973",
+        "at": "no. 36, introduction; the agent told to hand half the goods to the trustee of the merchants at Aden, to buy pepper on the Malabar coast, in a lawsuit of 1097 to 1098"
+      }
+    ]
+  },
+  {
+    "id": "broker-linen-constantinople",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Bishara, a broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Linen sells at Constantinople",
+    "body": "Bishara is a broker. He says buyers at Constantinople want flax and linen from Egypt. Flax is the plant that linen is made from. He offers to buy three loads of your linen today, at Cairo's price.",
+    "when": {
+      "all": [
+        {
+          "notebook": "term-load"
+        },
+        {
+          "stock": "linen",
+          "gte": 3
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell him three loads",
+        "hint": "You get 135 dinars now. The road to Constantinople stays free for other goods.",
+        "requires": {
+          "stock": "linen",
+          "gte": 3
+        },
+        "now": [
+          {
+            "money": 135
+          },
+          {
+            "stock": "linen",
+            "by": -3
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep the linen for a trip",
+        "hint": "Constantinople pays more, but it is a long way off.",
+        "now": [
+          {
+            "flag": "bishara-linen-kept",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "watch",
+        "label": "Ask him to write to Constantinople",
+        "hint": "It costs 10 dinars. You learn who is buying.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by weight, with 4 in every hundred taken off for the sack.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "term-load",
+      "good-linen"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "the section on flax of Alexandria sold at Constantinople and Pera by weight, 4 percent off for the sack; 1766 printing pp. 16 to 17; the 1936 Evans page not confirmed"
+      }
+    ]
+  },
+  {
+    "id": "broker-pepper-galleys",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Fakhr, a broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The galleys want pepper",
+    "body": "Fakhr is a broker in Cairo. He has news from Alexandria. Venice's galleys, long ships with oars, are back, and their buyers want pepper. He has two loads to sell you at today's price.",
+    "when": {
+      "all": [
+        {
+          "notebook": "term-load"
+        },
+        {
+          "year": [
+            1345,
+            1347
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy two loads of pepper",
+        "hint": "It costs 260 dinars. The galley buyers are at Alexandria.",
+        "requires": {
+          "money": {
+            "gte": 260
+          }
+        },
+        "now": [
+          {
+            "money": -260
+          },
+          {
+            "stock": "pepper",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "watch",
+        "label": "Pay Fakhr to watch the harbour",
+        "hint": "It costs 10 dinars. He writes when the galleys sail.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Not now",
+        "hint": "Fakhr will find another buyer.",
+        "now": [
+          {
+            "flag": "fakhr-pepper-passed",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "Venice's state galleys sailed to Alexandria again in 1345. A treaty with the sultan fixed the taxes on gold and silver at 2 in every hundred.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "term-load",
+      "term-ships",
+      "good-pepper"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 136 to 137; the treaty of 1345 and the galley service resumed in 1345"
+      }
+    ]
+  },
+  {
+    "id": "broker-sugar-famagusta",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Amr, a broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Sugar sells in Cyprus",
+    "body": "Amr is a broker. He says Italian buyers wait at Famagusta, on Cyprus, for sugar from Egypt. Venice's trade with Alexandria is hampered, so they meet our goods there. He has three loads to sell you today.",
+    "when": {
+      "all": [
+        {
+          "notebook": "term-load"
+        },
+        {
+          "year": [
+            1324,
+            1344
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy three loads of sugar",
+        "hint": "It costs 140 dinars. Famagusta pays more, but sending it is up to you.",
+        "requires": {
+          "money": {
+            "gte": 140
+          }
+        },
+        "now": [
+          {
+            "money": -140
+          },
+          {
+            "stock": "sugar",
+            "by": 3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "watch",
+        "label": "Ask him to name the buyers",
+        "hint": "It costs 10 dinars. You learn who is buying.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Not now",
+        "hint": "Amr will find another buyer.",
+        "now": [
+          {
+            "flag": "amr-sugar-passed",
+            "set": "now"
+          }
+        ]
+      }
+    ],
+    "note": "Venice forbade its merchants to trade in Egypt from 1323, and its ships came back in 1345. Famagusta, on Cyprus, was a go-between for Venice and Egypt, as it had been since before the ban.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "term-load",
+      "good-sugar"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 135 to 136; Famagusta as the market and go-between for Venice and Egypt, a role older than the ban of 1323"
+      }
+    ]
+  }
+]

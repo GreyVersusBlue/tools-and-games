@@ -196,6 +196,34 @@ jobs:
               node tests/wiring.mjs
               node tools/blender/validate.mjs
 
+          # Merchant (Projects/Merchant/, built from its own road map outside
+          # the ranked backlog). The full 2,000-game balance run is by hand;
+          # CI runs bots-smoke.mjs, which proves each check fires.
+          - name: Merchant
+            dir: Projects/Merchant
+            commands: |
+              node test/engine.mjs
+              node test/save.mjs
+              node test/content.mjs
+              node test/art-manifest.mjs
+              node test/market.mjs
+              node test/routes.mjs
+              node test/swap.mjs
+              node test/letters.mjs
+              node test/agents.mjs
+              node test/trip.mjs
+              node test/score.mjs
+              node test/bots-smoke.mjs
+              node tools/lint-content.mjs cairo
+              node tools/reading-level.mjs cairo
+
+          - name: Merchant in a browser
+            dir: Projects/Merchant
+            install: Tools/board-check
+            commands: |
+              node test/journey.mjs
+              node test/layout.mjs
+
           # desktop-input.mjs fails on the first line of a touch or gamepad
           # scheme (#629): that scheme is Q40, Devon's call. gltf-loader.mjs
           # parses a hand-built GLB in Chromium through board-check's harness,

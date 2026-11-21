@@ -32,6 +32,14 @@ export const EXEMPT = {
   // 'Dir/page.html': { 'href as written': 'why this may point at nothing' },
 };
 
+// Game pages that are on the board and legitimately carry no "All games" link
+// yet. Keyed by the href as the board card writes it; each needs a reason, and
+// check-integrity fails an entry whose page now does link home (delete the line).
+export const HOME_EXEMPT = {
+  'Projects/Merchant/': 'Merchant is being built in its own stream, which adds its own link',
+  'Projects/schedule-visualizer-2/': 'SV2 stream adds its own link',
+};
+
 const A_TAG = /<(?:a|area)\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi;
 const SKIP_SCHEME = /^[a-z][a-z0-9+.-]*:/i;          // http:, mailto:, tel:, javascript:, data:, ...
 const PLACEHOLDER = /\$\{|\{\{|\{%|<%|%7B%7B/i;
@@ -72,6 +80,25 @@ export function findBrokenLinks(pageAbs, siteRoot, src, fsx) {
     }
   }
   return out;
+}
+
+// Does this text (a page, or a script that builds the page's markup) hold an
+// href that resolves to the site root? Any scheme, //host, #fragment and
+// template placeholder is skipped, as above, so an offsite link never counts
+// and neither does a link to a sibling index.html. TG-97 (ML-30): 17 games
+// shipped with no way back to the board for a visitor who arrived by a shared
+// link, and nothing noticed.
+const ANY_HREF = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+export function linksHome(pageAbs, siteRoot, text) {
+  const root = path.resolve(siteRoot);
+  const home = path.join(root, 'index.html');
+  for (const m of blankComments(text).matchAll(ANY_HREF)) {
+    const t = localTarget(pageAbs, root, m[1] ?? m[2]);
+    if (t === null) continue;
+    const r = path.resolve(t);
+    if (r === root || r === home) return true;
+  }
+  return false;
 }
 
 // Fixture tree: a site at /s with a handful of files. Every rule gets a case
@@ -116,5 +143,20 @@ export function selfTest() {
   expect('a link after a comment still counts', `<!-- c -->\n${a('missing.html')}`, 1);
   const hit = run(`<p>x</p>\n\n${a('missing.html')}`)[0];
   if (!hit || hit.line !== 3) problems.push(`line number: wanted 3, got ${hit && hit.line}`);
+  const home = (label, text, want) => {
+    if (linksHome(page, root, text) !== want) problems.push(`home link, ${label}: wanted ${want}`);
+  };
+  home('"/" counts', a('/'), true);
+  home('"/index.html" counts', a('/index.html'), true);
+  home('"../" from a/ counts', a('../'), true);
+  home('"../index.html" from a/ counts', a('../index.html'), true);
+  home('a link built in a script counts', `el.innerHTML = '<a class="h" href="/">All games</a>'`, true);
+  home('a sibling index.html is not home', a('index.html'), false);
+  home('a climb out of the site is not home', a('../../index.html'), false);
+  home('an offsite link is not home', a('https://greyversusblue.com/'), false);
+  home('a bare #fragment is not home', a('#top'), false);
+  home('another page is not home', a('/a/page.html'), false);
+  home('a commented-out link is not home', `<!-- ${a('/')} -->`, false);
+  home('a page with no links is not home', '<p>x</p>', false);
   return problems;
 }

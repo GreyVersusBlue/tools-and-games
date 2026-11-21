@@ -1,0 +1,35 @@
+[
+  {
+    "id": "testport",
+    "tab": "places",
+    "title": "Testport",
+    "body": "An invented harbour town for tests.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  },
+  {
+    "id": "harbour-town",
+    "tab": "places",
+    "title": "The harbour",
+    "body": "The quay where the carts and boats meet.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  },
+  {
+    "id": "qirad",
+    "tab": "terms",
+    "title": "Qirad",
+    "body": "A deal where partners share the cost and the agent keeps a share of the profit.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  }
+]

@@ -1,0 +1,377 @@
+[
+  {
+    "id": "muhtasib-visit",
+    "group": "court",
+    "kind": "world",
+    "from": {
+      "name": "Bishr, your clerk",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The market inspector comes",
+    "body": "The muhtasib, the officer who watches over the markets, is walking down your street. Bishr found a few sacks of dates in the warehouse that have gone bad. He asks what to do.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "throw",
+        "label": "Throw the sacks out now",
+        "hint": "It costs money. The inspector will see an honest house.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hide",
+        "label": "Hide the sacks and hope",
+        "hint": "Bad food is easy to smell.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -20
+              },
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ],
+            "card": "muhtasib-fine"
+          }
+        ]
+      }
+    ],
+    "note": "In 1341 the muhtasib of Cairo found 1,196 pigeons and 33,000 starlings, all spoiled, in a seller's storehouse. The man was punished in public, and the birds were destroyed.",
+    "unlocks": [
+      "term-muhtasib"
+    ],
+    "sources": [
+      {
+        "src": "agir-2017",
+        "at": "section 1, n. 95; the finding of 1341"
+      }
+    ]
+  },
+  {
+    "id": "chief-of-merchants",
+    "group": "court",
+    "kind": "favour",
+    "from": {
+      "name": "Tamer, a rich merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A rich man wants a title",
+    "body": "Tamer is a rich merchant. He hopes the sultan will name him chief of the merchants, a title given to some wealthy men. He asks your house to speak well of him at court. His rivals ask you to stay out.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "back",
+        "label": "Speak well of Tamer at court",
+        "hint": "He will not forget it. His rivals will not either.",
+        "now": [
+          {
+            "rep": "court",
+            "by": 1
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "card": "tamer-title"
+          }
+        ]
+      },
+      {
+        "id": "stay",
+        "label": "Stay out of it",
+        "hint": "No one is angry, and no one owes you.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Sultans gave the title \"chief of the merchants\" to some rich men. One scholar warns that it was not a real office.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "pp. 150, 152 and 154; the title ra'is al-tujjar and Ashtor's warning"
+      }
+    ]
+  },
+  {
+    "id": "elders-no-claim",
+    "group": "court",
+    "kind": "people",
+    "from": {
+      "name": "Isaac, a trader",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The elders hear a loss",
+    "body": "Isaac sailed with 70 dinars of yours and lost almost 50 of them. He says the loss is bad luck, and that you have no claim on him. You can ask the elders of your community to hear it, or take it to a judge.",
+    "when": {
+      "rep": "court",
+      "gte": 1
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "elders",
+        "label": "Ask the elders to hear it",
+        "hint": "They may tell you to let it go.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              },
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "judge",
+        "label": "Press your claim before a judge",
+        "hint": "It costs now. Isaac will not forgive it.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In one Geniza case an investor lost almost 50 of 70 dinars given to a trader going overseas. The elders of his community made him see he had no claim.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 325; the investor and the elders of the community"
+      }
+    ]
+  },
+  {
+    "id": "road-costs-court",
+    "group": "court",
+    "kind": "people",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf and the road costs",
+    "body": "Yusuf is home from {to}. He spent 60 dinars on food, boats and gate fees. He says the house should pay it back. Your orders did not say who pays, and he says a judge would agree with him.",
+    "when": {
+      "trip": {
+        "agent": "yusuf",
+        "is": "home"
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay him back the 60 dinars",
+        "hint": "It costs now. Yusuf will trust you.",
+        "requires": {
+          "money": {
+            "gte": 60
+          }
+        },
+        "now": [
+          {
+            "money": -60
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "judge",
+        "label": "Let a judge decide",
+        "hint": "It costs less. Yusuf will not like it.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": -1
+          },
+          {
+            "memory": "yusuf",
+            "kind": "unfair"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -15
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One court record shows a quarrel over who paid for the road. The investor said the traveller should. The traveller said the partnership should.",
+    "unlocks": [
+      "term-agent-pay",
+      "term-dinar",
+      "term-orders"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 325 to 326; the traveller's costs, and the court record over who pays"
+      }
+    ]
+  },
+  {
+    "id": "hamid-accounts",
+    "group": "court",
+    "kind": "people",
+    "from": {
+      "name": "Hamid, a partner",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Hamid never gives accounts",
+    "body": "Hamid has traded with your money for years. He has never given you a full account of it. You can ask him for the accounts as partners should, or take him to a judge.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "ask",
+        "label": "Ask him for the accounts",
+        "hint": "It costs nothing. He may be offended.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "judge",
+        "label": "Take him to a judge",
+        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues.",
+        "requires": {
+          "money": {
+            "gte": 25
+          }
+        },
+        "now": [
+          {
+            "money": -25
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 60
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              },
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One Geniza partnership went on for ten years before the investor took the manager to court. A usual partnership ran one year at a time, with accounts every year.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 326 to 327; the ten years in court, and the yearly accounts"
+      }
+    ]
+  }
+]

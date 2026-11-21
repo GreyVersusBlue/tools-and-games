@@ -83,4 +83,9 @@ export function fade(toBlack, dur = 1.4) {
 }
 
 export function hideTitle() { $('title').classList.add('hidden'); }
-export function onTitleClick(fn) { $('title').addEventListener('click', fn, { once: true }); }
+export function onTitleClick(fn) {
+  // The "All games" link lives in the title: a click on it leaves the page and must not board.
+  const t = $('title');
+  const h = e => { if (e.target.closest('a')) return; t.removeEventListener('click', h); fn(e); };
+  t.addEventListener('click', h);
+}

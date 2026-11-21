@@ -25,7 +25,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { SITE } from './harness.mjs';
 import { findBrowserMjs, selfTest as mjsSelfTest } from './mjs-guard.mjs';
-import { findBrokenLinks, selfTest as linkSelfTest, EXEMPT as LINK_EXEMPT } from './link-guard.mjs';
+import { findBrokenLinks, linksHome, selfTest as linkSelfTest, EXEMPT as LINK_EXEMPT, HOME_EXEMPT } from './link-guard.mjs';
 
 const SKIP = ['node_modules', '/tools/board-check/three-', '/libs/'];
 
@@ -328,6 +328,49 @@ for (const problem of linkSelfTest()) {
         fail(path.join(SITE, 'Tools/board-check/link-guard.mjs'), `EXEMPT lists ${href} on ${page}, but that link is not broken there any more: delete the line`);
       }
     }
+  }
+}
+
+// --- every game on the board links back to it -------------------------------
+// A visitor who arrives from a shared link to a game sees nothing else of the
+// site unless the game gives them a way to the board (TG-97, ML-30). Every
+// Projects/ card in the root index.html must reach the site root from its entry
+// page, or from a script in its own folder that writes the page's markup.
+// HOME_EXEMPT in link-guard.mjs names the pages that are allowed not to, with a
+// reason, and an exemption whose page now links home is itself a failure.
+{
+  const BOARD = path.join(SITE, 'index.html');
+  const SCRIPT_SKIP = new Set(['node_modules', 'libs', 'vendor', 'test', 'tests', 'tools', 'models', 'docs', 'assets', 'fonts']);
+  const scripts = dir => {
+    const out = [];
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (!SCRIPT_SKIP.has(e.name)) out.push(...scripts(p)); }
+      else if (/\.m?js$/.test(e.name)) out.push(p);
+    }
+    return out;
+  };
+  const cards = [...new Set([...fs.readFileSync(BOARD, 'utf8').matchAll(/\bhref="(Projects\/[^"]+)"/g)].map(m => m[1]))];
+  const homeSeen = new Set();
+  for (const href of cards) {
+    checked++;
+    let entry = path.join(SITE, decodeURIComponent(href));
+    if (!fs.existsSync(entry)) continue; // a missing page is the link check's failure, not this one's
+    if (fs.statSync(entry).isDirectory()) entry = path.join(entry, 'index.html');
+    const sources = [entry];
+    if (path.basename(entry) === 'index.html') sources.push(...scripts(path.dirname(entry)));
+    const has = fs.existsSync(entry) && sources.some(f => linksHome(entry, SITE, fs.readFileSync(f, 'utf8')));
+    if (Object.hasOwn(HOME_EXEMPT, href)) {
+      if (has) fail(path.join(SITE, 'Tools/board-check/link-guard.mjs'), `HOME_EXEMPT lists ${href}, but that page links to the site root now: delete the line`);
+      homeSeen.add(href);
+      continue;
+    }
+    if (!has) fail(entry, `the board lists ${href}, but the page has no link to the site root ("/"), so a visitor from a shared link has no way back to the board`);
+  }
+  for (const href of Object.keys(HOME_EXEMPT)) {
+    if (homeSeen.has(href)) continue;
+    checked++;
+    fail(path.join(SITE, 'Tools/board-check/link-guard.mjs'), `HOME_EXEMPT lists ${href}, but the board has no such card any more: delete the line`);
   }
 }
 

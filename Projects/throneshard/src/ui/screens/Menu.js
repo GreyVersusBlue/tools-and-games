@@ -21,6 +21,7 @@ export class MainMenu {
           <div class="mn-t2">THRONESHARD</div>
           <div class="mn-rule"><span></span><i>✦</i><span></span></div>
           <div class="mn-t3">Sunward &nbsp;·&nbsp; Duskward</div>
+          <div class="mn-touch">Best on a computer with a keyboard and mouse.</div>
         </div>
         <div class="mn-card panel-frame">
           <button class="btn-play" data-act="play"><span>PLAY VS BOTS</span><em>5v5 · All Pick</em></button>
@@ -32,10 +33,11 @@ export class MainMenu {
           <div class="mn-links">
             <button class="btn-game dim" data-act="settings">Settings</button>
             <button class="btn-game dim" data-act="controls">Controls</button>
+            <a class="btn-game dim" href="/">All games</a>
           </div>
         </div>
       </div>
-      <div class="mn-foot">A three.js MOBA · Local build</div>`);
+      <div class="mn-foot">A three.js MOBA</div>`);
     this.node.querySelector('[data-act=play]').onclick = () => { ui.sfx('confirm'); ui.showHeroSelect(); };
     this.node.querySelector('[data-act=settings]').onclick = () => { ui.sfx('click'); openSettings(ui); };
     this.node.querySelector('[data-act=controls]').onclick = () => { ui.sfx('click'); openControls(ui); };

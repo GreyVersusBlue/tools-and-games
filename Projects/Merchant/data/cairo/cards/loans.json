@@ -1,0 +1,355 @@
+[
+  {
+    "id": "partner-loan",
+    "group": "loans",
+    "kind": "favour",
+    "from": {
+      "name": "Farid, a partner",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Farid's ship is late",
+    "body": "Farid was a partner in your last venture. His ship is late, and he cannot pay his debts this season. He asks you for 150 until it comes in.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "lend",
+        "label": "Lend him the money",
+        "hint": "Ships are often late. Some never come.",
+        "requires": {
+          "money": {
+            "gte": 150
+          }
+        },
+        "now": [
+          {
+            "money": -150
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 100
+              }
+            ],
+            "card": "farid-ship-lost"
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "Farid will remember.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long done business on friendship as well as on written partnerships. A loan between friends was often a kindness, with no fee.",
+    "sources": [
+      {
+        "src": "goitein-1967",
+        "at": "pp. 169 to 170, as quoted by Edwards and Ogilvie (2008), p. 11"
+      },
+      {
+        "src": "goitein-1964",
+        "at": "pp. 317 and 325; loans between partners and as acts of kindness"
+      }
+    ]
+  },
+  {
+    "id": "friend-needs-loan",
+    "group": "loans",
+    "kind": "favour",
+    "from": {
+      "name": "Murad, a friend",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A friend asks for a loan",
+    "body": "Murad has been your friend for years. His goods are stuck, and he needs 60 dinars for a few seasons. He does not ask for a paper. He says you would do the same for him.",
+    "when": {
+      "rep": "partners",
+      "gte": 1
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "lend",
+        "label": "Lend him 60 dinars",
+        "hint": "He may not repay it all. He will remember.",
+        "requires": {
+          "money": {
+            "gte": 60
+          }
+        },
+        "now": [
+          {
+            "money": -60
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 40
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Say you cannot",
+        "hint": "Murad will ask someone else.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers, loans were often an act of kindness. Lending for interest was frowned on.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; loans given as acts of charity, and interest shunned"
+      }
+    ]
+  },
+  {
+    "id": "road-money",
+    "group": "loans",
+    "kind": "people",
+    "from": {
+      "name": "Samir, your agent",
+      "role": "Cairo",
+      "seal": "seal-3"
+    },
+    "title": "Samir asks who pays the road",
+    "body": "Samir is about to leave for {to} with {good}. He asks that the house pay for his food, boats and gate fees on the way. He says the house should carry those costs.",
+    "when": {
+      "trip": {
+        "agent": "samir",
+        "is": "ready"
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "give",
+        "label": "Let the house pay his costs",
+        "hint": "The house pays for the trip and keeps all the profit. The next sheet shows the cost. Agents hear of a house that pays.",
+        "now": [
+          {
+            "outfit": "samir",
+            "contract": "own"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "own",
+        "label": "Tell him to pay from his own share",
+        "hint": "He keeps a third of the profit and pays his own way. Partners respect that. He will not forget it.",
+        "now": [
+          {
+            "memory": "samir",
+            "kind": "unfair"
+          },
+          {
+            "outfit": "samir",
+            "contract": "qirad"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Ask Samir to wait a season",
+        "hint": "Samir stays home and is not pleased. Partners like a house that thinks first.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers, a traveller's living costs, transport and customs were commonly paid out of the shared money. Some contracts made the traveller pay them himself.",
+    "unlocks": [
+      "term-agent-pay",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 325 to 326; the traveller's costs paid out of the partnership, or by himself"
+      }
+    ]
+  },
+  {
+    "id": "dalal-grows",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "Dalal, a cloth seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Dalal wants a bigger stall",
+    "body": "Dalal sells cloth and wants a bigger stall. She cannot find a lender, because lending for a fee is frowned on. She asks you to be her partner for a year instead.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "partner",
+        "label": "Put in 80 dinars as her partner",
+        "hint": "It costs now. You would take a share of the profit.",
+        "requires": {
+          "money": {
+            "gte": 80
+          }
+        },
+        "now": [
+          {
+            "money": -80
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": 70
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "label": "Lend her 20 dinars as a kindness",
+        "hint": "A small help. She will repay it.",
+        "now": [
+          {
+            "money": -20
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep your money for your own trade",
+        "hint": "It stays free to work. Dalal may be hurt.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 5
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers, partnerships did the work of loans at interest, which people avoided. One partner put in money, and the one who worked kept part of the profit.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; partnership in the place of loans on interest"
+      }
+    ]
+  }
+]

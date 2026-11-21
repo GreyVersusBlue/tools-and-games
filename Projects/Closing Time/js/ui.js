@@ -58,8 +58,9 @@ function renderTopbar() {
   const ended = S.careerEnded;
   $("#topbar").innerHTML = `
     <div class="letterhead">
-      <span class="lh-name">CLOSING TIME</span>
+      <h1 class="lh-name">CLOSING TIME</h1>
       <span class="lh-sub">${esc(DB.brokerages[S.brokerageId].name)} · ${esc(lv.title)}</span>
+      <a class="lh-home" href="/">All games</a>
     </div>
     <div class="statgrid">
       <div class="stat-primary">

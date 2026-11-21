@@ -1,0 +1,52 @@
+[
+  {
+    "id": "wool-offer",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Nell the broker",
+      "role": "Testport",
+      "seal": null
+    },
+    "title": "Four loads of wool",
+    "body": "Nell will sell you four loads of wool now. She wants the money today.",
+    "weight": 2,
+    "repeat": true,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy the wool",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          },
+          {
+            "stock": "wool",
+            "by": 4
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Say no, politely",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "An invented card for testing.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  }
+]

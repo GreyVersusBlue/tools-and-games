@@ -1,0 +1,203 @@
+[
+ {
+  "id": "pepper",
+  "name": "Pepper",
+  "unit": "load",
+  "sigma": 0.08,
+  "revert": 0.15,
+  "notebook": "good-pepper",
+  "art": "good-pepper",
+  "sources": [
+   {
+    "src": "vallet-2011",
+    "at": "p. 216; al-Maqrizi: 5 dirhams a ratl at Cairo, April 1347, which is 111 dinars a load at 20 dirhams to the dinar. Recorded, but a year of shortage, so the base of 120 sits above it"
+   },
+   {
+    "src": "vallet-2011",
+    "at": "pp. 213 to 214; Ashtor: 150 or more a sporta at Alexandria in 1345, about 133 a load. Alexandria 130 is derived from it; Cairo is set 8 percent lower (estimate)"
+   },
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 72; rates and duties at Alexandria used only as limits on the other stops (estimate: every stop but Cairo and Alexandria is Cairo times an index, and no price for it was reached)"
+   }
+  ]
+ },
+ {
+  "id": "silk",
+  "name": "Silk",
+  "unit": "load",
+  "sigma": 0.06,
+  "revert": 0.15,
+  "notebook": "good-silk",
+  "art": "good-silk",
+  "sources": [
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 71; estimate: raw silk sold by the hundred dirham-weights and a sporta of 500 libbre. No price for these years was reached, so 450 at Cairo is an order of magnitude, several times pepper by weight"
+   },
+   {
+    "src": "walker-2000",
+    "at": "pp. 168 to 172; estimate: nearest work on Mamluk silk, no price in it"
+   }
+  ]
+ },
+ {
+  "id": "gold",
+  "name": "Gold",
+  "unit": "chest",
+  "sigma": 0.04,
+  "revert": 0.25,
+  "notebook": "good-gold",
+  "art": "good-gold",
+  "sources": [
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 72; gold at 23 to 25 dirhams to the bezant. The chest of 100 mithqals is 100 dinars by definition, because the dinar is one mithqal"
+   },
+   {
+    "src": "ibn-battuta-1929",
+    "at": "estimate: trade in \"hundredweights of gold-dust\" at Taghaza. The lower price near the mines (54 at Tuat, 49 at Walata, 45 at Gao) is the game's lever, not a recorded quote, and it is set so that a house sometimes sends money south for gold"
+   },
+   {
+    "src": "jacoby-2018",
+    "at": "p. 135; estimate: the mint buys last, so the price snaps back (revert 0.25)"
+   }
+  ]
+ },
+ {
+  "id": "salt",
+  "name": "Salt",
+  "unit": "load",
+  "sigma": 0.06,
+  "revert": 0.15,
+  "notebook": "good-salt",
+  "art": "good-salt",
+  "sources": [
+   {
+    "src": "ibn-battuta-1929",
+    "at": "Gibb excerpt, 1352 to 1353; 8 to 10 mithqals a load at Walata. Recorded, but after the game's years and the only anchor there is. Gao, 30, is estimate: Ibn Battuta's 20 to 40 mithqals at Mali, which is not Gao"
+   },
+   {
+    "src": "ibn-battuta-1958",
+    "at": "vol. 4, p. 947; estimate: the salt road to Mali. Tuat 6 and the rest are not recorded"
+   }
+  ]
+ },
+ {
+  "id": "porcelain",
+  "name": "Porcelain",
+  "unit": "load",
+  "sigma": 0.08,
+  "revert": 0.15,
+  "notebook": "good-porcelain",
+  "art": "good-porcelain",
+  "sources": [
+   {
+    "src": "ibn-battuta-1929",
+    "at": "pp. 282 to 283; estimate: no Egyptian price reached. His only price is in China, where porcelain cost about what ordinary pottery cost at home"
+   }
+  ]
+ },
+ {
+  "id": "glass",
+  "name": "Glass",
+  "unit": "load",
+  "sigma": 0.08,
+  "revert": 0.2,
+  "notebook": "good-glass",
+  "art": "good-glass",
+  "sources": [
+   {
+    "src": "christie-2004",
+    "at": "the property list of 16 April 1326; estimate: the sultan's glass-works in Alexandria shows it was made there. No price reached, so 40 at Cairo is a guess"
+   }
+  ]
+ },
+ {
+  "id": "linen",
+  "name": "Linen",
+  "unit": "load",
+  "sigma": 0.07,
+  "revert": 0.2,
+  "notebook": "good-linen",
+  "art": "good-linen",
+  "sources": [
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 72; estimate: cloth sold by the braccia and flax by the cantar leuedi. No price reached; set near sugar"
+   }
+  ]
+ },
+ {
+  "id": "sugar",
+  "name": "Sugar",
+  "unit": "load",
+  "sigma": 0.07,
+  "revert": 0.2,
+  "notebook": "good-sugar",
+  "art": "good-sugar",
+  "sources": [
+   {
+    "src": "sato-2004",
+    "at": "p. 105; 200 dirhams a qintar of 45 kg in 1344 to 1345 is 44 dinars for 200 kg at 20 to the dinar, 36 at the market rate of 25. A valuation of a grant, not a quote. Cairo 45 is derived"
+   },
+   {
+    "src": "sato-2004",
+    "at": "pp. 91 to 99; Qus grew sugar, so it is set lower than Cairo. The direction is recorded, the size is estimate"
+   },
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 72; the market rate of 25 dirhams to the dinar"
+   }
+  ]
+ },
+ {
+  "id": "incense",
+  "name": "Incense",
+  "unit": "load",
+  "sigma": 0.06,
+  "revert": 0.15,
+  "notebook": "good-incense",
+  "art": "good-incense",
+  "sources": [
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 69; estimate: sold by the cantar forfori with ginger and lac. No price reached; set below pepper"
+   }
+  ]
+ },
+ {
+  "id": "copper",
+  "name": "Copper",
+  "unit": "load",
+  "sigma": 0.05,
+  "revert": 0.1,
+  "notebook": "good-copper",
+  "art": "good-copper",
+  "sources": [
+   {
+    "src": "arbel-2004",
+    "at": "p. 47 n. 42 and about p. 50; estimate: Italians imported copper into Egypt in the 14th century. No price reached, so 30 at Cairo is a guess"
+   },
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 70; estimate: copper under the cantar gerui at Alexandria"
+   }
+  ]
+ },
+ {
+  "id": "wool",
+  "name": "Wool cloth",
+  "unit": "load",
+  "sigma": 0.05,
+  "revert": 0.1,
+  "notebook": "good-wool",
+  "art": "good-wool",
+  "sources": [
+   {
+    "src": "pegolotti-1936",
+    "at": "p. 72; estimate: cloth sold by the piece of 12 Cyprus canes. No price reached; a mid-price bulky import"
+   }
+  ]
+ }
+]

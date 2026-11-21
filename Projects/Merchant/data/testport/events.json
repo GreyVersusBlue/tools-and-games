@@ -1,0 +1,5 @@
+[
+  { "id": "fair-closes", "at": 10, "do": [ { "flag": "fair-closed", "set": "now" } ],
+    "notice": { "title": "The fair closes", "body": "The last stall at the harbour fair is taken down. The season of trading is over." },
+    "note": "An invented event for testing.", "sources": [ { "src": "testport-fiction" } ] }
+]

@@ -1,0 +1,1341 @@
+[
+  {
+    "id": "abu-bakr-again",
+    "group": "followups",
+    "kind": "favour",
+    "from": {
+      "name": "Abu Bakr, your neighbour",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Abu Bakr is back",
+    "body": "Two seasons ago you sold Abu Bakr ten loads of linen. He remembers a good neighbour. A friend of his has a boat going to Alexandria, with room for your goods at no charge. He asks for a small favour in return.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "favour",
+        "label": "Take the place and do the favour",
+        "hint": "It costs 50 dinars. Abu Bakr is pleased.",
+        "requires": {
+          "money": {
+            "gte": 50
+          }
+        },
+        "now": [
+          {
+            "money": -50
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 40
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "no-favour",
+        "label": "Take the place and skip the favour",
+        "hint": "It costs nothing. Abu Bakr is not pleased.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 40
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Boats carried goods between Cairo, Alexandria and Qus on the Nile. In 1326 Ibn Battuta went down the river from Qus to Cairo in eight nights, in the flood.",
+    "unlocks": [
+      "term-load",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 69; the boat from Qus to Cairo in the flood"
+      }
+    ]
+  },
+  {
+    "id": "silk-order-due",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Nabil, the broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The silk has come",
+    "body": "Two seasons ago you found silk for the rich family. It has come from Damascus, and the family is waiting. Nabil knows another buyer who may pay more.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "family",
+        "label": "Sell to the family as agreed",
+        "hint": "Nabil is glad. The family may come back.",
+        "now": [
+          {
+            "money": 480
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "other",
+        "label": "Sell to the other buyer",
+        "hint": "More money. The family will hear of it.",
+        "now": [
+          {
+            "money": 520
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Silk and linen were among the cloths that passed through Alexandria and Cairo.",
+    "sources": [
+      {
+        "src": "walker-2000",
+        "at": "pp. 168 to 172; silk and linen in Alexandria and Cairo"
+      }
+    ]
+  },
+  {
+    "id": "rahel-first-pick",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Rahel, a dealer in dyes",
+      "role": "Fustat",
+      "seal": null
+    },
+    "title": "Rahel offers first pick",
+    "body": "Two seasons ago you split the difference with Rahel over the short indigo. Now a new shipment of dyes has come. She offers you first pick before anyone else.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pick",
+        "label": "Buy the best dyes at her price",
+        "hint": "It costs money now. Dyers pay well.",
+        "requires": {
+          "money": {
+            "gte": 60
+          }
+        },
+        "now": [
+          {
+            "money": -60
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 50
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait for the price to fall",
+        "hint": "You keep your money.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Maqrizi wrote that Cairo had 54 markets. Fustat had 19.",
+    "sources": [
+      {
+        "src": "agir-2017",
+        "at": "Introduction n. 11; the count of markets in Cairo and Fustat"
+      }
+    ]
+  },
+  {
+    "id": "farid-ship-lost",
+    "group": "followups",
+    "kind": "favour",
+    "from": {
+      "name": "Farid, a partner",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Farid's ship never came",
+    "body": "Two seasons ago you lent Farid 150. His ship was lost at sea. He has paid back 100, which is all he has. He asks you to forgive the rest.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "forgive",
+        "label": "Forgive the rest",
+        "hint": "Farid will not forget it.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Ask for the rest over a year",
+        "hint": "You may get it. Farid will be hurt.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": 50
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Sailing in the Mediterranean in winter was risky, though ships did sail.",
+    "sources": [
+      {
+        "src": "duggan-2015",
+        "at": "p. 277 and p. 294; winter bans were a legal fiction, and winter voyages were made"
+      }
+    ]
+  },
+  {
+    "id": "gold-price-falls",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Jamil, a cloth seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The price of gold is falling",
+    "body": "Three seasons ago you bought two chests of gold while the Malians were in Cairo. Now they have gone on to Mecca, and gold sells for less. Jamil says the price may fall again.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell the gold now",
+        "requires": {
+          "stock": "gold",
+          "gte": 2
+        },
+        "hint": "You lose a little, and you are done.",
+        "now": [
+          {
+            "money": 176
+          },
+          {
+            "stock": "gold",
+            "by": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold the gold",
+        "hint": "It may rise again, or it may not.",
+        "now": [],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Umari wrote that the price of gold fell after the king of Mali came to Cairo. Another scholar doubts that the fall lasted for years.",
+    "sources": [
+      {
+        "src": "levtzion-hopkins-1981",
+        "at": "pp. 269 to 273; al-Umari on the price of gold in Cairo"
+      },
+      {
+        "src": "schultz-2006",
+        "at": "the long effect of the visit is disputed"
+      }
+    ]
+  },
+  {
+    "id": "muhtasib-fine",
+    "group": "followups",
+    "kind": "world",
+    "from": {
+      "name": "Bishr, your clerk",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The inspector found the sacks",
+    "body": "The muhtasib's men found out where the bad dates went. You are fined, and your neighbours saw it. Bishr asks how you wish to answer.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "sorry",
+        "label": "Say sorry in the market",
+        "hint": "It is hard to say. People will respect it.",
+        "now": [
+          {
+            "rep": "court",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "argue",
+        "label": "Say the sacks were not yours",
+        "hint": "It saves face for now.",
+        "now": [
+          {
+            "rep": "court",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 15
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The muhtasib of 1341 punished the poultry seller in public, for all to see.",
+    "unlocks": [
+      "term-muhtasib"
+    ],
+    "sources": [
+      {
+        "src": "agir-2017",
+        "at": "section 1, n. 95; the punishment of 1341 in the public eye"
+      }
+    ]
+  },
+  {
+    "id": "yehuda-returns-favour",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Yehuda, a merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Yehuda owes you a favour",
+    "body": "Two seasons ago your carter took Yehuda's goods on his day of rest. Now a buyer at Alexandria wants glass, and Yehuda knows him. He offers to send the buyer to you.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "take",
+        "label": "Take the buyer",
+        "hint": "It costs money to fill the order. It may pay.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 60
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Pass the buyer to a friend",
+        "hint": "You gain good will, not money.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Jewish and Muslim merchants had long called each other business friends and done each other favours.",
+    "sources": [
+      {
+        "src": "goitein-1967",
+        "at": "p. 281, as quoted by Edwards and Ogilvie (2008), p. 17"
+      }
+    ]
+  },
+  {
+    "id": "amina-thanks",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Amina, a sugar maker",
+      "role": "Fustat",
+      "seal": null
+    },
+    "title": "Amina says thank you",
+    "body": "Two seasons ago you bought three loads of sugar from Amina when she needed money. Now she offers you a place in her next pressing at a good price.",
+    "when": {
+      "notebook": "term-load"
+    },
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "place",
+        "label": "Buy a place in her next pressing",
+        "hint": "It costs money now. It may pay later.",
+        "requires": {
+          "money": {
+            "gte": 90
+          }
+        },
+        "now": [
+          {
+            "money": -90
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 130
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "thanks",
+        "label": "Thank her and keep your money",
+        "hint": "She will not mind.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Four of the 13 refineries owned by merchants were managed by Karimi.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 149; the managers of the merchants' refineries"
+      }
+    ]
+  },
+  {
+    "id": "kamil-boat-arrived",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Kamil, a boat owner",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Kamil's boat has arrived",
+    "body": "Two seasons ago you sent four loads of sugar with Kamil. His boat reached Alexandria, and the buyers paid. He asks you to ship with him again next year.",
+    "when": {
+      "notebook": "term-load"
+    },
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "again",
+        "label": "Agree to ship with him next year",
+        "hint": "He will keep a place for you.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": 25
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "open",
+        "label": "Keep your choice open",
+        "hint": "You can pick the best boat each year.",
+        "now": [],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": 40
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The Nile flooded in late summer, after the rains on the hills of Ethiopia. Ibn Battuta saw the flood in July 1326.",
+    "sources": [
+      {
+        "src": "borsch-2014",
+        "at": "p. 125 and the section on the flood; the monsoon rains on the Ethiopian highlands"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 69; the flood season of 1326"
+      }
+    ]
+  },
+  {
+    "id": "partners-ask-again",
+    "group": "followups",
+    "kind": "people",
+    "from": {
+      "name": "Binyamin",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Binyamin comes back",
+    "body": "Two seasons ago you paid Idris and Binyamin each what he claimed. Now Binyamin says his cousin also put money in. He wants the same treatment.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay the cousin too",
+        "hint": "It costs you. Your name grows.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ledger",
+        "label": "Show him the ledger first",
+        "hint": "It may hurt his pride now. You keep 15 dinars, and a fair count is respected later.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              },
+              {
+                "money": 15
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Partnerships on paper were usually short. Friendships between merchants could last a lifetime.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1967",
+        "at": "pp. 169 to 170, as quoted by Edwards and Ogilvie (2008), p. 11"
+      }
+    ]
+  },
+  {
+    "id": "girgis-favour",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Girgis, a merchant",
+      "role": "Damascus",
+      "seal": null
+    },
+    "title": "Girgis remembers",
+    "body": "Three seasons ago you looked after the son of Girgis's partner. Now Girgis offers you a share in his next trip to Damascus.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Take a share of his trip",
+        "hint": "It costs money now. It may pay.",
+        "requires": {
+          "money": {
+            "gte": 100
+          }
+        },
+        "now": [
+          {
+            "money": -100
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 150
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "letter",
+        "label": "Ask for a letter of introduction",
+        "hint": "It costs nothing. It opens doors.",
+        "now": [
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Some friendships between merchants lasted for a lifetime. A few went on for generations.",
+    "sources": [
+      {
+        "src": "goitein-1967",
+        "at": "pp. 169 to 170, as quoted by Edwards and Ogilvie (2008), p. 11"
+      }
+    ]
+  },
+  {
+    "id": "khalid-news",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Khalid, a spice merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "News from the funduq",
+    "body": "Three seasons ago you took a share of the Karimi funduq. Now Khalid hears from merchants staying there that a road may close. He tells you first.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "warn",
+        "label": "Send a rider to warn your agents",
+        "hint": "It costs money. Your agents will be glad.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "rep": "agents",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "quiet",
+        "label": "Keep the news to yourself",
+        "hint": "It costs nothing, but it is not kind.",
+        "now": [
+          {
+            "rep": "foreign",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The Karimi brought spices from Aden to Cairo, Alexandria and Damascus.",
+    "unlocks": [
+      "term-caravanserai"
+    ],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 149; the Karimi brought spices from Aden to Cairo, Alexandria and Damascus"
+      }
+    ]
+  },
+  {
+    "id": "zubayda-fee",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Zubayda, a linen seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Zubayda wants a standing deal",
+    "body": "Two seasons ago you sold your linen in Zubayda's market. She was fair about the fee. Now she wants you to sell with her every season.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "yes",
+        "label": "Agree to a standing deal",
+        "hint": "It costs a fee. It makes a steady friend.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 25
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "no",
+        "label": "Sell where you like",
+        "hint": "It costs nothing. It keeps you free.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In Cairo, shops of one trade stood together. Al-Maqrizi's account says this saved time and the cost of carrying goods.",
+    "sources": [
+      {
+        "src": "agir-2017",
+        "at": "Background n. 24; shops of one trade grouped for time saving and lower transport costs"
+      }
+    ]
+  },
+  {
+    "id": "tamer-title",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Tamer, a rich merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Tamer has his title",
+    "body": "Tamer was named chief of the merchants. He remembers who spoke for him. He offers you a share in his next shipment.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Take a share in his shipment",
+        "hint": "It costs money now. It may pay.",
+        "requires": {
+          "money": {
+            "gte": 120
+          }
+        },
+        "now": [
+          {
+            "money": -120
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 180
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "thanks",
+        "label": "Thank him and ask for nothing",
+        "hint": "It costs nothing. It shows you are not for sale.",
+        "now": [
+          {
+            "rep": "court",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One chief of the merchants held the title but was never regarded as an officer of the state.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 152; Zaki al-Din al-Kharrubi and the title"
+      }
+    ]
+  },
+  {
+    "id": "bales-middling",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Salih, the broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Two bales were poor",
+    "body": "Two seasons ago Salih bought six loads of linen for you. When the bales were opened, two were poor. Salih says the grower mixed them in. He offers to make it right.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "fee",
+        "label": "Ask him to pay for the two poor bales",
+        "hint": "You win back 30 dinars. Brokers talk now, and trust a house that checks later.",
+        "now": [
+          {
+            "money": 30
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sell",
+        "label": "Sell the two poor bales cheaply",
+        "hint": "You lose two loads of linen and gain 50 dinars.",
+        "now": [
+          {
+            "stock": "linen",
+            "by": -2
+          },
+          {
+            "money": 50
+          }
+        ],
+        "requires": {
+          "stock": "linen",
+          "gte": 2
+        }
+      },
+      {
+        "id": "lesson",
+        "label": "Call it a lesson",
+        "hint": "You gain nothing now. Salih will buy better bales for you.",
+        "now": [
+          {
+            "flag": "bales-lesson",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              },
+              {
+                "money": 25
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A letter found in the Geniza told a merchant not to let a broker buy middling flax for the writer.",
+    "unlocks": [
+      "term-dinar",
+      "term-broker",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "udovitch-1999",
+        "at": "pp. 278 to 279; the broker, the middling flax and the debased dinars"
+      }
+    ]
+  },
+  {
+    "id": "yusuf-asks-in-writing",
+    "group": "followups",
+    "kind": "people",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Yusuf wants it in writing",
+    "body": "Yusuf has not forgotten the fee. He asks you to write down what the house owes him each time he goes out. He says words in writing last longer than words in the air.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "write",
+        "label": "Write it down and seal it",
+        "hint": "It costs a clerk's time. Yusuf feels easier.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "spoken",
+        "label": "Say your word is good enough",
+        "hint": "It costs nothing. Yusuf is more uneasy.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": -1
+          },
+          {
+            "memory": "yusuf",
+            "kind": "unfair"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 5
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers partners made up their accounts every year.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 327; accounts made every year"
+      }
+    ]
+  },
+  {
+    "id": "samir-wants-a-share",
+    "group": "followups",
+    "kind": "people",
+    "from": {
+      "name": "Samir, your agent",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Samir wants a share, not a wage",
+    "body": "Samir has not forgotten the count. He says he will not go for a plain wage again. He asks for a third of the profit, so that he is paid by what he earns.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "grant",
+        "label": "Give him a third of the profit",
+        "hint": "He carries the risk of his own work.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Keep him on a wage",
+        "hint": "It costs less. He may not stay.",
+        "now": [
+          {
+            "trust": "samir",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "let-go",
+        "label": "Let him go",
+        "hint": "He goes to another house, and pays back 10 coins he owes.",
+        "now": [
+          {
+            "dismiss": "samir"
+          },
+          {
+            "money": 10
+          },
+          {
+            "rep": "agents",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's share, normally one third"
+      }
+    ]
+  },
+  {
+    "id": "matteo-comes-back",
+    "group": "followups",
+    "kind": "people",
+    "from": {
+      "name": "Matteo, a Genoese trader",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Matteo has sold the linen",
+    "body": "Matteo has done the job and kept his fee. He asks to work for the house again. This time he wants the house's seal on his orders, so that other traders know who he works for.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "seal",
+        "label": "Give him the house's seal",
+        "hint": "He carries your name, and his debts may fall on you. It costs nothing now.",
+        "now": [
+          {
+            "trust": "matteo",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              },
+              {
+                "money": -30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "fee",
+        "label": "Pay him a fee for one more job",
+        "hint": "It costs 15 dinars. He stays free to go.",
+        "requires": {
+          "money": {
+            "gte": 15
+          }
+        },
+        "now": [
+          {
+            "money": -15
+          },
+          {
+            "trust": "matteo",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "thanks",
+        "label": "Thank him and let him go",
+        "hint": "He leaves you a small gift.",
+        "now": [
+          {
+            "money": 10
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers a special job was paid with a fee of its own.",
+    "unlocks": [
+      "term-dinar",
+      "term-load",
+      "term-orders"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the commission paid for a special service"
+      }
+    ]
+  }
+]

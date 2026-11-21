@@ -1,0 +1,499 @@
+[
+  {
+    "id": "yusuf-asks-for-work",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Yusuf, a trader of Cairo",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf asks for work",
+    "body": "Yusuf is a careful young trader. He has no house of his own. He asks you to hire him and send him out with ten loads of your linen.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "hire",
+        "ui": "outfit-first",
+        "label": "Hire Yusuf and send him",
+        "hint": "The clerk's fee is 10 dinars. The next sheet shows what sending him costs.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          },
+          {
+            "hire": "yusuf"
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "not-yet",
+        "label": "Not yet",
+        "hint": "Without an agent you cannot send anyone out. Partners like a house that waits.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long sent agents to buy and sell in other towns, and kept in touch with them by letter.",
+    "unlocks": [
+      "term-load",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1973",
+        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+      }
+    ]
+  },
+  {
+    "id": "qirad-offer",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Samir, a young man of Cairo",
+      "role": "Cairo",
+      "seal": "seal-3"
+    },
+    "title": "Samir wants a qirad",
+    "body": "Samir has no money, but he wants to carry goods for you. He offers a qirad, a deal where you pay for the goods and he keeps a share of the profit. Or you can pay him a plain wage.",
+    "when": {
+      "all": [
+        {
+          "agent": "samir",
+          "hired": false
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "qirad",
+        "label": "Agree to a qirad",
+        "hint": "He keeps a third of the profit. You carry any loss. Some partners think Samir is too young, then come round. The next sheet shows the cost.",
+        "now": [
+          {
+            "hire": "samir"
+          },
+          {
+            "trust": "samir",
+            "by": 1
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          },
+          {
+            "outfit": "samir",
+            "contract": "qirad"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Pay him a wage",
+        "hint": "You keep all the profit. He is paid even if the goods are lost. Some partners think Samir is too young. The next sheet shows the cost.",
+        "now": [
+          {
+            "hire": "samir"
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          },
+          {
+            "outfit": "samir",
+            "contract": "own"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "not-now",
+        "label": "Not now",
+        "hint": "Some partners think Samir is too young.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long made deals like this. The partner with the money bore any loss, and the traveller lost only his work.",
+    "unlocks": [
+      "term-qirad"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's smaller share and no share in the loss"
+      },
+      {
+        "src": "udovitch-1970",
+        "at": "the rules of the qirad from the law books"
+      }
+    ]
+  },
+  {
+    "id": "contract-limits",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf asks to go further",
+    "body": "Before he leaves for {to}, Yusuf asks to go on if the price is better beyond it. Your orders say {to} and no further. He says he may do better, but he will keep to your orders if you say so.",
+    "when": {
+      "trip": {
+        "agent": "yusuf",
+        "is": "ready"
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "widen",
+        "label": "Let him go further if the price is better",
+        "hint": "He may do better. A longer road costs 25 dinars more, later, and you carry the risk.",
+        "now": [
+          {
+            "trust": "yusuf",
+            "by": 1
+          },
+          {
+            "flag": "yusuf-widened",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": -25
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep to your orders",
+        "hint": "Yusuf will keep his word.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Contracts had long said where an agent could trade. In the Geniza papers an agent who went beyond those limits and lost something paid the whole loss himself.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 327; a manager who broke the contract's terms paid the whole loss"
+      }
+    ],
+    "unlocks": [
+      "term-dinar",
+      "term-orders"
+    ]
+  },
+  {
+    "id": "mariam-asks-for-work",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Mariam, a trader",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Mariam names her terms",
+    "body": "Mariam is a Coptic Christian trader. She is careful, and her word is good. She has heard how your house treats its people. She asks to carry your goods, and she offers two ways to pay her.",
+    "when": {
+      "all": [
+        {
+          "agent": "mariam",
+          "hired": false
+        },
+        {
+          "rep": "agents",
+          "gte": 1
+        },
+        {
+          "notebook": "term-qirad"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Give her a third of the profit",
+        "hint": "She carries the risk of her work, and you the loss.",
+        "now": [
+          {
+            "hire": "mariam"
+          },
+          {
+            "trust": "mariam",
+            "by": 1
+          },
+          {
+            "rep": "agents",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "money": -30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Pay her a plain wage",
+        "hint": "It costs 20 dinars now. She is paid even if the goods are lost.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "hire": "mariam"
+          },
+          {
+            "rep": "agents",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Ask her to come back later",
+        "hint": "She will wait a little.",
+        "now": [
+          {
+            "flag": "mariam-waits",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "unlocks": [
+      "term-qirad",
+      "term-dinar",
+      "term-agent-pay"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's share, normally one third, and no loss for him"
+      }
+    ]
+  },
+  {
+    "id": "matteo-for-one-load",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Matteo, a Genoese trader",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Matteo wants one job",
+    "body": "Matteo is a trader from Genoa who is in Cairo for the season. He drives a hard bargain. He asks to work for your house for a fee of his own. After that he may take more work from you.",
+    "when": {
+      "all": [
+        {
+          "agent": "matteo",
+          "hired": false
+        },
+        {
+          "rep": "foreign",
+          "gte": 1
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "fee",
+        "label": "Pay him a fee for the one job",
+        "hint": "It costs 20 dinars. He stays free to go.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "hire": "matteo"
+          },
+          {
+            "trust": "matteo",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "matteo-comes-back"
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Hire him on a plain wage",
+        "hint": "It costs 40 dinars. He is paid whatever happens.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          },
+          {
+            "hire": "matteo"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "letter",
+        "label": "Ask him to bring a letter from someone you know",
+        "hint": "He will come back, or he will not.",
+        "now": [
+          {
+            "flag": "matteo-asked-for-letter",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the Geniza papers an agent who did a special job was paid a commission, a fee for that job alone. It was not a payment for the friendship.",
+    "unlocks": [
+      "term-agent-pay",
+      "term-dinar",
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the commission paid for a special service"
+      }
+    ]
+  }
+]

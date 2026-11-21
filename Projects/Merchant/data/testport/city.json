@@ -1,0 +1,29 @@
+{
+  "id": "testport",
+  "name": "Testport",
+  "home": "harbour",
+  "currency": "coins",
+  "title": "Testport",
+  "tagline": "An invented harbour town for testing the engine.",
+  "opening": {
+    "plain": ["welcome-note", "wool-offer"],
+    "rich": ["welcome-note", "salt-dispute"]
+  },
+  "secondSeason": { "cards": 1 },
+  "priceNews": false,
+  "recall": {
+    "reach": { "start": 0.9, "perSeason": 0.2, "floor": 0.1 },
+    "recalledKeeps": 0.5, "recalledSurvives": 0.9, "stayedSurvives": 0.5, "homeSurvives": 0.7,
+    "byStop": { "hilltown": 0.4 }
+  },
+  "score": {
+    "wealthScale": [[0, 0], [500, 10], [1000, 20], [2000, 35], [4000, 50], [8000, 60]],
+    "ranks": [
+      { "from": 0, "name": "A house that kept its doors open" },
+      { "from": 40, "name": "A small but steady house" },
+      { "from": 80, "name": "A respected house" }
+    ]
+  },
+  "clusters": {},
+  "gradients": []
+}

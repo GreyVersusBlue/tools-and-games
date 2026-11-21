@@ -426,6 +426,18 @@ if (mode === 'twelve') {
     const an = AC.createAnalyser(); an.fftSize = 2048;
     h.buses.master.connect(an);
     const buf = new Float32Array(an.fftSize);
+    // The sung tune alone, off the sfx bus it is sung into (songTune connects only to sfxG): the wind, the sea and the rain are
+    // on other buses, so this reading is the instrument without the room's random bed under it.
+    const anS = AC.createAnalyser(); anS.fftSize = 2048; h.buses.sfxG.connect(anS);
+    const bufS = new Float32Array(anS.fftSize);
+    const peakSfxFor = ms => new Promise(res => {
+      let peak = 0; const t0 = performance.now();
+      const iv = setInterval(() => {
+        anS.getFloatTimeDomainData(bufS);
+        for (let i = 0; i < bufS.length; i++) { const a = Math.abs(bufS[i]); if (a > peak) peak = a; }
+        if (performance.now() - t0 > ms) { clearInterval(iv); res(peak); }
+      }, 25);
+    });
     const peakFor = ms => new Promise(res => {
       let peak = 0; const t0 = performance.now();
       const iv = setInterval(() => {
@@ -458,10 +470,16 @@ if (mode === 'twelve') {
     // a song is two passes of up to ten notes; it needs a longer window to peak in and a longer tail to die in,
     // or it bleeds into the duck measurement below and the storm bed reads hot for no reason.
     const peakWindow = n => n === 'songTune' ? 3000 : n === 'dawnMotif' ? 4800 : n === 'owl' ? 1800 : (n === 'thunder' || n === 'bell') ? 2200 : 1300;
+    // The sung tune is read on the master bus (printed) and alone off the sfx bus (checked, A13 below); wayTune gets a 4 s settle so its tail is off the bus first.
+    const WAY_SETTLE = 4000;
+    let songAlone = null, preSong = null;
     for (const [name, fn] of shots) {
       h.audioTick(.05); // resets the per-frame sfx cap so every shot actually fires
-      fn(); out[name] = +(await peakFor(peakWindow(name))).toFixed(4);
-      await settle(name === 'songTune' ? 7000 : name === 'dawnMotif' ? 3500 : 250);
+      if (name === 'songTune') { preSong = +(await peakSfxFor(300)).toFixed(4); h.audioTick(.05); }
+      fn();
+      if (name === 'songTune') { const [m, a] = await Promise.all([peakFor(peakWindow(name)), peakSfxFor(peakWindow(name))]); out[name] = +m.toFixed(4); songAlone = +a.toFixed(4); }
+      else out[name] = +(await peakFor(peakWindow(name))).toFixed(4);
+      await settle(name === 'songTune' ? 7000 : name === 'wayTune' ? WAY_SETTLE : name === 'dawnMotif' ? 3500 : 250);
     }
     // A lost song is silent, measured on the same analyser as everything else: nothing scheduled, nothing heard.
     // Against the room's own floor, not against zero — the wind and the sea are always on this bus's neighbour.
@@ -476,6 +494,7 @@ if (mode === 'twelve') {
     const played = h.songTune(sung, 1);
     await settle(7000);
     out.song = {
+      songAlone, preSong,
       degrees: h.songDegrees(0),
       sameTwice: JSON.stringify(h.songDegrees(3)) === JSON.stringify(h.songDegrees(3)),
       playedIsDerived: JSON.stringify(played) === JSON.stringify(h.songDegrees(0)),
@@ -628,7 +647,7 @@ if (mode === 'twelve') {
     const sg = audio.song;
     console.log(`  song: degrees [${sg.degrees.join(' ')}], same twice ${sg.sameTwice}, ` +
       `played-is-derived ${sg.playedIsDerived}, lost returns ${sg.lostReturn} at ${sg.lostPeak.toFixed(4)} ` +
-      `against a room floor of ${sg.floor.toFixed(4)} (a sung one peaks ${audio.songTune.toFixed(4)})`);
+      `against a room floor of ${sg.floor.toFixed(4)} (a sung one peaks ${audio.songTune.toFixed(4)}; alone on the sfx bus ${sg.songAlone}, sfx bus before it ${sg.preSong})`);
     if (!(sg.degrees.length >= 6 && sg.degrees.length <= 10)) {
       failed = true; console.log(`FAIL: a phrase is ${sg.degrees.length} degrees, not 6-10`);
     }
@@ -647,13 +666,23 @@ if (mode === 'twelve') {
     if (sg.lostPeak > sg.floor * 1.3) {
       failed = true; console.log(`FAIL: a lost song made a sound (${sg.lostPeak} over a floor of ${sg.floor})`);
     }
-    // A13: the choir stays where the five beeps were. 0.09 to 0.12 is the band the tune sat in (0.103); a sawtooth through two formants is a different
-    // instrument, and the make-up gain in audio.js is what keeps it there. Lower and the fire night is lost under the sea; higher and it is a shout.
-    if (!(audio.songTune >= 0.09 && audio.songTune <= 0.12)) {
-      failed = true; console.log(`FAIL: the sung tune's peak is ${audio.songTune}, outside 0.09 to 0.12`);
+    // A13: the choir stays where the five beeps were. The tune is checked on the sfx bus it is sung into, alone (songTune connects only to
+    // sfxG), after a clean start: wayTune is settled for 4 s first, which is past its three 1.4 s notes and the delay tail (the sfx bus reads
+    // 0.0004 just before the song; at a 250 ms settle it still held the tail and the tune read 0.066 to 0.073 instead of 0.049). On the master bus the
+    // reading was 0.099 to 0.123 with the random wind and sea under it, and a band of 0.09 to 0.12 failed about one night in ten for no change.
+    // Alone it read 0.0485 to 0.049 in fifteen local runs (2026-11-19), so 0.04 to 0.06 has 0.0085 of room under and 0.011 over: SONG_MAKEUP x1.3
+    // reads 0.064 and x0.7 reads 0.034, and both leave the band. A sawtooth through two formants is a different instrument from the five beeps,
+    // and the make-up gain in audio.js is what keeps the level; lower and the fire night is lost under the sea, higher and it is a shout.
+    const alone = sg.songAlone;
+    if (!(alone >= 0.04 && alone <= 0.06)) {
+      failed = true; console.log(`FAIL: the sung tune alone on the sfx bus peaks at ${alone}, outside 0.04 to 0.06`);
     }
-    if (audio.songTune < sg.floor * 1.5) {
-      failed = true; console.log(`FAIL: a song that is not lost is inaudible (${audio.songTune} over ${sg.floor})`);
+    // Audible against the room: the tune alone over the floor read 0.53 to 0.63 in the same fifteen runs (the floor, a random bed, 0.078 to 0.092
+    // there), and the ratio falls as the bed gets louder, never as it gets quieter, so a quiet-wind night cannot fail it. 0.35 is a bed 1.5
+    // times the loudest seen. SONG_MAKEUP x0.5 reads 0.0254 alone, 0.25 of a floor of 0.101, and fails this as well as the band; x0.7 and x1.3
+    // are the band's (it is the band that fails them, by name).
+    if (alone < sg.floor * 0.35) {
+      failed = true; console.log(`FAIL: a song that is not lost is inaudible (${alone} alone on the sfx bus over a room floor of ${sg.floor})`);
     }
   }
 

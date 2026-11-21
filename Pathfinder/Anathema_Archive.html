@@ -27,6 +27,7 @@ NOTES: The "jsdom harness, 94 assertions" claim once here didn't match anything 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="greyversusblue">
 <meta property="og:url" content="https://greyversusblue.com/Pathfinder/Anathema_Archive.html">
+<link rel="canonical" href="https://greyversusblue.com/Pathfinder/Anathema_Archive.html">
 <meta property="og:title" content="Anathema Archive — greyversusblue">
 <meta property="og:description" content="A quick search tool to look up Pathfinder rules and details.">
 <meta property="og:image" content="https://greyversusblue.com/assets/og/guild-board.png">
@@ -42,8 +43,8 @@ NOTES: The "jsdom harness, 94 assertions" claim once here didn't match anything 
 <style>
 :root{
   --bg:#12161d; --panel:#1a212b; --panel2:#161c25; --border:#2a3442; --border-soft:#222c39;
-  --text:#ddd6c8; --text-dim:#9aa3ad; --text-faint:#6b7683;
-  --crimson:#b3392e; --crimson-deep:#8a2019; --gold:#c9a959;
+  --text:#ddd6c8; --text-dim:#9aa3ad; --text-faint:#8b96a4;
+  --crimson:#b3392e; --crimson-text:#e5766b; --crimson-deep:#8a2019; --gold:#c9a959;
   --trait:#58180d; --trait-unc:#98513d; --trait-rare:#16325c; --trait-uniq:#54166e; --trait-size:#3b5c7b; --trait-align:#3b7b59;
   --row-h:46px;
 }
@@ -60,7 +61,7 @@ a{color:var(--gold)}
 .sidebar{background:var(--panel2);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
 .brand{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
 .brand h1{font:700 17px/1.2 'Palatino Linotype','Iowan Old Style',Palatino,Georgia,serif;letter-spacing:.02em}
-.brand h1 span{color:var(--crimson)}
+.brand h1 span{color:var(--crimson-text)}
 .brand p{font-size:11px;color:var(--text-faint);margin-top:2px}
 .cats{overflow-y:auto;flex:1;padding:6px 0}
 .cat{display:flex;justify-content:space-between;align-items:center;width:100%;padding:7px 16px;text-align:left;color:var(--text-dim);border-left:3px solid transparent}
@@ -150,7 +151,7 @@ a{color:var(--gold)}
 .ref{color:var(--gold);text-decoration:underline dotted;cursor:pointer}
 .ref.loading{opacity:.55;cursor:progress}
 .dice{font-family:ui-monospace,Consolas,monospace;font-size:.93em;color:#d8b46a}
-.act{font-weight:700;color:var(--crimson);font-size:.9em;letter-spacing:.02em}
+.act{font-weight:700;color:var(--crimson-text);font-size:.9em;letter-spacing:.02em}
 .npc-items h3{font-family:system-ui,sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);margin:14px 0 4px}
 .ability{margin:0 0 12px}
 .ability:last-child{margin-bottom:0}
@@ -215,7 +216,7 @@ a{color:var(--gold)}
     </div>
     <div class="shardbar" id="shardbar" hidden></div>
     <div class="count" id="count"></div>
-    <div class="vlist" id="vlist"><div class="vspacer" id="vspacer"></div></div>
+    <div class="vlist" id="vlist" tabindex="0"><div class="vspacer" id="vspacer"></div></div>
   </section>
   <section class="detail" id="detail">
     <button class="backbtn" id="backbtn">&larr; Back to list</button>

@@ -1,0 +1,11 @@
+[
+  { "id": "harbour", "name": "Harbour", "lat": 0, "lon": 0, "region": "coast",
+    "sells": { "wool": { "base": 20, "depth": 20 }, "salt": { "base": 10, "depth": 30 } },
+    "buys": ["lamps"], "sources": [ { "src": "testport-fiction" } ] },
+  { "id": "saltmarsh", "name": "Saltmarsh", "lat": 0, "lon": 1, "region": "coast",
+    "sells": { "salt": { "base": 6, "depth": 40 }, "lamps": { "base": 15, "depth": 10 } },
+    "buys": ["wool"], "sources": [ { "src": "testport-fiction" } ] },
+  { "id": "hilltown", "name": "Hilltown", "lat": 1, "lon": 0, "region": "hills",
+    "sells": { "wool": { "base": 30, "depth": 15 } },
+    "buys": ["salt", "lamps"], "sources": [ { "src": "testport-fiction" } ] }
+]

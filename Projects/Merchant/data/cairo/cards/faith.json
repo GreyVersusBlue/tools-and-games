@@ -1,0 +1,238 @@
+[
+  {
+    "id": "sabbath-carrier",
+    "group": "faith",
+    "kind": "world",
+    "from": {
+      "name": "Yehuda, a merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Goods that cannot travel on Saturday",
+    "body": "Yehuda is a Jewish merchant, and Saturday is his day of rest. Some of his goods must go by road on that day to reach the river boat. He asks if one of your carters can take them.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "help",
+        "label": "Send your carter with the goods",
+        "hint": "It costs a day of your carter and 40 dinars. Yehuda will owe you a favour.",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          },
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "yehuda-returns-favour"
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Say you are too busy",
+        "hint": "Your carter earns 25 dinars on your own goods. Yehuda will ask someone else.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 25
+              }
+            ]
+          },
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "North African Jewish traders in the Geniza letters had long given goods for the road to Muslim business friends. That way no Jewish carrier had to travel on the Sabbath.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1967",
+        "at": "p. 281, as quoted by Edwards and Ogilvie (2008), p. 17"
+      }
+    ]
+  },
+  {
+    "id": "nicola-alexandria",
+    "group": "faith",
+    "kind": "trade",
+    "from": {
+      "name": "Nicola, a merchant",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "A Christian merchant writes",
+    "body": "Nicola is a Christian merchant in Alexandria. He has heard good things of your house and wants to trade with you. He asks you to send him a few bolts of linen to start.",
+    "when": {
+      "all": [
+        {
+          "rep": "foreign",
+          "gte": 0
+        },
+        {
+          "stock": "linen",
+          "gte": 1
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "trade",
+        "label": "Send him the linen",
+        "hint": "It costs now. He may become a steady friend.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 20
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Ask for a letter from someone you know",
+        "hint": "It costs nothing. He starts with a small order.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Traders of different faiths had long done business together. Around 1030 one Jewish firm dealt with Christians in Alexandria, as two historians report it from Moshe Gil.",
+    "unlocks": [
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "edwards-ogilvie-2008",
+        "at": "p. 17; dealings with Christian merchants in Alexandria, citing Gil (2004), p. 687"
+      }
+    ]
+  },
+  {
+    "id": "hajar-pilgrim",
+    "group": "faith",
+    "kind": "favour",
+    "from": {
+      "name": "Hajar, a neighbour",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A neighbour goes to Mecca",
+    "body": "Hajar has saved for years to make the pilgrimage, the holy journey to Mecca. She asks to travel with your carters as far as Qus. She cannot pay much.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "free",
+        "label": "Take her at no charge",
+        "hint": "It costs a little. Your street will hear of it.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "fee",
+        "label": "Ask a small fee for her seat",
+        "hint": "You are paid. Your neighbours may talk.",
+        "now": [
+          {
+            "money": 10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In May 1326 Ibn Battuta left Cairo for Upper Egypt, on his way to Mecca by the Red Sea road through Aydhab. A writer of the 1180s says Saladin had ended the tax on pilgrims at Aydhab.",
+    "unlocks": [
+      "term-pilgrimage"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 58 to 59; he left Cairo by the Upper Egypt road for the Hijaz, May 1326"
+      },
+      {
+        "src": "peacock-2008",
+        "at": "p. 34; Saladin repealed the tax on pilgrims at Aydhab, from Ibn Jubayr"
+      }
+    ]
+  }
+]

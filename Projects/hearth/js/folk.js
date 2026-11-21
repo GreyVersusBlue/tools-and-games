@@ -50,7 +50,7 @@ function drawItem(it,x,y,f,k){const h=f>0?x+2:x-3,t=y-4*k;
 function drawFolk(p){carryTrack(p);
   if(p._set&&!p.dead){const it=p._set,x=Math.round(it.x*T),y=Math.round(it.y*T);g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-1,y+3,4,1);if(it.k!=='staff')drawItem(it,x-2,y+4,1,1)}
   if(p.inside)return;
-  const x=p.x*T,y=p.y*T+(p.inBoat?-1:0),busy=p.task==='chop'||p.task==='build'||p.task==='till'||p.task==='harvest',bob=busy?Math.sin(animT*12+p.off)*1.2:0;
+  const x=p.x*T,y=p.y*T+(p.inBoat?-1:0),busy=p.task==='chop'||p.task==='build'||p.task==='till'||p.task==='harvest',bob=busy&&!RM?Math.sin(animT*12+p.off)*1.2:0;
   const k=kOf(p);
   if(p===selected){drawTies(p);g.fillStyle='rgba(240,179,90,.55)';g.fillRect(x-4,y+1,9,1);g.fillRect(x-4,y-1,1,2);g.fillRect(x+4,y-1,1,2)}
   if(p.task==='sleep'){g.fillStyle=p.col;g.fillRect(x-2,y-2,5,3);return}
@@ -67,12 +67,12 @@ function drawFolk(p){carryTrack(p);
   if(sp.hat){g.fillStyle=HATCOL[sp.hat];g.fillRect(x-1.5,top+(sp.hat==='brave'?1:0),3,1)}
   if(sp.beard){g.fillStyle=sp.hair;g.fillRect(x-.5,top+2,1,1)}
   if(el){g.fillStyle='#6f4b32';g.fillRect(f>0?x+1.5:x-2.5,y-3,1,3)}
-  if(tl){g.fillStyle=sk[0];g.fillRect(f>0?x-2.5:x+1.5,sh+1-(Math.sin(animT*4+p.off)>0?1:0),1,2)} /* an arm that moves, on the side away from where the teller faces */
+  if(tl){g.fillStyle=sk[0];g.fillRect(f>0?x-2.5:x+1.5,sh+1-(!RM&&Math.sin(animT*4+p.off)>0?1:0),1,2)} /* an arm that moves, on the side away from where the teller faces */
   if(p.sick&&p.task!=='abed'){g.fillStyle='rgba(236,236,226,.3)';g.fillRect(x-1.5,top,3,y-top-1)} /* still up, and a shade paler for it */
   {const it=p._c;if(it&&it.k!=='axe'&&it.k!=='rod')drawItem(it,x,y,f,k);const bc=beltOf(p);if(bc){g.fillStyle=bc;g.fillRect(x-1.5,y-2*k,1,1)}}
   if(p.task==='chop'){g.fillStyle='#999';g.fillRect(x+2,y-7+bob*2,2,2)}
   if(p.task==='fish'){g.fillStyle='#e8dcc4';g.fillRect(x+2,y-6,1,7)}
-  if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle=sk[0];g.fillRect(x+2,y-9*k+Math.sin(animT*9+p.off)*1.5,1,3)}
+  if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle=sk[0];g.fillRect(x+2,y-9*k+(RM?0:Math.sin(animT*9+p.off)*1.5),1,3)}
   /* sprint 16: a talk you can see — the pip leans toward whoever it is for, and carries a bright grain when there is news in it */
   if(p.task==='chat'&&p.chatSd&&Math.hypot(p.tx-p.x,p.ty-p.y)<.2&&Math.sin(animT*2.3+p.off)>.25){const q=byName(p.chatW),ox=q&&q.x<p.x?-4:4;
     g.fillStyle='#e8e4da';g.fillRect(x+ox-1,y-11*k,3,2);g.fillRect(x+(ox>0?2:-2),y-9*k,1,1);

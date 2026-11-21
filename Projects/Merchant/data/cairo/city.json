@@ -1,0 +1,414 @@
+{
+  "id": "cairo",
+  "name": "Cairo",
+  "home": "cairo",
+  "currency": "dinars",
+  "title": "Merchant",
+  "tagline": "Cairo, 1324. Buy where it is cheap, sell where it is dear, and bring your people home.",
+  "opening": {
+    "spice": [
+      "opening-letter",
+      "first-expedition",
+      "linen-neighbour"
+    ],
+    "cloth": [
+      "opening-letter",
+      "first-expedition",
+      "linen-neighbour"
+    ],
+    "newcomer": [
+      "opening-letter-broker",
+      "yusuf-asks-for-work",
+      "linen-neighbour"
+    ]
+  },
+  "secondSeason": {
+    "letter": "first-road-letter",
+    "cards": 1
+  },
+  "contracts": {
+    "qirad": {
+      "agentShare": [
+        1,
+        3
+      ]
+    }
+  },
+  "recall": {
+    "reach": {
+      "start": 0.95,
+      "perSeason": 0.15,
+      "floor": 0.1
+    },
+    "recalledKeeps": 0.6,
+    "recalledSurvives": 0.9,
+    "stayedSurvives": 0.5,
+    "homeSurvives": 0.6,
+    "byStop": {}
+  },
+  "jump": {
+    "retires": 0.1,
+    "wholeLoss": 0.4,
+    "survivesWhole": 0.75,
+    "partial": [
+      0.25,
+      0.75
+    ]
+  },
+  "score": {
+    "wealthScale": [
+      [0, 0],
+      [800, 5],
+      [1400, 20],
+      [1900, 35],
+      [3000, 50],
+      [4500, 80],
+      [6000, 108],
+      [8000, 135]
+    ],
+    "ranks": [
+      {
+        "from": 0,
+        "name": "A house that kept its doors open"
+      },
+      {
+        "from": 40,
+        "name": "A small but steady house"
+      },
+      {
+        "from": 80,
+        "name": "A respected house"
+      },
+      {
+        "from": 120,
+        "name": "A great house of Cairo"
+      },
+      {
+        "from": 160,
+        "name": "A house whose name travelled to many ports"
+      }
+    ]
+  },
+  "stills": {
+    "spring": "desk-day",
+    "summer": "desk-day",
+    "autumn": "desk-dusk",
+    "winter": "desk-night",
+    "lastAct": "desk-night",
+    "map": "map-cairo"
+  },
+  "clusters": {
+    "delta": "Nile Delta",
+    "upper-egypt": "Upper Egypt",
+    "redsea": "Red Sea coast",
+    "levant": "Syria",
+    "niger": "Niger River"
+  },
+  "gradients": [
+    {
+      "good": "pepper",
+      "from": [
+        "calicut",
+        [
+          "hormuz",
+          "aden"
+        ],
+        "jeddah",
+        [
+          "aydhab",
+          "quseir"
+        ],
+        "qus",
+        "cairo",
+        "alexandria",
+        [
+          "famagusta",
+          "constantinople",
+          "tunis",
+          "venice",
+          "damascus"
+        ]
+      ],
+      "note": "Pepper grew on the Malabar coast and grew dearer at every handover on the way to Europe, each port adding its duty and its profit.",
+      "sources": [
+        {
+          "src": "vallet-2011",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "ashtor-1983",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "fischel-1958",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "porcelain",
+      "from": [
+        "calicut",
+        [
+          "hormuz",
+          "aden"
+        ],
+        "jeddah",
+        [
+          "aydhab",
+          "quseir"
+        ],
+        "qus",
+        "cairo",
+        "alexandria",
+        [
+          "famagusta",
+          "constantinople",
+          "tunis",
+          "venice",
+          "damascus"
+        ]
+      ],
+      "note": "Porcelain came by the same Indian Ocean and Red Sea road as the spices and cost more with every port it passed through on the way to the Mediterranean.",
+      "sources": [
+        {
+          "src": "abu-lughod-1989",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "chaudhuri-1985",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "incense",
+      "from": [
+        "calicut",
+        [
+          "hormuz",
+          "aden"
+        ],
+        "jeddah",
+        [
+          "aydhab",
+          "quseir"
+        ],
+        "qus",
+        "cairo",
+        "alexandria",
+        [
+          "famagusta",
+          "constantinople",
+          "tunis",
+          "venice",
+          "damascus"
+        ]
+      ],
+      "note": "Incense came up the Red Sea from Arabia and India and was dearer in Cairo than at the ports where it landed, and dearer again in Europe.",
+      "sources": [
+        {
+          "src": "fischel-1958",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "ashtor-1976",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "silk",
+      "from": [
+        "samarkand",
+        "tabriz",
+        "cairo",
+        "alexandria",
+        "venice"
+      ],
+      "note": "Raw silk came west from Central Asia and Iran, so each step toward Venice was a step toward a dearer market.",
+      "sources": [
+        {
+          "src": "abu-lughod-1989",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "pegolotti-1936",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "ashtor-1983",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "gold",
+      "from": [
+        [
+          "gao",
+          "walata",
+          "tuat"
+        ],
+        "cairo"
+      ],
+      "note": "Gold dust was cheapest near the mines of the Sahel and dearer in Egypt, which is why the caravans carried it north.",
+      "sources": [
+        {
+          "src": "garrard-1982",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "levtzion-hopkins-1981",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "ibn-battuta-1929",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "sugar",
+      "from": [
+        "qus",
+        "cairo"
+      ],
+      "note": "Qus lay in Upper Egypt where cane was pressed, so sugar there was cheaper than in the capital.",
+      "sources": [
+        {
+          "src": "sato-2004",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "sugar",
+      "from": [
+        "cairo",
+        [
+          "alexandria",
+          "famagusta",
+          "constantinople",
+          "tunis",
+          "venice"
+        ]
+      ],
+      "note": "Egyptian sugar was an export and sold for more in the Mediterranean ports than in Cairo.",
+      "sources": [
+        {
+          "src": "sato-2004",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "ashtor-1976",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "linen",
+      "from": [
+        "cairo",
+        [
+          "alexandria",
+          "famagusta",
+          "constantinople",
+          "tunis",
+          "venice"
+        ]
+      ],
+      "note": "Egyptian linen was woven for export and fetched more in the Mediterranean ports that bought it than at home.",
+      "sources": [
+        {
+          "src": "walker-2000",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "ashtor-1976",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "glass",
+      "from": [
+        "cairo",
+        [
+          "alexandria",
+          "famagusta",
+          "constantinople",
+          "tunis"
+        ]
+      ],
+      "note": "Glass was made in Cairo and Alexandria and cost more in the ports that had to import it.",
+      "sources": [
+        {
+          "src": "christie-2004",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "ashtor-1976",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "copper",
+      "from": [
+        "venice",
+        "cairo"
+      ],
+      "note": "Europe mined and sold copper, so it was cheaper at Venice than in Egypt, which imported it.",
+      "sources": [
+        {
+          "src": "pegolotti-1936",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "arbel-2004",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "wool",
+      "from": [
+        "venice",
+        "cairo"
+      ],
+      "note": "Wool cloth was made in Europe and was cheaper at Venice than in Egypt, where buyers paid for the freight.",
+      "sources": [
+        {
+          "src": "pegolotti-1936",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "lopez-raymond-1955",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    },
+    {
+      "good": "salt",
+      "from": [
+        [
+          "tuat",
+          "walata"
+        ],
+        "gao"
+      ],
+      "note": "Salt was dug in the Sahara and grew dearer toward the Niger, where there was none.",
+      "sources": [
+        {
+          "src": "ibn-battuta-1929",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        },
+        {
+          "src": "levtzion-hopkins-1981",
+          "at": "the direction of the price gap only; a size for each stop is an estimate"
+        }
+      ]
+    }
+  ]
+}

@@ -48,6 +48,8 @@ export function createWorld(opts = {}) {
   fresh();
   const world = {
     get step() { return gstep; },
+    // run source in the game's context and hand back what it evaluates to (era.mjs reads and edits the island this way)
+    run,
     get code() { return loadedCode; },
     // a new island at this seed; global step 0
     found(seed) { g.H.newWorld(seed >>> 0); gstep = 0; },

@@ -1,0 +1,69 @@
+[
+  {
+    "id": "wool-offer",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Nell the broker",
+      "role": "Testport",
+      "seal": null
+    },
+    "title": "Four loads of wool",
+    "body": "The negotiation concerning transportation insurance necessitates considerable administrative documentation.",
+    "weight": 2,
+    "repeat": true,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy the wool",
+        "requires": {
+          "money": {
+            "gte": 40
+          }
+        },
+        "now": [
+          {
+            "money": -40
+          },
+          {
+            "stock": "wool",
+            "by": 4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "wool-due"
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Say no, politely",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "An invented card for testing.",
+    "sources": [
+      {
+        "src": "testport-fiction"
+      }
+    ]
+  }
+]

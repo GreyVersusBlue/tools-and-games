@@ -9,6 +9,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="greyversusblue">
 <meta property="og:url" content="https://greyversusblue.com/Projects/fourth-quarter/">
+<link rel="canonical" href="https://greyversusblue.com/Projects/fourth-quarter/">
 <meta property="og:title" content="The Fourth Quarter — greyversusblue">
 <meta property="og:description" content="The sports bar sim, rebuilt in three dimensions.">
 <meta property="og:image" content="https://greyversusblue.com/assets/og/fourth-quarter.jpg">
@@ -58,7 +59,7 @@
 <!-- management panel (day stations) -->
 <div id="panelOverlay" class="overlay" style="display:none">
   <div class="card panel">
-    <div class="panelHd"><h1 id="panelTitle"></h1><button id="panelClose" title="Close">✕</button></div>
+    <div class="panelHd"><h2 id="panelTitle"></h2><button id="panelClose" title="Close">✕</button></div>
     <div id="panelBody"></div>
     <div id="panelFoot"></div>
   </div>
@@ -67,7 +68,7 @@
 <!-- dev / debug menu — press ` (backquote) to toggle from any phase -->
 <div id="devOverlay" class="overlay" style="display:none">
   <div class="card panel">
-    <div class="panelHd"><h1>Dev Menu</h1><button id="devClose" title="Close">✕</button></div>
+    <div class="panelHd"><h2>Dev Menu</h2><button id="devClose" title="Close">✕</button></div>
     <div id="devBody"></div>
   </div>
 </div>
@@ -87,6 +88,7 @@
     <p class="dim" id="loadLine">Loading textures…</p>
     <button id="startBtn">Take the Floor</button>
     <button id="wipeBtn" class="ghost">New Game (wipe save)</button>
+    <a class="homeLink" href="/">All games</a>
     <!-- One of three mounts of the same save bar (mountSaveBar() from
          /assets/js/gvb-save.js): here, the box score below, and the Tonight
          panel's footer, which day.js builds. main.js mounts all three through
@@ -101,7 +103,7 @@
      writes tomorrow's books, and importing has no half-finished night to discard. -->
 <div id="boxOverlay" class="overlay" style="display:none">
   <div class="card">
-    <h1 id="boxTitle">Box Score</h1>
+    <h2 id="boxTitle">Box Score</h2>
     <div id="boxBody"></div>
     <button id="nextDayBtn">Tomorrow's Ledger</button>
     <div id="boxSaveBar"></div>
