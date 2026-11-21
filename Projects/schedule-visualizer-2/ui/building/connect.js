@@ -46,6 +46,14 @@ export function createConnect(ed, options) {
   const stops = h('ul', { class: 'bld-connect__stops', id: 'connect-stops', 'aria-label': 'Elevator stops you can join', style: 'flex: 1 1 100%; margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-1)', hidden: true });
   const banner = h('div', { class: 'bld-connect', id: 'connect-banner', role: 'group', 'aria-label': 'Connecting', tabindex: '-1', hidden: true }, words, stop, another, finished, note, stops);
   options.stage.append(banner);
+  // The banner is docked: the plan starts under it (the stage's --bld-connect
+  // is the banner's height while it shows), so it never covers a cell the
+  // finger needs, however many lines it grows to (DESIGN 5.1, SV2-142).
+  const dock = () => {
+    if (banner.hidden) options.stage.style.removeProperty('--bld-connect');
+    else options.stage.style.setProperty('--bld-connect', banner.offsetHeight + 'px');
+  };
+  if (typeof ResizeObserver === 'function') new ResizeObserver(dock).observe(banner);
   let from = null;
   let press = null;
   let asking = false;
@@ -138,6 +146,7 @@ export function createConnect(ed, options) {
 
   function draw() {
     banner.hidden = from === null;
+    dock();
     if (from === null) {
       delete canvas.dataset.connecting;
       note.hidden = true;

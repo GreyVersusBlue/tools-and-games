@@ -374,6 +374,33 @@ test('Connect another floor… adds a stop from a stop: the banner names the sta
   assert.equal(await page.$eval('#connect-banner', (el) => el.hidden), true);
 });
 
+test('SV2-142: at 390 px the connect banner is docked: the plan starts under it, so it covers no cell, and the plan is whole again when it goes', async () => {
+  await floors(3, [1, 2, 3], { flights: [[1, 2]] });
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+  await still(page);
+  const rects = () => page.evaluate(() => {
+    const banner = document.getElementById('connect-banner').getBoundingClientRect();
+    const plan = document.getElementById('plan').getBoundingClientRect();
+    const stage = document.querySelector('.bld-stage').getBoundingClientRect();
+    return { bannerBottom: Math.round(banner.bottom), planTop: Math.round(plan.top), planBottom: Math.round(plan.bottom), stageTop: Math.round(stage.top), stageBottom: Math.round(stage.bottom), hidden: document.getElementById('connect-banner').hidden };
+  });
+  await showFloor('Floor 3');
+  await menuOn(14, 10);
+  await choose('Connect these stairs…');
+  await page.waitForFunction(() => !document.getElementById('connect-banner').hidden);
+  await still(page);
+  const open = await rects();
+  assert.ok(open.planTop >= open.bannerBottom - 1, 'the plan starts at ' + open.planTop + ' under a banner that ends at ' + open.bannerBottom);
+  assert.equal(open.planBottom, open.stageBottom, 'the plan runs to the bottom of its stage');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
+  await still(page);
+  const shut = await rects();
+  assert.equal(shut.planTop, shut.stageTop, 'the plan is the whole stage once the banner is gone');
+  await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
+  await still(page);
+});
+
 // ---------------------------------------------------------------- stairwell through floors
 
 const FLOOR_ROWS = [

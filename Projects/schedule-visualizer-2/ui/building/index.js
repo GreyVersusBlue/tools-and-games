@@ -277,7 +277,8 @@ export const section = {
 
     function measure() {
       if (!element.isConnected) return;
-      const box = stage.getBoundingClientRect();
+      // the plan's own box: under the connect banner while it shows (SV2-142)
+      const box = canvas.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) return;
       renderer.resize(box.width, box.height, window.devicePixelRatio || 1);
       view.resize(box.width, box.height);
@@ -909,6 +910,7 @@ function commitPlain(action, payload, options) {
     darkQuery.addEventListener('change', onTheme);
     themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     observer.observe(stage);
+    observer.observe(canvas);
 
     // ------------------------------------------------------------ the selection
 
