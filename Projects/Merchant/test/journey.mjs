@@ -905,7 +905,23 @@ try {
     await test('MER-104: the unsold sentence leads the body lines, after the headline and before the hope', async () => {
       const { returnLead } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
       const lead = returnLead(nodeContent, { kind: 'return', data: { headline: 'x', hoped: 36, why: 'Prices moved.', goodsBack: { linen: 2 }, cargoValue: 120 } });
-      ok(lead.startsWith('2 loads of linen are in the warehouse, worth about 120 at ') && lead.endsWith(' We hoped for about 36 dinars. Prices moved.'), lead);
+      ok(lead.startsWith('We hoped for about 36 dinars. Prices moved. 2 loads of linen are in the warehouse, worth about 120 at '), lead);
+    });
+    await test('MER-106: a return reads the hope, then the why, then the unsold goods, so the hope is not buried', async () => {
+      const { returnLead } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
+      const lead = returnLead(nodeContent, { kind: 'return', data: { headline: 'x', hoped: 374, why: 'Cairo paid less than we hoped.', goodsBack: { linen: 18 }, cargoValue: 1692 } });
+      const [a, b, c] = ['We hoped for about 374 dinars.', 'Cairo paid less than we hoped.', ' are in the warehouse, worth about 1,692'].map(t => lead.indexOf(t));
+      ok(a === 0 && b > a && c > b, lead);
+    });
+    await test('MER-106: the cause line fills the slot a card names and never shows a raw one', async () => {
+      const { accountGroups } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
+      const c = { agents: [{ id: 'ali', name: 'Ali' }], cards: [{ id: 'hire', when: { trip: { agent: 'ali', is: 'home' } } }, { id: 'plain' }] };
+      const cause = it => accountGroups([{ changes: ['x'], text: 'x', ...it }], c)[0].cause;
+      eq(cause({ from: 'hire/keep', card: '{agent} is home', choice: 'Keep him to {to}' }), 'After "Ali is home":', 'the agent is known from the card, the destination is not');
+      eq(cause({ from: 'hire/keep', card: '{agent} is home', choice: 'Send {agent} out' }), 'After "Ali is home", you chose "Send Ali out":');
+      eq(cause({ from: 'hire/keep', card: 'Word of {route}', choice: 'Wait' }), 'After an earlier choice:', 'a title that needs the trip drops to the plain form');
+      eq(cause({ from: 'plain/x', card: 'A plain card', choice: 'Do it' }), 'After "A plain card", you chose "Do it":', 'a clean line is untouched');
+      eq(cause({ from: 'gone/x', card: '{agent} is home', choice: 'Go' }), 'After an earlier choice:', 'a card gone from the content has no agent to name');
     });
     await test('play to the first return: the page matches the engine every season, and the return paper leads with its sentence', async () => {
       for (let season = 1; season <= 10 && !sawReturn; season++) {
@@ -923,7 +939,7 @@ try {
           // MER-93: the headline names what the sheet hoped for at sending and why the house made more or less
           ok(Number.isFinite(ret.data.hoped) && ret.data.why, `the return carries hoped and why: ${JSON.stringify([ret.data.hoped, ret.data.why])}`);
           eq(await page.$eval('.sheet-title', e => e.textContent), ret.data.headline, 'MER-104: the headline is the engine\'s sentences and nothing more');
-          { const lead = await page.$eval('.sheet-title + .return-lead', e => e.textContent); ok(lead.endsWith(hopedWhyOf(ret)), `the hope and the reason follow in body type: ${lead}`); }
+          { const lead = await page.$eval('.sheet-title + .return-lead', e => e.textContent); ok(lead.startsWith(hopedWhyOf(ret)), `the hope and the reason lead in body type (MER-106): ${lead}`); }
           eq(await page.$eval('.sheet', e => e.dataset.kind), 'return');
           eq(await page.$eval('.account', d => d.open), false, 'the account is folded shut on the first return of a game');
           ok((await page.$eval('.account summary', e => e.textContent)) === 'Show the account');
@@ -2864,7 +2880,8 @@ try {
         { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ['+60 dinars'], text: 'x' },
         { from: 'gift/yes', card: 'A gift for the court', choice: 'Send the gift', changes: ["good name with court +1"], text: 'y' },
         { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'z' },
-        { from: null, card: null, choice: null, changes: ['+5 dinars'], text: 'w' }] }];
+        { from: null, card: null, choice: null, changes: ['+5 dinars'], text: 'w' },
+        { from: 'gone/keep', card: '{agent} is home', choice: 'Keep him to {to}', changes: ['+1 dinar'], text: 'v' }] }];
       return st;
     };
     const { page, consoleErrors } = await open(FRAMES[0]);
@@ -2874,6 +2891,8 @@ try {
       await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
       await page.goto(GAME + '#desk', { waitUntil: 'load' });
       await page.waitForSelector('#screen-desk .sheet-title');
+      const raw = await page.$eval('#screen-desk', e => e.textContent.match(/[{}]/g));   // MER-106: no paper the journey walks shows a slot
+      ok(!raw, 'a paper shows a raw { or }');
     };
     const labelsOf = () => page.$$eval('.sheet .choice .label', es => es.map(e => e.textContent));
     const firstOpen = (st, id) => eng.paperChoices(st, content80, id).find(x => { try { eng.choose(st, content80, id, x.id); return true; } catch { return false; } });
@@ -2991,7 +3010,8 @@ try {
       eq(groups, [
         ['After "Hasan asks for a loan", you chose "Lend him 50 dinars":', ['+60 dinars', "Hasan's trust +1"]],
         ['After "A gift for the court", you chose "Send the gift":', ['Good name with court +1']],
-        ['After an earlier choice:', ['+5 dinars']]]);
+        ['After an earlier choice:', ['+5 dinars']],
+        ['After an earlier choice:', ['+1 dinar']]]);
       await page.click('#btn-next');
       await page.waitForFunction(() => window.__merchant.state.desk[0].state === 'done');
     });
@@ -3063,7 +3083,7 @@ try {
       const said = '14 loads of wool cloth are in the warehouse, worth about 880 at Cairo\'s price.';
       const title = await page.$eval('.sheet-title', e => e.textContent), lead = await page.$eval('.sheet-title + .return-lead', e => e.textContent);
       eq(title, r.data.headline, 'MER-104: the headline does not carry the unsold sentence');
-      ok(lead.startsWith(said), lead);
+      ok(lead.includes(said), lead);
       eq(lead.split(said).length, 2, 'said once');
       const lines = await page.evaluate(async () => {
         const { unsoldLine } = await import('./js/ui/screens/paper.js');
@@ -3082,7 +3102,7 @@ try {
       await load(st);
       const lead = await page.$eval('.sheet-title + .return-lead', e => e.textContent);
       const names = await page.evaluate(() => window.__merchant.content.goods.filter(g => ['linen', 'wool'].includes(g.id)).map(g => g.name.toLowerCase()));
-      ok(lead.startsWith(`7 loads of ${names[0]} and 3 of ${names[1]} are in the warehouse, worth about 1,234 at Cairo's price.`), lead);
+      ok(lead.includes(`7 loads of ${names[0]} and 3 of ${names[1]} are in the warehouse, worth about 1,234 at Cairo's price.`), lead);
       const got = await page.evaluate(async () => {
         const { unsoldLine } = await import('./js/ui/screens/paper.js');
         const c = window.__merchant.content;

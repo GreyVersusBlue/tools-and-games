@@ -233,14 +233,14 @@ export function returnHeadline(content, paper) {
   return paperTitle(content, paper);
 }
 
-/** The body-type lead under a return's headline: the unsold goods, then what the sheet hoped for at sending and the one reason
-    for the gap. Null when there is nothing to say. A save from before `hoped` was kept (both null) says only the unsold goods. */
+/** The body-type lead under a return's headline: what the sheet hoped for at sending, the one reason for the gap, then any
+    unsold goods, so the hope is not buried (M4B-PLAY2). Null when there is nothing to say. A save from before `hoped` was kept (both null) says only the unsold goods. */
 export function returnLead(content, paper) {
   if (paper.kind !== 'return') return null;
   const d = paper.data ?? {}, held = unsoldLine(d, content);
   if (!Number.isFinite(d.hoped) || !d.why) return held;
   const hoped = d.hoped >= 0 ? `We hoped for about ${dinars(d.hoped)}.` : `We expected to lose about ${dinars(-d.hoped)}.`;
-  return `${held ? `${held} ` : ''}${hoped} ${d.why}`;
+  return `${hoped} ${d.why}${held ? ` ${held}` : ''}`;
 }
 
 const goodOf = (content, id) => (content.goods ?? []).find(g => g.id === id);
@@ -373,18 +373,43 @@ export function back(app, paper, { now, fresh, onNext }) {
 /** The Accounts paper's lines grouped under the choice that caused them (DESIGN 2.1 rule 6), in the order the
     first line of each cause arrived: "After "Lend Hasan", you chose "Lend it":". A line whose card is gone
     from the content still names its cause as an earlier choice, never as a bare line. */
-export function accountGroups(items) {
+export function accountGroups(items, content = null) {
   const groups = [];
   for (const i of items) {
     const key = i.from ?? '';
     let g = groups.find(x => x.key === key);
     if (!g) {
-      g = { key, from: i.from ?? null, cause: i.card && i.choice ? `After "${i.card}", you chose "${i.choice}":` : i.card ? `After "${i.card}":` : 'After an earlier choice:', items: [] };
+      g = { key, from: i.from ?? null, cause: causeLine(i, content), items: [] };
       groups.push(g);
     }
     g.items.push(i);
   }
   return groups;
+}
+
+const hasBrace = t => typeof t === 'string' && /[{}]/.test(t);
+
+/** The agent a card tells of: the `trip` leaf of its `when`, at the top or inside a top-level `all`. */
+function cardAgent(card) {
+  const w = card?.when;
+  if (w?.trip) return w.trip.agent ?? null;
+  for (const c of Array.isArray(w?.all) ? w.all : []) if (c?.trip) return c.trip.agent ?? null;
+  return null;
+}
+
+/** The engine records a card's title and a choice's label as written, so a card that tells of a trip arrives here with
+    `{agent}` or `{to}` still in it. The one slot the card itself names is filled, the agent; a slot that needs the trip
+    (`{to}`, `{good}`, `{route}`, `{seasons}`) is not known here, and its words are dropped to a plainer line. */
+function causeLine(i, content) {
+  const card = content ? (content.cards ?? []).find(c => c.id === String(i.from ?? '').split('/')[0]) : null;
+  const agent = content && cardAgent(card) ? (content.agents ?? []).find(a => a.id === cardAgent(card))?.name : null;
+  const fill = t => (typeof t === 'string' && agent ? t.replace(/\{agent\}/g, agent) : t);
+  const title = fill(i.card), choice = fill(i.choice);
+  const cleanTitle = typeof title === 'string' && !hasBrace(title) ? title : null;
+  const cleanChoice = typeof choice === 'string' && !hasBrace(choice) ? choice : null;
+  if (cleanTitle && cleanChoice) return `After "${cleanTitle}", you chose "${cleanChoice}":`;
+  if (cleanTitle) return `After "${cleanTitle}":`;
+  return 'After an earlier choice:';
 }
 
 /** A loss paper's picture slot (DESIGN 2.1 rule 4): the still `lost` from the manifest when it has one, else the
@@ -435,7 +460,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
           row((content.goods ?? []).find(x => x.id === g)?.name ?? g, `${num(p)} a load`)))));
     }
   } else {
-    for (const g of accountGroups(paper.items ?? [])) {
+    for (const g of accountGroups(paper.items ?? [], content)) {
       body.push(h('section', { class: 'account-group', dataset: { from: g.from ?? '' } },
         h('h3', { class: 'cause' }, g.cause),
         ...g.items.map(i => h('p', { class: 'account-item' }, cap(i.changes?.join(', ') ?? i.text)))));

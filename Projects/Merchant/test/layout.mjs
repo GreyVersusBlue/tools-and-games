@@ -553,6 +553,45 @@ try {
             ok(!bad, bad ?? '');
           });
         }
+        if (screen.name === 'desk-return') {
+          // MER-105: the top bar and the raised paper never share a pixel, and the bar never sits on the papers-left tag or the sender line
+          // (boxes, not pixels: the suite once passed 985 cases with Map and Menu on top of "Yusuf Home from the road")
+          // measured with the page at its top, where the desk opens: the harness scrolled an edge to the middle to press it, and any fixed bar
+          // is over whatever has scrolled up under it
+          await test(`${tag}: the top bar clears the paper, the papers-left tag and the sender line`, async () => {
+            await page.evaluate(() => window.scrollTo(0, 0));
+            const got = await page.evaluate(() => {
+              // the part of the element a player can see: its box cut down by every ancestor that clips or scrolls (a tall paper scrolls inside the stack on a laptop)
+              const box = sel => { const e = document.querySelector(sel); if (!e || !e.checkVisibility()) return null; const r = e.getBoundingClientRect(); const v = { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+                for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) { if (getComputedStyle(a).overflowY !== 'visible') { const b = a.getBoundingClientRect(); v.top = Math.max(v.top, b.top); v.bottom = Math.min(v.bottom, b.bottom); } }
+                return v; };
+              const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+              const bar = box('.topbar'), out = {};
+              for (const sel of ['.sheet', '.sheet-head .sender', '.stack-count']) { const b = box(sel); out[sel] = b === null ? 'missing' : hit(bar, b) ? `${Math.round(b.top)} to ${Math.round(b.bottom)} against the bar's ${Math.round(bar.top)} to ${Math.round(bar.bottom)}` : null; }
+              return out;
+            });
+            ok(got['.sheet'] !== 'missing' && got['.sheet-head .sender'] !== 'missing' && got['.stack-count'] !== 'missing', `the desk is missing a part: ${JSON.stringify(got)}`);
+            ok(!got['.sheet'], `the bar overlaps the paper: ${got['.sheet']}`);
+            ok(!got['.sheet-head .sender'], `the bar overlaps the sender line: ${got['.sheet-head .sender']}`);
+            ok(!got['.stack-count'], `the bar overlaps the papers-left tag: ${got['.stack-count']}`);
+          });
+          // the End the season bar is opaque wherever it covers other papers, and the last choice clears it when the page is scrolled to its foot
+          await test(`${tag}: End the season shows nothing from under it and never covers the last choice`, async () => {
+            await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+            const got = await page.evaluate(() => {
+              const row = document.querySelector('.end-row'), last = document.querySelector('.sheet .choices .choice:last-of-type');
+              if (!row || !row.checkVisibility() || !last) return { missing: true };
+              const rr = row.getBoundingClientRect(), lr = last.getBoundingClientRect();
+              const bg = getComputedStyle(row).backgroundColor.match(/[\d.]+/g).map(Number);
+              const covers = getComputedStyle(row).position === 'sticky' || getComputedStyle(row).position === 'fixed';
+              return { covers, alpha: bg.length > 3 ? bg[3] : 1, overlap: lr.left < rr.right && lr.right > rr.left && lr.top < rr.bottom - 0.5 && lr.bottom > rr.top + 0.5, last: [Math.round(lr.top), Math.round(lr.bottom)], row: [Math.round(rr.top), Math.round(rr.bottom)] };
+            });
+            await page.evaluate(() => window.scrollTo(0, 0));
+            ok(!got.missing, 'End the season or the last choice is not on the desk');
+            ok(!got.covers || got.alpha === 1, `the bar that sticks over the papers is ${got.alpha} opaque, so the papers under it show through`);
+            ok(!got.overlap, `the bar (${got.row}) covers the last choice (${got.last})`);
+          });
+        }
         if (screen.name === 'desk-return' && frame.name === 'board') {
           // MER-104: the headline is who came home and what the house made, at most three lines; the rest sits under it in body type
           await test(`${tag}: the return's headline is at most three lines and the hope, the reason and the unsold goods sit under it`, async () => {
