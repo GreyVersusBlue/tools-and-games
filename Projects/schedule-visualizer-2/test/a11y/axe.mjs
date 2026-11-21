@@ -248,6 +248,19 @@ test('the sweep visits W6\'s screens: the Projects card (one and three projects)
   }
 });
 
+// SV2-136: W7's screens and Help's search, at 1280 and at 390 with touch, are visited by the
+// four passes above (each opener also fails when the page scrolls sideways).
+test('the sweep visits W7\'s screens: the floor menu, Duplicate floor, Auto-number, a room\'s Features and the features list, a stairwell\'s Properties and its two dialogs, the checks with a split stairwell and with dead ends, the Day tab\'s Other word and Name periods, Settings with Other word, the Part-time editor, and Help with results and a result opened', () => {
+  const ids = SCREENS.map((screen) => screen.id);
+  for (const id of ['w7-floor-menu', 'w7-duplicate-floor', 'w7-auto-number', 'w7-room-features', 'w7-features-list', 'w7-stairwell-properties', 'w7-stairwell-through', 'w7-make-stairwell', 'w7-split-stairwell', 'w7-dead-end', 'w7-day-other-word', 'w7-day-names', 'w7-settings-other-word', 'w7-part-time', 'w7-help-results', 'w7-help-opened']) {
+    assert.ok(ids.includes(id), 'screens.mjs has no ' + id + ', so axe does not check it');
+    const phone = SCREENS.find((screen) => screen.id === id + '-phone');
+    assert.ok(phone && phone.viewport.width === 390 && phone.viewport.mobile === true, id + ' has no screen at 390 with touch');
+  }
+  const side = SCREENS.find((screen) => screen.id === 'w7-help-none-sideways');
+  assert.ok(side && side.viewport.width === 844 && side.viewport.height === 390, 'Help with no results on a phone on its side is not visited');
+});
+
 test('every entry in the allow-list still matches something', () => {
   assert.deepEqual(ALLOW.filter((entry) => !used.has(entry)).map((entry) => entry.rule + (entry.screen ? ' on ' + entry.screen : '') + (entry.where ? ' (' + entry.where + ')' : '')), []);
 });

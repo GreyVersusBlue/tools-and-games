@@ -140,7 +140,7 @@
 // The number, door name, assembly point and every name in a step's parts are
 // as typed, in any script; nothing here escapes or interprets them.
 
-import { nameOfRoom, isWalkable, ELEVATOR_KIND } from './schema.js';
+import { nameOfRoom, isWalkable, ELEVATOR_KIND, stairsLetter } from './schema.js';
 import { routingGraph, routeToExit, routeToCells } from './routing.js';
 import { directions, describeFailure, CELL_UNITS } from './directions.js';
 
@@ -392,7 +392,7 @@ function boxOf(floor, cells) {
 // Called only once fits() has said the route matches the building.
 function routeFloors(project, route, room) {
   const floors = new Map(project.building.floors.map((floor) => [floor.id, floor]));
-  const labels = new Map((project.building.connections || []).map((connection) => [connection.id, connection.label]));
+  const labels = new Map((project.building.connections || []).map((connection) => [connection.id, stairsLetter(connection)]));
   const crossing = new Map(route.connectionAt.map((index, i) => [index, route.connections[i]]));
   const used = [];
   const byFloor = new Map();

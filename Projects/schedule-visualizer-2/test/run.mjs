@@ -56,7 +56,16 @@ export const GROUPS = {
     'engine/building.test.mjs', // SV2-04
     'engine/graph.test.mjs', // SV2-04
     'engine/building-checks.test.mjs', // SV2-04
+    'engine/dead-ends.test.mjs', // SV2-135
     'engine/teacher-day.test.mjs', // SV2-09
+    'engine/w7-rules.test.mjs', // SV2-125
+    'engine/w7-actions.test.mjs', // SV2-127
+    'engine/stairwells.test.mjs', // SV2-128
+    'engine/numbering.test.mjs', // SV2-134
+    'engine/floor-copy.test.mjs', // SV2-134
+    'engine/teacher-away.test.mjs', // SV2-127
+    'engine/w7-fields.test.mjs', // SV2-126
+    'engine/w7-files.test.mjs', // SV2-126
     'engine/checks.test.mjs', // SV2-09
     'engine/checks-duties.test.mjs', // SV2-84
     'engine/routing.test.mjs', // SV2-05
@@ -110,6 +119,7 @@ export const GROUPS = {
     'engine/transfer.test.mjs', // SV2-29a
     'engine/transfer-qr.test.mjs', // SV2-29a
     'engine/help.test.mjs', // SV2-30a
+    'engine/help-search.test.mjs', // SV2-136
     'engine/prints-schedule.test.mjs', // SV2-32d
     'engine/prints-travel.test.mjs', // SV2-32d
     'engine/vocabulary.test.mjs', // SV2-32f
@@ -153,6 +163,9 @@ export const GROUPS = {
     'browser/draw-touch.mjs', // SV2-06
     'browser/doors-stairs.mjs', // SV2-07
     'browser/elevators.mjs', // SV2-101
+    'browser/stairwells.mjs', // SV2-131
+    'browser/floor-copy.mjs', // SV2-134
+    'browser/auto-number.mjs', // SV2-134
     'browser/inspector.mjs', // SV2-07
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
@@ -168,6 +181,9 @@ export const GROUPS = {
     'browser/calendar.mjs', // SV2-80
     'browser/calendar-review.mjs', // SV2-80b
     'browser/marks-duties.mjs', // SV2-85
+    'browser/period-names.mjs', // SV2-129
+    'browser/features.mjs', // SV2-130
+    'browser/part-time.mjs', // SV2-132
     'browser/release.mjs', // SV2-93
     'browser/one-way.mjs', // SV2-91
     'browser/step-marks.mjs', // SV2-101b
@@ -191,6 +207,7 @@ export const GROUPS = {
     'browser/staff-pictures.mjs', // SV2-32e
     'browser/staff-calendar.mjs', // SV2-81
     'browser/staff-duties.mjs', // SV2-86
+    'browser/staff-w7.mjs', // SV2-133
     'browser/publish.mjs', // SV2-24
     'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
@@ -311,6 +328,9 @@ export const BROWSER_SECONDS = {
   'browser/staff-views-b.mjs': 11,
   'browser/schedule.mjs': 11,
   'browser/marks-duties.mjs': 11,
+  'browser/period-names.mjs': 12,
+  'browser/features.mjs': 12,
+  'browser/part-time.mjs': 12,
   'browser/grid-pass.mjs': 10,
   'browser/movement-bells.mjs': 10,
   'browser/draw-keyboard.mjs': 9,
@@ -322,9 +342,13 @@ export const BROWSER_SECONDS = {
   'browser/draw-touch.mjs': 6,
   'browser/difference.mjs': 6,
   'browser/staff-duties.mjs': 5,
+  'browser/staff-w7.mjs': 12,
   'browser/calendar-faults.mjs': 5,
   'browser/doors-stairs.mjs': 5,
   'browser/elevators.mjs': 6,
+  'browser/stairwells.mjs': 10,
+  'browser/floor-copy.mjs': 10,
+  'browser/auto-number.mjs': 9,
   'browser/m1-pass.mjs': 5,
   'browser/congestion-scenario.mjs': 5,
   'browser/shell-owed.mjs': 4,

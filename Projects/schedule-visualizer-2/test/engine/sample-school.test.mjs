@@ -366,10 +366,12 @@ async function pipeline(p) {
 }
 const groupsKey = (walks) => JSON.stringify(walks.groups);
 
-test('the staggered dismissal and the up-only stair add no finding, in the schedule or the building', async () => {
+test('the staggered dismissal and the up-only stair add no finding, in the schedule or the building (the building has only the dead ends its halls make)', async () => {
   const { findings, building } = await pipeline(sampleSchool());
   assert.deepEqual(findings, ['problem room-double:dsample00a:1:rsample203', 'warning group-walk:dsample00a:5:gsample08a', 'note room-no-subject:rsamplecaf', 'note room-no-teacher:rsamplecaf']);
-  assert.deepEqual(building, [], 'no one-way trap, and nothing else in the building');
+  // SV2-135's dead-end check moved this line: the sample's halls end in dead ends (three notes, two warnings), and nothing else is wrong in the building
+  // SV2-135b moved this line: Floor 3's 5-cell east stub serves the doorless Plant Room (DECISIONS 2026-11-20), so three notes and one warning
+  assert.deepEqual(building.map((finding) => finding.severity + ' ' + finding.id), ['note dead-end:fsample001:287', 'note dead-end:fsample002:287', 'warning dead-end:fsample002:314', 'note dead-end:fsample003:292'], 'no one-way trap, and no kind but dead-end in the building');
 });
 
 test('Movement shows the staggered dismissal: Grade 6 groups carry a minute "left after the bell" out of Period 3, and nobody else does', async () => {

@@ -165,7 +165,7 @@ export const nowView = {
       says.dataset.moment = off ? 'off' : state.period === '' ? (closed ? 'closed' : moment.state) : 'chosen';
 
       let body;
-      if (off) body = [h('p', { class: 'muted' }, 'Nobody has a class in this ', school.data.settings.periodWord.toLowerCase(), '.')];
+      if (off) body = [h('p', { class: 'muted' }, 'Nobody has a class in this ', school.periodWords().oneLower, '.')];
       else if (state.group) body = groupCard(period, when);
       else if (state.teacher) body = teacherCard(period, when);
       else body = [h('p', { class: 'muted' }, 'Choose a group or a teacher above.')];

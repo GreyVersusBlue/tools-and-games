@@ -27,7 +27,7 @@
 
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
-import { isElevatorLink } from './model.js';
+import { isElevatorLink, letterOfStairs, oneWayGroups } from './model.js';
 
 export const MAP_TAP_RADIUS = 22;
 // Two rooms are "close" when the second is within the radius and less than
@@ -401,15 +401,6 @@ export function stepFreeNotes(school, floor) {
   return out;
 }
 
-// "up only", "down only", or "one way only" on one floor, for a connection
-// that is one-way. Stairs only: an elevator always runs both ways.
-function wayOf(school, link) {
-  const floors = school.data.building.floors;
-  const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
-  const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
-  return rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only';
-}
-
 function paint(canvas, school, floor, plan, theme, marks, lines) {
   const ratio = Math.max(1, globalThis.devicePixelRatio || 1);
   canvas.width = Math.max(1, Math.round(plan.width * ratio));
@@ -442,7 +433,6 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
       if (end.floorId !== floor.id) continue;
       if (!letters.has(end.cell)) letters.set(end.cell, []);
       const here = letters.get(end.cell);
-      if (here.some((entry) => entry.letter === link.label)) continue;
       let way = null;
       if (link.direction === 'ab' || link.direction === 'ba') {
         const from = link.direction === 'ab' ? link.a : link.b;
@@ -450,7 +440,12 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
         const rise = levelOf(to.floorId) - levelOf(from.floorId);
         way = rise > 0 ? 'up' : rise < 0 ? 'down' : (at === 0) === (link.direction === 'ab') ? 'down' : 'up';
       }
-      here.push({ letter: link.label, way });
+      // a stairwell's flights at one stop are one letter; its one-way mark
+      // stays only when every flight there goes the same way
+      const same = here.find((entry) => entry.letter === letterOfStairs(link));
+      if (same) {
+        if (same.way !== way) same.way = null;
+      } else here.push({ letter: letterOfStairs(link), way });
     }
   }
   // the elevator's stops on this floor: a stop is a stairs cell the stairs
@@ -786,7 +781,7 @@ export function floorMap(ctx, options) {
 
   function chrome() {
     const floor = state.floor;
-    const oneWay = school.data.building.connections.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => 'Stairs ' + link.label + ' is ' + wayOf(school, link) + '.');
+    const oneWay = oneWayGroups(school.data, floor).map((group) => group.sentence);
     const marked = stepFreeNotes(school, floor).filter((note) => note.kind === 'elevator' || note.kind === 'refuge').map((note) => (note.kind === 'elevator' ? note.label + (note.staffOnly ? ' (staff only)' : '') + '.' : note.text + '.'));
     canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.' + (oneWay.length > 0 ? ' ' + oneWay.join(' ') : '') + (marked.length > 0 ? ' ' + marked.join(' ') : ''));
     tabs.replaceChildren(...(near ? [] : school.floors).map((each) => {

@@ -58,7 +58,7 @@
 //   exits[].blocked: load.before has them, load.after those and the set's.
 //   load.after is worked out on load.before's basis, so the two compare.
 
-import { isWalkable, ELEVATOR_KIND } from './schema.js';
+import { isWalkable, ELEVATOR_KIND, stairsLetter } from './schema.js';
 import { evacuationRoutes, reachableExits, byExit, noRoute } from './evacuation.js';
 import { exitLoad, exitNumbers, exitName } from './exit-load.js';
 import { leverRouteOptions } from './scenario.js';
@@ -107,7 +107,7 @@ function cellsOf(project, value) {
 
 export function stairsName(project, connection) {
   if (!connection) return 'Stairs';
-  const label = typeof connection.label === 'string' ? connection.label : '';
+  const label = stairsLetter(connection);
   const base = label === '' ? 'Stairs' : 'Stairs ' + label;
   const a = floorById(project, connection.a && connection.a.floorId);
   const b = floorById(project, connection.b && connection.b.floorId);
@@ -118,7 +118,7 @@ export function stairsName(project, connection) {
 }
 
 function stairsParts(project, connection, floors) {
-  const label = connection && typeof connection.label === 'string' ? connection.label : '';
+  const label = connection ? stairsLetter(connection) : '';
   const parts = [{ text: label === '' ? 'Stairs' : 'Stairs ', name: false }];
   if (label !== '') parts.push({ text: label, name: true });
   if (!connection || floors === false) return parts;

@@ -8,7 +8,7 @@
 // module is one of those a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
-import { marksOf, dutiesOf, spacelessKey } from './schema.js';
+import { marksOf, dutiesOf, spacelessKey, WEEKDAY_NAMES } from './schema.js';
 import { findDayType, effectiveDayType } from './day-types.js';
 import { weekdayOf, isCalendarDate } from './calendar.js';
 
@@ -109,6 +109,76 @@ export function schoolMarkFor(project, dayTypeId, period) {
     if (entry.scope === 'school' && better(entry, best)) best = entry;
   }
   return best === null ? null : best.mark;
+}
+
+// ---------------------------------------------------------------- away
+
+// One list of an away entry, read the one way everywhere. Absent (or empty):
+// no restriction, []. Not a list, or a list from which nothing valid survives:
+// null, and the whole entry is ignored, since a restriction that cannot be read
+// must not turn into "everywhere".
+function awayList(value, valid) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return null;
+  if (value.length === 0) return [];
+  const kept = Array.from(new Set(value.filter(valid)));
+  return kept.length > 0 ? kept : null;
+}
+
+// An away entry as the rule reads it, or null when the entry is ignored (it
+// holds nowhere and is worded nowhere): { entry, periods, weekdays,
+// dayTypeIds, sometimes }, each list of what survived (empty meaning no
+// restriction), weekdays sorted, `sometimes` when it names weekdays. `dayTypes`
+// is the project's day types: an id it does not hold is dangling and does not
+// survive; without a list no id does. awayFor and awayWords both read an entry
+// through here, so they agree on every input.
+export function awayEntry(entry, dayTypes) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+  const known = new Set((Array.isArray(dayTypes) ? dayTypes : []).filter((dayType) => dayType && typeof dayType.id === 'string').map((dayType) => dayType.id));
+  const periods = awayList(entry.periods, (held) => Number.isInteger(held) && held >= 0);
+  const weekdays = awayList(entry.weekdays, (held) => Number.isInteger(held) && held >= 0 && held < WEEKDAY_NAMES.length);
+  const dayTypeIds = awayList(entry.dayTypeIds, (held) => typeof held === 'string' && known.has(held));
+  if (periods === null || weekdays === null || dayTypeIds === null) return null;
+  periods.sort((a, b) => a - b);
+  weekdays.sort((a, b) => a - b);
+  return { entry, periods, weekdays, dayTypeIds, sometimes: weekdays.length > 0 };
+}
+
+// The teacher's away entries that apply to day type D, read by awayEntry, in
+// list order: those that name D or the day type D is the same as, or no day
+// type. `options.project` as for awayFor. A page lists these for a day type's
+// card, "sometimes" ones included.
+export function awayEntries(teacher, dayTypeId, options) {
+  const list = teacher && Array.isArray(teacher.away) ? teacher.away : [];
+  if (list.length === 0) return [];
+  const project = options && options.project && typeof options.project === 'object' && Array.isArray(options.project.dayTypes) ? options.project : { dayTypes: [] };
+  const found = [];
+  for (const item of list) {
+    const read = awayEntry(item, project.dayTypes);
+    if (read !== null && takesDay(project, read.dayTypeIds, dayTypeId)) found.push(read);
+  }
+  return found;
+}
+
+// Is teacher T away in period p on day type D? The first of the teacher's
+// `away` entries that holds, or null (ARCHITECTURE 22.3, 22.17). An entry holds
+// when it takes D (no day types named, or D, or the day type D is the same
+// as), names the period (or none: the whole day), and, when it names weekdays,
+// only on a date that falls on one of them: without a date a weekdays-only
+// entry is "sometimes", listed but not taking the period away, as a sometimes
+// duty. `options.project` is needed to follow a day type that is the same as
+// another and to tell a day type id that names nothing; `options.date` is
+// YYYY-MM-DD. An absent entry list or list field is no restriction, but a field
+// that is not a list, or a list with nothing valid in it, makes the entry
+// ignored (awayEntry), never wider: a malformed entry never widens.
+export function awayFor(teacher, dayTypeId, period, options) {
+  const date = options && typeof options.date === 'string' ? options.date : null;
+  for (const read of awayEntries(teacher, dayTypeId, options)) {
+    if (read.periods.length > 0 && !read.periods.includes(period)) continue;
+    if (read.sometimes && (!isCalendarDate(date) || !read.weekdays.includes(weekdayOf(date)))) continue;
+    return read.entry;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- duties

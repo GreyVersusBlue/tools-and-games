@@ -53,6 +53,7 @@ import { buildGraph } from '../../engine/graph.js';
 import { createRouteCache } from '../../engine/routing.js';
 import { normaliseBlocked, blockedFromScenario, stairsName } from '../../engine/blocked.js';
 import { exitName } from '../../engine/exit-load.js';
+import { stairsLetter } from '../../engine/schema.js';
 import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords, NO_BLOCKED, blockedCount, blockedKey, lostInTrial } from './model.js';
 import { exitsPanel } from './exits.js';
 import { whatIfPanel, blockedSays, stairsOfBuilding } from './what-if.js';
@@ -721,7 +722,7 @@ export const section = {
       for (const id of memory.blocked.exits) items.push([{ text: exitName(shown, id), name: true }]);
       for (const id of memory.blocked.connections) {
         const connection = (shown.building.connections || []).find((each) => each && each.id === id);
-        const label = connection && typeof connection.label === 'string' ? connection.label : '';
+        const label = connection ? stairsLetter(connection) : '';
         items.push(label === '' ? [{ text: 'Stairs', name: false }] : [{ text: 'Stairs ', name: false }, { text: label, name: true }]);
       }
       for (const chip of memory.chips) items.push([{ text: chip.name, name: true }]);

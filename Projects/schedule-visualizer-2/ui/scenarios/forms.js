@@ -166,7 +166,7 @@ export function formChange(form, project) {
   if (form.kind === 'swapPeriods') {
     const f = form.swapPeriods;
     if (!f.groupId || !f.dayTypeId) return { why: 'There is no group or day type to change.' };
-    if (f.periodA === f.periodB) return { why: 'Pick two different ' + (form.periodWord || 'period').toLowerCase() + 's.' };
+    if (f.periodA === f.periodB) return { why: 'Pick two different ' + (form.periodMany || 'periods') + '.' };
     return { change: { kind: 'swapPeriods', dayTypeId: f.dayTypeId, groupId: f.groupId, periodA: f.periodA, periodB: f.periodB } };
   }
   const f = form.swapRooms;
@@ -557,6 +557,7 @@ export function formsPanel(env) {
     const groups = groupChoices(project);
     const word = periodWords(project.settings).One;
     form.periodWord = word;
+    form.periodMany = periodWords(project.settings).many;
     kinds.set(form.kind);
     drawnKey = keyOf(project);
     now = h('p', { class: 'scn-form__now', dir: 'auto', data: { part: 'now' } });
@@ -645,6 +646,8 @@ export function formsPanel(env) {
       project.dayTypes.map((day) => [day.id, day.name, day.own, day.bells]),
       project.settings.periods,
       project.settings.periodWord,
+      project.settings.periodCustom,
+      project.settings.periodNames,
       project.settings.timeFormat,
       project.settings.defaultHeadCount,
       project.settings.defaultPassingSeconds,

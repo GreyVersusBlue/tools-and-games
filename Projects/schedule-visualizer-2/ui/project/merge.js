@@ -79,7 +79,7 @@ export const snapshotName = (part) => 'Before bringing in ' + partOf(part).what;
 const TAKEN_WORDS = {
   schoolName: 'School name (only while this project\'s is blank)',
   periods: 'Periods (raised if the file has more, never lowered)',
-  periodWord: 'Period word',
+  periodWord: 'The period word and names',
   defaultPassingSeconds: 'Default passing time',
   defaultHeadCount: 'Default head count',
   colourScale: 'Colour scale',
@@ -90,7 +90,7 @@ const TAKEN_WORDS = {
 const SETTING_NAMES = {
   schoolName: 'School name',
   periods: 'Periods',
-  periodWord: 'Period word',
+  periodWord: 'The period word and names',
   defaultPassingSeconds: 'Default passing time',
   defaultHeadCount: 'Default head count',
   colourScale: 'Colour scale',

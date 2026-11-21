@@ -60,9 +60,9 @@ export const roomView = {
     if (!room) return missingPage('room');
     const floor = school.floorOfRoom(room.id);
     const teachers = (room.teacherIds || []).map((id) => school.teacher(id)).filter(Boolean);
-    const features = [];
+    // the room's own features first, then the shared space; the wing is a line of its own (DESIGN 16.9)
+    const features = school.featuresOf(room).map((feature) => typed(feature.name));
     if (room.shared) features.push('Shared space');
-    if (room.wing) features.push(h('span', null, 'Wing: ', typed(room.wing)));
 
     const fact = (term, value) => h('div', null, h('dt', null, term), h('dd', null, value));
     const header = h('section', { class: 'card', 'aria-label': 'About' },
@@ -71,6 +71,7 @@ export const roomView = {
         fact(teachers.length > 1 ? 'Teachers' : 'Teacher', teachers.length === 0 ? h('span', { class: 'muted' }, 'No teacher is based here') : wordsJoined(teachers.map((teacher) => linkToTeacher(school, teacher)))),
         fact('Capacity', typeof room.capacity === 'number' ? String(room.capacity) : h('span', { class: 'muted' }, 'Not given')),
         fact('Features', features.length === 0 ? h('span', { class: 'muted' }, 'None listed') : wordsJoined(features)),
+        room.wing ? fact('Wing', typed(room.wing)) : null,
         floor ? fact('Floor', school.has('map') ? h('a', { href: makeHash('map', floor.id) }, typed(floor.name)) : typed(floor.name)) : null));
 
     const uses = new Map(school.dayTypes.map((dayType) => [dayType.id, roomUse(school, room.id, dayType.id)]));

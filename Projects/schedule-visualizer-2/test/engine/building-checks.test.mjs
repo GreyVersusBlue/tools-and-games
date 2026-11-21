@@ -20,12 +20,21 @@ function only(findings, kind) {
   return findings.filter((finding) => finding.kind === kind);
 }
 
-test('the sample school passes every building check: its two deliberate problems are in the schedule', () => {
-  assert.deepEqual(buildingChecks(school()), []);
+// SV2-135 added the dead-end check (test/engine/dead-ends.test.mjs). These plans' halls end in a wall with no exit,
+// which that check finds by its rule, so the cases below that are about another check read the findings without it.
+function otherThanDeadEnds(findings) {
+  return findings.filter((finding) => finding.kind !== 'dead-end');
+}
+
+test('the sample school passes every building check but the dead ends its halls make: its two deliberate problems are in the schedule', () => {
+  // SV2-135 moved this line: three notes (halls that end in a wall past 6 cells, rooms along them) and two warnings (5-cell stubs east of the stairs on Floors 2 and 3)
+  // SV2-135b moved this line: the Floor 3 stub east of the stairs serves the doorless Plant Room (DECISIONS 2026-11-20) and is 5 cells, so it says nothing
+  assert.deepEqual(buildingChecks(school()).map((finding) => finding.severity + ' ' + finding.id), ['note dead-end:fsample001:291', 'note dead-end:fsample002:291', 'warning dead-end:fsample002:314', 'note dead-end:fsample003:312']);
+  assert.deepEqual(otherThanDeadEnds(buildingChecks(school())), []);
 });
 
 test('a building that is sound has no findings: two rooms, a three-floor stairwell, a split level', () => {
-  for (const make of [twoRooms, threeFloors, splitLevel]) assert.deepEqual(buildingChecks(make()), [], make.name);
+  for (const make of [twoRooms, threeFloors, splitLevel]) assert.deepEqual(otherThanDeadEnds(buildingChecks(make())), [], make.name);
 });
 
 test('a new, empty project has no findings, not even "no exit"', () => {
@@ -76,7 +85,7 @@ test('duplicate room numbers, which only an import can bring in, are one problem
 
 test('a room that touches no corridor is a problem', () => {
   const project = planProject([['AA...', 'AA...', '.....', '..###', '.....']], { exits: [[1, 4, 3, 'Door']] });
-  const findings = buildingChecks(project);
+  const findings = otherThanDeadEnds(buildingChecks(project));
   assert.deepEqual(kinds(findings), ['room-no-corridor']);
   assert.equal(findings[0].text, 'Room 1A on Floor 1 touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.');
   assert.deepEqual(findings[0].where, { floorId: F1, roomId: roomId('1A'), cells: [0, 1, 5, 6] });
@@ -113,7 +122,7 @@ test('stairs with no connection are a warning, one for each run of stairs cells'
 test('a run of stairs cells with one of them connected is not reported', () => {
   const two = ['SS###', '.....', '.....', '.....', '.....'];
   const project = planProject([two, two], { connections: [[1, 1, 0, 2, 1, 0]], exits: [[1, 4, 0, 'Door']] });
-  assert.deepEqual(buildingChecks(project), []);
+  assert.deepEqual(otherThanDeadEnds(buildingChecks(project)), []);
 });
 
 test('a disconnected wing is found: its cells, the rooms on it, and their lack of a route to the exit', () => {
@@ -132,7 +141,7 @@ test('joining the wing with one corridor cell clears every one of those findings
   const project = disconnectedWing();
   const joined = actions.paintCorridor(project, { floorId: F1, cells: [36, 37, 38] }, shared);
   assertValid(joined);
-  assert.deepEqual(buildingChecks(joined), []);
+  assert.deepEqual(otherThanDeadEnds(buildingChecks(joined)), []);
 });
 
 test('a floor with nothing connecting it to the rest is found, and is told as the floor, not as a part', () => {

@@ -3182,6 +3182,7 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
 
     const src = f => fs.readFileSync(f, 'utf8');
     const html = src('../index.html'), css = src('../styles/main.css');
+    const NOTICE_RULE = '@media (pointer:coarse){.touch-note{display:block}}';
     const js = ['main.js', 'input.js', 'config.js', 'loader.js', 'ui/dom.js', 'ui/seating.js']
       .map(f => [f, src('../src/' + f)]);
     check('ui/touch.js and data/controls.json are gone',
@@ -3195,7 +3196,10 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     check('and the one key list it shows is the keyboard\'s',
       (html.match(/class="keys[^"]*"/g) || []).length === 1 && /<kbd>W A S D<\/kbd>/.test(html));
     check('the stylesheet has no on-screen controls and no touch mode',
-      !/#touch|body\.touch|\.tchip|\.tpad|#stickPad|pointer:coarse/.test(css));
+      !/#touch|body\.touch|\.tchip|\.tpad|#stickPad|pointer:coarse/.test(css.replace(NOTICE_RULE, '')));
+    // TG-101 (#1088): the one coarse-pointer rule allowed is the start card's keyboard-and-mouse line, which adds no input.
+    check('the one pointer:coarse rule is the start card\'s display:block notice, exactly once',
+      css.split(NOTICE_RULE).length === 2 && /<div class="touch-note">Best on a computer with a keyboard and mouse\.<\/div>/.test(html));
     check('no look-for carries a chip label any more', obsData.lookFors.every(l => !('short' in l)));
     // What the seating screen draws a desk at, whoever is pointing.
     check('the seating screen takes no touch flag',

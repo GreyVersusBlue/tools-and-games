@@ -237,8 +237,11 @@ export class AudioSystem {
     for (const ev of ['pointerdown', 'mousedown', 'keydown', 'touchstart']) window.addEventListener(ev, unlock, { capture: true });
     this._hookBus();
     this._hookUiClicks();
-    // Fetch sample data in the background (don't block loading). Decoding happens after unlock.
-    this._fetchAll();
+    // The sample data is NOT fetched here: 117 .ogg files ran alongside the loading screen's own
+    // assets and made the first load 20 MB. main.js calls fetchSamples() once the menu is up; until
+    // the clips are in, play() falls back to the synth voice for each sound, as it always did
+    // while they were still arriving. Decoding happens after unlock.
+    this._raw = new Map();
   }
 
   // ------------------------------------------------------------------ context / buses
@@ -289,8 +292,14 @@ export class AudioSystem {
     for (const d of Object.values(SOUNDS)) for (const f of d.files ?? []) s.add(f);
     return [...s];
   }
+  // Idempotent: starts the sample fetch once, after the menu is showing (src/main.js).
+  fetchSamples() {
+    if (this._fetching) return;
+    this._fetching = true;
+    this._fetchAll();
+  }
   _fetchAll() {
-    this._raw = new Map();
+    this._raw = this._raw ?? new Map();
     const fetchOne = (p) => fetch(BASE + p).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null)
       .then((ab) => { this._raw.set(p, ab); if (this.ctx) this._decode(p); });
     for (const f of this._allFiles()) fetchOne(f);

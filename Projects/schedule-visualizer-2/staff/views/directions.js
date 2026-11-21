@@ -14,7 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, printGate } from '../page.js';
 import { viewLink, sectionHeading } from '../clock.js';
 import { floorMap } from '../map.js';
-import { isElevatorLink } from '../model.js';
+import { isElevatorLink, letterOfStairs } from '../model.js';
 
 // "under a minute", "about 1 minute", "about 4 minutes".
 function about(seconds) {
@@ -49,7 +49,7 @@ export function routeCrossings(school, found) {
     const connection = connections.find((item) => item.id === id);
     const at = (found.connectionAt || [])[i];
     const ride = isElevatorLink(connection);
-    const label = !connection ? '' : ride && typeof connection.car === 'string' && connection.car !== '' ? connection.car : connection.label;
+    const label = !connection ? '' : ride && typeof connection.car === 'string' && connection.car !== '' ? connection.car : letterOfStairs(connection);
     return { kind: ride ? 'ride' : 'stairs', label, at, fromFloorId: cells[at] ? cells[at].floorId : null, toFloorId: cells[at + 1] ? cells[at + 1].floorId : null };
   });
 }
@@ -78,6 +78,17 @@ export function routeFloors(school, found) {
     part.stairs = part.via.label;
   });
   return parts;
+}
+
+// Is floor `index` of routeFloors' answer passed through, entered and left by
+// the same stairs? Only when the flights before and after carry the same
+// letter and the way crossed the floor at a single cell: a floor it walked
+// across between two flights of one stairwell is walked, not passed.
+export function floorIsPassed(floors, index) {
+  const part = floors[index];
+  const before = index > 0 ? floors[index - 1].via : null;
+  const letter = (via) => Boolean(via) && via.kind === 'stairs' && via.label !== '';
+  return Boolean(part) && part.via !== null && part.cells === 1 && letter(before) && letter(part.via) && before.label === part.via.label;
 }
 
 // A way that could not be found, for the page: { text, stairs }. `text` is
@@ -216,11 +227,20 @@ export const directionsView = {
       const stairs = found.stairs;
       const rides = crossings.filter((each) => each.kind === 'ride');
       const byOf = (part) => (part.via && part.via.kind === 'ride' ? carWords(part.via.label) : part.via && part.via.label ? ['stairs ', typed(part.via.label)] : 'the stairs');
+      // the flights of one stairwell in a row are one set of stairs: a floor
+      // entered and left by the same letter is passed through, said once, but
+      // only when the way crossed that floor at a single cell (it came in and
+      // went on by the same stairs); a floor it walked across between two
+      // flights of one letter is walked, not passed
+      const passes = (index) => floorIsPassed(floors, index);
       // the line on each floor, in words: the picture's alternative
       const lineOn = (floor) => {
         const here = floors.map((part, index) => ({ part, index })).filter((each) => each.part.floorId === floor.id);
         if (here.length === 0) return [h('span', null, 'The way does not cross ', typed(floor.name), '.')];
-        return [h('span', null, here.map(({ part, index }, at) => [
+        return [h('span', null, here.map(({ part, index }, at) => passes(index) ? [
+          at > 0 ? ' Then it' : ['On ', typed(floor.name), ' the line'],
+          ' stays on ', byOf(part), '.',
+        ] : [
           at > 0 ? ' Then from ' : ['On ', typed(floor.name), ' the line runs from '],
           index === 0 ? typed(school.roomName(start)) : byOf(floors[index - 1]),
           ' to ',
@@ -242,9 +262,9 @@ export const directionsView = {
           h('p', { class: 'muted', dataset: { directions: 'time' } }, 'The walk is ' + school.formatDuration(found.seconds) + ' at the school\'s walking pace' + (rides.length > 0 && Number(school.data.settings.elevatorWaitSeconds) > 0 ? ', including the elevator\'s wait' : '') + ', for an empty corridor. Distances are in cells of the floor plan.')),
         h('section', { class: 'card', dataset: { directions: 'floors' } },
           sectionHeading('Floors on the way', floors.length),
-          h('ol', { class: 'plain' }, floors.map((part) => h('li', null,
+          h('ol', { class: 'plain' }, floors.map((part, index) => h('li', null,
             school.has('map') && part.floor ? h('a', { href: makeHash('map', part.floorId) }, typed(part.floor.name)) : typed(part.floor ? part.floor.name : 'a floor'),
-            part.via === null ? ', where the walk ends' : [', then ', byOf(part)]))),
+            part.via === null ? ', where the walk ends' : [passes(index) ? ', stays on ' : ', then ', byOf(part)]))),
           school.has('map') ? floorMap(ctx, {
             floorId: floors[0].floorId,
             label: 'The way on the map',

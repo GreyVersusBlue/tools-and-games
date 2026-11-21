@@ -118,7 +118,7 @@
 import { allRooms, findById, resolveSlotRoom, roomNumberKey, nameOfRoom } from './schema.js';
 import { isOwnCopy, effectiveSchedule } from './day-types.js';
 import { meetingSlots } from './runs.js';
-import { periodName } from './bells.js';
+import { periodName, periodLabel, periodWordForms } from './bells.js';
 import { slotTeacherIds, teacherDays } from './teacher-day.js';
 import { checkSchedule, teachingRunEnd, schoolMarksOf } from './checks.js';
 import { countWord } from './findings.js';
@@ -167,15 +167,16 @@ function teacherNameList(project, ids) {
   return ids.map((id) => findById(project.teachers, id)).filter(Boolean).map((teacher) => teacher.name);
 }
 
-// "Periods 2 and 5", "Blocks B and E", "Mods 1 and 4", "2nd and 5th Hours".
+// "Periods 2 and 5", "Blocks B and E", "Mods 1 and 4", "2nd and 5th Hours",
+// "Classes 2 and 5": by number, never by a period's own name (ARCHITECTURE 22.17).
 function twoPeriods(settings, a, b) {
   const first = Math.min(a, b);
   const second = Math.max(a, b);
-  const nameA = periodName(settings, first);
-  const nameB = periodName(settings, second);
-  if (settings.periodWord === 'Hour') return nameA.replace(/ Hour$/, '') + ' and ' + nameB.replace(/ Hour$/, '') + ' Hours';
-  const space = nameA.indexOf(' ');
-  return nameA.slice(0, space) + 's ' + nameA.slice(space + 1) + ' and ' + nameB.slice(nameB.indexOf(' ') + 1);
+  const forms = periodWordForms(settings);
+  const labelA = periodLabel(settings, first);
+  const labelB = periodLabel(settings, second);
+  if (forms.count === 'ordinal') return labelA + ' and ' + labelB + ' ' + forms.many;
+  return forms.many + ' ' + labelA + ' and ' + labelB;
 }
 
 // 40 -> "40 seconds", 60 -> "1 minute", 95 -> "1 minute 35 seconds".

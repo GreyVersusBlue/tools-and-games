@@ -17,7 +17,7 @@
 
 import { write } from './csv.js';
 import { allRooms, floorOfRoom, resolveSlotRoom } from './schema.js';
-import { periodName } from './bells.js';
+import { periodNumberName } from './bells.js';
 import { isOwnCopy } from './day-types.js';
 import { teacherDays, isFree } from './teacher-day.js';
 import { meetingSlots } from './runs.js';
@@ -51,7 +51,7 @@ export function groupsHeader(project) {
   const many = project.dayTypes.length > 1;
   for (const dayType of project.dayTypes) {
     for (let period = 0; period < project.settings.periods; period += 1) {
-      header.push((many ? dayType.name + ' ' : '') + periodName(project.settings, period));
+      header.push((many ? dayType.name + ' ' : '') + periodNumberName(project.settings, period));
     }
   }
   return header;
@@ -132,7 +132,7 @@ export function subjectsRows(project) {
 
 function gridHeader(project, first) {
   const header = first.concat(['Day type']);
-  for (let period = 0; period < project.settings.periods; period += 1) header.push(periodName(project.settings, period));
+  for (let period = 0; period < project.settings.periods; period += 1) header.push(periodNumberName(project.settings, period));
   return header;
 }
 
@@ -186,7 +186,7 @@ export function teacherGridRows(project, dayTypeId) {
           // an always duty comes first among the duties, as teacherDays chose it
           const always = entry.duties.filter((duty) => sometimesWords(duty) === '');
           const mark = schoolMarkFor(project, dayType.id, entry.period);
-          const taken = always.length > 0 ? always.map(dutyWords) : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
+          const taken = entry.marked === 'away' ? [MARK_AS_NAMED.away] : always.length > 0 ? always.map(dutyWords) : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
           row.push(taken.concat(entry.duties.filter((duty) => sometimesWords(duty) !== '').map(dutyWords)).join(LIST_SEPARATOR));
         }
       }

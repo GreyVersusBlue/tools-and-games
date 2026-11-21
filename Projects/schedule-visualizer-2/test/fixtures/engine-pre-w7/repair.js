@@ -1,0 +1,1764 @@
+// repair(project) runs on every load, after migrate. It turns any object into
+// one validate() accepts, and gives back { project, notes }: the notes are
+// plain sentences, one per thing it had to change, for the toast and the log.
+// A project that needs nothing comes back as the very same object.
+//
+// The rules it follows when it has to choose:
+// - A field that is absent gets its default and no note. A field that is
+//   there and unusable gets a note.
+// - Nothing a user typed is thrown away when it can be kept. A slot whose room
+//   is gone keeps the room's number as text. Two rooms with one number, two
+//   groups or two teachers with one name: the later one gets " (2)".
+// - A cell claimed twice goes to the space that is earlier in the list, and a
+//   space's cell is never also a corridor or stairs cell.
+// - A day type marked "same as the first" that carries bell times or group
+//   days of its own becomes its own copy, so nothing entered disappears.
+// - When `settings.periods` is missing or out of range it becomes the longest
+//   day present (else 8), and when it is in range and a day or a bell
+//   schedule is longer, it rises to that length, so the setting never
+//   truncates a day. Only a day past 16 periods, the most there are, is cut.
+// - An id is 10 characters with its kind's letter first (ids.js). A thing
+//   with any other id, or with an id something earlier of its kind has, gets
+//   a new one, and everything that named it by the old id follows: slots,
+//   lists of teachers and rooms, a group's days, stair connections, zones,
+//   scenario changes, accepted findings. So an id that a teacher and a room
+//   both carry stays with the room, and nothing that pointed at either is
+//   emptied.
+// - A project with no day types gets them from the days its groups have, in
+//   the order the keys first appear, each its own copy; A Day and B Day only
+//   when there are none.
+// - A floor's missing or fractional width or height is worked out from its
+//   cells when the other side divides them exactly.
+// - Elevators and step marks (ARCHITECTURE 19.2) are optional and stay absent
+//   when absent. A connection's kind is the authority for a stop it joins; a
+//   stop in `lifts` that an older tool joined as stairs leaves `lifts`, and
+//   repair never adds to `lifts` or sets a kind.
+// - A scenario's changes are checked for shape only. Whether they still point
+//   at things that exist is for the scenario module, which tells the user
+//   what it dropped.
+//
+// options: { ids, clock, imageIds }. `ids` and `clock` are used only when
+// something has no id or no date; without them a generator seeded from the
+// project and the date 1970-01-01 stand in. `imageIds` is the set of traced
+// images this device holds; with it, each floor's image is marked missing or
+// not.
+
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
+import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel, isCellScale, elevatorCars, isLiftCell } from './schema.js';
+import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, defaultWeekdays, spacelessKey, textLength } from './schema.js';
+import { DEFAULT_PASSCODE } from './publish-defaults.js';
+import { createIds, seededRandom, collectIds, isId, ID_PREFIXES } from './ids.js';
+import { SCENARIOS_MOST, PROJECT_LABEL_MOST } from './scenario.js'; // W6:LINE
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
+import { isCalendarDate, daysBetween, addDays, weekdayOf, dateWords } from './calendar.js';
+
+const FALLBACK_DATE = '1970-01-01T00:00:00.000Z';
+const FALLBACK_SUBJECT_COLOUR = '#5a6b7b';
+export const UNKNOWN_ROOM_TEXT = 'unknown room';
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function plural(count, one, many) {
+  return count + ' ' + (count === 1 ? one : many);
+}
+
+export function repair(input, options) {
+  const opts = options || {};
+  const notes = [];
+  const note = (text) => notes.push(text);
+
+  const source = isObject(input) ? input : {};
+  if (!isObject(input)) note('The saved project could not be read as a project, so an empty one was made.');
+  const published = source.format === PUBLISHED_FORMAT;
+
+  const present = collectIds(source);
+  const ids = opts.ids || createIds(seededRandom('sv2-repair:' + present.join(',')));
+  if (typeof ids.reserve === 'function') ids.reserve(present);
+  const now = opts.clock ? opts.clock().toISOString() : FALLBACK_DATE;
+
+  // ---- small helpers
+
+  // An id is kept by the first thing of its own kind that carries it. A
+  // thing whose id is not an id of its kind gets a new one, and `renamed`
+  // remembers old -> new for that kind, so whatever named the thing by the old
+  // id can follow it. The old id is never an id of that kind, so it cannot
+  // also be the id of a thing of that kind that kept its own.
+  const seenIds = new Set();
+  const renamed = { s: new Map(), t: new Map(), d: new Map(), f: new Map(), r: new Map(), g: new Map(), b: new Map(), l: new Map() };
+  const claimId = (thing, prefix, what) => {
+    const id = thing.id;
+    if (isId(id, prefix) && !seenIds.has(id)) {
+      seenIds.add(id);
+      return id;
+    }
+    const fresh = ids(prefix);
+    seenIds.add(fresh);
+    if (typeof id !== 'string' || id === '') {
+      note(what + ' had no id and was given one.');
+    } else if (!isId(id, prefix)) {
+      if (renamed[prefix] && !renamed[prefix].has(id)) renamed[prefix].set(id, fresh);
+      note(what + ' had the id "' + id + '", which is not the id of such a thing, and was given a new one. What named it by that id follows it.');
+    } else {
+      note(what + ' shared the id "' + id + '" with something earlier and was given a new one.');
+    }
+    return fresh;
+  };
+  const follow = (prefix, id) => (typeof id === 'string' && renamed[prefix].has(id) ? renamed[prefix].get(id) : id);
+
+  // The objects of a list; anything that is not an object is dropped.
+  const objects = (list, what, say = note) => {
+    if (list === undefined) return [];
+    if (!Array.isArray(list)) {
+      say('The list of ' + what + ' could not be read and was emptied.');
+      return [];
+    }
+    const kept = list.filter(isObject);
+    if (kept.length !== list.length) say(plural(list.length - kept.length, 'entry', 'entries') + ' in the list of ' + what + ' could not be read and ' + (list.length - kept.length === 1 ? 'was' : 'were') + ' removed.');
+    return kept;
+  };
+
+  const text = (thing, key, fallback, what, say = note) => {
+    if (typeof thing[key] === 'string') return;
+    if (thing[key] !== undefined && thing[key] !== null) say(what + ' was not text and was reset.');
+    thing[key] = fallback;
+  };
+
+  const whole = (thing, key, range, fallback, what) => {
+    const value = thing[key];
+    if (inRange(value, range)) return;
+    if (value === undefined) {
+      thing[key] = fallback;
+      return;
+    }
+    thing[key] = typeof value === 'number' && Number.isFinite(value) ? Math.min(range[1], Math.max(range[0], Math.round(value))) : fallback;
+    note(what + ' was outside ' + range[0] + ' to ' + range[1] + ' and is now ' + thing[key] + '.');
+  };
+
+  const choice = (thing, key, allowed, fallback, what) => {
+    if (allowed.includes(thing[key])) return;
+    if (thing[key] !== undefined) note(what + ' was not one of the choices and was reset.');
+    thing[key] = fallback;
+  };
+
+  const flag = (thing, key, fallback, what) => {
+    if (typeof thing[key] === 'boolean') return;
+    if (thing[key] !== undefined) note(what + ' was not true or false and was reset.');
+    thing[key] = fallback;
+  };
+
+  // "204", then "204 (2)", "204 (3)": the first form no earlier thing uses.
+  const uniqueText = (value, keyOf, used) => {
+    if (!used.has(keyOf(value))) {
+      used.add(keyOf(value));
+      return value;
+    }
+    for (let n = 2; ; n += 1) {
+      const candidate = value + ' (' + n + ')';
+      if (!used.has(keyOf(candidate))) {
+        used.add(keyOf(candidate));
+        return candidate;
+      }
+    }
+  };
+
+  const project = { ...source };
+
+  // ---- identity
+  if (!published) project.format = FORMAT;
+  if (project.version !== CURRENT_VERSION) {
+    if (project.version !== undefined) note('The version number was reset to ' + CURRENT_VERSION + '.');
+    project.version = CURRENT_VERSION;
+  }
+  project.id = claimId(project, 'p', 'The project');
+  if (!published) {
+    for (const key of ['created', 'modified']) {
+      if (isIsoDate(project[key])) continue;
+      if (project[key] !== undefined) note('The ' + key + ' date could not be read and was reset.');
+      project[key] = now;
+    }
+  }
+
+  // ---- settings
+  const rawGroups = Array.isArray(source.groups) ? source.groups.filter(isObject) : [];
+  const rawDayTypes = Array.isArray(source.dayTypes) ? source.dayTypes.filter(isObject) : [];
+  const defaults = defaultSettings();
+  if (source.settings !== undefined && !isObject(source.settings)) note('The settings could not be read and were reset.');
+  const settings = isObject(source.settings) ? { ...source.settings } : {};
+  project.settings = settings;
+  text(settings, 'schoolName', defaults.schoolName, 'The school name');
+  let longest = 0;
+  for (const group of rawGroups) {
+    if (!isObject(group.days)) continue;
+    for (const day of Object.values(group.days)) if (Array.isArray(day)) longest = Math.max(longest, day.length);
+  }
+  for (const dayType of rawDayTypes) if (Array.isArray(dayType.bells)) longest = Math.max(longest, dayType.bells.length);
+  if (Array.isArray(source.bellSchedules)) for (const schedule of source.bellSchedules) if (isObject(schedule) && Array.isArray(schedule.bells)) longest = Math.max(longest, schedule.bells.length);
+  if (!inRange(settings.periods, RANGES.periods)) {
+    const had = settings.periods;
+    settings.periods = longest === 0 ? defaults.periods : Math.min(RANGES.periods[1], longest);
+    if (had !== undefined) note('Periods per day was not a number from ' + RANGES.periods[0] + ' to ' + RANGES.periods[1] + ' and is now ' + settings.periods + ', the longest day in the schedule.');
+  } else if (longest > settings.periods) {
+    // in range, and a day or a bell schedule runs past it: the setting gives way
+    const had = settings.periods;
+    settings.periods = Math.min(RANGES.periods[1], longest);
+    note('Periods per day was ' + had + ' and a day in the schedule has ' + longest + ', so it is now ' + settings.periods + '.');
+  }
+  const periods = settings.periods;
+  choice(settings, 'periodWord', PERIOD_WORDS, defaults.periodWord, 'The period word');
+  whole(settings, 'defaultPassingSeconds', RANGES.defaultPassingSeconds, defaults.defaultPassingSeconds, 'The default passing time');
+  if (!published) whole(settings, 'defaultHeadCount', RANGES.headCount, defaults.defaultHeadCount, 'The default head count');
+  whole(settings, 'secondsPerCell', RANGES.secondsPerCell, defaults.secondsPerCell, 'Seconds per corridor cell');
+  whole(settings, 'secondsPerStair', RANGES.secondsPerStair, defaults.secondsPerStair, 'Seconds per stair connection');
+  // the three elevator timings are not in defaultSettings(): absent stays
+  // absent, and one out of range is removed so elevatorSettings() reads its default
+  for (const [key, what] of [['elevatorWaitSeconds', 'The elevator wait'], ['elevatorSecondsPerFloor', 'The elevator ride per floor'], ['elevatorPeoplePerTrip', 'The people an elevator carries a trip']]) {
+    if (settings[key] === undefined || inRange(settings[key], RANGES[key])) continue;
+    note(what + ' was not a whole number from ' + RANGES[key][0] + ' to ' + RANGES[key][1] + ' and was removed, so the usual figure applies.');
+    delete settings[key];
+  }
+  choice(settings, 'timeFormat', TIME_FORMATS, defaults.timeFormat, 'The time format');
+  if (!published) {
+    if (settings.colourScale !== undefined && !isObject(settings.colourScale)) note('The colour scale could not be read and was reset.');
+    const scale = isObject(settings.colourScale) ? { ...settings.colourScale } : {};
+    settings.colourScale = scale;
+    choice(scale, 'mode', COLOUR_SCALE_MODES, defaults.colourScale.mode, 'The colour scale');
+    const bands = scale.bands;
+    if (!(Array.isArray(bands) && bands.length === 4 && bands.every((band, i) => inRange(band, RANGES.colourBand) && (i === 0 || band > bands[i - 1])))) {
+      if (bands !== undefined) note('The absolute colour bands were not four rising numbers and were reset.');
+      scale.bands = defaults.colourScale.bands;
+    }
+    if (settings.checks !== undefined && !isObject(settings.checks)) note('The check settings could not be read and were reset.');
+    const checks = isObject(settings.checks) ? { ...settings.checks } : {};
+    settings.checks = checks;
+    whole(checks, 'consecutiveLimit', RANGES.consecutiveLimit, defaults.checks.consecutiveLimit, 'The consecutive-periods limit');
+    whole(checks, 'passingMarginSeconds', RANGES.passingMarginSeconds, defaults.checks.passingMarginSeconds, 'The passing margin');
+    if (!Array.isArray(checks.off)) {
+      if (checks.off !== undefined) note('The list of checks switched off could not be read and was emptied.');
+      checks.off = [];
+    } else {
+      const off = Array.from(new Set(checks.off.filter((kind) => CHECK_KINDS.includes(kind))));
+      if (off.length !== checks.off.length) {
+        note('The list of checks switched off had entries that are not a check, or the same one twice; they were removed.');
+        checks.off = off;
+      }
+    }
+    if (settings.paper !== undefined && !isObject(settings.paper)) note('The paper setting could not be read and was reset.');
+    const paper = isObject(settings.paper) ? { ...settings.paper } : {};
+    settings.paper = paper;
+    choice(paper, 'size', PAPER_SIZES, defaults.paper.size, 'The paper size');
+    choice(paper, 'orientation', PAPER_ORIENTATIONS, defaults.paper.orientation, 'The paper orientation');
+    choice(settings, 'theme', THEMES, defaults.theme, 'The theme');
+    // Cell scale is optional: absent or null is not set, and a project from
+    // before it existed reads unchanged. One that cannot be read is cleared;
+    // anything kept beside its unit and length is dropped.
+    const cell = settings.cellScale;
+    if (cell !== undefined && cell !== null) {
+      const kept = isObject(cell) ? { unit: cell.unit, length: cell.length } : null;
+      if (kept === null || !isCellScale(kept)) {
+        note('The cell scale could not be read and is not set now.');
+        settings.cellScale = null;
+      } else if (Object.keys(cell).length !== 2) settings.cellScale = kept;
+    }
+  }
+
+  // ---- subjects
+  const subjectIds = new Set();
+  project.subjects = objects(source.subjects, 'subjects').map((raw) => {
+    const subject = { ...raw };
+    subject.id = claimId(subject, 's', 'A subject');
+    subjectIds.add(subject.id);
+    text(subject, 'code', '', 'A subject code');
+    text(subject, 'name', '', 'A subject name');
+    if (!isHexColour(subject.colour)) {
+      if (subject.colour !== undefined) note('The colour of subject "' + subject.name + '" could not be read and was reset.');
+      subject.colour = FALLBACK_SUBJECT_COLOUR;
+    }
+    return subject;
+  });
+  const subjectRef = (thing, what) => {
+    if (renamed.s.has(thing.subjectId)) thing.subjectId = renamed.s.get(thing.subjectId);
+    if (thing.subjectId === null || subjectIds.has(thing.subjectId)) return;
+    if (thing.subjectId !== undefined) note(what + ' named a subject that is not on the list and now has no subject.');
+    thing.subjectId = null;
+  };
+
+  // ---- teachers (their rooms come after the building)
+  const teacherIds = new Set();
+  const teacherNames = new Set();
+  const teacherRawRooms = new Map();
+  project.teachers = objects(source.teachers, 'teachers').map((raw) => {
+    const teacher = { ...raw };
+    teacher.id = claimId(teacher, 't', 'A teacher');
+    teacherIds.add(teacher.id);
+    if (typeof teacher.name !== 'string' || teacher.name.trim() === '') {
+      note('A teacher had no name and is now called "Teacher".');
+      teacher.name = 'Teacher';
+    }
+    const name = uniqueText(teacher.name, nameKey, teacherNames);
+    if (name !== teacher.name) {
+      note('Two teachers were both called "' + teacher.name + '". The second is now "' + name + '"; merge them if they are one person.');
+      teacher.name = name;
+    }
+    subjectRef(teacher, 'Teacher "' + teacher.name + '"');
+    text(teacher, 'notes', '', 'A teacher\'s notes');
+    teacherRawRooms.set(teacher.id, Array.isArray(teacher.roomIds) ? teacher.roomIds : []);
+    if (teacher.roomIds !== undefined && !Array.isArray(teacher.roomIds)) note('The rooms of teacher "' + teacher.name + '" could not be read and were worked out from the rooms.');
+    return teacher;
+  });
+  const teacherRefs = (list, what) => {
+    if (!Array.isArray(list)) {
+      if (list !== undefined) note(what + ' had a list of teachers that could not be read; it was emptied.');
+      return [];
+    }
+    const named = list.some((id) => renamed.t.has(id)) ? list.map((id) => follow('t', id)) : list;
+    const kept = Array.from(new Set(named.filter((id) => teacherIds.has(id))));
+    if (kept.length === list.length) return named;
+    note(what + ' named ' + plural(list.length - kept.length, 'teacher', 'teachers') + ' not on the list, or the same one twice; ' + (list.length - kept.length === 1 ? 'that entry was' : 'those entries were') + ' removed.');
+    return kept;
+  };
+
+  // ---- day types
+  let dayTypes = objects(source.dayTypes, 'day types').map((raw) => ({ ...raw }));
+  if (dayTypes.length === 0) {
+    // the days the groups have say which day types there were: one for each
+    // key, in the order the keys first appear, the first of them the base
+    const keys = [];
+    for (const group of rawGroups) {
+      if (!isObject(group.days)) continue;
+      for (const key of Object.keys(group.days)) if (Array.isArray(group.days[key]) && !keys.includes(key)) keys.push(key);
+    }
+    if (keys.length > 0) {
+      note('The project had no day types, so ' + plural(keys.length, 'day type was', 'day types were') + ' made from the days the groups have.');
+      dayTypes = keys.map((key, i) => ({ id: key, name: DEFAULT_DAY_TYPE_NAMES[i] || 'Day ' + (i + 1), own: true, bells: [] }));
+    } else {
+      if (source.dayTypes !== undefined) note('The project had no day types, so ' + DEFAULT_DAY_TYPE_NAMES.join(' and ') + ' were added.');
+      dayTypes = DEFAULT_DAY_TYPE_NAMES.map((name, i) => newDayType(ids('d'), name, i === 0, periods));
+    }
+  }
+  const ownIds = new Set();
+  // a day type marked the same as another that had bells or days of its own
+  // is made its own copy; what it was the same as fills in the rest
+  const promoted = new Map();
+  const markedOwn = new Set();
+  dayTypes.forEach((dayType, i) => {
+    const rawId = dayType.id;
+    dayType.id = claimId(dayType, 'd', 'A day type');
+    text(dayType, 'name', DEFAULT_DAY_TYPE_NAMES[i] || 'Day ' + (i + 1), 'A day type name');
+    let bells = dayType.bells;
+    if (!Array.isArray(bells)) {
+      if (bells !== undefined) note('The bell schedule of ' + dayType.name + ' could not be read and was emptied.');
+      bells = [];
+    }
+    let fixed = bells.map((bell) => (bell === null || (isObject(bell) && isBellTime(bell.start) && isBellTime(bell.end)) ? bell : undefined));
+    const bad = fixed.filter((bell) => bell === undefined).length;
+    if (bad > 0) {
+      note(plural(bad, 'bell time', 'bell times') + ' on ' + dayType.name + ' could not be read and ' + (bad === 1 ? 'was' : 'were') + ' cleared.');
+      fixed = fixed.map((bell) => (bell === undefined ? null : bell));
+    }
+    if (fixed.length > periods) {
+      const lost = fixed.slice(periods).filter((bell) => bell !== null).length;
+      if (lost > 0) note(dayType.name + ' had bell times for more periods than the school has; ' + plural(lost, 'entry was', 'entries were') + ' removed.');
+      fixed = fixed.slice(0, periods);
+    }
+    while (fixed.length < periods) fixed.push(null);
+    const changed = bad > 0 || fixed.length !== bells.length || !Array.isArray(dayType.bells);
+    const hasBells = fixed.some((bell) => bell !== null);
+    const hasDays = rawGroups.some((group) => isObject(group.days) && (Array.isArray(group.days[dayType.id]) || (typeof rawId === 'string' && renamed.d.get(rawId) === dayType.id && Array.isArray(group.days[rawId]))));
+    if (i === 0 || dayType.own === true) markedOwn.add(dayType.id);
+    if (i === 0) {
+      if (dayType.own !== true) {
+        if (dayType.own !== undefined) note('The first day type, ' + dayType.name + ', is always its own copy.');
+        dayType.own = true;
+      }
+    } else if (dayType.own !== true) {
+      if (hasBells || hasDays) {
+        promoted.set(dayType.id, { dayType, sameAs: dayType.sameAs, hasDays });
+        dayType.own = true;
+        dayType.sameAs = null;
+      } else {
+        flag(dayType, 'own', false, 'Whether ' + dayType.name + ' is its own copy');
+      }
+    }
+    if (changed) dayType.bells = fixed;
+    if (dayType.own) ownIds.add(dayType.id);
+  });
+  project.dayTypes = dayTypes;
+  const baseId = dayTypes[0].id;
+  // a promoted day type starts from what it was the same as when that was a
+  // day type with its own classes, else from the first
+  const promotedFrom = new Map();
+  for (const [id, { dayType, sameAs, hasDays }] of promoted) {
+    const value = typeof sameAs === 'string' ? follow('d', sameAs) : sameAs;
+    const from = typeof value === 'string' && value !== id && markedOwn.has(value) ? dayTypes.find((candidate) => candidate.id === value) : dayTypes[0];
+    promotedFrom.set(id, from.id);
+    note(dayType.name + ' was marked the same as ' + from.name + ' and had ' + (hasDays ? 'days' : 'bell times') + ' of its own, so it is its own copy now; where it had no classes of its own, it has ' + from.name + '\'s.');
+  }
+
+  // sameAs names another own day type, one hop, or is null for the first
+  for (const dayType of dayTypes) {
+    if (dayType.sameAs === undefined) continue;
+    const value = typeof dayType.sameAs === 'string' ? follow('d', dayType.sameAs) : dayType.sameAs;
+    const own = ownIds.has(dayType.id);
+    const sound = value === null || (!own && typeof value === 'string' && value !== dayType.id && ownIds.has(value));
+    if (sound) {
+      if (value !== dayType.sameAs) dayType.sameAs = value;
+      continue;
+    }
+    if (own) note(dayType.name + ' is its own copy, so it is the same as nothing; what it said it was the same as was cleared.');
+    else note(dayType.name + ' was the same as something that is not a day type with its own classes, so it is the same as ' + dayTypes[0].name + ' now.');
+    dayType.sameAs = null;
+  }
+  // a typed short name: text, at most SHORT_MOST characters, one per day type
+  const shortOf = (thing, taken, what) => {
+    if (thing.short === undefined) return;
+    if (typeof thing.short !== 'string') {
+      note('The short name of ' + what + ' was not text and was cleared; it is worked out from the name.');
+      thing.short = '';
+      return;
+    }
+    let short = thing.short;
+    if (textLength(short) > SHORT_MOST) {
+      short = Array.from(short).slice(0, SHORT_MOST).join('');
+      note('The short name of ' + what + ' was longer than ' + SHORT_MOST + ' characters and is now "' + short + '".');
+    }
+    if (short !== '' && taken.has(short.toLowerCase())) {
+      note('The short name "' + short + '" of ' + what + ' was already used, so it was cleared and is worked out from the name.');
+      short = '';
+    }
+    if (short !== '') taken.add(short.toLowerCase());
+    if (short !== thing.short) thing.short = short;
+  };
+  const dayShorts = new Set();
+  for (const dayType of dayTypes) shortOf(dayType, dayShorts, dayType.name);
+
+  // ---- building
+  if (source.building !== undefined && !isObject(source.building)) note('The building could not be read and was emptied.');
+  const building = isObject(source.building) ? { ...source.building } : {};
+  project.building = building;
+  const roomById = new Map();
+  const goneRooms = new Map(); // id of a room that could not be kept -> its number
+  const roomNumbers = new Set();
+  const floorById = new Map();
+
+  let rawFloors = objects(building.floors, 'floors');
+  if (rawFloors.length === 0) {
+    if (building.floors !== undefined) note('The building had no floors, so an empty Floor 1 was added.');
+    rawFloors = [newFloor(ids('f'), 'Floor 1', 1, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT)];
+  }
+  building.floors = rawFloors.map((raw, f) => {
+    const floor = { ...raw };
+    floor.id = claimId(floor, 'f', 'A floor');
+    text(floor, 'name', 'Floor ' + (f + 1), 'A floor name');
+    if (!Number.isInteger(floor.level)) {
+      if (floor.level !== undefined) note('The level of ' + floor.name + ' was not a whole number and is now ' + (f + 1) + '.');
+      floor.level = f + 1;
+    }
+    // one side missing or not a whole number, and the other divides the
+    // cells exactly: the cells say what the side was
+    if (typeof floor.cells === 'string') {
+      for (const [key, other] of [['width', 'height'], ['height', 'width']]) {
+        if (Number.isInteger(floor[key]) || !inRange(floor[other], RANGES.floorSize)) continue;
+        const side = floor.cells.length / floor[other];
+        if (!inRange(side, RANGES.floorSize)) continue;
+        note('The ' + key + ' of ' + floor.name + ' ' + (floor[key] === undefined || floor[key] === null ? 'was missing' : 'was not a whole number') + ' and was worked out from its cells: ' + side + '.');
+        floor[key] = side;
+      }
+    }
+    whole(floor, 'width', RANGES.floorSize, DEFAULT_FLOOR_WIDTH, 'The width of ' + floor.name);
+    whole(floor, 'height', RANGES.floorSize, DEFAULT_FLOOR_HEIGHT, 'The height of ' + floor.name);
+    const count = floor.width * floor.height;
+    let cells = floor.cells;
+    if (typeof cells !== 'string') {
+      if (cells !== undefined) note('The cells of ' + floor.name + ' could not be read and were emptied.');
+      cells = emptyCells(floor.width, floor.height);
+    }
+    if (/[^.#S]/.test(cells)) {
+      note('Some cells of ' + floor.name + ' held something that is not a cell and were emptied.');
+      cells = cells.replace(/[^.#S]/g, CELL_EMPTY);
+    }
+    if (cells.length !== count) {
+      note('The cells of ' + floor.name + ' did not match its size of ' + floor.width + ' by ' + floor.height + ' and were ' + (cells.length > count ? 'cut' : 'filled out') + ' to fit.');
+      cells = cells.length > count ? cells.slice(0, count) : cells + CELL_EMPTY.repeat(count - cells.length);
+    }
+
+    // spaces: cells and ownership first, since a space wins its cells back
+    // from corridor and stairs
+    const owner = new Set();
+    const cellList = cells.split('');
+    let cleared = 0;
+    const ownCells = new Map();
+    const spaces = [];
+    for (const rawSpace of objects(floor.spaces, 'spaces on ' + floor.name)) {
+      const space = { ...rawSpace };
+      if (space.kind !== 'room' && space.kind !== 'other') {
+        space.kind = 'otherKind' in space || ('label' in space && !('number' in space)) ? 'other' : 'room';
+        note('A space on ' + floor.name + ' did not say what it is and is now ' + (space.kind === 'room' ? 'a room' : 'an other space') + '.');
+      }
+      space.id = claimId(space, space.kind === 'other' ? 'o' : 'r', 'A space on ' + floor.name);
+      const label = space.kind === 'room' ? 'Room "' + (typeof space.number === 'string' ? space.number : '') + '"' : 'The other space "' + (typeof space.label === 'string' ? space.label : '') + '"';
+      const rawCells = Array.isArray(space.cells) ? space.cells : [];
+      const own = [];
+      const ownSet = new Set();
+      let taken = 0;
+      for (const cell of rawCells) {
+        if (!Number.isInteger(cell) || cell < 0 || cell >= count || ownSet.has(cell)) continue;
+        if (owner.has(cell)) {
+          taken += 1;
+          continue;
+        }
+        owner.add(cell);
+        ownSet.add(cell);
+        own.push(cell);
+        if (cellList[cell] !== CELL_EMPTY) {
+          cellList[cell] = CELL_EMPTY;
+          cleared += 1;
+        }
+      }
+      if (own.length !== rawCells.length || !Array.isArray(space.cells)) {
+        if (taken > 0) note(label + ' on ' + floor.name + ' lost ' + plural(taken, 'cell', 'cells') + ' that an earlier space already had.');
+        if (rawCells.length - own.length - taken > 0) note(label + ' on ' + floor.name + ' listed ' + plural(rawCells.length - own.length - taken, 'cell', 'cells') + ' that are not on the floor, or listed twice; they were removed.');
+        space.cells = own;
+      }
+      if (own.length === 0) {
+        note(label + ' on ' + floor.name + ' had no cells left and was removed.');
+        if (space.kind === 'room') goneRooms.set(space.id, typeof space.number === 'string' ? space.number : '');
+        continue;
+      }
+      ownCells.set(space, ownSet);
+      spaces.push(space);
+    }
+    if (cleared > 0) note(plural(cleared, 'corridor or stairs cell', 'corridor or stairs cells') + ' on ' + floor.name + ' lay under a room or other space and ' + (cleared === 1 ? 'was' : 'were') + ' cleared.');
+    cells = cleared > 0 ? cellList.join('') : cells;
+    floor.cells = cells;
+
+    for (const space of spaces) {
+      const own = ownCells.get(space);
+      if (space.kind === 'room') {
+        text(space, 'number', '', 'A room number on ' + floor.name);
+        if (space.number.trim() !== '') {
+          const number = uniqueText(space.number, roomNumberKey, roomNumbers);
+          if (number !== space.number) {
+            note('Two rooms were both numbered "' + space.number + '". The one on ' + floor.name + ' is now "' + number + '".');
+            space.number = number;
+          }
+        }
+        const label = 'Room "' + space.number + '"';
+        const teachers = teacherRefs(space.teacherIds, label);
+        if (teachers !== space.teacherIds) space.teacherIds = teachers;
+        subjectRef(space, label);
+        text(space, 'wing', '', 'The wing of ' + label);
+        if (space.capacity !== null) {
+          if (space.capacity === undefined) space.capacity = null;
+          else if (typeof space.capacity !== 'number' || !Number.isFinite(space.capacity)) {
+            note('The capacity of ' + label + ' was not a number and was cleared.');
+            space.capacity = null;
+          } else whole(space, 'capacity', RANGES.capacity, null, 'The capacity of ' + label);
+        }
+        flag(space, 'shared', false, 'The shared-space flag of ' + label);
+        const rawDoors = Array.isArray(space.doors) ? space.doors : [];
+        const seenDoors = new Set();
+        const doors = rawDoors.filter((door) => {
+          if (!isObject(door) || !DOOR_SIDES.includes(door.side) || !own.has(door.cell)) return false;
+          const key = door.cell + door.side;
+          if (seenDoors.has(key)) return false;
+          const across = neighbourCell(floor, door.cell, door.side);
+          if (across === -1 || (cells[across] !== CELL_CORRIDOR && cells[across] !== CELL_STAIRS)) return false;
+          seenDoors.add(key);
+          return true;
+        });
+        if (doors.length !== rawDoors.length || !Array.isArray(space.doors)) {
+          if (rawDoors.length !== doors.length) note(label + ' had ' + plural(rawDoors.length - doors.length, 'door', 'doors') + ' that did not face a corridor or stairs; ' + (rawDoors.length - doors.length === 1 ? 'it was' : 'they were') + ' removed.');
+          space.doors = doors;
+        }
+        roomById.set(space.id, space);
+      } else {
+        text(space, 'label', '', 'The label of an other space');
+        choice(space, 'otherKind', OTHER_KINDS, 'other', 'The kind of the other space "' + space.label + '"');
+        if (!isHexColour(space.colour)) {
+          if (space.colour !== undefined) note('The colour of the other space "' + space.label + '" could not be read and was reset.');
+          space.colour = DEFAULT_OTHER_COLOUR;
+        }
+      }
+    }
+    floor.spaces = spaces;
+
+    // corridor names
+    const named = new Set();
+    const corridors = [];
+    for (const rawCorridor of objects(floor.corridors, 'corridor names on ' + floor.name)) {
+      const corridor = { ...rawCorridor };
+      corridor.id = claimId(corridor, 'k', 'A corridor name on ' + floor.name);
+      text(corridor, 'name', '', 'A corridor name on ' + floor.name);
+      const rawCells = Array.isArray(corridor.cells) ? corridor.cells : [];
+      const kept = [];
+      for (const cell of rawCells) {
+        if (!Number.isInteger(cell) || cell < 0 || cell >= count || cells[cell] !== CELL_CORRIDOR || named.has(cell)) continue;
+        named.add(cell);
+        kept.push(cell);
+      }
+      if (kept.length === 0) {
+        note('The corridor name "' + corridor.name + '" on ' + floor.name + ' covered no corridor cells and was removed.');
+        continue;
+      }
+      if (kept.length !== rawCells.length) {
+        note('The corridor name "' + corridor.name + '" on ' + floor.name + ' covered ' + plural(rawCells.length - kept.length, 'cell', 'cells') + ' that are not corridor, or already named; they were left out.');
+        corridor.cells = kept;
+      }
+      corridors.push(corridor);
+    }
+    floor.corridors = corridors;
+
+    // exits
+    const exitCells = new Set();
+    const exits = [];
+    for (const rawExit of objects(floor.exits, 'exits on ' + floor.name)) {
+      const exit = { ...rawExit };
+      exit.id = claimId(exit, 'x', 'An exit on ' + floor.name);
+      text(exit, 'doorName', '', 'The door name of an exit');
+      text(exit, 'assembly', '', 'The assembly point of an exit');
+      const cell = exit.cell;
+      if (!Number.isInteger(cell) || cell < 0 || cell >= count || exitCells.has(cell) || !isEdgeCorridorCell(floor, cell)) {
+        note('The exit "' + exit.doorName + '" on ' + floor.name + ' was not on a corridor cell at the edge of the building and was removed.');
+        continue;
+      }
+      exitCells.add(cell);
+      if (exit.stepFree !== undefined && typeof exit.stepFree !== 'boolean') {
+        note('The step-free flag of the exit "' + exit.doorName + '" on ' + floor.name + ' was not true or false and was removed.');
+        delete exit.stepFree;
+      }
+      exits.push(exit);
+    }
+    floor.exits = exits;
+
+    // traced image
+    if (!published || floor.image !== undefined) {
+      if (!isObject(floor.image) || typeof floor.image.imageId !== 'string' || floor.image.imageId === '') {
+        if (floor.image !== null && floor.image !== undefined) note('The traced image of ' + floor.name + ' could not be read and was removed.');
+        floor.image = null;
+      } else {
+        const image = { ...floor.image };
+        const number = (key, ok, fallback) => {
+          if (typeof image[key] === 'number' && ok(image[key])) return;
+          if (image[key] !== undefined) note('The ' + key + ' of the traced image on ' + floor.name + ' was reset.');
+          image[key] = fallback;
+        };
+        number('opacity', (v) => v >= 0 && v <= 1, 0.4);
+        number('scale', (v) => v > 0 && Number.isFinite(v), 1);
+        number('rotation', Number.isFinite, 0);
+        number('x', Number.isFinite, 0);
+        number('y', Number.isFinite, 0);
+        number('width', (v) => Number.isInteger(v) && v >= 1, 1);
+        number('height', (v) => Number.isInteger(v) && v >= 1, 1);
+        flag(image, 'visible', true, 'The show flag of the traced image on ' + floor.name);
+        flag(image, 'locked', false, 'The lock of the traced image on ' + floor.name);
+        flag(image, 'missing', false, 'The missing flag of the traced image on ' + floor.name);
+        if (opts.imageIds) {
+          const missing = !opts.imageIds.has(image.imageId);
+          if (missing !== image.missing) {
+            image.missing = missing;
+            note(missing ? 'The traced image of ' + floor.name + ' is not on this device. Its position is kept; choose the file again to see it.' : 'The traced image of ' + floor.name + ' is on this device again.');
+          }
+        }
+        floor.image = image;
+      }
+    }
+
+    floorById.set(floor.id, floor);
+    return floor;
+  });
+
+  // connections
+  const rawConnections = objects(building.connections, 'stair connections');
+  const labels = rawConnections.map((connection) => ({ label: typeof connection.label === 'string' ? connection.label : '' }));
+  const usedLabels = new Set();
+  const connections = [];
+  for (const rawConnection of rawConnections) {
+    const connection = { ...rawConnection };
+    for (const key of ['a', 'b']) if (isObject(connection[key]) && renamed.f.has(connection[key].floorId)) connection[key] = { ...connection[key], floorId: renamed.f.get(connection[key].floorId) };
+    const endOk = (end) => isObject(end) && floorById.has(end.floorId) && Number.isInteger(end.cell) && floorById.get(end.floorId).cells[end.cell] === CELL_STAIRS;
+    const label = typeof connection.label === 'string' && connection.label.trim() !== '' ? connection.label : null;
+    if (!endOk(connection.a) || !endOk(connection.b) || (connection.a.floorId === connection.b.floorId && connection.a.cell === connection.b.cell)) {
+      note('The stair connection' + (label ? ' ' + label : '') + ' did not join two stairs cells and was removed.');
+      continue;
+    }
+    connection.id = claimId(connection, 'c', 'A stair connection');
+    if (label === null) {
+      connection.label = nextConnectionLabel(labels);
+      labels.push({ label: connection.label });
+      note('A stair connection had no letter and is now ' + connection.label + '.');
+    } else {
+      const unique = uniqueText(connection.label, (value) => value, new Set(usedLabels));
+      if (unique !== connection.label) {
+        note('Two stair connections were both labelled "' + connection.label + '". The later is now "' + unique + '".');
+        connection.label = unique;
+        labels.push({ label: unique });
+      }
+    }
+    usedLabels.add(connection.label);
+    choice(connection, 'direction', CONNECTION_DIRECTIONS, 'both', 'The direction of stair connection ' + connection.label);
+    // an elevator's own fields (19.2): a kind that is not "elevator" is removed (a stairs
+    // connection); staffOnly and car are kept only on an elevator and only when well formed
+    if (connection.kind !== undefined && connection.kind !== ELEVATOR_KIND) {
+      note('The kind of connection ' + connection.label + ' was not "elevator" and was removed, so it is a stairs connection.');
+      delete connection.kind;
+    }
+    if (connection.staffOnly !== undefined && typeof connection.staffOnly !== 'boolean') {
+      note('Staff only on connection ' + connection.label + ' was not true or false and was removed.');
+      delete connection.staffOnly;
+    }
+    if (connection.car !== undefined && (typeof connection.car !== 'string' || connection.car.trim() === '')) {
+      note('The elevator letter of connection ' + connection.label + ' was not text and was removed.');
+      delete connection.car;
+    }
+    if (connection.kind !== ELEVATOR_KIND && (connection.staffOnly !== undefined || connection.car !== undefined)) {
+      note('Connection ' + connection.label + ' is stairs, so its staff-only and elevator-letter fields were removed.');
+      delete connection.staffOnly;
+      delete connection.car;
+    }
+    connections.push(connection);
+  }
+  building.connections = connections;
+
+  // ---- elevators and step-free marks (ARCHITECTURE 19.2), in the order it lists
+  {
+    let list = connections;
+    const at = (end) => end.floorId + ':' + end.cell;
+    const elevator = (connection) => connection.kind === ELEVATOR_KIND;
+    const ends = (connection) => [connection.a, connection.b];
+    const cellText = (end) => 'cell ' + end.cell + ' on ' + floorById.get(end.floorId).name;
+
+    // 1. a `lifts` cell that is not "S", or that carries a stairs connection, leaves `lifts`.
+    // Steps 2 to 5 can turn an elevator connection into stairs or remove a connection, so
+    // this runs once more after them: what repair gives back must pass validate.
+    const dropStaleLifts = () => {
+      const stairsAt = new Set();
+      for (const connection of list) if (!elevator(connection)) for (const end of ends(connection)) stairsAt.add(at(end));
+      for (const floor of building.floors) {
+        if (floor.lifts === undefined) continue;
+        if (!Array.isArray(floor.lifts)) {
+          note('The elevator stops of ' + floor.name + ' could not be read and were removed.');
+          delete floor.lifts;
+          continue;
+        }
+        const seen = new Set();
+        const kept = floor.lifts.filter((cell) => {
+          if (!Number.isInteger(cell) || cell < 0 || cell >= floor.cells.length || floor.cells[cell] !== CELL_STAIRS || stairsAt.has(floor.id + ':' + cell) || seen.has(cell)) return false;
+          seen.add(cell);
+          return true;
+        });
+        if (kept.length !== floor.lifts.length) {
+          note(plural(floor.lifts.length - kept.length, 'cell', 'cells') + ' listed as elevator stops on ' + floor.name + ' ' + (floor.lifts.length - kept.length === 1 ? 'is' : 'are') + ' not stairs cells, carry a stairs connection or are listed twice, and ' + (floor.lifts.length - kept.length === 1 ? 'was' : 'were') + ' taken off the list.');
+          floor.lifts = kept;
+        }
+      }
+    };
+    dropStaleLifts();
+
+    // 2. a same-floor elevator connection is a stairs connection, as an older tool would have drawn it
+    for (const connection of list) {
+      if (!elevator(connection) || connection.a.floorId !== connection.b.floorId) continue;
+      note('Elevator connection ' + connection.label + ' joined two cells on ' + floorById.get(connection.a.floorId).name + ', so it is now a stairs connection.');
+      delete connection.kind;
+      delete connection.staffOnly;
+      delete connection.car;
+    }
+
+    // 3. a cell carrying both kinds keeps its elevator connections and loses the stairs one
+    const elevatorAt = new Set();
+    for (const connection of list) if (elevator(connection)) for (const end of ends(connection)) elevatorAt.add(at(end));
+    const withoutBoth = list.filter((connection) => {
+      if (elevator(connection)) return true;
+      const clash = ends(connection).find((end) => elevatorAt.has(at(end)));
+      if (!clash) return true;
+      note('Stairs connection ' + connection.label + ' was removed: ' + cellText(clash) + ' is an elevator stop.');
+      return false;
+    });
+    if (withoutBoth.length !== list.length) list = withoutBoth;
+
+    // 4. an elevator runs both ways
+    for (const connection of list) {
+      if (!elevator(connection) || connection.direction === 'both') continue;
+      note('Elevator connection ' + connection.label + ' was one-way and now runs both ways.');
+      connection.direction = 'both';
+    }
+
+    // 5. a car has one stop a floor: a connection that would give it a second on a floor is dropped, the later of the two
+    const cars = new Map(); // cell -> { floors: Map(floorId -> cell) }
+    const dropped = new Set();
+    for (const connection of list) {
+      if (!elevator(connection)) continue;
+      const [a, b] = ends(connection);
+      const carOf = (end) => {
+        if (!cars.has(at(end))) cars.set(at(end), { floors: new Map([[end.floorId, end.cell]]) });
+        return cars.get(at(end));
+      };
+      const ca = carOf(a);
+      const cb = carOf(b);
+      if (ca === cb) continue;
+      const clash = Array.from(cb.floors).find(([floorId, cell]) => ca.floors.has(floorId) && ca.floors.get(floorId) !== cell);
+      if (clash) {
+        note('Elevator connection ' + connection.label + ' was removed: it would give its elevator a second stop on ' + floorById.get(clash[0]).name + '.');
+        dropped.add(connection);
+        continue;
+      }
+      for (const [floorId, cell] of cb.floors) ca.floors.set(floorId, cell);
+      for (const [key, car] of cars) if (car === cb) cars.set(key, ca);
+    }
+    if (dropped.size > 0) list = list.filter((connection) => !dropped.has(connection));
+    dropStaleLifts();
+
+    // 6. staffOnly equal across a car (true wins), `car` the first connection's, or its own label when it has none
+    const byId = new Map(list.map((connection) => [connection.id, connection]));
+    const lettersUsed = new Set();
+    for (const car of elevatorCars({ floors: building.floors, connections: list })) {
+      if (car.connectionIds.length === 0) continue;
+      const own = car.connectionIds.map((id) => byId.get(id));
+      if (own.some((connection) => connection.staffOnly === true) && own.some((connection) => connection.staffOnly !== true)) {
+        note('Elevator ' + car.label + ' was staff only on some connections and not on others; it is staff only on all of them.');
+        for (const connection of own) connection.staffOnly = true;
+      }
+      let letter = typeof own[0].car === 'string' && own[0].car.trim() !== '' ? own[0].car : own[0].label;
+      if (lettersUsed.has(nameKey(letter))) {
+        // two elevators may not share a letter: the later one takes its first connection's own label
+        let own2 = own[0].label;
+        for (let n = 2; lettersUsed.has(nameKey(own2)); n += 1) own2 = own[0].label + n;
+        note('Elevator ' + car.label + ' had the same letter as an earlier elevator; its letter is now "' + own2 + '".');
+        letter = own2;
+        for (const connection of own) connection.car = letter;
+      }
+      lettersUsed.add(nameKey(letter));
+      if (own.some((connection) => typeof connection.car === 'string' && connection.car !== letter)) note('The connections of one elevator carried different letters; they are all "' + letter + '" now.');
+      for (const connection of own) connection.car = letter;
+    }
+    building.connections = list;
+
+    // 7. a door facing a lift cell is removed; a malformed door flag is removed
+    const anyLift = list.some(elevator) || building.floors.some((floor) => Array.isArray(floor.lifts) && floor.lifts.length > 0);
+    for (const floor of building.floors) {
+      for (const space of floor.spaces) {
+        if (space.kind !== 'room') continue;
+        let changed = false;
+        const doors = [];
+        for (const door of space.doors) {
+          const across = neighbourCell(floor, door.cell, door.side);
+          if (anyLift && across !== -1 && isLiftCell(building, floor.id, across)) {
+            note('A door of room "' + space.number + '" faced an elevator stop on ' + floor.name + ' and was removed.');
+            changed = true;
+            continue;
+          }
+          if (door.stepFree !== undefined && typeof door.stepFree !== 'boolean') {
+            note('The step-free flag of a door of room "' + space.number + '" was not true or false and was removed.');
+            const { stepFree, ...rest } = door;
+            doors.push(rest);
+            changed = true;
+            continue;
+          }
+          doors.push(door);
+        }
+        if (changed) space.doors = doors;
+      }
+    }
+
+    // 8. invalid refuges and step cells are dropped
+    for (const floor of building.floors) {
+      if (floor.notStepFree !== undefined) {
+        if (!Array.isArray(floor.notStepFree)) {
+          note('The cells with a step on ' + floor.name + ' could not be read and were removed.');
+          delete floor.notStepFree;
+        } else {
+          const seen = new Set();
+          const kept = floor.notStepFree.filter((cell) => {
+            if (!Number.isInteger(cell) || cell < 0 || cell >= floor.cells.length || floor.cells[cell] !== CELL_CORRIDOR || seen.has(cell)) return false;
+            seen.add(cell);
+            return true;
+          });
+          if (kept.length !== floor.notStepFree.length) {
+            note(plural(floor.notStepFree.length - kept.length, 'cell', 'cells') + ' marked as a step on ' + floor.name + ' ' + (floor.notStepFree.length - kept.length === 1 ? 'is' : 'are') + ' not corridor cells or marked twice, and ' + (floor.notStepFree.length - kept.length === 1 ? 'was' : 'were') + ' unmarked.');
+            floor.notStepFree = kept;
+          }
+        }
+      }
+      if (floor.refuges !== undefined) {
+        const refugeCells = new Set();
+        const refugeNames = new Set();
+        const kept = [];
+        let changed = false;
+        if (!Array.isArray(floor.refuges)) {
+          note('The areas of refuge of ' + floor.name + ' could not be read and were removed.');
+          delete floor.refuges;
+        } else {
+          for (const raw of floor.refuges) {
+            if (!isObject(raw)) {
+              note('An area of refuge on ' + floor.name + ' could not be read and was removed.');
+              changed = true;
+              continue;
+            }
+            const refuge = { ...raw };
+            const cell = refuge.cell;
+            const character = Number.isInteger(cell) && cell >= 0 && cell < floor.cells.length ? floor.cells[cell] : null;
+            if ((character !== CELL_CORRIDOR && character !== CELL_STAIRS) || isLiftCell(building, floor.id, cell) || refugeCells.has(cell)) {
+              note('The area of refuge "' + (typeof refuge.name === 'string' ? refuge.name : REFUGE_DEFAULT_NAME) + '" on ' + floor.name + ' was not on a corridor or stairs cell that is free of an elevator and another refuge, and was removed.');
+              changed = true;
+              continue;
+            }
+            refugeCells.add(cell);
+            refuge.id = claimId(refuge, 'a', 'An area of refuge on ' + floor.name);
+            if (typeof refuge.name !== 'string') {
+              if (refuge.name !== undefined && refuge.name !== null) note('The name of an area of refuge on ' + floor.name + ' was not text and was reset.');
+              refuge.name = REFUGE_DEFAULT_NAME;
+            }
+            const name = uniqueText(refuge.name, nameKey, refugeNames);
+            if (name !== refuge.name) {
+              note('Two areas of refuge on ' + floor.name + ' were both called "' + refuge.name + '". The second is now "' + name + '".');
+              refuge.name = name;
+            }
+            if (refuge.id !== raw.id || refuge.name !== raw.name) changed = true;
+            kept.push(refuge);
+          }
+          if (changed) floor.refuges = kept;
+        }
+      }
+    }
+  }
+
+  // zones
+  if (!published || building.zones !== undefined) {
+    const zones = [];
+    for (const rawZone of objects(building.zones, 'zones')) {
+      const zone = { ...rawZone };
+      text(zone, 'label', '', 'A zone label');
+      if (renamed.f.has(zone.floorId)) zone.floorId = renamed.f.get(zone.floorId);
+      const floor = floorById.get(zone.floorId);
+      const sound = floor && [zone.x, zone.y, zone.w, zone.h].every(Number.isInteger);
+      if (sound) {
+        const x0 = Math.max(0, zone.x);
+        const y0 = Math.max(0, zone.y);
+        const x1 = Math.min(floor.width, zone.x + zone.w);
+        const y1 = Math.min(floor.height, zone.y + zone.h);
+        if (x1 > x0 && y1 > y0) {
+          if (x0 !== zone.x || y0 !== zone.y || x1 - x0 !== zone.w || y1 - y0 !== zone.h) {
+            note('The zone "' + zone.label + '" reached past the edge of ' + floor.name + ' and was trimmed.');
+            zone.x = x0;
+            zone.y = y0;
+            zone.w = x1 - x0;
+            zone.h = y1 - y0;
+          }
+          zone.id = claimId(zone, 'z', 'A zone');
+          zones.push(zone);
+          continue;
+        }
+      }
+      note('The zone "' + zone.label + '" was not a rectangle on a floor of this building and was removed.');
+    }
+    building.zones = zones;
+  }
+
+  // ---- teachers and rooms say the same thing: the union of both lists
+  if (renamed.r.size > 0) {
+    for (const [teacherId, rooms] of teacherRawRooms) teacherRawRooms.set(teacherId, rooms.map((roomId) => follow('r', roomId)));
+  }
+  const addedToRooms = new Map();
+  for (const teacher of project.teachers) {
+    for (const roomId of teacherRawRooms.get(teacher.id)) {
+      const room = roomById.get(roomId);
+      if (!room || room.teacherIds.includes(teacher.id)) continue;
+      if (!addedToRooms.has(room)) {
+        room.teacherIds = room.teacherIds.slice();
+        addedToRooms.set(room, true);
+      }
+      room.teacherIds.push(teacher.id);
+      note('Teacher "' + teacher.name + '" listed room "' + room.number + '" and the room did not list the teacher; the room does now.');
+    }
+  }
+  for (const teacher of project.teachers) {
+    const raw = teacherRawRooms.get(teacher.id);
+    const listed = new Set();
+    for (const [roomId, room] of roomById) if (room.teacherIds.includes(teacher.id)) listed.add(roomId);
+    const rooms = Array.from(new Set(raw.filter((roomId) => listed.has(roomId))));
+    for (const roomId of listed) if (!rooms.includes(roomId)) rooms.push(roomId);
+    const same = Array.isArray(teacher.roomIds) && rooms.length === teacher.roomIds.length && rooms.every((roomId, i) => roomId === teacher.roomIds[i]);
+    if (!same) {
+      const followed = Array.isArray(teacher.roomIds) && rooms.length === teacher.roomIds.length && rooms.every((roomId, i) => roomId === follow('r', teacher.roomIds[i]));
+      if (teacher.roomIds !== undefined && !followed) note('The rooms of teacher "' + teacher.name + '" did not match the rooms that list the teacher and were brought into line.');
+      teacher.roomIds = rooms;
+    }
+  }
+
+  // ---- groups
+  const groupNames = new Set();
+  const groups = [];
+  for (const raw of objects(source.groups, 'groups')) {
+    const group = { ...raw };
+    group.id = claimId(group, 'g', 'A group');
+    if (typeof group.name !== 'string' || group.name.trim() === '') {
+      note('A group had no name and is now called "Group".');
+      group.name = 'Group';
+    }
+    const name = uniqueText(group.name, nameKey, groupNames);
+    if (name !== group.name) {
+      note('Two groups were both called "' + group.name + '". The second is now "' + name + '".');
+      group.name = name;
+    }
+    text(group, 'grade', '', 'The grade of group "' + group.name + '"');
+    if (!published || group.headCount !== undefined) {
+      if (group.headCount !== null) {
+        if (group.headCount === undefined) group.headCount = null;
+        else if (typeof group.headCount !== 'number' || !Number.isFinite(group.headCount)) {
+          note('The head count of group "' + group.name + '" was not a number and was cleared.');
+          group.headCount = null;
+        } else whole(group, 'headCount', RANGES.headCount, null, 'The head count of group "' + group.name + '"');
+      }
+    }
+    if (!isHexColour(group.colour)) {
+      if (group.colour !== undefined) note('The colour of group "' + group.name + '" could not be read and was reset.');
+      group.colour = nextGroupColour(groups);
+    }
+    if (group.stepFree !== undefined && typeof group.stepFree !== 'boolean') {
+      note('The step-free flag of group "' + group.name + '" was not true or false and was removed.');
+      delete group.stepFree;
+    }
+
+    let rawDays = isObject(group.days) ? group.days : {};
+    if (group.days !== undefined && !isObject(group.days)) note('The days of group "' + group.name + '" could not be read and were emptied.');
+    const days = {};
+    let daysChanged = !isObject(group.days);
+    if (Object.keys(rawDays).some((key) => renamed.d.has(key))) {
+      // a day type that was given a new id takes its days with it
+      const moved = {};
+      for (const key of Object.keys(rawDays)) {
+        const to = follow('d', key);
+        if (!(to in moved) || to === key) moved[to] = rawDays[key];
+      }
+      rawDays = moved;
+      daysChanged = true;
+    }
+    const fixDay = (rawDay, dayName) => {
+      let changed = false;
+      let lost = 0;
+      let unknown = 0;
+      let day = rawDay.map((rawSlot) => {
+        if (!isObject(rawSlot)) {
+          changed = true;
+          if (rawSlot !== null && rawSlot !== undefined) lost += 1;
+          return emptySlot();
+        }
+        let slot = rawSlot;
+        const set = (key, value) => {
+          if (slot === rawSlot) slot = { ...rawSlot };
+          slot[key] = value;
+          changed = true;
+        };
+        if (typeof slot.roomText !== 'string') set('roomText', '');
+        if (typeof slot.label !== 'string') set('label', '');
+        if (renamed.r.has(slot.room)) set('room', renamed.r.get(slot.room));
+        if (slot.room !== null && !roomById.has(slot.room)) {
+          if (slot.room !== undefined) {
+            unknown += 1;
+            if (slot.roomText === '') set('roomText', goneRooms.get(slot.room) || UNKNOWN_ROOM_TEXT);
+          }
+          set('room', null);
+        }
+        const teachers = teacherRefs(slot.teacherIds, 'A slot of group "' + group.name + '" on ' + dayName);
+        if (teachers !== slot.teacherIds) set('teacherIds', teachers);
+        return slot;
+      });
+      if (lost > 0) note(plural(lost, 'slot', 'slots') + ' of group "' + group.name + '" on ' + dayName + ' could not be read and ' + (lost === 1 ? 'was' : 'were') + ' emptied.');
+      if (unknown > 0) note('Group "' + group.name + '" on ' + dayName + ' had ' + plural(unknown, 'slot', 'slots') + ' in a room that is not in the building. ' + (unknown === 1 ? 'It is' : 'They are') + ' kept and shown as not in the building.');
+      if (day.length > periods) {
+        const cut = day.slice(periods).filter((slot) => slot.room !== null || slot.roomText !== '' || slot.label !== '' || slot.teacherIds.length > 0).length;
+        if (cut > 0) note('Group "' + group.name + '" on ' + dayName + ' had ' + plural(cut, 'slot', 'slots') + ' past the last period; ' + (cut === 1 ? 'it was' : 'they were') + ' removed.');
+        day = day.slice(0, periods);
+        changed = true;
+      }
+      while (day.length < periods) {
+        day.push(emptySlot());
+        changed = true;
+      }
+      return changed ? day : rawDay;
+    };
+    const fromDays = [];
+    for (const dayType of dayTypes) {
+      if (!ownIds.has(dayType.id)) continue;
+      const rawDay = rawDays[dayType.id];
+      if (Array.isArray(rawDay)) {
+        days[dayType.id] = fixDay(rawDay, dayType.name);
+        if (days[dayType.id] !== rawDay) daysChanged = true;
+      } else if (promotedFrom.has(dayType.id)) {
+        // the group followed what the day type was the same as until now; it
+        // still does, once that day is read (it may come later in the list)
+        fromDays.push(dayType.id);
+        daysChanged = true;
+      } else {
+        if (rawDay !== undefined) note('The day of group "' + group.name + '" on ' + dayType.name + ' could not be read and was emptied.');
+        days[dayType.id] = emptyDay(periods);
+        daysChanged = true;
+      }
+    }
+    for (const id of fromDays) days[id] = days[promotedFrom.get(id)].map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+    for (const key of Object.keys(rawDays)) {
+      if (ownIds.has(key)) continue;
+      note('Group "' + group.name + '" had a day for a day type that is not in the project; it was removed.');
+      daysChanged = true;
+    }
+    if (daysChanged) group.days = days;
+    groups.push(group);
+  }
+  project.groups = groups;
+
+  // ---- bell schedules (ARCHITECTURE 17.3)
+  const bellIds = new Set();
+  if (source.bellSchedules !== undefined) {
+    let list = objects(source.bellSchedules, 'bell schedules');
+    if (list.length > BELL_SCHEDULES_MOST) {
+      note('There were ' + list.length + ' bell schedules, and a project has at most ' + BELL_SCHEDULES_MOST + '; the last ' + plural(list.length - BELL_SCHEDULES_MOST, 'was', 'were') + ' removed.');
+      list = list.slice(0, BELL_SCHEDULES_MOST);
+    }
+    const names = new Set();
+    const shorts = new Set();
+    project.bellSchedules = list.map((raw, i) => {
+      const schedule = { ...raw };
+      schedule.id = claimId(schedule, 'b', 'A bell schedule');
+      bellIds.add(schedule.id);
+      if (typeof schedule.name !== 'string' || schedule.name.trim() === '') {
+        note('A bell schedule had no name and is now called "Bell schedule ' + (i + 1) + '".');
+        schedule.name = 'Bell schedule ' + (i + 1);
+      }
+      if (textLength(schedule.name) > NAME_MOST) {
+        const cut = Array.from(schedule.name).slice(0, NAME_MOST).join('');
+        note('The bell schedule "' + schedule.name + '" had a name longer than ' + NAME_MOST + ' characters and is now "' + cut + '".');
+        schedule.name = cut;
+      }
+      if (names.has(spacelessKey(schedule.name))) {
+        const had = schedule.name;
+        for (let n = 2; ; n += 1) {
+          const suffix = ' (' + n + ')';
+          const candidate = Array.from(had).slice(0, NAME_MOST - suffix.length).join('') + suffix;
+          if (!names.has(spacelessKey(candidate))) {
+            schedule.name = candidate;
+            break;
+          }
+        }
+        note('Two bell schedules were both called "' + had + '". The second is now "' + schedule.name + '".');
+      }
+      names.add(spacelessKey(schedule.name));
+      if (schedule.short === undefined) schedule.short = '';
+      shortOf(schedule, shorts, 'the bell schedule "' + schedule.name + '"');
+      let bells = schedule.bells;
+      if (!Array.isArray(bells)) {
+        if (bells !== undefined) note('The times of the bell schedule "' + schedule.name + '" could not be read and were emptied.');
+        bells = [];
+      }
+      let fixed = bells.map((bell) => (bell === null || (isObject(bell) && isBellTime(bell.start) && isBellTime(bell.end)) ? bell : undefined));
+      const bad = fixed.filter((bell) => bell === undefined).length;
+      if (bad > 0) {
+        note(plural(bad, 'bell time', 'bell times') + ' of the bell schedule "' + schedule.name + '" could not be read and ' + (bad === 1 ? 'was' : 'were') + ' cleared.');
+        fixed = fixed.map((bell) => (bell === undefined ? null : bell));
+      }
+      if (fixed.length > periods) {
+        const lost = fixed.slice(periods).filter((bell) => bell !== null).length;
+        if (lost > 0) note('The bell schedule "' + schedule.name + '" had times for more periods than the school has; ' + plural(lost, 'entry was', 'entries were') + ' removed.');
+        fixed = fixed.slice(0, periods);
+      }
+      while (fixed.length < periods) fixed.push(null);
+      if (bad > 0 || fixed.length !== bells.length || !Array.isArray(schedule.bells)) schedule.bells = fixed;
+      const off = schedule.off;
+      if (!Array.isArray(off)) {
+        if (off !== undefined) note('The periods that do not meet under "' + schedule.name + '" could not be read; every period meets.');
+        schedule.off = [];
+      } else {
+        const kept = Array.from(new Set(off.filter((period) => Number.isInteger(period) && period >= 0 && period < periods))).sort((a, b) => a - b);
+        if (kept.length !== off.length || kept.some((period, k) => period !== off[k])) {
+          if (kept.length === off.length) note('The periods that do not meet under "' + schedule.name + '" were not in order and were put in order.');
+          else note('The periods that do not meet under "' + schedule.name + '" listed ' + plural(off.length - kept.length, 'entry', 'entries') + ' that are not a period of the day, or the same one twice; ' + (off.length - kept.length === 1 ? 'it was' : 'they were') + ' removed.');
+          schedule.off = kept;
+        }
+      }
+      return schedule;
+    });
+  }
+
+  // ---- the calendar (ARCHITECTURE 17.4)
+  if (source.calendar !== undefined && source.calendar !== null) {
+    const raw = source.calendar;
+    const dayIds = new Set(dayTypes.map((dayType) => dayType.id));
+    const dayValue = (value) => {
+      const followed = typeof value === 'string' ? follow('d', value) : value;
+      return followed === DAY_ROTATION || followed === DAY_CLOSED || dayIds.has(followed) ? followed : undefined;
+    };
+    const bellsValue = (value, regular) => {
+      if (value === null || (regular && value === BELLS_REGULAR)) return value;
+      const followed = typeof value === 'string' ? follow('b', value) : value;
+      return bellIds.has(followed) ? followed : undefined;
+    };
+    if (!isObject(raw) || (!isCalendarDate(raw.start) && !isCalendarDate(raw.end))) {
+      note(isObject(raw) ? 'The calendar had no first or last day that is a date, so it was removed.' : 'The calendar could not be read and was removed.');
+      project.calendar = null;
+    } else {
+      const calendar = { ...raw };
+      // one end that is not a date is taken from the other end and the dated
+      // changes: a first day the earliest of them, a last day the latest,
+      // never more than CALENDAR_DAYS_MOST days from the good end
+      if (!isCalendarDate(raw.start) || !isCalendarDate(raw.end)) {
+        const dated = (Array.isArray(raw.dates) ? raw.dates : []).filter((entry) => isObject(entry) && isCalendarDate(entry.date)).map((entry) => entry.date);
+        const good = isCalendarDate(raw.start) ? raw.start : raw.end;
+        const all = [good].concat(dated).sort();
+        const most = CALENDAR_DAYS_MOST - 1;
+        if (!isCalendarDate(raw.start)) {
+          const limit = addDays(good, -most);
+          const start = all[0] < limit ? limit : all[0];
+          calendar.start = start;
+          note('The calendar\'s first day was not a date, so it is now ' + dateWords(start) + ', the earliest of its last day and its dated changes' + (start === all[0] ? '' : ' that is within ' + CALENDAR_DAYS_MOST + ' days of its last day') + '.');
+        } else {
+          const limit = addDays(good, most);
+          const latest = all[all.length - 1];
+          const end = latest > limit ? limit : latest;
+          calendar.end = end;
+          note('The calendar\'s last day was not a date, so it is now ' + dateWords(end) + ', the latest of its first day and its dated changes' + (end === latest ? '' : ' that is within ' + CALENDAR_DAYS_MOST + ' days of its first day') + '.');
+        }
+      }
+      if (calendar.start > calendar.end) {
+        note('The calendar\'s first day was after its last; the two were swapped.');
+        [calendar.start, calendar.end] = [calendar.end, calendar.start];
+      }
+      if (daysBetween(calendar.start, calendar.end) + 1 > CALENDAR_DAYS_MOST) {
+        const end = addDays(calendar.start, CALENDAR_DAYS_MOST - 1);
+        note('The calendar covered ' + (daysBetween(calendar.start, calendar.end) + 1) + ' days, and covers at most ' + CALENDAR_DAYS_MOST + '; it now ends on ' + dateWords(end) + '.');
+        calendar.end = end;
+      }
+      // weekdays: seven rules, Monday first
+      const defaults = defaultWeekdays();
+      const rawWeekdays = Array.isArray(calendar.weekdays) ? calendar.weekdays : [];
+      if (calendar.weekdays !== undefined && !(Array.isArray(calendar.weekdays) && calendar.weekdays.length === 7)) note('The calendar\'s weekday rules were not one for each of the seven days; the missing ones are Monday to Friday in the rotation and no school at the weekend.');
+      let weekdaysChanged = !(Array.isArray(calendar.weekdays) && calendar.weekdays.length === 7);
+      const weekdays = defaults.map((fallback, w) => {
+        const entry = rawWeekdays[w];
+        if (!isObject(entry)) {
+          if (entry !== undefined) note('The rule for ' + WEEKDAY_NAMES[w] + ' could not be read and was reset.');
+          weekdaysChanged = true;
+          return fallback;
+        }
+        let rule = entry;
+        const set = (key, value) => {
+          if (rule === entry) rule = { ...entry };
+          rule[key] = value;
+          weekdaysChanged = true;
+        };
+        const day = dayValue(entry.day);
+        if (day === undefined) {
+          if (entry.day !== undefined) note(WEEKDAY_NAMES[w] + ' named a day type that is not in the project, so it takes the rotation now.');
+          set('day', DAY_ROTATION);
+        } else if (day !== entry.day) set('day', day);
+        const bells = entry.bells === undefined ? null : bellsValue(entry.bells, false);
+        if (bells === undefined) {
+          note(WEEKDAY_NAMES[w] + ' named a bell schedule that is not in the project, so it has the regular bells now.');
+          set('bells', null);
+        } else if (bells !== entry.bells) set('bells', bells);
+        return rule;
+      });
+      if (weekdaysChanged) calendar.weekdays = weekdays;
+      // the rotation: day types that exist, 1 to 24 of them
+      const rawRotation = Array.isArray(calendar.rotation) ? calendar.rotation : [];
+      if (calendar.rotation !== undefined && !Array.isArray(calendar.rotation)) note('The calendar\'s rotation could not be read.');
+      let rotation = rawRotation.map((id) => (typeof id === 'string' ? follow('d', id) : id));
+      const knownRotation = rotation.filter((id) => dayIds.has(id));
+      if (knownRotation.length !== rotation.length) note('The rotation named ' + plural(rotation.length - knownRotation.length, 'day type', 'day types') + ' not in the project; ' + (rotation.length - knownRotation.length === 1 ? 'that entry was' : 'those entries were') + ' removed.');
+      rotation = knownRotation;
+      if (rotation.length > ROTATION_RANGE[1]) {
+        note('The rotation had ' + rotation.length + ' entries, and has at most ' + ROTATION_RANGE[1] + '; the rest were removed.');
+        rotation = rotation.slice(0, ROTATION_RANGE[1]);
+      }
+      if (rotation.length === 0) {
+        if (calendar.rotation !== undefined) note('The rotation was empty, so it is ' + dayTypes[0].name + ' every school day now.');
+        rotation = [baseId];
+      }
+      if (!Array.isArray(calendar.rotation) || rotation.length !== calendar.rotation.length || rotation.some((id, r) => id !== calendar.rotation[r])) calendar.rotation = rotation;
+      // the dated changes: real dates, in order, one per date, each saying something
+      const rawDates = objects(calendar.dates, 'dated changes in the calendar');
+      let datesChanged = !Array.isArray(calendar.dates) || rawDates.length !== calendar.dates.length;
+      const counts = { date: 0, day: 0, bells: 0, label: 0 };
+      let dates = [];
+      for (const entry of rawDates) {
+        if (!isCalendarDate(entry.date)) {
+          counts.date += 1;
+          datesChanged = true;
+          continue;
+        }
+        // day null: as the weekday says (a change of bells or note only)
+        const day = entry.day === null ? null : dayValue(entry.day);
+        if (day === undefined) {
+          counts.day += 1;
+          datesChanged = true;
+          continue;
+        }
+        let next = entry;
+        const set = (key, value) => {
+          if (next === entry) next = { ...entry };
+          next[key] = value;
+          datesChanged = true;
+        };
+        if (day !== entry.day) set('day', day);
+        const bells = entry.bells === undefined ? null : bellsValue(entry.bells, true);
+        if (bells === undefined) {
+          counts.bells += 1;
+          set('bells', null);
+        } else if (bells !== entry.bells) set('bells', bells);
+        if (typeof entry.label !== 'string') {
+          if (entry.label !== undefined) counts.label += 1;
+          set('label', '');
+        } else if (textLength(entry.label) > DATE_LABEL_MOST) {
+          counts.label += 1;
+          set('label', Array.from(entry.label).slice(0, DATE_LABEL_MOST).join(''));
+        }
+        dates.push(next);
+      }
+      if (counts.date > 0) note(plural(counts.date, 'dated change in the calendar was', 'dated changes in the calendar were') + ' not on a date and ' + (counts.date === 1 ? 'was' : 'were') + ' removed.');
+      if (counts.day > 0) note(plural(counts.day, 'dated change in the calendar named', 'dated changes in the calendar named') + ' a day type that is not in the project and ' + (counts.day === 1 ? 'was' : 'were') + ' removed.');
+      if (counts.bells > 0) note(plural(counts.bells, 'dated change in the calendar named', 'dated changes in the calendar named') + ' a bell schedule that is not in the project and now ' + (counts.bells === 1 ? 'follows' : 'follow') + ' the weekday\'s bells.');
+      if (counts.label > 0) note(plural(counts.label, 'note on a date in the calendar was', 'notes on dates in the calendar were') + ' not text, or longer than ' + DATE_LABEL_MOST + ' characters, and ' + (counts.label === 1 ? 'was' : 'were') + ' cut or cleared.');
+      const sorted = dates.every((entry, d) => d === 0 || entry.date > dates[d - 1].date);
+      if (!sorted) {
+        const byDate = new Map();
+        for (const entry of dates) byDate.set(entry.date, entry);
+        const kept = Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
+        if (kept.length !== dates.length) note(plural(dates.length - kept.length, 'date in the calendar had', 'dates in the calendar had') + ' two changes; the later in the list was kept.');
+        else note('The dated changes in the calendar were not in date order and were put in order.');
+        dates = kept;
+        datesChanged = true;
+      }
+      const silent = dates.filter((entry) => entry.bells === null && entry.label === '' && (entry.day === null || (entry.day === DAY_ROTATION && calendar.weekdays[weekdayOf(entry.date)].day === DAY_ROTATION)));
+      if (silent.length > 0) {
+        note(plural(silent.length, 'dated change in the calendar said', 'dated changes in the calendar said') + ' nothing the weekday did not and ' + (silent.length === 1 ? 'was' : 'were') + ' removed.');
+        dates = dates.filter((entry) => !silent.includes(entry));
+        datesChanged = true;
+      }
+      if (datesChanged) calendar.dates = dates;
+      if (calendar.changedAt === undefined) calendar.changedAt = null;
+      else if (calendar.changedAt !== null && !isIsoDate(calendar.changedAt)) {
+        note('When the calendar last changed could not be read and was cleared.');
+        calendar.changedAt = null;
+      }
+      project.calendar = calendar;
+    }
+  }
+
+  // ---- marked periods (ARCHITECTURE 17.5) and duties (17.6). Absent stays
+  // absent. A mark whose period is past the period count is kept: the rules
+  // ignore it, and a setting never truncates data.
+  const allDayIds = new Set(project.dayTypes.map((dayType) => dayType.id));
+  const allGroupIds = new Set(project.groups.map((group) => group.id));
+  const allRoomIds = new Set();
+  for (const floor of project.building.floors) for (const space of floor.spaces) if (space.kind === 'room') allRoomIds.add(space.id);
+  // A list of ids of one kind: the ones that name something, once each, after
+  // following renamed ids. `dropped` counts what was removed.
+  const idsOf = (list, prefix, known) => {
+    const dropped = { count: 0 };
+    if (!Array.isArray(list)) return { kept: [], dropped, unreadable: list !== undefined };
+    const kept = [];
+    for (const raw of list) {
+      const id = follow(prefix, raw);
+      if (typeof id === 'string' && known.has(id) && !kept.includes(id)) kept.push(id);
+      else dropped.count += 1;
+    }
+    return { kept, dropped, unreadable: false };
+  };
+  const cut = (value, most) => Array.from(value).slice(0, most).join('');
+  const labelOf = (thing, key, most, what) => {
+    if (typeof thing[key] !== 'string') {
+      if (thing[key] !== undefined) note(what + ' was not text and was cleared.');
+      thing[key] = '';
+    } else if (textLength(thing[key]) > most) {
+      note(what + ' was longer than ' + most + ' characters and was cut.');
+      thing[key] = cut(thing[key], most);
+    }
+  };
+  const idListOf = (thing, key, prefix, known, what, noun) => {
+    const result = idsOf(thing[key], prefix, known);
+    if (result.unreadable) note(what + ' could not be read and was emptied.');
+    else if (result.dropped.count > 0) note(what + ' named ' + plural(result.dropped.count, noun, noun + 's') + ' that ' + (result.dropped.count === 1 ? 'is' : 'are') + ' not in the project, or the same one twice; ' + (result.dropped.count === 1 ? 'it was' : 'they were') + ' removed.');
+    const had = Array.isArray(thing[key]) ? thing[key].length : 0;
+    thing[key] = result.kept;
+    return { had, left: result.kept.length };
+  };
+
+  if (source.marks !== undefined) {
+    project.marks = objects(source.marks, 'marked periods').map((raw, i) => ({ raw, i })).map(({ raw, i }) => {
+      const mark = { ...raw };
+      const what = 'Marked period ' + (i + 1);
+      mark.id = claimId(mark, 'm', what);
+      if (!MARK_KINDS.includes(mark.kind)) return note(what + ' was not a lunch, advisory, activity or no-class mark and was removed.');
+      if (!MARK_SCOPES.includes(mark.scope)) return note(what + ' was not for the school, grades or groups and was removed.');
+      if (!Number.isInteger(mark.period) || mark.period < 0) return note(what + ' had no period that can be read and was removed.');
+      labelOf(mark, 'label', MARK_LABEL_MOST, 'The label of ' + what);
+      const days = idListOf(mark, 'dayTypeIds', 'd', allDayIds, 'The day types of ' + what, 'day type');
+      if (days.had > 0 && days.left === 0) return note(what + ' named only day types that are not in the project and was removed.');
+      const groups = idListOf(mark, 'groupIds', 'g', allGroupIds, 'The groups of ' + what, 'group');
+      if (!Array.isArray(mark.grades)) {
+        if (mark.grades !== undefined) note('The grades of ' + what + ' could not be read and were emptied.');
+        mark.grades = [];
+      } else {
+        const grades = mark.grades.filter((grade) => typeof grade === 'string');
+        if (grades.length !== mark.grades.length) note('The grades of ' + what + ' had entries that are not text; they were removed.');
+        mark.grades = grades;
+      }
+      if (mark.scope === 'groups' && groups.left === 0) return note(what + ' is for groups and none of its groups is in the project, so it was removed.');
+      if (mark.scope === 'grades' && mark.grades.length === 0) return note(what + ' is for grades and names none, so it was removed.');
+      return mark;
+    }).filter((mark) => isObject(mark));
+  }
+
+  if (source.duties !== undefined) {
+    project.duties = objects(source.duties, 'duties').map((raw, i) => ({ raw, i })).map(({ raw, i }) => {
+      const duty = { ...raw };
+      const what = 'Duty ' + (i + 1);
+      duty.id = claimId(duty, 'u', what);
+      if (!DUTY_KINDS.includes(duty.kind)) return note(what + ' was not a duty, meeting or lunch and was removed.');
+      if (!DUTY_WHEN.includes(duty.when)) return note(what + ' did not say whether it is before school, in a period or after school, and was removed.');
+      if (!Number.isInteger(duty.period) || duty.period < 0) {
+        if (duty.period !== undefined) note('The period of ' + what + ' could not be read and is now the first.');
+        duty.period = 0;
+      }
+      labelOf(duty, 'label', DUTY_LABEL_MOST, 'The label of ' + what);
+      labelOf(duty, 'place', DUTY_PLACE_MOST, 'The place of ' + what);
+      for (const edge of ['start', 'end']) {
+        if (duty[edge] === undefined || duty[edge] === '' ) duty[edge] = '';
+        else if (!isBellTime(duty[edge])) {
+          note('The ' + edge + ' time of ' + what + ' could not be read and was cleared.');
+          duty[edge] = '';
+        }
+      }
+      for (const edge of ['from', 'to']) {
+        if (duty[edge] === undefined || duty[edge] === '') duty[edge] = '';
+        else if (!isCalendarDate(duty[edge])) {
+          note('The ' + edge + ' date of ' + what + ' could not be read and was cleared.');
+          duty[edge] = '';
+        }
+      }
+      if (duty.from !== '' && duty.to !== '' && duty.to < duty.from) {
+        note('Duty ' + (i + 1) + ' ended before it started; the two dates were swapped.');
+        [duty.from, duty.to] = [duty.to, duty.from];
+      }
+      if (duty.start !== '' && duty.end !== '' && duty.end <= duty.start) {
+        note('The end time of ' + what + ' was not after its start and was cleared.');
+        duty.end = '';
+      }
+      const days = idListOf(duty, 'dayTypeIds', 'd', allDayIds, 'The day types of ' + what, 'day type');
+      if (days.had > 0 && days.left === 0) return note(what + ' named only day types that are not in the project and was removed.');
+      if (!Array.isArray(duty.weekdays)) {
+        if (duty.weekdays !== undefined) note('The weekdays of ' + what + ' could not be read; it holds every day now.');
+        duty.weekdays = [];
+      } else {
+        const days = Array.from(new Set(duty.weekdays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))).sort((a, b) => a - b);
+        if (days.length !== duty.weekdays.length || days.some((day, k) => day !== duty.weekdays[k])) note('The weekdays of ' + what + ' had entries that are not a weekday, or the same one twice, or were out of order; they were put right.');
+        duty.weekdays = days;
+      }
+      if (duty.roomId === undefined) duty.roomId = null;
+      else if (duty.roomId !== null) {
+        const roomId = follow('r', duty.roomId);
+        if (typeof roomId === 'string' && allRoomIds.has(roomId)) duty.roomId = roomId;
+        else {
+          note('The room of ' + what + ' is not in the project; it now has no room.');
+          duty.roomId = null;
+        }
+      }
+      idListOf(duty, 'teacherIds', 't', teacherIds, 'The teachers of ' + what, 'teacher');
+      idListOf(duty, 'subjectIds', 's', subjectIds, 'The subjects of ' + what, 'subject');
+      flag(duty, 'everyone', false, 'Whether ' + what + ' is for all staff');
+      return duty;
+    }).filter((duty) => isObject(duty));
+  }
+
+  // ---- staggered dismissal (ARCHITECTURE 18.2). Absent stays absent. Strict:
+  // an entry that cannot be read as it was meant is removed, with a note,
+  // rather than guessed at. A group that is gone leaves the entry's groups;
+  // an entry left with none goes. Periods past the period count are trimmed,
+  // as setPeriods trims them.
+  if (source.release !== undefined) {
+    const listed = objects(source.release, 'staggered dismissals');
+    project.release = listed.map((raw, i) => ({ raw, i })).map(({ raw, i }) => {
+      const entry = { ...raw };
+      const what = 'Staggered dismissal ' + (i + 1);
+      entry.id = claimId(entry, 'l', what);
+      if (i >= RELEASE_MOST) return note(what + ' was past the limit of ' + RELEASE_MOST + ' and was removed.');
+      const kinds = isObject(raw.who) ? RELEASE_WHO_KINDS.filter((kind) => raw.who[kind] !== undefined) : [];
+      if (kinds.length !== 1) return note(what + ' did not say exactly one of groups, a grade or a wing, and was removed.');
+      const kind = kinds[0];
+      if (kind === 'groups') {
+        if (!Array.isArray(raw.who.groups)) return note(what + ' had no list of groups and was removed.');
+        const groups = idsOf(raw.who.groups, 'g', allGroupIds);
+        if (groups.kept.length === 0) return note(what + ' named no group that is in the project and was removed.');
+        if (groups.dropped.count > 0) note(what + ' named ' + plural(groups.dropped.count, 'group', 'groups') + ' that ' + (groups.dropped.count === 1 ? 'is' : 'are') + ' not in the project, or the same one twice; ' + (groups.dropped.count === 1 ? 'it was' : 'they were') + ' removed from it.');
+        if (groups.dropped.count > 0 || groups.kept.some((id, k) => id !== raw.who.groups[k]) || Object.keys(raw.who).length !== 1) entry.who = { groups: groups.kept };
+        else entry.who = raw.who;
+      } else {
+        const value = raw.who[kind];
+        if (typeof value !== 'string' || value.trim() === '') return note(what + ' had a ' + kind + ' that is not text, or is empty, and was removed.');
+        if (textLength(value) > NAME_MOST) {
+          note('The ' + kind + ' of ' + what + ' was longer than ' + NAME_MOST + ' characters and was cut.');
+          entry.who = { [kind]: cut(value, NAME_MOST) };
+        } else {
+          entry.who = Object.keys(raw.who).length === 1 ? raw.who : { [kind]: value };
+        }
+      }
+      const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+      if (!Number.isInteger(entry.seconds) || entry.seconds < low || entry.seconds > RELEASE_SECONDS[1]) return note(what + ' did not have a whole number of seconds from ' + low + ' to ' + RELEASE_SECONDS[1] + ' and was removed.');
+      if (entry.after === undefined) entry.after = null;
+      if (entry.after !== null) {
+        if (!Array.isArray(entry.after) || !entry.after.every((period) => Number.isInteger(period) && period >= 0)) return note(what + ' had periods that are not whole numbers from 0 and was removed.');
+        const within = Array.from(new Set(entry.after)).sort((a, b) => a - b);
+        const periods = project.settings.periods;
+        const kept = within.filter((period) => period < periods);
+        if (kept.length === 0) return note(what + ' followed only periods past the end of the day and was removed.');
+        if (kept.length !== within.length) note(plural(within.length - kept.length, 'period', 'periods') + ' of ' + what + ' ' + (within.length - kept.length === 1 ? 'is' : 'are') + ' past the end of the day and ' + (within.length - kept.length === 1 ? 'was' : 'were') + ' removed from it.');
+        else if (within.length !== entry.after.length || within.some((period, k) => period !== entry.after[k])) note('The periods of ' + what + ' were put in order, each once.');
+        if (kept.length !== entry.after.length || kept.some((period, k) => period !== entry.after[k])) entry.after = kept;
+      }
+      if (entry.dayTypeIds === undefined) entry.dayTypeIds = null;
+      if (entry.dayTypeIds !== null) {
+        if (!Array.isArray(entry.dayTypeIds) || entry.dayTypeIds.length === 0) return note(what + ' had no day types that can be read and was removed.');
+        const followed = entry.dayTypeIds.map((id) => follow('d', id));
+        if (!followed.every((id) => typeof id === 'string' && allDayIds.has(id))) return note(what + ' named a day type that is not in the project and was removed.');
+        const days = Array.from(new Set(followed));
+        if (days.length !== entry.dayTypeIds.length || days.some((id, k) => id !== entry.dayTypeIds[k])) entry.dayTypeIds = days;
+      }
+      return entry;
+    }).filter((entry) => isObject(entry));
+  }
+
+  if (!published) {
+    // ---- accepted findings
+    const accepted = objects(source.accepted, 'accepted findings');
+    const keptAccepted = accepted.filter((entry) => typeof entry.findingId === 'string' && entry.findingId !== '');
+    if (keptAccepted.length !== accepted.length) note(plural(accepted.length - keptAccepted.length, 'accepted finding', 'accepted findings') + ' did not name a finding and ' + (accepted.length - keptAccepted.length === 1 ? 'was' : 'were') + ' removed.');
+    // a finding's id is its kind and the ids it is about, joined by colons;
+    // a part that is the old id of exactly one renamed thing follows it
+    const renamedParts = new Map();
+    for (const map of Object.values(renamed)) for (const [from, to] of map) renamedParts.set(from, renamedParts.has(from) ? null : to);
+    const followFinding = (findingId) => (renamedParts.size === 0 ? findingId : findingId.split(':').map((part) => (renamedParts.get(part) ? renamedParts.get(part) : part)).join(':'));
+    // `about` is who the finding named when it was accepted. A record made
+    // before the list was kept has none and gets the empty default, which
+    // never reads as changed; that is not worth a note. The ids follow a
+    // renamed thing as the finding's own id does.
+    const followAbout = (about) => about.filter((id) => typeof id === 'string').map((id) => (renamedParts.get(id) ? renamedParts.get(id) : id)).sort();
+    const aboutIsKept = (about) => Array.isArray(about) && about.every((id, index) => typeof id === 'string' && !renamedParts.get(id) && (index === 0 || about[index - 1] <= id));
+    project.accepted = keptAccepted.map((raw) => {
+      const findingId = followFinding(raw.findingId);
+      if (typeof raw.reason === 'string' && isIsoDate(raw.at) && findingId === raw.findingId && aboutIsKept(raw.about)) return raw;
+      const entry = { ...raw, findingId };
+      text(entry, 'reason', '', 'The reason on an accepted finding');
+      if (!isIsoDate(entry.at)) entry.at = now;
+      if (raw.about !== undefined && !Array.isArray(raw.about)) note('Who an accepted finding was about could not be read and was cleared.');
+      if (!aboutIsKept(raw.about)) entry.about = Array.isArray(raw.about) ? followAbout(raw.about) : [];
+      return entry;
+    });
+    if (Array.isArray(source.accepted) && project.accepted.length === source.accepted.length && project.accepted.every((entry, i) => entry === source.accepted[i])) project.accepted = source.accepted;
+
+    // ---- scenarios (ARCHITECTURE 21.2). One function reads a scenario, the open
+    // one and each kept one alike; `where` ('' for the open one) puts a kept
+    // scenario's place at the front of each note it makes.
+    const readScenario = (rawScenario, where, say) => {
+      const note = (sentence) => say(where === '' ? sentence : where + ': ' + sentence.charAt(0).toLowerCase() + sentence.slice(1));
+      const scenario = { ...rawScenario };
+      text(scenario, 'name', '', 'The scenario name', note);
+      const wholePeriod = (value) => Number.isInteger(value) && value >= 0;
+      const isText = (value) => typeof value === 'string';
+      const changes = objects(scenario.changes, 'scenario changes', note).filter((change) => {
+        if (!CHANGE_KINDS.includes(change.kind) || !isText(change.dayTypeId)) return false;
+        if (change.kind === 'move') return isText(change.groupId) && wholePeriod(change.period) && isText(change.roomId);
+        if (change.kind === 'swapPeriods') return isText(change.groupId) && wholePeriod(change.periodA) && wholePeriod(change.periodB);
+        return isText(change.groupA) && isText(change.groupB) && wholePeriod(change.period);
+      });
+      // a change follows a day type, group or room that was given a new id
+      const REFERS = { dayTypeId: 'd', groupId: 'g', groupA: 'g', groupB: 'g', roomId: 'r' };
+      const followed = changes.map((change) => {
+        let next = change;
+        for (const [key, prefix] of Object.entries(REFERS)) {
+          if (!renamed[prefix].has(change[key])) continue;
+          if (next === change) next = { ...change };
+          next[key] = renamed[prefix].get(change[key]);
+        }
+        return next;
+      });
+      const moved = followed.some((change, i) => change !== changes[i]);
+      if (!Array.isArray(scenario.changes) || changes.length !== scenario.changes.length || moved) {
+        if (Array.isArray(scenario.changes) && scenario.changes.filter(isObject).length !== changes.length) note(plural(scenario.changes.filter(isObject).length - changes.length, 'scenario change', 'scenario changes') + ' could not be read and ' + (scenario.changes.filter(isObject).length - changes.length === 1 ? 'was' : 'were') + ' removed.');
+        scenario.changes = followed;
+      }
+      const compared = scenario.compared;
+      const names = (list) => Array.isArray(list) && list.every(isText);
+      if (compared !== null && !(isObject(compared) && isText(compared.fileName) && names(compared.addedGroups) && names(compared.removedGroups))) {
+        if (compared !== undefined) note('The record of the file the scenario was compared with could not be read and was removed.');
+        scenario.compared = null;
+      }
+      // ---- levers (ARCHITECTURE 18.3): strict when present, never asked for
+      // when absent, so a scenario without them comes through as it was.
+      if (scenario.levers !== undefined) {
+        if (!Array.isArray(scenario.levers)) {
+          note('The levers of the scenario could not be read and were removed.');
+          scenario.levers = [];
+        } else {
+          const lost = [];
+          const trimmed = [];
+          const levers = [];
+          const whole = (value) => Number.isInteger(value) && value >= 0;
+          const text = (value) => typeof value === 'string' && value !== '';
+          const seat = (value, range) => value === null || (Number.isInteger(value) && inRange(value, range));
+          scenario.levers.forEach((raw, i) => {
+            const what = 'Lever ' + (i + 1) + ' of the scenario';
+            if (!isObject(raw)) return lost.push(what + ' was not an object');
+            if (!['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'].includes(raw.kind)) return lost.push(what + ' was of a kind this version does not know');
+            const lever = { ...raw };
+            const follow1 = (prefix, key) => {
+              if (renamed[prefix].has(lever[key])) lever[key] = renamed[prefix].get(lever[key]);
+            };
+            if (lever.kind === 'release') {
+              const kinds = isObject(lever.who) ? RELEASE_WHO_KINDS.filter((kind) => lever.who[kind] !== undefined) : [];
+              if (kinds.length !== 1) return lost.push(what + ' did not say exactly one of groups, a grade or a wing');
+              const kind = kinds[0];
+              if (kind === 'groups') {
+                if (!Array.isArray(lever.who.groups) || lever.who.groups.length === 0 || !lever.who.groups.every(text)) return lost.push(what + ' had no list of groups');
+                const groups = lever.who.groups.map((id) => follow('g', id));
+                lever.who = { groups: Array.from(new Set(groups)) };
+              } else {
+                if (typeof lever.who[kind] !== 'string' || lever.who[kind].trim() === '' || textLength(lever.who[kind]) > NAME_MOST) return lost.push(what + ' had a ' + kind + ' that is not text, or is empty or too long');
+                lever.who = { [kind]: lever.who[kind] };
+              }
+              const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+              if (!Number.isInteger(lever.seconds) || lever.seconds < low || lever.seconds > RELEASE_SECONDS[1]) return lost.push(what + ' did not have a whole number of seconds from ' + low + ' to ' + RELEASE_SECONDS[1]);
+              if (lever.after === undefined) lever.after = null;
+              if (lever.after !== null) {
+                if (!Array.isArray(lever.after) || lever.after.length === 0 || !lever.after.every(whole)) return lost.push(what + ' had periods that are not whole numbers from 0');
+                lever.after = Array.from(new Set(lever.after)).sort((a, b) => a - b);
+              }
+              if (lever.dayTypeIds === undefined) lever.dayTypeIds = null;
+              if (lever.dayTypeIds !== null) {
+                if (!Array.isArray(lever.dayTypeIds) || lever.dayTypeIds.length === 0 || !lever.dayTypeIds.every(text)) return lost.push(what + ' had day types that cannot be read');
+                lever.dayTypeIds = Array.from(new Set(lever.dayTypeIds.map((id) => follow('d', id))));
+              }
+              return levers.push(JSON.stringify({ kind: lever.kind, who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds }) === JSON.stringify(raw) ? raw : { kind: 'release', who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds });
+            }
+            // a lever is kept with its own fields and no others, as addScenarioLever
+            // writes it; a null for the key a bell lever does not use is no key at all
+            let clean;
+            if (lever.kind === 'bell') {
+              const unused = (value) => value === undefined || value === null;
+              const one = (text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0);
+              if (one !== 1 || !(unused(lever.dayTypeId) || text(lever.dayTypeId)) || !(unused(lever.bellsId) || text(lever.bellsId)) || !whole(lever.period) || !isBellTime(lever.start) || !isBellTime(lever.end)) return lost.push(what + ' was a bell without its day type or bell schedule, period and times');
+              follow1('d', 'dayTypeId');
+              follow1('b', 'bellsId');
+              clean = { kind: 'bell', ...(text(lever.dayTypeId) ? { dayTypeId: lever.dayTypeId } : { bellsId: lever.bellsId }), period: lever.period, start: lever.start, end: lever.end };
+            } else if (lever.kind === 'capacity') {
+              if (!text(lever.roomId) || lever.capacity === undefined || !seat(lever.capacity, RANGES.capacity)) return lost.push(what + ' was a capacity without a room and a whole number of seats');
+              follow1('r', 'roomId');
+              clean = { kind: 'capacity', roomId: lever.roomId, capacity: lever.capacity };
+            } else if (lever.kind === 'headCount') {
+              if (!text(lever.groupId) || lever.headCount === undefined || !seat(lever.headCount, RANGES.headCount)) return lost.push(what + ' was a head count without a group and a whole number of students');
+              follow1('g', 'groupId');
+              clean = { kind: 'headCount', groupId: lever.groupId, headCount: lever.headCount };
+            } else if (lever.kind === 'way') {
+              if (!text(lever.connectionId) || !['both', 'ab', 'ba', 'closed'].includes(lever.way)) return lost.push(what + ' was a stair connection without its way');
+              clean = { kind: 'way', connectionId: lever.connectionId, way: lever.way };
+            } else {
+              if (!text(lever.floorId) || !Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every(whole) || typeof lever.name !== 'string') return lost.push(what + ' was a closed corridor without its floor and cells');
+              // a lever holds at most as many cells as its floor has (the
+              // largest a floor can be when the floor is not there); more is
+              // cut, not lost. The name is never cut: it is display text frozen
+              // from a corridor name, which has no cap
+              const floorOf = Array.isArray(project.building && project.building.floors) ? project.building.floors.find((candidate) => candidate && candidate.id === lever.floorId) : null;
+              const most = floorOf && typeof floorOf.cells === 'string' ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+              clean = { kind: 'corridor', floorId: lever.floorId, cells: lever.cells.length > most ? lever.cells.slice(0, most) : lever.cells, name: lever.name };
+              if (clean.cells !== lever.cells) trimmed.push(what);
+            }
+            return levers.push(Object.keys(clean).length === Object.keys(raw).length && Object.keys(clean).every((key) => clean[key] === raw[key]) ? raw : clean);
+          });
+          if (lost.length > 0) note(plural(lost.length, 'lever', 'levers') + ' of the scenario could not be read and ' + (lost.length === 1 ? 'was' : 'were') + ' removed: ' + lost.join('; ') + '.');
+          if (trimmed.length > 0) note(plural(trimmed.length, 'closed corridor', 'closed corridors') + ' of the scenario held more cells than a floor has, and ' + (trimmed.length === 1 ? 'was' : 'were') + ' cut to fit: ' + trimmed.join('; ') + '.');
+          if (lost.length > 0 || levers.some((lever, i) => lever !== scenario.levers[i])) scenario.levers = levers;
+        }
+      }
+      return scenario;
+    };
+    if (!isObject(source.scenario)) {
+      if (source.scenario !== null && source.scenario !== undefined) note('The scenario could not be read and was removed.');
+      project.scenario = null;
+    } else {
+      project.scenario = readScenario(source.scenario, '', note);
+      // W6:BEGIN the open scenario's id: absent stays absent (a scenario made before kept scenarios existed); one that is there is an id of its kind or is given another
+      if (source.scenario.id !== undefined) project.scenario.id = claimId(source.scenario, ID_PREFIXES.scenario, 'The open scenario');
+      // W6:END
+    }
+    // W6:BEGIN kept scenarios
+    if (source.scenarios !== undefined) {
+      if (!Array.isArray(source.scenarios)) {
+        note('The kept scenarios could not be read and were removed.');
+        delete project.scenarios;
+      } else {
+        const kept = [];
+        source.scenarios.forEach((raw, i) => {
+          const place = 'Kept scenario ' + (i + 1);
+          if (!isObject(raw)) return note(place + ' could not be read and was removed.');
+          if (!Array.isArray(raw.changes)) return note(place + ' had no list of changes and was removed.');
+          if (kept.length >= SCENARIOS_MOST - 1) return note(place + ' was over the ' + (SCENARIOS_MOST - 1) + ' a project keeps besides the open one and was removed.');
+          const read = readScenario(raw, place, note);
+          read.id = claimId(raw, ID_PREFIXES.scenario, place);
+          return kept.push(JSON.stringify(read) === JSON.stringify(raw) ? raw : read);
+        });
+        const same = kept.length === source.scenarios.length && kept.every((scenario, i) => scenario === source.scenarios[i]);
+        project.scenarios = same ? source.scenarios : kept;
+      }
+    }
+    // W6:END
+
+    // W6:BEGIN the project's label (ARCHITECTURE 21.5)
+    if (project.label !== undefined) {
+      if (typeof project.label !== 'string') {
+        note('The project label was not text and was removed.');
+        delete project.label;
+      } else if (textLength(project.label.trim()) > PROJECT_LABEL_MOST) {
+        project.label = Array.from(project.label.trim()).slice(0, PROJECT_LABEL_MOST).join('').trim();
+        note('The project label was longer than ' + PROJECT_LABEL_MOST + ' characters and was cut.');
+      }
+    }
+    // W6:END
+
+    // ---- publish settings
+    const publishDefaults = defaultPublish(DEFAULT_PASSCODE);
+    if (source.publish !== undefined && !isObject(source.publish)) note('The publish settings could not be read and were reset.');
+    const publish = isObject(source.publish) ? { ...source.publish } : {};
+    project.publish = publish;
+    text(publish, 'passcode', publishDefaults.passcode, 'The staff passcode');
+    whole(publish, 'stalenessDays', RANGES.stalenessDays, publishDefaults.stalenessDays, 'The staleness period');
+    if (publish.views !== undefined && !isObject(publish.views)) note('The list of published views could not be read and was reset.');
+    const views = isObject(publish.views) ? { ...publish.views } : {};
+    publish.views = views;
+    for (const view of PUBLISH_VIEWS) flag(views, view, true, 'Whether the ' + view + ' view is published');
+    for (const view of LATER_PUBLISH_VIEWS) if (views[view] !== undefined) flag(views, view, true, 'Whether the ' + view + ' view is published');
+    flag(publish, 'teacherNamesOnMap', publishDefaults.teacherNamesOnMap, 'Teacher names on the map');
+    if (publish.staleAtCalendarEnd !== undefined) flag(publish, 'staleAtCalendarEnd', publishDefaults.staleAtCalendarEnd, 'Whether a published file is stale after the calendar\'s last day');
+    if (publish.lastPublishedHadCalendar !== undefined) flag(publish, 'lastPublishedHadCalendar', false, 'Whether the last published file had a calendar');
+    if (publish.lastPublishedAt !== null && !isIsoDate(publish.lastPublishedAt)) {
+      if (publish.lastPublishedAt !== undefined) note('The last published time could not be read and was cleared.');
+      publish.lastPublishedAt = null;
+    }
+
+    // ---- onboarding
+    const onboardingDefaults = defaultOnboarding();
+    if (source.onboarding !== undefined && !isObject(source.onboarding)) note('The getting-started record could not be read and was reset.');
+    const onboarding = isObject(source.onboarding) ? { ...source.onboarding } : {};
+    project.onboarding = onboarding;
+    if (!isObject(onboarding.steps) || !Object.values(onboarding.steps).every((value) => value === true)) {
+      const steps = {};
+      if (isObject(onboarding.steps)) for (const [step, value] of Object.entries(onboarding.steps)) if (value === true) steps[step] = true;
+      onboarding.steps = steps;
+    }
+    flag(onboarding, 'dismissed', onboardingDefaults.dismissed, 'The dismissed flag of getting started');
+    flag(onboarding, 'neverShow', onboardingDefaults.neverShow, 'The never-show flag of getting started');
+  }
+
+  // A project that needed nothing is handed back as it came.
+  if (isObject(input) && notes.length === 0 && JSON.stringify(project) === JSON.stringify(input)) {
+    return { project: input, notes };
+  }
+  return { project, notes };
+}

@@ -260,12 +260,14 @@ reports the sizes without writing.
 
 ### `sync-social-tags.mjs`
 
-Regenerates the favicon + Open Graph block on every page linked from the board,
+Regenerates the favicon, canonical + Open Graph block on every page linked from the board,
 taking each page's title and description from its own `<a class="notice">` in
 `index.html`. Reword a notice, re-run this, and the share card matches. Bounded by
 `<!-- gvb:social:start -->` / `<!-- gvb:social:end -->` markers, so it's
-idempotent. `npm run social:check` reports drift and exits non-zero without
-writing.
+idempotent. It also writes the root `sitemap.xml` (the board plus every onsite
+notice page, minus `noindex` ones). `npm run social:check` reports drift, a
+missing or mismatched canonical, a stale sitemap or a `robots.txt` that does not
+name it, and exits non-zero without writing.
 
 ### `ci-touched.mjs`
 

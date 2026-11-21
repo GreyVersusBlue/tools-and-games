@@ -291,7 +291,7 @@ export function teacherTable(project, findings, dayTypeIds) {
       // an always duty takes the period, or else the school's mark does
       const always = entry.duties.filter((duty) => sometimesWords(duty) === '').map(dutyWords);
       const mark = schoolMarkFor(project, dayTypeId, period);
-      const taken = always.length > 0 ? always : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
+      const taken = entry.marked === 'away' ? [MARK_AS_NAMED.away] : always.length > 0 ? always : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
       return { text: taken.concat(entry.duties.filter((duty) => sometimesWords(duty) !== '').map(dutyWords)).join(', '), findings: [], duty: true };
     },
     extra: (dayTypeId, which) => {

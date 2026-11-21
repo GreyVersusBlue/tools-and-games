@@ -17,7 +17,7 @@
 // `loss`, so nothing goes silently and validate() accepts every result.
 
 import { RANGES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CELL_EMPTY, CELL_CORRIDOR, CELL_STAIRS, DEFAULT_OTHER_COLOUR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, NAME_MOST, textLength, isLiftCell, elevatorCars } from './schema.js';
-import { newRoom, newOtherSpace, neighbourCell, spaceOwners, cellKind, isEdgeCorridorCell, isWalkable, inRange, isHexColour, roomNumberKey, nextConnectionLabel, nameOfRoom } from './schema.js';
+import { newRoom, newOtherSpace, neighbourCell, spaceOwners, cellKind, isEdgeCorridorCell, isWalkable, inRange, isHexColour, roomNumberKey, nextConnectionLabel, nameOfRoom, stairsLetter, nameKey } from './schema.js';
 
 export class BuildingError extends Error {
   constructor(message, code) {
@@ -191,8 +191,19 @@ export function lossText(loss) {
   if (loss.liftCells > 0) parts.push(plural(loss.liftCells, 'elevator stop', 'elevator stops'));
   // a car's connections are one phrase: "2 connections of Elevator A"
   const cars = new Map();
+  const wells = new Map();
   for (const connection of loss.connections) {
     if (connection.kind !== ELEVATOR_KIND) {
+      // a stairwell's flights are one phrase, as a car's are: "2 flights of Stairwell A"
+      if (typeof connection.well === 'string' && connection.well.trim() !== '') {
+        const key = nameKey(connection.well);
+        if (!wells.has(key)) {
+          wells.set(key, { count: 0, at: parts.length, letter: connection.well.trim() });
+          parts.push('');
+        }
+        wells.get(key).count += 1;
+        continue;
+      }
       parts.push('stairs connection ' + connection.label);
       continue;
     }
@@ -203,6 +214,7 @@ export function lossText(loss) {
     }
     cars.get(letter).count += 1;
   }
+  for (const well of wells.values()) parts[well.at] = well.count === 1 ? 'a flight of stairwell ' + well.letter : well.count + ' flights of Stairwell ' + well.letter;
   for (const [letter, car] of cars) parts[car.at] = car.count === 1 ? 'a connection of elevator ' + letter : car.count + ' connections of Elevator ' + letter;
   for (const exit of loss.exits) parts.push(exit.doorName.trim() === '' ? 'an exit' : 'the exit ' + exit.doorName);
   if (loss.doors.length > 0) parts.push(plural(loss.doors.length, 'door', 'doors'));
@@ -232,7 +244,8 @@ function withList(floor, key, list) {
 
 // A connection as the loss records it: an elevator's also says its car.
 function lostConnection(connection) {
-  return connection.kind === ELEVATOR_KIND ? { id: connection.id, label: connection.label, kind: ELEVATOR_KIND, car: connection.car || connection.label } : { id: connection.id, label: connection.label };
+  if (connection.kind === ELEVATOR_KIND) return { id: connection.id, label: connection.label, kind: ELEVATOR_KIND, car: connection.car || connection.label };
+  return typeof connection.well === 'string' && connection.well.trim() !== '' ? { id: connection.id, label: connection.label, well: connection.well } : { id: connection.id, label: connection.label };
 }
 
 // Connections taken out of the building leave their elevator stops standing:
@@ -280,7 +293,7 @@ export function splitCars(building, loss) {
   const cars = elevatorCars(building).filter((car) => car.connectionIds.length > 0);
   const seen = new Set();
   const renamed = new Map();
-  const used = building.connections.flatMap((connection) => [{ label: connection.label }, { label: connection.car === undefined ? '' : connection.car }]);
+  const used = building.connections.flatMap((connection) => [{ label: connection.label, well: connection.well }, { label: connection.car === undefined ? '' : connection.car }]);
   for (const car of cars) {
     const key = letterKey(car.label);
     if (!seen.has(key)) {
@@ -292,7 +305,7 @@ export function splitCars(building, loss) {
     seen.add(letterKey(letter));
     renamed.set(car, letter);
   }
-  if (renamed.size === 0) return building;
+  if (renamed.size === 0) return splitWells(building, loss);
   const letterOf = new Map();
   for (const [car, letter] of renamed) for (const id of car.connectionIds) letterOf.set(id, letter);
   const next = { ...building, connections: building.connections.map((connection) => (letterOf.has(connection.id) ? { ...connection, car: letterOf.get(connection.id) } : connection)) };
@@ -302,7 +315,87 @@ export function splitCars(building, loss) {
       loss.renamed.push({ car: letter, was: car.label, floors, text: floorNamesWords(floors) + ' are now Elevator ' + letter });
     }
   }
-  return next;
+  return splitWells(next, loss);
+}
+
+// Taking flights out of a stairwell can leave it in parts that share no cell
+// (a middle flight went, or a floor, or the stairs under a flight were
+// painted over): the stairwell's letter would then read in two places. The
+// part with the lowest stop keeps the letter; each part above it takes the
+// next free one (nextConnectionLabel over every label, well and car letter),
+// written to its flights. Each stairwell split is said in `loss.renamed`:
+// { well, was, parts, text }, "Stairwell A was in two parts (Floor 1 to
+// Floor 2, Floor 3 to Floor 4); the upper part is now Stairwell C." It runs
+// inside splitCars, which every path that removes a connection already calls
+// (disconnect, delete floor, resize floor, painting over stairs), as the
+// elevator mend does. A building with no split stairwell comes back as it was.
+export function splitWells(building, loss) {
+  const level = new Map(building.floors.map((floor, i) => [floor.id, { i, level: Number.isInteger(floor.level) ? floor.level : i, name: floor.name }]));
+  const groups = new Map();
+  for (const connection of building.connections) {
+    if (connection.kind === ELEVATOR_KIND || typeof connection.well !== 'string' || connection.well.trim() === '') continue;
+    const key = nameKey(connection.well);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(connection);
+  }
+  let used = null;
+  let letterOf = null;
+  for (const flights of groups.values()) {
+    const parent = new Map();
+    const find = (k) => {
+      let root = k;
+      while (parent.get(root) !== root) root = parent.get(root);
+      parent.set(k, root);
+      return root;
+    };
+    const at = (end) => end.floorId + ':' + end.cell;
+    for (const flight of flights) {
+      for (const end of [flight.a, flight.b]) if (!parent.has(at(end))) parent.set(at(end), at(end));
+      const x = find(at(flight.a));
+      const y = find(at(flight.b));
+      if (x !== y) parent.set(y, x);
+    }
+    const parts = new Map();
+    for (const flight of flights) {
+      const root = find(at(flight.a));
+      if (!parts.has(root)) parts.set(root, []);
+      parts.get(root).push(flight);
+    }
+    if (parts.size < 2) continue;
+    // each part by its lowest stop, then the floor's place in the building, then the cell
+    const rank = (end) => {
+      const known = level.get(end.floorId);
+      return [known ? known.level : Infinity, known ? known.i : Infinity, end.cell];
+    };
+    const lower = (x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+    const described = Array.from(parts.values()).map((list) => {
+      const ends = list.flatMap((flight) => [flight.a, flight.b]).sort((x, y) => lower(rank(x), rank(y)));
+      const nameOf = (end) => (level.get(end.floorId) ? level.get(end.floorId).name : '');
+      const low = nameOf(ends[0]);
+      const high = nameOf(ends[ends.length - 1]);
+      return { list, low: rank(ends[0]), text: low === high ? low : low + ' to ' + high };
+    }).sort((x, y) => lower(x.low, y.low));
+    if (used === null) {
+      used = building.connections.flatMap((connection) => [{ label: connection.label, well: connection.well }, { label: connection.car === undefined ? '' : connection.car }]);
+      letterOf = new Map();
+    }
+    const letter = flights[0].well.trim();
+    const fresh = described.slice(1).map((part) => {
+      const next = nextConnectionLabel(used);
+      used.push({ label: '', well: next });
+      for (const flight of part.list) letterOf.set(flight.id, next);
+      return next;
+    });
+    if (loss) {
+      const where = described.map((part) => part.text);
+      const names = fresh.map((next) => 'Stairwell ' + next);
+      const ofParts = described.length === 2 ? 'two parts' : described.length + ' parts';
+      const now = fresh.length === 1 ? 'the upper part is now ' + names[0] : 'the upper parts are now ' + names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+      loss.renamed.push({ well: fresh[0], wells: fresh, was: letter, parts: where, text: 'Stairwell ' + letter + ' was in ' + ofParts + ' (' + where.join(', ') + '); ' + now + '.' });
+    }
+  }
+  if (letterOf === null) return building;
+  return { ...building, connections: building.connections.map((connection) => (letterOf.has(connection.id) ? { ...connection, well: letterOf.get(connection.id) } : connection)) };
 }
 
 // What splitting a car renamed, as a sentence ("Floors 3 and 4 are now
@@ -734,6 +827,7 @@ export function copySpaces(building, args) {
     delete copy.id;
     if (space.kind === 'room') {
       copy.teacherIds = [];
+      if (Array.isArray(space.featureIds)) copy.featureIds = space.featureIds.slice();
       copy.doors = space.doors.map((door) => ({ at: offset(door.cell), side: door.side, ...stepMark(door) }));
     }
     return copy;
@@ -764,7 +858,10 @@ export function pasteSpaces(building, args, ids) {
   const add = clip.spaces.map((source) => {
     const cells = source.cells.map(place).sort((a, b) => a - b);
     if (source.kind === 'room') {
-      const room = newRoom(ids('r'), cells);
+      // a copy keeps the room's features, the ones the building still lists, each once, in the copy's order
+      const listed = new Set((Array.isArray(building.features) ? building.features : []).map((feature) => feature.id));
+      const featureIds = Array.isArray(source.featureIds) ? Array.from(new Set(source.featureIds)).filter((id) => listed.has(id)) : [];
+      const room = newRoom(ids('r'), cells, featureIds.length > 0 ? featureIds : undefined);
       const free = source.number.trim() !== '' && !taken.has(roomNumberKey(source.number));
       if (free) taken.add(roomNumberKey(source.number));
       return { ...room, number: free ? source.number : '', subjectId: source.subjectId, wing: source.wing, capacity: source.capacity, shared: source.shared, doors: source.doors.map((door) => doorAt(door, place(door.at))) };
@@ -922,7 +1019,7 @@ export function describeConnect(building, args) {
   }
   const already = building.connections.find((connection) => (sameEnd(connection.a, args.a) && sameEnd(connection.b, args.b)) || (sameEnd(connection.a, args.b) && sameEnd(connection.b, args.a)));
   if (already && already.kind === ELEVATOR_KIND) refuse('Those two stops are already joined: Elevator ' + (already.car || already.label) + '.', 'already-connected');
-  if (already) refuse('Those two stairs are already connected, as ' + already.label + '.', 'already-connected');
+  if (already) refuse('Those two stairs are already connected, as ' + stairsLetter(already) + '.', 'already-connected');
   let label = nextConnectionLabel(building.connections);
   const liftA = isLiftCell(building, args.a.floorId, args.a.cell);
   const liftB = isLiftCell(building, args.b.floorId, args.b.cell);
@@ -948,7 +1045,7 @@ export function describeConnect(building, args) {
   // may not share one); it is the connection's own label too when that is free
   let letter = carA.label !== '' ? carA.label : carB.label !== '' ? carB.label : '';
   if (letter === '') {
-    letter = nextConnectionLabel(building.connections.flatMap((connection) => [{ label: connection.label }, { label: connection.car === undefined ? '' : connection.car }]));
+    letter = nextConnectionLabel(building.connections.flatMap((connection) => [{ label: connection.label, well: connection.well }, { label: connection.car === undefined ? '' : connection.car }]));
     if (!building.connections.some((connection) => connection.label === letter)) label = letter;
   }
   return {
@@ -1018,7 +1115,7 @@ export function disconnectStairs(building, args) {
   const rest = { ...building, connections: building.connections.filter((candidate) => candidate !== connection) };
   const elevator = connection.kind === ELEVATOR_KIND;
   const loss = emptyLoss();
-  return { building: splitCars(keepElevatorStops(rest, [connection]), loss), label: connection.label, floorId: connection.a.floorId, elevator, car: elevator ? connection.car || connection.label : undefined, loss };
+  return { building: splitCars(keepElevatorStops(rest, [connection]), loss), label: stairsLetter(connection), floorId: connection.a.floorId, elevator, car: elevator ? connection.car || connection.label : undefined, loss };
 }
 
 // A connection's name and direction. args: { connectionId } and any of

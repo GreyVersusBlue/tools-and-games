@@ -45,7 +45,7 @@
 // This module is one a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
-import { DOOR_SIDES, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell, spaceOwners } from './schema.js';
+import { DOOR_SIDES, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell, spaceOwners, stairsLetter, nameKey } from './schema.js';
 import { roomName } from './findings.js';
 
 const NONE = 4;
@@ -122,7 +122,7 @@ function isRide(connection) {
 
 // How a crossing is named after "Walk 3 cells to": "stairs A" or "Elevator D".
 function crossingParts(connection) {
-  return isRide(connection) ? [words(' to Elevator '), typed(carLetter(connection))] : [words(' to stairs '), typed(connection ? connection.label : '')];
+  return isRide(connection) ? [words(' to Elevator '), typed(carLetter(connection))] : [words(' to stairs '), typed(stairsLetter(connection))];
 }
 
 function headingBetween(floor, a, b) {
@@ -336,7 +336,14 @@ export function directions(project, route, units) {
       const fromFloor = floors.get(cells[start].floorId);
       const toFloor = floors.get(cells[i].floorId);
       const way = toFloor.level > fromFloor.level ? 'up' : toFloor.level < fromFloor.level ? 'down' : null;
-      const labels = ids.map((id) => (connections.get(id) ? connections.get(id).label : ''));
+      // flights of one stairwell in a row are one letter, said once: only when
+      // both carry a stairwell letter of their own, equal as names are; plain
+      // labels and blank ones are never taken for one stairwell
+      const wellOf = (id) => {
+        const well = connections.get(id) && connections.get(id).well;
+        return typeof well === 'string' && well.trim() !== '' ? nameKey(well) : null;
+      };
+      const labels = ids.filter((id, index) => index === 0 || wellOf(id) === null || wellOf(id) !== wellOf(ids[index - 1])).map((id) => stairsLetter(connections.get(id)));
       const parts = [words('Take ')];
       labels.forEach((label, index) => {
         parts.push(words((index > 0 ? ', then ' : '') + 'stairs '), typed(label));

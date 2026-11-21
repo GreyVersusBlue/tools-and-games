@@ -47,7 +47,7 @@
 //   { kind: 'anchor', cell }       where a two-click line starts
 
 import { mix, labelOn, parse, contrast, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
-import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND, elevatorCars } from '../../engine/schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND, elevatorCars, stairsLetter } from '../../engine/schema.js';
 import { pendingElevatorLetter } from '../components/words.js';
 import { cellFocus } from '../building/inspector/cell-focus.js';
 
@@ -55,6 +55,9 @@ const TOKENS = ['paper', 'card', 'ink', 'ink-2', 'line', 'line-strong', 'accent'
 // Below this many pixels a label is left out rather than drawn unreadable.
 const MIN_LABEL = 9;
 const MAX_LABEL = 18;
+// The least cell, in px, a stop's letter pill is drawn on: the elevator's letter
+// was drawn from here before the pill was shared with stairs, and still is.
+const PILL_LEAST = 18;
 const SIDES = ['n', 'e', 's', 'w'];
 
 // The problem disc on a stairs cell nothing connects, w px a side: in the
@@ -276,6 +279,8 @@ export function createRenderer(canvas) {
     if (letters.connections === connections && letters.floors === floors && letters.floorId === floor.id) return letters.byCell;
     const byCell = new Map();
     const ways = new Map();
+    // every flight's way at each stop, by letter: null for both ways
+    const held = new Map();
     const levelOf = (id) => {
       const found = floors.find((each) => each.id === id);
       return found ? found.level : 0;
@@ -283,19 +288,35 @@ export function createRenderer(canvas) {
     for (const connection of connections) {
       // an elevator's stops carry the car's letter, drawn with their own glyph
       if (connection.kind === ELEVATOR_KIND) continue;
+      const letter = stairsLetter(connection);
       for (const [index, end] of [connection.a, connection.b].entries()) {
         if (end.floorId !== floor.id) continue;
-        if (!byCell.has(end.cell)) byCell.set(end.cell, []);
-        if (!byCell.get(end.cell).includes(connection.label)) byCell.get(end.cell).push(connection.label);
-        // the way it may be walked, drawn beside the letter at both ends: 'up'
-        // or 'down' between floors; on one floor the end it is walked from is
-        // 'down' (in) and the end it comes out at is 'up' (out)
-        if ((connection.direction === 'ab' || connection.direction === 'ba') && !ways.has(end.cell)) {
+        if (!byCell.has(end.cell)) {
+          byCell.set(end.cell, []);
+          held.set(end.cell, new Map());
+        }
+        // one badge for a letter: a stairwell's flights meeting at a stop show it once (ARCHITECTURE 22.17)
+        if (!byCell.get(end.cell).includes(letter)) byCell.get(end.cell).push(letter);
+        // the way it may be walked: 'up' or 'down' between floors; on one floor
+        // the end it is walked from is 'down' (in) and the end it comes out at is 'up' (out)
+        let way = null;
+        if (connection.direction === 'ab' || connection.direction === 'ba') {
           const from = connection.direction === 'ab' ? connection.a : connection.b;
           const to = connection.direction === 'ab' ? connection.b : connection.a;
           const rise = levelOf(to.floorId) - levelOf(from.floorId);
-          ways.set(end.cell, rise > 0 ? 'up' : rise < 0 ? 'down' : (index === 0) === (connection.direction === 'ab') ? 'down' : 'up');
+          way = rise > 0 ? 'up' : rise < 0 ? 'down' : (index === 0) === (connection.direction === 'ab') ? 'down' : 'up';
         }
+        if (!held.get(end.cell).has(letter)) held.get(end.cell).set(letter, []);
+        held.get(end.cell).get(letter).push(way);
+      }
+    }
+    // a letter's mark stands only where every flight of that letter at the stop
+    // goes the same way (ARCHITECTURE 22.17), as on the printed plan (plan-svg.js)
+    for (const [cell, byLetter] of held) {
+      for (const [letter, each] of byLetter) {
+        if (each[0] === null || !each.every((way) => way === each[0])) continue;
+        if (!ways.has(cell)) ways.set(cell, new Map());
+        ways.get(cell).set(letter, each[0]);
       }
     }
     letters = { connections, floors, floorId: floor.id, byCell, ways };
@@ -314,14 +335,154 @@ export function createRenderer(canvas) {
     return surnames.byId.get(teacherId) || '';
   }
 
+  // The pill under a stop's glyph, one for an elevator's letter and for stairs'
+  // alike (DESIGN 16.7: stair and elevator pills match at every zoom). Its
+  // size, its place at the foot of the cell and its padding come from this one
+  // function, so the two kinds cannot drift apart. `mark` is null, 'key' (staff
+  // only) or 'up' / 'down' (a one-way stairs). Returns the strip of the cell
+  // above the pill that is left for the glyph, { from, to } as y on the
+  // canvas, or null when the cell is too small for a letter.
+  //
+  // `parts` is [{ text, mark }]: one for an elevator or one stairs letter; two
+  // or more where stairs of different letters share a cell, each letter with
+  // its own mark (a mark is a letter's, never the cell's). With no mark among
+  // them the letters are one text, "A B".
+  function drawPill(left, top, w, parts, ink, t) {
+    if (parts.length > 1 && parts.some((part) => part.mark)) return drawParts(left, top, w, parts, ink, t);
+    return drawOne(left, top, w, parts.map((part) => part.text).join(' '), ink, t, parts.length === 1 ? parts[0].mark : null);
+  }
+
+  // The pill's height for a letter of size s: a pixel and a half of padding
+  // over and under it, one under 22 px a cell, so the 9 px letter there leaves
+  // the glyph above it the strip an 8 px one would.
+  function pillHeight(w, s) {
+    return s + (w < 22 ? 2 : 3);
+  }
+
+  // A mark drawn centred on (kx, ky) for a letter of size s.
+  function drawMark(kx, ky, s, mark) {
+    if (mark === 'key') {
+      // a key: a small ring and a short shaft with one tooth
+      const ring = Math.max(1.4, s * 0.17);
+      g.beginPath();
+      g.arc(kx - s * 0.2, ky, ring, 0, Math.PI * 2);
+      g.moveTo(kx - s * 0.2 + ring, ky);
+      g.lineTo(kx + s * 0.32, ky);
+      g.moveTo(kx + s * 0.22, ky);
+      g.lineTo(kx + s * 0.22, ky + s * 0.22);
+      g.lineWidth = Math.max(1, s / 9);
+      g.stroke();
+    } else if (mark === 'up' || mark === 'down') {
+      // a bold chevron in the letter's colour: the way the stairs may be walked
+      const reach = s * 0.3;
+      const tip = mark === 'up' ? -reach : reach;
+      g.beginPath();
+      g.moveTo(kx - reach, ky - tip / 2);
+      g.lineTo(kx, ky + tip / 2);
+      g.lineTo(kx + reach, ky - tip / 2);
+      g.lineWidth = Math.max(1.5, s / 6);
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      g.stroke();
+      g.lineJoin = 'miter';
+      g.lineCap = 'butt';
+    }
+  }
+
+  // The pill's outline and paper, at the foot of the cell; returns its top.
+  function pillBox(left, top, w, pw, ph, ink, t) {
+    const px = left + w / 2 - pw / 2;
+    // at the foot of the cell, a pixel and a half clear of its edge
+    const py = top + w - 1.5 - ph;
+    g.beginPath();
+    g.roundRect ? g.roundRect(px, py, pw, ph, ph / 2) : g.rect(px, py, pw, ph);
+    g.fillStyle = t.paper;
+    g.fill();
+    g.strokeStyle = ink;
+    g.lineWidth = 1.25;
+    g.stroke();
+    return { px, py };
+  }
+
+  // Letters that share a cell, some with a mark: each mark straight after its
+  // own letter. Where the marks do not fit, the letters alone, as one text.
+  function drawParts(left, top, w, parts, ink, t) {
+    if (w < PILL_LEAST) return null;
+    const room = w - 4;
+    const wideAt = (s) => {
+      g.font = font(700, s);
+      const gap = g.measureText(' ').width;
+      return parts.reduce((sum, part, i) => sum + g.measureText(part.text).width + (part.mark ? s * 0.9 : 0) + (i > 0 ? gap : 0), 0);
+    };
+    let s = Math.min(Math.round(MAX_LABEL * large), Math.round(Math.max(MIN_LABEL, w * 0.34 * large)));
+    for (; s >= MIN_LABEL; s -= 1) if (wideAt(s) + s * 0.7 <= room) break;
+    if (s < MIN_LABEL) return drawOne(left, top, w, parts.map((part) => part.text).join(' '), ink, t, null);
+    const content = wideAt(s);
+    const pw = Math.min(room, content + s * 0.7);
+    const ph = pillHeight(w, s);
+    const { py } = pillBox(left, top, w, pw, ph, ink, t);
+    const ky = py + ph / 2;
+    g.fillStyle = ink;
+    g.textAlign = 'left';
+    const gap = g.measureText(' ').width;
+    let at = left + w / 2 - content / 2;
+    parts.forEach((part, i) => {
+      if (i > 0) at += gap;
+      g.fillText(part.text, at, ky + 0.5);
+      at += g.measureText(part.text).width;
+      if (part.mark) {
+        g.strokeStyle = ink;
+        drawMark(at + s * 0.45, ky, s, part.mark);
+        at += s * 0.9;
+      }
+    });
+    g.textAlign = 'center';
+    return { from: top + 1.5, to: py - 1.5 };
+  }
+
+  function drawOne(left, top, w, text, ink, t, wanted) {
+    if (w < PILL_LEAST) return null;
+    // never under the least size of a label, at any cell a pill is drawn on
+    const least = MIN_LABEL;
+    // the letter matters more than its mark: where both do not fit, the letter alone
+    let mark = wanted;
+    let s = 0;
+    for (const tried of wanted ? [wanted, null] : [null]) {
+      const extra = tried ? 0.9 : 0;
+      s = Math.min(Math.round(MAX_LABEL * large), Math.round(Math.max(least, w * 0.34 * large)));
+      for (; s >= least; s -= 1) {
+        g.font = font(700, s);
+        if (g.measureText(text).width + s * (0.7 + extra) <= w - 4) break;
+      }
+      if (s >= least) {
+        mark = tried;
+        break;
+      }
+    }
+    if (s < least) return null;
+    const extra = mark ? 0.9 : 0;
+    g.font = font(700, s);
+    const wide = g.measureText(text).width;
+    const notch = s * extra;
+    const pw = Math.min(w - 4, wide + s * 0.7 + notch);
+    const ph = pillHeight(w, s);
+    const { px, py } = pillBox(left, top, w, pw, ph, ink, t);
+    g.fillStyle = ink;
+    g.textAlign = 'center';
+    g.fillText(text, px + (pw - notch) / 2 + (mark ? s * 0.15 : 0), py + ph / 2 + 0.5);
+    drawMark(px + pw - notch / 2 - s * 0.15, py + ph / 2, s, mark);
+    return { from: top + 1.5, to: py - 1.5 };
+  }
+
   // An elevator stop (DESIGN 13.2): two solid triangles, up over down, in the
   // ink; the car's letter in a pill under them, a key-shaped notch on the pill
   // when staff only; the red "!" badge when nothing is connected.
-  function drawStop(left, top, w, lift, ink, t, scale) {
+  function drawStop(left, top, w, lift, ink, t) {
     const cx = left + w / 2;
-    const pill = w >= 18;
-    const cy = top + (pill ? w * 0.32 : w * 0.5);
-    const reach = Math.max(2, w * (pill ? 0.14 : 0.2));
+    const strip = drawPill(left, top, w, [{ text: lift.letter, mark: lift.staffOnly ? 'key' : null }], ink, t);
+    // the glyph takes what the pill leaves: centred in the cell with no pill
+    const cy = strip ? (strip.from + strip.to) / 2 : top + w * 0.5;
+    const reach = strip ? Math.max(1.5, Math.min(w * 0.14, (strip.to - strip.from) / 3)) : Math.max(2, w * 0.2);
     g.fillStyle = ink;
     g.beginPath();
     g.moveTo(cx, cy - reach * 1.5);
@@ -333,44 +494,6 @@ export function createRenderer(canvas) {
     g.lineTo(cx - reach, cy + reach * 0.2);
     g.closePath();
     g.fill();
-    if (pill) {
-      // the pill is padded and carries the key's notch, so the letter alone gets what is left of
-      // the cell: at the planner's default zoom that is still room for the letter at its least size
-      const s = fitSize(lift.letter, 700, Math.max(MIN_LABEL, w * 0.34 * scale), w - 4 - (lift.staffOnly ? w * 0.2 : 0) - Math.min(6, w * 0.2));
-      if (s > 0) {
-        g.font = font(700, s);
-        const wide = g.measureText(lift.letter).width;
-        const notch = lift.staffOnly ? s * 0.9 : 0;
-        const pw = Math.min(w - 4, wide + s * 0.7 + notch);
-        const ph = s + 4;
-        const px = cx - pw / 2;
-        const py = top + w * 0.7 - ph / 2;
-        g.beginPath();
-        g.roundRect ? g.roundRect(px, py, pw, ph, ph / 2) : g.rect(px, py, pw, ph);
-        g.fillStyle = t.paper;
-        g.fill();
-        g.strokeStyle = ink;
-        g.lineWidth = 1.25;
-        g.stroke();
-        g.fillStyle = ink;
-        g.textAlign = 'center';
-        g.fillText(lift.letter, px + (pw - notch) / 2 + s * 0.15, py + ph / 2 + 0.5);
-        if (lift.staffOnly) {
-          // a key: a small ring and a short shaft with one tooth
-          const kx = px + pw - notch / 2 - s * 0.15;
-          const ky = py + ph / 2;
-          const ring = Math.max(1.4, s * 0.17);
-          g.beginPath();
-          g.arc(kx - s * 0.2, ky, ring, 0, Math.PI * 2);
-          g.moveTo(kx - s * 0.2 + ring, ky);
-          g.lineTo(kx + s * 0.32, ky);
-          g.moveTo(kx + s * 0.22, ky);
-          g.lineTo(kx + s * 0.22, ky + s * 0.22);
-          g.lineWidth = Math.max(1, s / 9);
-          g.stroke();
-        }
-      }
-    }
     if (!lift.connected) {
       const r = Math.max(2, Math.min(7, w * 0.2));
       const bx = left + w - r - 1;
@@ -564,15 +687,19 @@ export function createRenderer(canvas) {
       const w = X(x + 1) - left;
       const lift = lifts.get(cell);
       if (lift) {
-        drawStop(left, top, w, lift, stairsLabel, t, large);
+        drawStop(left, top, w, lift, stairsLabel, t);
         continue;
       }
-      const letter = (byCell.get(cell) || []).join(' ');
-      const lettered = letter !== '' && w >= 18;
+      const here = byCell.get(cell) || [];
+      const letter = here.join(' ');
+      const ways = letters.ways.get(cell) || null;
+      // the letter in the same pill an elevator's has, with its way beside it
+      // when every flight of that letter at the stop goes one way; the chevron takes what is left above
+      const strip = letter !== '' ? drawPill(left, top, w, here.map((each) => ({ text: each, mark: ways ? ways.get(each) || null : null })), stairsLabel, t) : null;
       if (w >= 10) {
         const cx = left + w / 2;
-        const cy = top + (lettered ? w * 0.3 : w * 0.5);
-        const reach = w * 0.2;
+        const reach = strip ? Math.min(w * 0.2, (strip.to - strip.from) * 0.9) : w * 0.2;
+        const cy = strip ? (strip.from + strip.to) / 2 : top + w * 0.5;
         g.beginPath();
         g.moveTo(cx - reach, cy + reach / 2);
         g.lineTo(cx, cy - reach / 2);
@@ -581,41 +708,6 @@ export function createRenderer(canvas) {
         g.lineWidth = Math.max(1, w / 16);
         g.lineCap = 'butt';
         g.stroke();
-      }
-      if (lettered) {
-        const way = letters.ways.get(cell);
-        // a one-way connection leaves room beside the letter for its chevron
-        const mark = way ? w * 0.26 : 0;
-        const s = fitSize(letter, 600, Math.max(MIN_LABEL, w * 0.42 * large), w - 4 - mark);
-        if (s > 0) {
-          g.fillStyle = stairsLabel;
-          if (way) {
-            // only a one-way stair measures its letter: every other draws as it always did
-            const wide = g.measureText(letter).width;
-            const start = left + w / 2 - (wide + mark) / 2;
-            g.textAlign = 'left';
-            g.fillText(letter, start, top + w * 0.68);
-            g.textAlign = 'center';
-            // a bold chevron in the letter's colour, which is chosen to read on the fill
-            const mx = start + wide + mark * 0.55;
-            const my = top + w * 0.68;
-            const reach = mark * 0.36;
-            const tip = way === 'up' ? -reach : reach;
-            g.beginPath();
-            g.moveTo(mx - reach, my - tip / 2);
-            g.lineTo(mx, my + tip / 2);
-            g.lineTo(mx + reach, my - tip / 2);
-            g.strokeStyle = stairsLabel;
-            g.lineWidth = Math.max(1.5, w / 9);
-            g.lineCap = 'round';
-            g.lineJoin = 'round';
-            g.stroke();
-            g.lineJoin = 'miter';
-            g.lineCap = 'butt';
-          } else {
-            g.fillText(letter, left + w / 2, top + w * 0.68);
-          }
-        }
       }
       if (letter === '') {
         // the mark and its "!" grow with the labels (labelScale, SV2-31b), as

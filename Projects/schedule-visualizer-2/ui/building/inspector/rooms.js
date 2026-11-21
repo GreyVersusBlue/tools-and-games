@@ -23,12 +23,20 @@ import { printButton } from '../../components/print-preview.js';
 import { printButtons } from '../../prints/index.js';
 import { setRoomFields, setRoomTeachers } from '../../../engine/actions.js';
 import { roomName } from '../../../engine/findings.js';
+import { roomFeatures } from '../../../engine/schema.js';
+import { featuresField } from '../features.js';
 import { buildExport } from '../../../engine/exports.js';
 import { download } from '../../schedule/common.js';
 import { planPng } from '../plan-png.js';
 import { selectField, wholeOrEmpty, keepFocus } from './controls.js';
 
 const NONE = '';
+
+// A cell's own word, shown only when the panel is too narrow for the table's
+// columns and each row stacks into a card (inspector.css, DESIGN 16.4): the
+// heading is then not above the cell, so the cell says what it is. Hidden from
+// the accessibility tree: each control already has its own name.
+const labelled = (word, node) => h('div', { class: 'bi-cell' }, h('span', { class: 'bi-cell__label', 'aria-hidden': 'true' }, word), node);
 
 // roomsPanel(env) -> { element, update(state) }
 export function roomsPanel(env) {
@@ -45,7 +53,26 @@ export function roomsPanel(env) {
     h('h3', { class: 'bi-heading' }, 'Save as a file'),
     h('p', { class: 'bi-check__hint', id: 'rooms-files-hint' }, 'The image is the floor plan as it prints, as a PNG. The room list is every room on every floor, the same file as the Rooms export on Schedule › Import. For a PDF, print and choose "Save as PDF" as the printer.'),
     saves, saved);
-  const element = h('div', { class: 'bld-inspector__panel', id: 'inspector-rooms' }, h('h2', { class: 'bld-inspector__title', id: 'rooms-title' }), lead, host, prints, files);
+  // the Features column's picker: the same chips and combobox as the Properties tab, in a popover over the table
+  let popRoom = null;
+  let popOpener = null;
+  const pop = h('div', { popover: 'auto', class: 'bi-popover', id: 'rooms-features-pop', role: 'dialog', 'aria-label': 'Features of the room' });
+  // the list dialog hides the popover (a modal closes auto popovers), so it gives the
+  // focus back to the room's cell, which is still on screen, not to the hidden button
+  const cellOf = (roomId) => host.querySelector('[data-key="' + roomId + ':features"]');
+  const popField = featuresField(env, {
+    room: () => (popRoom ? find(popRoom) : null),
+    state: () => state,
+    id: 'rooms-features',
+    back: () => popOpener,
+    backFallback: () => {
+      const cell = (lastRoom !== null ? cellOf(lastRoom) : null) || host.querySelector('.bi-features-cell');
+      if (cell) cell.focus();
+    },
+  });
+  let lastRoom = null;
+  pop.append(popField.element);
+  const element = h('div', { class: 'bld-inspector__panel', id: 'inspector-rooms' }, h('h2', { class: 'bld-inspector__title', id: 'rooms-title' }), lead, host, prints, files, pop);
   const hooks = { deliver: null };
   saves.exports = { hooks };
   // room id -> { number, teacher, subject, capacity }, the controls of its row
@@ -80,6 +107,41 @@ export function roomsPanel(env) {
     return teacher ? teacher.name : '';
   }
 
+  const featureNames = (room) => roomFeatures(state.project.building, room).map((feature) => feature.name);
+  const featuresText = (room) => {
+    const names = featureNames(room);
+    return names.length === 0 ? 'None' : names.join(', ');
+  };
+  const featuresLabel = (room) => 'Features of ' + roomName(room, true) + ': ' + (featureNames(room).length === 0 ? 'none' : featureNames(room).join(', ')) + '. Change';
+
+  function openPop(room, opener) {
+    popRoom = room.id;
+    lastRoom = room.id;
+    popOpener = opener;
+    pop.setAttribute('aria-label', 'Features of ' + roomName(room, true));
+    popField.sync();
+    pop.showPopover();
+    const box = opener.getBoundingClientRect();
+    const wide = Math.min(pop.offsetWidth || 320, window.innerWidth - 16);
+    pop.style.left = Math.max(8, Math.min(box.left, window.innerWidth - wide - 8)) + 'px';
+    const below = box.bottom + 4;
+    pop.style.top = (below + pop.offsetHeight > window.innerHeight - 8 ? Math.max(8, box.top - pop.offsetHeight - 4) : below) + 'px';
+    opener.setAttribute('aria-expanded', 'true');
+    popField.input.focus();
+  }
+
+  pop.addEventListener('toggle', (event) => {
+    if (event.newState !== 'closed') return;
+    const back = popOpener;
+    popRoom = null;
+    popOpener = null;
+    popField.close();
+    if (back) {
+      back.setAttribute('aria-expanded', 'false');
+      if (back.isConnected) back.focus();
+    }
+  });
+
   const columns = [
     {
       id: 'number',
@@ -91,7 +153,7 @@ export function roomsPanel(env) {
         made.input.dataset.key = room.id + ':number';
         made.input.setAttribute('aria-label', 'Room number');
         handle(room.id).number = made;
-        return made.element;
+        return labelled('Room', made.element);
       },
     },
     {
@@ -114,7 +176,7 @@ export function roomsPanel(env) {
           },
         });
         handle(room.id).teacher = made;
-        return made.element;
+        return labelled('Teacher', made.element);
       },
     },
     {
@@ -132,7 +194,7 @@ export function roomsPanel(env) {
           commit: (value) => store.apply(setRoomFields, { roomId: room.id, subjectId: value === NONE ? null : value }),
         });
         handle(room.id).subject = made;
-        return made.element;
+        return labelled('Subject', made.element);
       },
     },
     {
@@ -153,7 +215,22 @@ export function roomsPanel(env) {
         made.input.dataset.key = room.id + ':capacity';
         made.input.setAttribute('aria-label', 'Capacity, in seats');
         handle(room.id).capacity = made;
-        return made.element;
+        return labelled('Seats', made.element);
+      },
+    },
+    {
+      id: 'features',
+      label: 'Features',
+      sortable: true,
+      numeric: true,
+      value: (room) => roomFeatures(state.project.building, room).length,
+      render: (room) => {
+        const button = h('button', { type: 'button', class: 'btn btn--quiet bi-features-cell', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-label': featuresLabel(room), data: { key: room.id + ':features' }, on: { click: () => {
+          const now = find(room.id);
+          if (now) openPop(now, button);
+        } } }, featuresText(room));
+        handle(room.id).features = button;
+        return labelled('Features', button);
       },
     },
   ];
@@ -244,6 +321,8 @@ export function roomsPanel(env) {
       ? 'There are no rooms on ' + floor.name + ' yet. Choose the Room tool (R) and drag on the plan.'
       : floor.name + ' has ' + count(rooms.length, 'room') + (numbered === rooms.length ? '.' : ', ' + (rooms.length - numbered) + ' with no number yet.') + ' Press a heading to sort by it.';
 
+    if (popRoom && !find(popRoom)) pop.hidePopover();
+    popField.sync();
     const key = floor.id + '/' + rooms.map((room) => room.id).join(',') + '/' + project.teachers.map((teacher) => teacher.id + teacher.name).join(',') + '/' + project.subjects.map((subject) => subject.id + subject.name).join(',');
     if (key !== built) {
       built = key;
@@ -268,6 +347,9 @@ export function roomsPanel(env) {
       row.teacher.set(room.teacherIds[0] || NONE);
       row.subject.set(room.subjectId || NONE);
       row.capacity.set(room.capacity);
+      const words = featuresText(room);
+      if (row.features.textContent !== words) row.features.textContent = words;
+      row.features.setAttribute('aria-label', featuresLabel(room));
       row.number.input.setAttribute('aria-label', 'Room number of ' + roomName(room));
     }
   }
