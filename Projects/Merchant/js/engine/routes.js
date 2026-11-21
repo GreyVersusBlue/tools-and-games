@@ -696,9 +696,13 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   const homeP = g => M.truePrice(state, content, home, g);
   // goods that sell better at the far end than at home, widest margin first
   // (a good the house has no news of is guessed at the stop's base price, and the estimate says so)
+  // the trades the map names for this road (best a season first) come before the rest, so the stake reaches the best one
+  // before the wider margins on thin markets have spent it (MER-112)
+  const known = bestTrades(state, content, Infinity, r.id);
+  const rank = g => { const i = known.findIndex(t => t.direction === 'out' && t.good === g); return i < 0 ? Infinity : i; };
   const out = Object.keys(dest.sells ?? {}).map(g => ({ g, far: farPrice(state, content, dest.id, g) ?? { p: M.baseOf(state, content, dest.id, g) }, at: homeP(g) }))
     .filter(e => e.far && e.at !== null && e.far.p > e.at)
-    .sort((x, y) => y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
+    .sort((x, y) => rank(x.g) - rank(y.g) || y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
   const carried = out.map(e => e.g);
   const back = bringBack(state, content, dest, carried);
   const budget = Math.floor(state.money * share);
@@ -792,25 +796,41 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   return nothing(`The house cannot fit out a plan that pays on the road to ${dest.name} with what it has.`);
 }
 
-/** What `n` loads of a good fetch at a stop whose price is `p`, depth `depth`, for an agent who gets `cut` of it: each load is
-    priced after the one before it, as `tradeAt` sells them (market.js's glut), so the last loads fetch least. */
-const saleRevenue = (p, depth, cut, n) => {
+/** A market of one good at one stop, to run the house's own loads through market.js: the price is `p` now with the house's own
+    mark `glut` on it (so the factor is whatever puts `p` there). `noteSale`, `notePurchase`, `sellPrice` and `buyPrice` then
+    move and read it by the rule the trade itself uses, caps included, so no price rule is written out a second time here. */
+function marketAt(s, content, stop, good, p, glut = 0) {
+  const base = M.baseOf(s, content, stop, good);
+  return { ...s, market: { [stop]: { [good]: { f: p / (base * (1 - glut)), glut, h: [] } } } };
+}
+
+/** The house's own mark on a price when a party that closes `closings` seasons from now trades there: `drift` halves it at each
+    closing, run on a market of that one good (past the calendar's end the mark stays as it is). */
+function glutAt(s, content, stop, good, closings) {
+  const glut = s.market[stop]?.[good]?.glut ?? 0;
+  if (!glut || closings <= 0) return glut;
+  const sim = { ...marketAt(s, content, stop, good, 1, glut), t: s.t };
+  try { for (let i = 0; i < closings; i++) { M.drift(sim, content); sim.t += 1; } } catch { /* past the last season */ }
+  return sim.market[stop][good].glut;
+}
+
+/** What `n` more loads of a good fetch from a market `m` (from marketAt) for an agent who gets `cut` of it: each load is priced
+    after the one before it, as `tradeAt` sells them, so the last loads fetch least. `m` ends up with the loads sold. */
+const saleRevenue = (m, content, stop, good, cut, n) => {
   let got = 0;
-  for (let k = 0; k < n; k++) got += Math.round(Math.max(1, Math.round(p * (1 - Math.min(M.GLUT_MAX, k / depth)))) * cut);
+  for (let k = 0; k < n; k++) { got += Math.round(M.sellPrice(m, content, stop, good) * cut); M.noteSale(m, content, stop, good, 1); }
   return got;
 };
 
-/** The price of the load after `q` loads the house has already bought at a stop whose price is `p`, depth `depth`, for an agent who
-    gets `cut`: market.js's `notePurchase` raises the price by `q` over depth, capped at GLUT_MIN, and `tradeAt` pays that. */
-const buyLoad = (p, depth, cut, q) => Math.max(1, Math.round(Math.max(1, Math.round(p * (1 + Math.min(-M.GLUT_MIN, q / depth)))) * cut));
-
-/** How many loads `budget` buys at a stop, each priced after the one before it, and what they cost: { q, spent }. */
-function buyRun(p, depth, cut, budget) {
+/** How many loads `budget` buys from market `m` (from marketAt), each priced after the one before it as `tradeAt` buys them,
+    and what they cost: { q, spent }. `m` ends up with the loads bought. */
+function buyRun(m, content, stop, good, cut, budget) {
   let spent = 0, q = 0;
   for (;;) {
-    const price = buyLoad(p, depth, cut, q);
+    const price = Math.max(1, Math.round(M.buyPrice(m, content, stop, good) * cut));
     if (spent + price > budget) return { q, spent };
     spent += price; q++;
+    M.notePurchase(m, content, stop, good, 1);
   }
 }
 
@@ -866,19 +886,23 @@ export function estimate(state, content, plan) {
   const impact = {};   // dinars each good's price moved against the house's own loads there (what a flat price would have paid, less what the loads fetched)
   let money = purse - Math.min(purse, tollsBefore);
   const goodsBack = { ...cargo };
+  // the far market as the party will find it, run through market.js: sales first, then purchases, as `tradeAt` does them
+  const closings = proj.legs[far] ? proj.legs[far].startK + legSeasons(agent, route.legs[far]) - 1 : 0;
+  const books = {};
+  const bookOf = (g, p) => (books[g] ??= marketAt(state, content, dest.id, g, p, glutAt(state, content, dest.id, g, closings)));
   for (const g of sell) {
-    const p = priceHere(g), depth = dest.sells[g].depth, cut = bargain(agent, dest.id, 'sell');
+    const p = priceHere(g), cut = bargain(agent, dest.id, 'sell');
     pricesSell[g] = p;
-    const got = saleRevenue(p, depth, cut, cargo[g]);
+    const got = saleRevenue(bookOf(g, p), content, dest.id, g, cut, cargo[g]);
     impact[g] = cargo[g] * Math.round(p * cut) - got;
     money += got;
     delete goodsBack[g];
   }
   const live = buy.filter(g => M.truePrice(state, content, home, g) !== null);
   live.forEach((g, i) => {
-    const p = priceHere(g), depth = dest.sells[g].depth, cut = bargain(agent, dest.id, 'buy');
+    const p = priceHere(g), cut = bargain(agent, dest.id, 'buy');
     pricesBuy[g] = p;
-    const { q, spent } = buyRun(p, depth, cut, Math.floor(money / (live.length - i)));
+    const { q, spent } = buyRun(bookOf(g, p), content, dest.id, g, cut, Math.floor(money / (live.length - i)));
     money -= spent;
     if (q) { goodsBack[g] = (goodsBack[g] ?? 0) + q; impact[g] = spent - q * Math.max(1, Math.round(p * cut)); }
   });
@@ -911,17 +935,20 @@ export function estimate(state, content, plan) {
 export const NEWS_HALF_LIFE = 8;   // seasons: news this old is worth half of fresh news when trades are ranked
 
 /** Dinars a plan of `n` loads of one good makes there and back before tolls and the wage, loads priced one after the other
-    as the trades price them (`saleRevenue`, `buyLoad`): bought at one end, sold (or, at home, valued) at the other.
+    as the trades price them (market.js, through `marketAt`): bought at one end, sold (or, at home, valued) at the other.
     `out` is a good carried out (bought at home, sold at the far end); a good brought back is bought far and valued at home.
     { n, gain }: the loads, up to `cap`, that make the most. */
-function bestLoads(out, home, far, cap) {
+function bestLoads(s, content, out, home, far, cap) {
+  const sold = out ? far : home, bought = out ? home : far;
+  const sell = marketAt(s, content, sold.stop, sold.good, sold.p), buy = marketAt(s, content, bought.stop, bought.good, bought.p);
   let gain = 0, best = { n: 0, gain: 0 };
   for (let k = 0; k < cap; k++) {
-    const sold = Math.max(1, Math.round((out ? far : home).p * (1 - Math.min(M.GLUT_MAX, k / (out ? far : home).depth))));
-    const bought = buyLoad((out ? home : far).p, (out ? home : far).depth, 1, k);
-    if (sold - bought <= 0) break;
-    gain += sold - bought;
+    const margin = M.sellPrice(sell, content, sold.stop, sold.good) - M.buyPrice(buy, content, bought.stop, bought.good);
+    if (margin <= 0) break;
+    gain += margin;
     best = { n: k + 1, gain };
+    M.noteSale(sell, content, sold.stop, sold.good, 1);
+    M.notePurchase(buy, content, bought.stop, bought.good, 1);
   }
   return best;
 }
@@ -931,15 +958,15 @@ function bestLoads(out, home, far, cap) {
     margin on the loads a plan could move (up to DEPTH_SHARE of the thinner market, each load priced as the last one moved the
     price), less the tolls and the wage, over the seasons out and back, and then by how old the news is, halved every
     NEWS_HALF_LIFE seasons. A road that cannot come home before the game ends is left out, and so is a trade that loses.
-    Each row keeps its road, the age of the news in words and the road's risk word. `n` of them; reads only what the house knows. */
-export function bestTrades(state, content, n = 3) {
+    Each row keeps its road, the age of the news in words and the road's risk word. `n` of them, or those of the one route `road` names; reads only what the house knows. */
+export function bestTrades(state, content, n = 3, road = null) {
   const home = homeOf(content), homeStop = stopOf(content, home);
   const left = playedSeasons(content.calendar, state.length).length - 1 - state.t;
   const hired = (content.agents ?? []).filter(a => state.agents[a.id]?.hired);
   const wage = Math.min(...(hired.length ? hired : content.agents ?? []).map(a => a.wage ?? 0), Infinity);
   const rows = [];
   for (const d of destinations(state, content)) {
-    if (d.seasons > left) continue;
+    if (d.seasons > left || (road && d.route !== road)) continue;
     const route = routeOf(content, d.route), dest = stopOf(content, d.stop);
     const chance = roadRisk(content, undefined, route, undefined);
     const fixed = route.legs.reduce((k, l) => k + l.toll, 0) + (Number.isFinite(wage) ? wage * d.seasons : 0);
@@ -950,7 +977,7 @@ export function bestTrades(state, content, n = 3) {
       const margin = out ? far.p / homeP - 1 : homeP / far.p - 1;
       const depthHome = homeStop.sells[g].depth, depthFar = dest.sells[g].depth;
       const cap = Math.max(1, Math.ceil(Math.min(depthHome, depthFar) * DEPTH_SHARE));
-      const { n: loads, gain } = bestLoads(out, { p: homeP, depth: depthHome }, { p: far.p, depth: depthFar }, cap);
+      const { n: loads, gain } = bestLoads(state, content, out, { stop: home, good: g, p: homeP }, { stop: d.stop, good: g, p: far.p }, cap);
       const expected = gain - fixed, perSeason = expected / d.seasons;
       if (!loads || perSeason <= 0) continue;
       rows.push({
@@ -1250,7 +1277,9 @@ export function gapCauses(s, content, x, r) {
     const pH = hope.sell?.[g], depth = dest.sells?.[g]?.depth;
     if (!pH || !depth) continue;
     const sold = (book.sold ?? []).filter(e => e.good === g).reduce((n, e) => n + e.q, 0), cut = bargain(agent, dest.id, 'sell');
-    const lost = saleRevenue(pH, depth, cut, sold + q) - saleRevenue(pH, depth, cut, sold);
+    const m = marketAt(s, content, dest.id, g, pH);
+    saleRevenue(m, content, dest.id, g, cut, sold);   // the loads that did sell move the price first
+    const lost = saleRevenue(m, content, dest.id, g, cut, q);
     note('tolls', lost - q * (M.truePrice(s, content, home, g) ?? 0), { good: g });
   }
   causes.tolls += Math.max(0, book.tolls - (hope.tolls ?? book.tolls));
@@ -1284,10 +1313,13 @@ function whyLine(s, content, x, r) {
     return was ? `${cap(good)} cost ${n.got} in ${place} when ${agent.name} arrived.${was}` : `${cap(good)} cost ${n.got} in ${place} when ${agent.name} arrived, ${rel(false)} the ${n.hoped} ${aged}.`;
   };
   if (gap < 0) return low.news && causes.news < -small / 2 ? priceWords(low.news, true) : 'The trip made more than hoped.';
-  // the largest cause in dinars; a tie goes in this order
+  // the cause that moved the result most, in dinars, as the sentence will tell it: a cause the house came out short by is sized by
+  // the one item its sentence names (a price that fell 40 dinars short is 40 even when another good rose and the sum is 10);
+  // loss, order and tolls are sized by the whole of what they took. A tie goes in this order.
   const order = ['loss', 'order', 'tolls', 'glut', 'own', 'news'];
-  const top = order.reduce((best, k) => (causes[k] > causes[best] ? k : best), 'news');
-  if (causes[top] <= 0) return 'Prices moved against the house on the way.';
+  const size = k => (causes[k] <= 0 ? 0 : named[k]?.amount > 0 && k !== 'tolls' && k !== 'loss' ? named[k].amount : causes[k]);
+  const top = order.reduce((best, k) => (size(k) > size(best) ? k : best), 'news');
+  if (size(top) <= 0) return 'Prices moved against the house on the way.';
   if (top === 'loss') return `The road took ${cargoText(content, x.book.lost)}.`;
   if (top === 'order') return orderLine(content, x, seasonIndex(s, content)) ?? 'An order from a letter changed the trip.';
   if (top === 'own') {
