@@ -33,6 +33,35 @@ export function floorTabs(options) {
     return target && target.closest ? target.closest('[data-floor]') : null;
   }
 
+  // The Menu key opens the menu on its keydown (below); Windows then raises a
+  // contextmenu as the key comes up, on the tab or on whatever has the focus by
+  // then. That one is the same press: it is swallowed, once, so the menu opens
+  // once. Any other key or a pointer press first means it is not coming.
+  let pressed = false;
+  function swallow(event) {
+    if (!pressed) return;
+    pressed = false;
+    forget();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+  function forget() {
+    pressed = false;
+    document.removeEventListener('contextmenu', swallow, true);
+    document.removeEventListener('pointerdown', forget, true);
+    document.removeEventListener('keydown', other, true);
+  }
+  function other(event) {
+    if (event.key !== 'ContextMenu') forget();
+  }
+  function expect() {
+    forget();
+    pressed = true;
+    document.addEventListener('contextmenu', swallow, true);
+    document.addEventListener('pointerdown', forget, true);
+    document.addEventListener('keydown', other, true);
+  }
+
   // right-click on a tab: the menu at the pointer, for that tab's floor
   list.addEventListener('contextmenu', (event) => {
     const tab = tabOf(event.target);
@@ -50,6 +79,7 @@ export function floorTabs(options) {
     // the Menu key and Shift+F10: this tab's menu, under the tab
     if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
       event.preventDefault();
+      if (event.key === 'ContextMenu') expect();
       if (options.actions) options.actions(tabs[at].dataset.floor, tabs[at], tabs[at]);
       return;
     }

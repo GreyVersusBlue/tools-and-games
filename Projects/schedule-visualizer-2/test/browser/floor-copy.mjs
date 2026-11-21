@@ -131,6 +131,29 @@ test('the Menu key and Shift+F10 on a focused tab open its menu, and the keyboar
   await showFloor(page, 'Floor 2');
 });
 
+test('the Menu key opens the menu once: the contextmenu Windows raises as the key comes up is the same press', async () => {
+  const tabId = 'floor-tab-' + (await building(page)).floors[1].id;
+  await page.focus('#' + tabId);
+  const seen = await page.evaluate((id) => {
+    const tab = document.getElementById(id);
+    tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ContextMenu', code: 'ContextMenu', bubbles: true, cancelable: true }));
+    const first = document.querySelector('.menu[role="menu"]');
+    if (first) first.dataset.first = 'yes';
+    tab.dispatchEvent(new KeyboardEvent('keyup', { key: 'ContextMenu', code: 'ContextMenu', bubbles: true, cancelable: true }));
+    const raised = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 0, clientX: 0, clientY: 0 });
+    tab.dispatchEvent(raised);
+    const menus = Array.from(document.querySelectorAll('.menu[role="menu"]'));
+    return { opened: first !== null, menus: menus.length, same: menus.length === 1 && menus[0].dataset.first === 'yes', stopped: raised.defaultPrevented, focus: document.activeElement.textContent.trim() };
+  }, tabId);
+  assert.deepEqual(seen, { opened: true, menus: 1, same: true, stopped: true, focus: 'Rename…' }, 'one menu, the first, with the focus on its first item');
+  await page.keyboard.press('Escape');
+  // a right-click after that is a menu of its own again
+  const box = await page.$eval('#' + tabId, (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  await page.mouse.click(box.x, box.y, { button: 'right' });
+  await menuOpen(page);
+  await page.keyboard.press('Escape');
+});
+
 test('the dialog says where the copy goes, what it has, how the numbers come out, what joining does and what is left behind', async () => {
   await openDialogByButton(page);
   assert.equal(await text(page, '#duplicate-floor-dialog .dialog__title'), 'Duplicate Floor 2');
