@@ -923,6 +923,13 @@ try {
       eq(cause({ from: 'plain/x', card: 'A plain card', choice: 'Do it' }), 'After "A plain card", you chose "Do it":', 'a clean line is untouched');
       eq(cause({ from: 'gone/x', card: '{agent} is home', choice: 'Go' }), 'After an earlier choice:', 'a card gone from the content has no agent to name');
     });
+    await test('MER-109: a filled record reads as recorded, even for a card the content no longer has', async () => {
+      const { accountGroups } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'paper.js')).href);
+      const c = { agents: [{ id: 'ali', name: 'Ali' }], cards: [{ id: 'hire', when: { trip: { agent: 'ali', is: 'home' } } }] };
+      const cause = it => accountGroups([{ changes: ['x'], text: 'x', ...it }], c)[0].cause;
+      eq(cause({ from: 'hire/keep', card: 'Ali is home', choice: 'Keep him to Aleppo' }), 'After "Ali is home", you chose "Keep him to Aleppo":', 'the recorded words, with the destination the old fallback had to drop');
+      eq(cause({ from: 'gone/x', card: 'Ali is home', choice: 'Keep him to Aleppo' }), 'After "Ali is home", you chose "Keep him to Aleppo":', 'no card needed to read a filled record');
+    });
     await test('play to the first return: the page matches the engine every season, and the return paper leads with its sentence', async () => {
       for (let season = 1; season <= 10 && !sawReturn; season++) {
         const ret = model.desk.find(p => p.kind === 'return');
@@ -958,6 +965,7 @@ try {
           eq(hit, true, 'the last button of the return is covered by something else');
         }
         await sameScreen(page, model, `season ${season}`, { raisedFirst: false });
+        eq(await page.$eval('#screen-desk', e => e.textContent.match(/[{}]/g)), null, `MER-109: no raw slot on the desk in season ${season}`);
         // both sides answer in the desk's own order: put the first paper back on top if we read another
         const first = model.desk.find(p => p.state === 'open').id;
         if (await page.$eval('.sheet', (e, id) => e.dataset.paper !== id, first)) await page.click(`.edge[data-paper="${first}"]`);
