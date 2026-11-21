@@ -396,11 +396,11 @@ export function cellPanel(env) {
           // two stops are one flight: Disconnect, as for any stairs
           if (here) row.push(button('Disconnect', 'disconnect-well', () => {
             keeping(['panel-title'], () => ed().commit(disconnectStairs, { connectionId: well.flightIds[0] }, { done: () => 'Disconnected ' + name + '. Its stairs stay, not connected.' }));
-          }, { quiet: true, aria: 'Disconnect ' + name + ' (it has only two stops)' }));
+          }, { quiet: true, aria: 'Disconnect: ' + name + ' has only two stops' }));
         } else {
           row.push(button('Remove from stairwell', 'remove-stop:' + stop.floorId, () => {
             keeping(['panel-title'], () => ed().commit(removeStairwellStop, { well: well.letter, floorId: stop.floorId }, { done: (made) => made.text, toast: (made) => made.text }));
-          }, { quiet: true, aria: 'Remove ' + stop.floorName + ' from ' + name }));
+          }, { quiet: true, aria: 'Remove from stairwell: ' + stop.floorName + ' (' + name + ')' }));
         }
         return h('li', { class: 'bi-row', data: { stop: stop.floorId + ':' + stop.cell } }, ...row);
       }));
