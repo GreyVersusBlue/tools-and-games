@@ -639,3 +639,12 @@ test('Help names the staff browser’s free-rooms view as its tab and title labe
   assert.ok(staff.includes('In the staff browser, ' + tab[1] + ' shows the features'), 'Help does not call the view ' + tab[1]);
   assert.ok(!/Free rooms/.test(JSON.stringify(SECTION_HELP)), 'Help names a view Free rooms; the staff browser labels it ' + tab[1]);
 });
+
+test('Help gives the fire-code figure in feet and in metres, the two the dead-end note says by the Cell scale', () => {
+  // engine/building-checks.js: `scale.unit === 'metres' ? 'about 6 metres' : 'about 20 feet'`
+  const code = read('engine', 'building-checks.js').match(/scale\.unit === 'metres' \? '([^']+)' : '([^']+)'/);
+  assert.ok(code, 'engine/building-checks.js no longer chooses the fire-code figure by the scale\'s unit');
+  const [, metres, feet] = code;
+  const building = SECTION_HELP.building.parts.join(' ');
+  assert.ok(building.includes('often to ' + feet + ', or to ' + metres + ' when the Cell scale is in metres'), 'Help\'s Building part does not give both the note\'s figures (' + feet + ', ' + metres + ')');
+});
