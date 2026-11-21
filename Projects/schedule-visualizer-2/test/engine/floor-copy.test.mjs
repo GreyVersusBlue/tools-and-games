@@ -1,7 +1,7 @@
 // Duplicate a floor (SV2-134; ARCHITECTURE 22.8 and 22.17): describeFloorDuplicate
 // and duplicateFloor. The copy on top with its name; every thing copied and not
-// copied; new ids of every kind; the renumbering rule and its refusal to
-// blank; joins that make a stairwell, extend one, leave two plain flights
+// copied; new ids of every kind; renumbering room by room, a room that cannot
+// follow the floor taking its own number with " 2" (Devon, 2026-11-21); joins that make a stairwell, extend one, leave two plain flights
 // apart or give an elevator car a stop, naming no letter change; ways
 // translated per flight; the three counters; one undo step. Plain Node: seeded
 // ids, a pinned clock, every project deep-frozen while the action runs on it.
@@ -330,8 +330,10 @@ test('notes: a copy of a room with no subject adds "a room with no subject"; a d
   assert.equal(off.notesText, '');
 });
 
-test('notes: copies left without numbers raise none', () => {
-  const info = describeFloorDuplicate(school(), 'fsample002');
+test('notes: a floor with no numbered rooms raises none', () => {
+  const project = clone(school());
+  for (const room of roomsOf(project.building.floors[1])) room.number = '';
+  const info = describeFloorDuplicate(project, 'fsample002');
   assert.equal(info.renumber.possible, false);
   assert.equal(info.notes, 0);
   assert.equal(info.notesText, '');
@@ -348,55 +350,69 @@ test('numbers: a letter after the digits stays ("214B" becomes "414B"), and a ro
   assert.equal(copy.spaces[floor.spaces.indexOf(rooms[1])].number, '');
 });
 
-test('the sample\'s Floor 2 has a room numbered "Library", so its numbers cannot carry over and the default is blank', () => {
-  const info = describeFloorDuplicate(school(), 'fsample002');
-  assert.equal(info.renumber.possible, false);
-  // all or nothing, as 22.8 and 22.17 say ("every numbered room"): the reason names
-  // the one number, quoted as the tool quotes, and the count is every numbered room
-  assert.equal(info.renumber.reason, '‘Library’ does not begin with a digit');
-  assert.equal(info.numbered, roomsOf(school().building.floors[1]).length);
-  assert.ok(roomsOf(newest(run(school(), { floorId: 'fsample002' }))).every((room) => room.number === ''));
+// Devon, 2026-11-21 (QUESTIONS 19): "Duplicates should be 'library 2'".
+test('the sample\'s Floor 2, room by room: 201 to 204 become 401 to 404 and Library becomes Library 2, by default', () => {
+  const project = school();
+  const info = describeFloorDuplicate(project, 'fsample002');
+  assert.equal(info.renumber.possible, true);
+  assert.equal(info.renumber.count, 4);
+  assert.equal(info.renumber.counted, 1);
+  assert.equal(info.renumber.text, 'Rooms 201 to 204 become 401 to 404; Library becomes Library 2.');
+  const after = run(project, { floorId: 'fsample002' });
+  assert.deepEqual(roomsOf(newest(after)).map((room) => room.number), ['401', '402', '403', '404', 'Library 2']);
+  assert.deepEqual(roomsOf(after.building.floors[1]).map((room) => room.number), ['201', '202', '203', '204', 'Library'], 'the source keeps its numbers');
+  const outcome = scheduleOutcome(after);
+  assert.equal(outcome.renumbered, 4);
+  assert.equal(outcome.counted, 1);
+  assert.equal(outcome.blanked, 0);
 });
 
-test('numbers: "blank" leaves every copy without one, and the dialog count says how many', () => {
+test('numbers: "Library 2" taken anywhere in the school (any case) makes it "Library 3"; a copy\'s copy goes on counting', () => {
+  const project = clone(school());
+  roomsOf(project.building.floors[0])[3].number = 'library 2';
+  const info = describeFloorDuplicate(project, 'fsample002');
+  assert.equal(info.renumber.text, 'Rooms 201 to 204 become 401 to 404; Library becomes Library 3.');
+  assert.equal(roomsOf(newest(run(project, { floorId: 'fsample002' })))[4].number, 'Library 3');
+  // the copy, Floor 4, copied again: Floor 5's numbers take level 5, and Library 3 is Library 4 (not "Library 3 2")
+  let twice = run(project, { floorId: 'fsample002' });
+  twice = run(twice, { floorId: newest(twice).id });
+  assert.deepEqual(roomsOf(newest(twice)).map((room) => room.number), ['501', '502', '503', '504', 'Library 4']);
+});
+
+test('numbers: the sample\'s Floor 1, two rooms with words: "Cafeteria 2" and "Gym 2" in one sentence', () => {
+  const info = describeFloorDuplicate(school(), 'fsample001');
+  assert.equal(info.renumber.text, 'Rooms 101 to 103 become 401 to 403; Cafeteria becomes Cafeteria 2 and Gym becomes Gym 2.');
+});
+
+test('numbers: "blank", the user\'s choice, leaves every copy without one, and the dialog count says how many', () => {
   const project = school();
   const after = run(project, { floorId: 'fsample002', numbers: 'blank' });
   assert.ok(roomsOf(newest(after)).every((room) => room.number === ''));
   assert.equal(scheduleOutcome(after).blanked, roomsOf(project.building.floors[1]).length);
   assert.equal(scheduleOutcome(after).renumbered, 0);
+  assert.equal(scheduleOutcome(after).counted, 0);
 });
 
-test('numbers: refused to renumber, never quietly blanked: numbers that do not start with the level', () => {
-  const { project, floor } = numbered(2, ['501', '502']);
-  const info = describeFloorDuplicate(project, floor.id);
-  assert.equal(info.renumber.possible, false);
-  assert.equal(info.renumber.reason, '‘501’ does not begin with 2, Floor 2\'s level');
-  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber', /‘501’ does not begin with 2, Floor 2's level\. Leave the copies without numbers/);
-  const after = run(project, { floorId: floor.id });
-  assert.ok(roomsOf(newest(after)).every((room) => room.number === ''), 'asked for nothing, the default is blank');
+test('numbers: a room that cannot follow the floor rule keeps its own number with " 2", never a blank, whatever the reason', () => {
+  const numbers = (level, list) => {
+    const { project, floor } = numbered(level, list);
+    return roomsOf(newest(run(project, { floorId: floor.id }))).map((room) => room.number);
+  };
+  // not the level, a letter first, too few digits ("21" on level 2), 1 digit on level 1
+  assert.deepEqual(numbers(2, ['501', 'B-201', '21', '201', '202']), ['501 2', 'B-201 2', '21 2', '401', '402']);
+  assert.deepEqual(numbers(1, ['1-01', '10', '0101', '1001', '101']), ['1-01 2', '10 2', '0101 2', '4001', '401']);
+  // lengths apart no longer spoil it for all: each room by itself
+  assert.deepEqual(numbers(2, ['201', '2014', 'Pool', '202', '203']), ['401', '4014', 'Pool 2', '402', '403']);
 });
 
-test('numbers: not renumbered when the numbers differ in length ("201" and "2014")', () => {
-  const { project, floor } = numbered(2, ['201', '2014']);
-  assert.equal(describeFloorDuplicate(project, floor.id).renumber.possible, false);
-  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber');
-});
-
-test('numbers: not renumbered when the digits are fewer than the level\'s plus two ("21" on level 2), or a number has no digits first ("B-201")', () => {
-  assert.equal(describeFloorDuplicate(numbered(2, ['21', '22']).project, 'fsample002').renumber.possible, false);
-  assert.equal(describeFloorDuplicate(numbered(2, ['B-201', 'B-202']).project, 'fsample002').renumber.possible, false);
-  assert.equal(describeFloorDuplicate(numbered(2, ['201', 'Gym']).project, 'fsample002').renumber.possible, false, 'one number with no digits spoils it for all');
-});
-
-test('numbers: the refusal gives the true reason, naming the number: too few digits ("1-01", "10"), not the level ("0101"), lengths apart, no digit', () => {
-  const reason = (level, numbers) => describeFloorDuplicate(numbered(level, numbers).project, 'fsample00' + level).renumber.reason;
-  assert.equal(reason(1, ['1-01']), '‘1-01’ begins with 1 digit, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
-  assert.equal(reason(1, ['10', '11', '12', '13', '14']), '‘10’ begins with 2 digits, too few to hold the level, 1, and a room\'s own digits after it: that needs at least 3');
-  assert.equal(reason(1, ['0101', '0102', '0103', '0104', '0105']), '‘0101’ does not begin with 1, Floor 1\'s level');
-  assert.equal(reason(2, ['201', '2014']), '‘201’ begins with 3 digits and ‘2014’ with 4, and the level carries over only when every number has as many');
-  assert.equal(reason(2, ['201', 'Gym']), '‘Gym’ does not begin with a digit');
-  const { project } = numbered(1, ['1-01']);
-  refused(project, { floorId: 'fsample001', numbers: 'level' }, 'cannot-renumber', /^The numbers cannot carry over: ‘1-01’ begins with 1 digit, too few/);
+test('numbers: the dialog\'s sentence for one room, two, a run with a gap, and more than three with a count', () => {
+  const text = (list) => describeFloorDuplicate(numbered(2, list).project, 'fsample002').renumber.text;
+  const sample = roomsOf(school().building.floors[1]).length;
+  assert.equal(sample, 5);
+  assert.equal(text(['201', 'A', 'B', 'C', 'D']), 'Room 201 becomes 401; A becomes A 2, B becomes B 2 and 2 more rooms keep their own numbers with a count after them.');
+  assert.equal(text(['201', '203', 'Hall', 'Pool', 'Art']), 'Rooms 201 and 203 become 401 and 403; Hall becomes Hall 2, Pool becomes Pool 2 and Art becomes Art 2.');
+  assert.equal(text(['201', '202', '214B', '205', 'Pool']), 'The 4 rooms from 201 to 214B become 401 to 414B; Pool becomes Pool 2.');
+  assert.equal(text(['501', '502', '503', '504', '505']), '501 becomes 501 2, 502 becomes 502 2 and 3 more rooms keep their own numbers with a count after them.');
 });
 
 test('numbers: "1001" on level 1 carries over as 22.17 says, the level\'s one digit replaced: "4001" on level 4', () => {
@@ -407,47 +423,41 @@ test('numbers: "1001" on level 1 carries over as 22.17 says, the level\'s one di
   assert.deepEqual(info.renumber.examples, [{ from: '1001', to: '4001' }, { from: '1002', to: '4002' }]);
 });
 
-test('numbers: not renumbered when the new level has another number of digits (level 9 to 10)', () => {
+test('numbers: the new level with another number of digits (level 9 to 10), or a source at level 0, keeps each own number with " 2"', () => {
   const project = clone(school());
   project.building.floors[2].level = 9;
   const floor = project.building.floors[2];
   roomsOf(floor).forEach((room, n) => { room.number = '90' + (n + 1); });
   const info = describeFloorDuplicate(project, floor.id);
   assert.equal(info.newLevel, 10);
-  assert.equal(info.renumber.possible, false);
-  assert.match(info.renumber.reason, /different number of digits/);
-  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber');
+  assert.equal(info.renumber.count, 0);
+  assert.equal(info.renumber.text, '901 becomes 901 2, 902 becomes 902 2 and 903 becomes 903 2.');
+  const ground = clone(school());
+  ground.building.floors[0].level = 0;
+  assert.deepEqual(roomsOf(newest(run(ground, { floorId: 'fsample001' }))).map((room) => room.number), ['101 2', '102 2', '103 2', 'Cafeteria 2', 'Gym 2']);
 });
 
-test('numbers: not renumbered from level 0 or below', () => {
-  const project = clone(school());
-  project.building.floors[0].level = 0;
-  const info = describeFloorDuplicate(project, 'fsample001');
-  assert.equal(info.renumber.possible, false);
-  assert.match(info.renumber.reason, /level of 1 or more/);
-});
-
-test('numbers: not renumbered when a result is already a room number', () => {
+test('numbers: a renumbered number already in the school keeps that room\'s own number with " 2"; the others are renumbered', () => {
   const project = tidy(clone(school()));
   const floor = project.building.floors[1];
-  const first = roomsOf(floor)[0];
-  const other = roomsOf(project.building.floors[0])[0];
-  other.number = '4' + first.number.slice(1);
-  const info = describeFloorDuplicate(project, floor.id);
-  assert.equal(info.renumber.possible, false);
-  assert.match(info.renumber.reason, new RegExp('would be ' + other.number + ', which is already a room number'));
-  refused(project, { floorId: floor.id, numbers: 'level' }, 'cannot-renumber', /already a room number/);
+  roomsOf(project.building.floors[0])[0].number = '401';
+  const after = run(project, { floorId: floor.id });
+  assert.deepEqual(roomsOf(newest(after)).map((room) => room.number), ['201 2', '402', '403', '404', '405']);
+  assert.equal(describeFloorDuplicate(project, floor.id).renumber.text, 'Rooms 202 to 205 become 402 to 405; 201 becomes 201 2.');
 });
 
-test('numbers: a floor with no numbered rooms has nothing to renumber, and asking for it says so', () => {
+test('numbers: a floor with no numbered rooms has nothing to renumber: no rows, and "level" does nothing and is not refused', () => {
   const project = chain(3);
   for (const room of roomsOf(project.building.floors[1])) room.number = '';
   const info = describeFloorDuplicate(project, 'fsample002');
   assert.equal(info.numbered, 0);
   assert.equal(info.renumber.possible, false);
   assert.equal(info.renumber.reason, 'none');
-  refused(project, { floorId: 'fsample002', numbers: 'level' }, 'cannot-renumber', /no numbered rooms/);
-  run(project, { floorId: 'fsample002' });
+  for (const numbers of [undefined, 'level', 'blank']) {
+    const after = run(project, { floorId: 'fsample002', numbers });
+    assert.ok(roomsOf(newest(after)).every((room) => room.number === ''));
+    assert.equal(scheduleOutcome(after).renumbered + scheduleOutcome(after).counted + scheduleOutcome(after).blanked, 0);
+  }
 });
 
 // ---------------------------------------------------------------- joins
