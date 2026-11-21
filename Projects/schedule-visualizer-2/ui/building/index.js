@@ -242,8 +242,10 @@ export const section = {
       nextField, nextHint, nextNote);
     const status = statusLine({ zoomIn: () => zoomBy(ZOOM_STEP), zoomOut: () => zoomBy(1 / ZOOM_STEP), fit: () => fit() });
     const tabs = floorTabs({ panelId: 'plan', open: (id) => ctx.navigate('#building/' + id), add: () => addAFloor(), actions: (id, anchor, opener) => ed.floorMenu.open(id, anchor, opener) });
-    const stage = h('div', { class: 'bld-stage' }, canvas, card);
-    const element = h('div', { class: 'bld', data: { styled: 'false' } }, intro, strip.element, options, stage, status.element);
+    // the options row lies over the top of the plan, never beside it: picking or
+    // leaving a tool never changes the plan's size or moves the view
+    const stage = h('div', { class: 'bld-stage' }, options, canvas, card);
+    const element = h('div', { class: 'bld', data: { styled: 'false' } }, intro, strip.element, stage, status.element);
 
     // ------------------------------------------------------------ drawing
 
@@ -533,11 +535,7 @@ function commitPlain(action, payload, options) {
 
     // The options row follows the tool, the switch and the floor.
     function showOptions() {
-      const was = options.hidden;
       options.hidden = !tool || tool.id !== 'room';
-      // the row takes room from the plan: it is measured at once, so a press
-      // that follows the key finds the plan where the screen shows it
-      if (was !== options.hidden && styled) measure();
       const on = autoSwitch.checked;
       nextField.hidden = !on;
       nextHint.hidden = !on;

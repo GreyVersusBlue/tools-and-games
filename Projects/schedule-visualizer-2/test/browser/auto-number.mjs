@@ -77,6 +77,27 @@ test('the options row is there with the Room tool only, and Auto-number is off t
   assert.equal(await page.$eval('#plan-options', (el) => el.hidden), true, 'another tool, no row');
 });
 
+test('picking and leaving the Room tool, the switch on or off, never resizes the plan or moves the view: the row lies over the plan', async () => {
+  const look = () => page.evaluate(() => {
+    const box = document.querySelector('.bld-stage').getBoundingClientRect();
+    const view = document.querySelector('.bld').editor.view;
+    return { size: box.width + ' by ' + box.height, top: box.top, view: [view.zoom, view.x, view.y].join(' ') };
+  });
+  const first = await look();
+  await pressRoomTool(page);
+  assert.deepEqual(await look(), first, 'the Room tool picked');
+  const row = await page.$eval('#plan-options', (el) => { const r = el.getBoundingClientRect(); const stage = document.querySelector('.bld-stage').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, stageTop: stage.top, stageBottom: stage.bottom }; });
+  assert.ok(row.top >= row.stageTop && row.bottom <= row.stageBottom, 'the row is inside the plan\'s box: ' + JSON.stringify(row));
+  await page.click('#auto-number');
+  assert.deepEqual(await look(), first, 'the switch on, Next number shown');
+  await page.click('#auto-number');
+  await page.click('[data-tool="select"]');
+  assert.deepEqual(await look(), first, 'the Room tool left');
+  await page.keyboard.press('r');
+  await page.keyboard.press('c');
+  assert.deepEqual(await look(), first, 'by its keys too');
+});
+
 test('turning it on shows Next number, 7 characters wide and 44 px tall, with its hint, and the device remembers it', async () => {
   await pressRoomTool(page);
   await page.click('#auto-number');

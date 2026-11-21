@@ -10,7 +10,7 @@
   position: relative;
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
   min-height: 320px;
   background: var(--paper);
@@ -25,7 +25,7 @@
 
 .bld-strip {
   grid-column: 1;
-  grid-row: 1 / 4;
+  grid-row: 1 / 3;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -103,7 +103,7 @@
 .bld-stage {
   position: relative;
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -194,7 +194,7 @@
 .bld-status {
   --row: calc(var(--t-sm) * var(--lh-sm));
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 2;
   container-type: inline-size;
   padding: var(--s-1) var(--s-3);
   background: var(--card);
@@ -434,18 +434,31 @@
 
 /* ---------- The Room tool's options: Auto-number (DESIGN 16.3) ---------- */
 
+/* The tool's options lie over the top left of the plan, in the plan's own box,
+   so showing or hiding them never changes the plan's size or moves the view.
+   Only the controls take the pointer; the gaps between them let it through to
+   the plan, as the empty floor's card does. */
 .bld-options {
-  grid-column: 2;
-  grid-row: 1;
+  position: absolute;
+  top: var(--s-2);
+  left: var(--s-2);
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-1) var(--s-4);
-  min-width: 0;
-  padding: var(--s-1) var(--s-3);
+  box-sizing: border-box;
+  max-width: calc(100% - var(--s-2) * 2);
+  padding: 0 var(--s-3);
   background: var(--card);
-  border-bottom: var(--border);
+  border: var(--border);
+  border-radius: var(--r-2);
   color: var(--ink);
+  pointer-events: none;
+}
+
+.bld-options > * {
+  pointer-events: auto;
 }
 
 .bld-options[hidden],
@@ -626,7 +639,7 @@
 @media (max-width: 640px) {
   .bld {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     min-height: 0;
   }
 
@@ -651,19 +664,14 @@
     padding: 2px 0;
   }
 
-  .bld-options {
+  .bld-stage {
     grid-column: 1;
     grid-row: 2;
   }
 
-  .bld-stage {
-    grid-column: 1;
-    grid-row: 3;
-  }
-
   .bld-status {
     grid-column: 1;
-    grid-row: 4;
+    grid-row: 3;
     padding: var(--s-1) var(--s-2);
   }
 
