@@ -274,6 +274,9 @@ export function checkSchedule(project, walkResults) {
   };
   // finding id -> { start, end } of a consecutive run, for splitAccepted
   const runs = new Map();
+  // finding id of a weekdays-only teacher-away note -> { dayTypeId,
+  // teacherId, periods }, for followAcceptedNotes
+  const notesCover = new Map();
 
   // room id -> the first slot found there with no teacher, for room-no-teacher
   const untaught = new Map();
@@ -387,84 +390,83 @@ export function checkSchedule(project, walkResults) {
     // not in CHECK_KINDS, and its severity is set here.
     const teacherAway = (teacher, day, members) => {
       // only an entry the rule reads (a malformed one holds nowhere, so it
-      // names nothing) and that names weekdays has a "sometimes" finding
-      const sometimes = new Map();
-      const loosened = teacher.away.filter((entry) => {
-        const read = awayEntry(entry, project.dayTypes);
-        return read !== null && read.sometimes;
-      }).map((entry) => {
-        const copy = { ...entry, weekdays: [] };
-        sometimes.set(copy, entry);
-        return copy;
-      });
+      // names nothing) and that names weekdays has a "sometimes" note; each
+      // with a copy that holds on every weekday, to ask awayFor where it would
+      // hold if the date were one of its weekdays
+      const sometimes = teacher.away.map((entry) => [entry, awayEntry(entry, project.dayTypes)])
+        .filter((pair) => pair[1] !== null && pair[1].sometimes)
+        .map(([entry, read]) => ({ read, key: awayNoteKey(read), loose: { away: [{ ...entry, weekdays: [] }] } }));
       const notes = new Map();
       const scopeWords = (periods, weekdays, dayTypeIds) => awayWords(settings, { periods, weekdays, dayTypeIds }, project.dayTypes).slice('Not in school'.length).trim();
       for (const entry of day) {
         if (entry.kind !== 'teaching') continue;
         const hits = members.map((member) => [member, awayFor(teacher, member.id, entry.period, { project })]).filter((hit) => hit[1] !== null);
-        const loose = hits.length > 0 || loosened.length === 0 ? [] : members.map((member) => [member, awayFor({ away: loosened }, member.id, entry.period, { project })]).filter((hit) => hit[1] !== null);
-        const holding = hits.length > 0 ? hits : loose;
-        if (holding.length === 0) continue;
-        const entryHeld = hits.length > 0 ? holding[0][1] : sometimes.get(holding[0][1]);
-        const read = awayEntry(entryHeld, project.dayTypes);
-        // the entry's own words, only where they say more than the sentence does:
-        // the periods when it names more than this one, the weekdays, and day
-        // types the sentence does not name
-        const holdingIds = holding.map((hit) => hit[0].id);
-        const morePeriods = read.periods.length > 1 ? read.periods : [];
-        const moreDayTypes = read.dayTypeIds.some((id) => !holdingIds.includes(id)) ? read.dayTypeIds : [];
-        const dayNames = listWords(holding.map((hit) => hit[0].name));
         const roomIds = entry.groups.filter((taught) => taught.roomId !== null).map((taught) => taught.roomId);
         const teaches = entry.groups.map((taught) => {
           const taughtGroup = findById(project.groups, taught.groupId);
           if (taught.roomId !== null) return taughtGroup.name + ' is in ' + roomName(findRoom(project, taught.roomId), false);
           return taught.roomText !== '' ? taughtGroup.name + ' is in "' + taught.roomText + '" (not in the building)' : taughtGroup.name + ' is scheduled';
         });
-        let text;
         if (hits.length === 0) {
-          // SV2-142: a weekdays-only entry gives one note for the teacher and the
-          // entry, listing each class it touches (not one note per class); the
-          // id is the first class's, as a lone note's was (an accepted note keeps its id)
-          const key = 'on' + read.weekdays.join('') + (read.periods.length > 0 ? 'p' + read.periods.join('-') : '');
-          if (!notes.has(key)) notes.set(key, { key, read, morePeriods, moreDayTypes, items: [], dayNames: [], groupIds: [], roomIds: [], first: entry.period });
-          const note = notes.get(key);
-          note.items.push(listWords(teaches) + ' in ' + periodName(settings, entry.period));
-          for (const name of holding.map((hit) => hit[0].name)) if (!note.dayNames.includes(name)) note.dayNames.push(name);
-          for (const taught of entry.groups) if (!note.groupIds.includes(taught.groupId)) note.groupIds.push(taught.groupId);
-          for (const roomId of roomIds) if (!note.roomIds.includes(roomId)) note.roomIds.push(roomId);
+          // SV2-142, SV2-142b: each weekdays-only entry gives one note for the
+          // teacher, the entry and the day type, listing each class it touches;
+          // every entry that holds in the period has its own (not only the
+          // first awayFor finds). The id names the entry, not a class, so it
+          // stays as classes come and go (awayNoteKey).
+          for (const loose of sometimes) {
+            const holding = members.filter((member) => awayFor(loose.loose, member.id, entry.period, { project }) !== null);
+            if (holding.length === 0) continue;
+            if (!notes.has(loose.key)) notes.set(loose.key, { read: loose.read, key: loose.key, items: [], members: [], groupIds: [], roomIds: [], first: entry.period });
+            const note = notes.get(loose.key);
+            note.items.push(listWords(teaches) + ' in ' + periodName(settings, entry.period));
+            for (const member of holding) if (!note.members.includes(member)) note.members.push(member);
+            for (const taught of entry.groups) if (!note.groupIds.includes(taught.groupId)) note.groupIds.push(taught.groupId);
+            for (const roomId of roomIds) if (!note.roomIds.includes(roomId)) note.roomIds.push(roomId);
+          }
           continue;
         }
-        if (hits.length > 0) {
-          const extra = scopeWords(morePeriods, [], moreDayTypes);
-          text = teacher.name + ' is not in school in ' + periodName(settings, entry.period) + ' on ' + dayNames + (extra === '' ? '' : ' (' + extra + ')') + ', but ' + listWords(teaches) + ' then. Change the entry, or give that group another teacher.';
-        } else {
-          // "not in school on Fridays": the weekdays are what the entry adds
-          const scope = scopeWords(morePeriods, read.weekdays, moreDayTypes);
-          text = teacher.name + ' is not in school ' + scope + ', and ' + listWords(teaches) + ' in ' + periodName(settings, entry.period) + ' on ' + dayNames + '. On those days that group needs another teacher.';
-        }
+        const read = awayEntry(hits[0][1], project.dayTypes);
+        // the entry's own words, only where they say more than the sentence does:
+        // the periods when it names more than this one, and day types the
+        // sentence does not name
+        // (only those day types the sentence does not name, "also on B Day",
+        // never "on A Day (on A Day or B Day)": SV2-142b)
+        const holdingIds = hits.map((hit) => hit[0].id);
+        const otherDayTypes = read.dayTypeIds.filter((id) => !holdingIds.includes(id));
+        const extra = [read.periods.length > 1 ? scopeWords(read.periods, [], []) : '', otherDayTypes.length > 0 ? 'also ' + scopeWords([], [], otherDayTypes) : ''].filter((words) => words !== '').join(', ');
+        const text = teacher.name + ' is not in school in ' + periodName(settings, entry.period) + ' on ' + listWords(hits.map((hit) => hit[0].name)) + (extra === '' ? '' : ' (' + extra + ')') + ', but ' + listWords(teaches) + ' then. Change the entry, or give that group another teacher.';
         // the id and the day type are this check's own (as every check here),
         // so an accepted finding keeps its id when another day type it speaks
         // for changes
         const finding = makeFinding('teacher-away', [d, entry.period, teacher.id], text,
           { dayTypeId: d, period: entry.period, groupIds: entry.groups.map((taught) => taught.groupId), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id },
           [teacher.id].concat(entry.groups.map((taught) => taught.groupId)));
-        finding.severity = hits.length > 0 ? 'warning' : 'note';
+        finding.severity = 'warning';
         if (ids.has(finding.id)) continue;
         ids.add(finding.id);
         found.push(finding);
       }
       for (const note of notes.values()) {
+        const holdingIds = note.members.map((member) => member.id);
+        const morePeriods = note.read.periods.length > 1 ? note.read.periods : [];
+        const moreDayTypes = note.read.dayTypeIds.some((id) => !holdingIds.includes(id)) ? note.read.dayTypeIds : [];
         // "not in school on Fridays": the weekdays are what the entry adds
-        const scope = scopeWords(note.morePeriods, note.read.weekdays, note.moreDayTypes);
-        const text = teacher.name + ' is not in school ' + scope + ', and ' + note.items.join('; ') + ' on ' + listWords(note.dayNames) + '. On those days '
+        const scope = scopeWords(morePeriods, note.read.weekdays, moreDayTypes);
+        const text = teacher.name + ' is not in school ' + scope + ', and ' + note.items.join('; ') + ' on ' + listWords(note.members.map((member) => member.name)) + '. On those days '
           + (note.groupIds.length === 1 ? 'that group needs' : 'those groups need') + ' another teacher.';
-        const finding = makeFinding('teacher-away', [d, note.first, teacher.id], text,
+        // `about` is the teacher alone: the classes listed come and go, the
+        // teacher and the entry do not, so an acceptance holds while they stay
+        const finding = makeFinding('teacher-away', [d, note.key, teacher.id], text,
           { dayTypeId: d, period: note.first, groupIds: note.groupIds, roomId: note.roomIds.length > 0 ? note.roomIds[0] : null, teacherId: teacher.id },
-          [teacher.id].concat(note.groupIds));
+          [teacher.id]);
         finding.severity = 'note';
         if (ids.has(finding.id)) continue;
         ids.add(finding.id);
         found.push(finding);
+        // the periods of this day the entry covers (all, when it names none),
+        // so an acceptance made of one class of it (the id before SV2-142b)
+        // is carried to the note (followAcceptedNotes)
+        notesCover.set(finding.id, { dayTypeId: d, teacherId: teacher.id, periods: note.read.periods.length > 0 ? note.read.periods : Array.from({ length: periods }, (_, period) => period) });
       }
     };
     for (const teacher of project.teachers) {
@@ -831,7 +833,65 @@ export function checkSchedule(project, walkResults) {
     }
   }
 
-  return splitAccepted(followAcceptedWalks(sortFindings(found, project), project.accepted), project.accepted, { off, limit, runs });
+  const sorted = followAcceptedWalks(sortFindings(found, project), project.accepted);
+  const carried = followAcceptedNotes(sorted, project.accepted, notesCover);
+  const result = splitAccepted(sorted, carried.records, { off, limit, runs });
+  if (carried.from.size === 0) return result;
+  return { ...result, accepted: result.accepted.map((finding) => (carried.from.has(finding.id) ? { ...finding, accepted: { ...finding.accepted, from: carried.from.get(finding.id) } } : finding)) };
+}
+
+// The id of a weekdays-only teacher-away note names the entry by what it says
+// (ARCHITECTURE 22.10, SV2-142b): its weekdays, its periods when it names
+// some, and its day types when it names some, as "on4", "on34p1-2" or
+// "on4ddsample00a". Two entries that say the same thing are one note; an
+// edited entry is a new one.
+export function awayNoteKey(read) {
+  return 'on' + read.weekdays.join('')
+    + (read.periods.length > 0 ? 'p' + read.periods.join('-') : '')
+    + (read.dayTypeIds.length > 0 ? 'd' + read.dayTypeIds.slice().sort().join('-') : '');
+}
+
+// Before SV2-142b a weekdays-only teacher-away note was one per class, with
+// the id `teacher-away:d:p:<teacher>` a warning has, and its `about` the
+// teacher and that class's groups. Such a record, when no finding has its id
+// now, is carried to the note of the same day type and teacher whose entry
+// covers period p (`cover`, made by checkSchedule): the note counts as
+// accepted when ANY record of one of its classes was accepted (SV2-36's
+// rule: an acceptance stops counting only when who it names changes, and the
+// note names the teacher, whom each of those records accepted as away). The
+// carried records are never "gone"; a note with no record of its own is
+// accepted under its own id with the first carried record's reason, and
+// `accepted.from` lists the records it stands on, so taking the acceptance
+// back removes them all (actions.js unacceptFinding). Records are never
+// rewritten: a later acceptance writes the note's own id.
+export function followAcceptedNotes(findings, acceptedRecords, cover) {
+  const records = Array.isArray(acceptedRecords) ? acceptedRecords : [];
+  const from = new Map();
+  if (cover.size === 0 || records.length === 0) return { records, from };
+  const ids = new Set(findings.map((finding) => finding.id));
+  const own = new Set(records.map((record) => record.findingId));
+  const carried = new Set();
+  for (const record of records) {
+    const parts = String(record.findingId).split(':');
+    if (parts[0] !== 'teacher-away' || parts.length !== 4 || !/^\d+$/.test(parts[2]) || ids.has(record.findingId)) continue;
+    const period = Number(parts[2]);
+    const note = findings.find((finding) => {
+      const covers = cover.get(finding.id);
+      return Boolean(covers) && covers.dayTypeId === parts[1] && covers.teacherId === parts[3] && covers.periods.includes(period);
+    });
+    if (!note) continue;
+    carried.add(record);
+    if (!from.has(note.id)) from.set(note.id, []);
+    from.get(note.id).push(record.findingId);
+  }
+  if (carried.size === 0) return { records, from };
+  const kept = records.filter((record) => !carried.has(record));
+  for (const [noteId, list] of from) {
+    if (own.has(noteId)) continue;
+    const first = records.find((record) => record.findingId === list[0]);
+    kept.push({ findingId: noteId, reason: first.reason, at: first.at, about: [] });
+  }
+  return { records: kept, from };
 }
 
 // A walk late only under bell schedules has the first of them (in the

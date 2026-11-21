@@ -127,7 +127,9 @@ test('a weekdays-only entry is a note, not a warning: the check cannot know the 
   const found = ofKind(checkSchedule(project, null), 'teacher-away');
   assert.equal(found.length, 2, 'A Day and B Day period 2');
   assert.equal(found[0].severity, 'note');
-  assert.equal(found[0].id, 'teacher-away:dsample00a:1:tsample001', 'the id is the same as a warning\'s');
+  // SV2-142b: a note's id names the entry (its weekdays and periods), not a class
+  assert.equal(found[0].id, 'teacher-away:dsample00a:on4p1:tsample001');
+  assert.deepEqual(found[0].about, ['tsample001'], 'about is the teacher alone');
   assert.equal(found[0].text, 'Ms. Halloran is not in school on Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
   // a whole entry on the same period wins: it is the warning
   const both = ofKind(checkSchedule(withAway([entry({ weekdays: [4], periods: [1] }), entry({ periods: [1] })]), null), 'teacher-away');
@@ -348,13 +350,14 @@ test('the sentence repeats nothing: day types and a lone period are left out of 
   assert.equal(text([entry({ dayTypeIds: [A], periods: [1] })]), lead + tail, 'neither the day type nor the one period is said twice');
   assert.equal(text([entry({ periods: [1] })]), lead + tail);
   assert.equal(text([entry({ dayTypeIds: [A], periods: [1, 2] })]), lead + ' (in Periods 2 to 3)' + tail, 'the other period is news');
-  assert.equal(text([entry({ dayTypeIds: [A, B], periods: [1] })]), lead + ' (on A Day or B Day)' + tail, 'B Day is not in this sentence');
+  assert.equal(text([entry({ dayTypeIds: [A, B], periods: [1] })]), lead + ' (also on B Day)' + tail, 'B Day is not in this sentence, and A Day is not said twice');
+  assert.equal(text([entry({ dayTypeIds: [A, B], periods: [1, 2] })]), lead + ' (in Periods 2 to 3, also on B Day)' + tail);
 });
 
 test('the note says what the entry adds: the weekdays, and a range of periods; a day type and weekdays together are one note', () => {
   const found = (away) => ofKind(checkSchedule(withAway(away), null), 'teacher-away');
   const both = found([entry({ dayTypeIds: [A], weekdays: [4], periods: [1] })]);
-  assert.deepEqual(both.map((finding) => [finding.id, finding.severity]), [['teacher-away:dsample00a:1:tsample001', 'note']], 'only A Day is named');
+  assert.deepEqual(both.map((finding) => [finding.id, finding.severity]), [['teacher-away:dsample00a:on4p1ddsample00a:tsample001', 'note']], 'only A Day is named');
   assert.equal(both[0].text, 'Ms. Halloran is not in school on Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
   const range = found([entry({ weekdays: [3, 4], periods: [1, 2] })]);
   // SV2-142: the two classes in the range are one note, not one each
@@ -362,7 +365,7 @@ test('the note says what the entry adds: the weekdays, and a range of periods; a
   assert.equal(range[0].text, 'Ms. Halloran is not in school in Periods 2 to 3 on Thursdays and Fridays, and 8B is in Room 101 in Period 2; 6A is in Room 101 in Period 3 on A Day. On those days those groups need another teacher.');
 });
 
-test('SV2-142: a weekdays-only entry is one note for the teacher and the entry on each day type, however many classes it touches; its id is the first class\'s', () => {
+test('SV2-142: a weekdays-only entry is one note for the teacher and the entry on each day type, however many classes it touches; its id is the entry\'s', () => {
   const project = withAway([entry({ weekdays: [4] })]);
   const found = ofKind(checkSchedule(project, null), 'teacher-away');
   const onA = found.filter((finding) => finding.where.dayTypeId === A);
@@ -371,12 +374,77 @@ test('SV2-142: a weekdays-only entry is one note for the teacher and the entry o
   assert.equal(onB.length, 1, 'one note on B Day');
   assert.equal(found.length, 2);
   assert.equal(onA[0].severity, 'note');
-  assert.match(onA[0].id, /^teacher-away:dsample00a:\d+:tsample001$/);
+  assert.equal(onA[0].id, 'teacher-away:dsample00a:on4:tsample001', 'the id names the entry, not the first class');
+  assert.equal(onA[0].where.period, 1, 'Show me goes to the first class (Period 2)');
   assert.ok(onA[0].where.groupIds.length > 1, 'it names every group it touches');
   assert.match(onA[0].text, /^Ms\. Halloran is not in school on Fridays, and .+; .+ on A Day\. On those days those groups need another teacher\.$/);
   // two entries are two notes
   const two = ofKind(checkSchedule(withAway([entry({ weekdays: [4], periods: [1] }), entry({ weekdays: [3], periods: [2] })]), null), 'teacher-away').filter((finding) => finding.where.dayTypeId === A);
   assert.equal(two.length, 2, 'one for each entry');
+});
+
+// SV2-142b: an acceptance of a weekdays-only note holds as classes come and go
+const NOTE = 'teacher-away:dsample00a:on4:tsample001';
+const oldRecord = (period, groupId) => ({ findingId: 'teacher-away:dsample00a:' + period + ':tsample001', reason: 'A sub covers Fridays', at: '2026-09-01T12:00:00.000Z', about: [groupId, 'tsample001'].sort() });
+const inRoom101 = (project, groupId, period, room) => { project.groups.find((group) => group.id === groupId).days[A][period].room = room; return project; };
+
+test('SV2-142b: a note accepted one class at a time (before SV2-142) stays accepted as the merged note, and no record is gone', () => {
+  for (const records of [[oldRecord(1, 'gsample08b')], [oldRecord(1, 'gsample08b'), oldRecord(2, 'gsample06a')], [oldRecord(2, 'gsample06a')]]) {
+    const project = withAway([entry({ weekdays: [4] })]);
+    project.accepted = records;
+    assertValid(project);
+    const result = checkSchedule(project, null);
+    assert.equal(result.findings.some((finding) => finding.id === NOTE), false, 'the note does not count');
+    const kept = result.accepted.find((finding) => finding.id === NOTE);
+    assert.ok(kept, 'accepted under its own id');
+    assert.equal(kept.accepted.reason, 'A sub covers Fridays');
+    assert.deepEqual(kept.accepted.from, records.map((record) => record.findingId), 'the records it stands on');
+    assert.deepEqual([result.changed, result.gone], [[], []], 'nothing changed, nothing put right');
+    // taking it back removes every record it stands on, so it counts again
+    const back = actions.unacceptFinding(project, { findingId: NOTE }, ctx());
+    assert.deepEqual(back.accepted, []);
+    assert.equal(checkSchedule(back, null).findings.some((finding) => finding.id === NOTE), true);
+  }
+});
+
+test('SV2-142b: adding, removing or moving a class keeps an accepted note accepted, and removing the first class keeps the id', () => {
+  const project = withAway([entry({ weekdays: [4] })]);
+  const first = ofKind(checkSchedule(project, null), 'teacher-away').find((finding) => finding.where.dayTypeId === A);
+  assert.equal(first.id, NOTE);
+  const accepted = actions.acceptFinding(project, { findingId: NOTE, reason: 'A sub covers Fridays' }, ctx());
+  const still = (changed, message) => {
+    const result = checkSchedule(changed, null);
+    assert.equal(result.findings.some((finding) => finding.id === NOTE), false, message + ': not counted');
+    assert.ok(result.accepted.some((finding) => finding.id === NOTE), message + ': accepted under the same id');
+    assert.deepEqual([result.changed, result.gone], [[], []], message + ': nothing changed or gone');
+    return result.accepted.find((finding) => finding.id === NOTE);
+  };
+  // 7A into Room 101 in Period 1: a third class
+  const added = still(inRoom101(clone(accepted), 'gsample07a', 0, 'rsample101'), 'a class added');
+  assert.equal(added.where.groupIds.length, 3);
+  // 8B (the first class, Period 2) moved out of Room 101
+  const removed = still(inRoom101(clone(accepted), 'gsample08b', 1, 'rsample201'), 'the first class removed');
+  assert.deepEqual(removed.where.groupIds, ['gsample06a']);
+  assert.equal(removed.where.period, 2);
+  // an old per-class record migrates the same way when the first class goes
+  const old = withAway([entry({ weekdays: [4] })]);
+  old.accepted = [oldRecord(1, 'gsample08b'), oldRecord(2, 'gsample06a')];
+  const migrated = checkSchedule(inRoom101(old, 'gsample08b', 1, 'rsample201'), null);
+  assert.ok(migrated.accepted.some((finding) => finding.id === NOTE));
+  assert.deepEqual([migrated.changed, migrated.gone], [[], []], 'the record of the class that went is not "put right"');
+});
+
+test('SV2-142b: each weekdays-only entry has its own note, even where another holds in the same period', () => {
+  const notesOnA = (away, project) => ofKind(checkSchedule(withAway(away, project), null), 'teacher-away').filter((finding) => finding.where.dayTypeId === A);
+  // Thursdays and Fridays as two entries: two notes, not only the Friday one
+  const two = notesOnA([entry({ weekdays: [4] }), entry({ weekdays: [3] })]);
+  assert.deepEqual(two.map((finding) => finding.id).sort(), ['teacher-away:dsample00a:on3:tsample001', 'teacher-away:dsample00a:on4:tsample001']);
+  assert.ok(two.some((finding) => / on Thursdays, /.test(finding.text)) && two.some((finding) => / on Fridays, /.test(finding.text)));
+  // the same weekdays on A Day and on B Day (the same as A Day): two notes
+  const followed = withFollower([]);
+  const days = notesOnA([entry({ weekdays: [4], dayTypeIds: [A] }), entry({ weekdays: [4], dayTypeIds: [B] })], followed);
+  assert.equal(days.length, 2, 'one note for each entry');
+  assert.deepEqual(days.map((finding) => finding.id).sort(), ['teacher-away:dsample00a:on4ddsample00a:tsample001', 'teacher-away:dsample00a:on4ddsample00b:tsample001']);
 });
 
 test('the id and the day are this check\'s own: an accepted finding keeps its id when the day type that is the same as it changes', () => {
