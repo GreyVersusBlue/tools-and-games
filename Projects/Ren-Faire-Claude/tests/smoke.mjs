@@ -3666,8 +3666,10 @@ function makeMemoryStorage() {
 
   // The general form of the same check: every href/src the browser would
   // actually fetch has to be relative. og:image and friends live in `content`
-  // attributes, which are read by scrapers and never fetched by the page.
-  const fetched = [...liveHtml.matchAll(/\b(?:href|src)\s*=\s*"([^"]+)"/g)].map(m => m[1]);
+  // attributes, which are read by scrapers and never fetched by the page. A
+  // <link rel="canonical"> is the same kind of thing (a name for the page, not
+  // a fetch; sync-social-tags.mjs writes one, TG-102), so it is left out.
+  const fetched = [...liveHtml.replace(/<link\s+rel="canonical"[^>]*>/g, '').matchAll(/\b(?:href|src)\s*=\s*"([^"]+)"/g)].map(m => m[1]);
   const offsite = fetched.filter(u => /^(?:https?:)?\/\//.test(u));
   assert(offsite.length === 0, `every href/src in index.html is relative (offsite: ${offsite.join(', ') || 'none'})`);
   assert(!/node_modules/.test(css) && !/node_modules/.test(html),

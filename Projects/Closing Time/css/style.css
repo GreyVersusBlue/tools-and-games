@@ -30,7 +30,7 @@ body::before { /* subtle ledger rule down the left, ambient not loud */
 .content-note { margin: 0; padding: 6px 22px; font-size: 13px; color: var(--sign-red);
   background: var(--paper-2); border-bottom: 1px solid var(--line); }
 .content-note[hidden] { display: none; }
-.letterhead .lh-name { font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .06em; }
+.letterhead .lh-name { margin: 0; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .06em; }
 .letterhead .lh-sub { display: block; font-size: 12px; color: var(--ink-soft); letter-spacing: .04em; }
 .start-home, .letterhead .lh-home { display: inline-block; margin-top: 2px; padding: 4px 0; min-height: 24px; font-size: 12px; font-weight: 600;
   color: var(--ink); letter-spacing: .04em; text-decoration: underline; text-underline-offset: 3px; } /* TG-97: the way back to the board */

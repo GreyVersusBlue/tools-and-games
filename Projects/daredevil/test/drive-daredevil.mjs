@@ -163,11 +163,20 @@ export async function pick(page, needle) {
  * land, it landed" assertion breaks the moment this minigame became
  * reachable — confirmed by running the suite before this branch existed.
  */
+const HANG_FACTOR = 6;
 export async function autopilot(page, mode = 'good', timeoutMs = 60000) {
   await page.evaluate(m => {
     window.__apStop = false;
-    const tick = () => {
+    window.__apFrames = 0;
+    window.__apGame = 0;       // seconds the game's own clock has advanced, see autopilot()
+    let last = 0;
+    const tick = ts => {
       if (window.__apStop) return;
+      window.__apFrames++;
+      // mgLoop clamps every frame's dt to 0.05, so the game's clock only runs at
+      // wall speed above 20 fps. This is the same clamp, counted here.
+      if (last) window.__apGame += Math.min((ts - last) / 1000, 0.05);
+      last = ts;
       const a = (window.__dd && window.__dd.mg) || null;
       const t = a && a.tele;
       // Phase 7. Three scales are three sets of numbers now, so the two the
@@ -199,15 +208,27 @@ export async function autopilot(page, mode = 'good', timeoutMs = 60000) {
     requestAnimationFrame(tick);
   }, mode);
 
+  // The budget is `timeoutMs` of GAME time, not wall time. The game clamps each
+  // frame to 50ms, so under software rendering on a loaded machine (Huginn
+  // measured 10.6 fps with other suites running, 2026-11-20) the same minigame
+  // takes twice the wall time and a wall-clock budget ran out mid-recovery with
+  // the game healthy (TG-103). At 60 fps game time equals wall time, so the
+  // budget is exactly what it was where this passes. A page that has stopped
+  // drawing advances no game time, so it still gets a wall cap (HANG_FACTOR x).
   const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
+  while (Date.now() - t0 < timeoutMs * HANG_FACTOR) {
     if (await where(page) === 'reporter') break;
+    if (await page.evaluate(() => window.__apGame) * 1000 >= timeoutMs) break;
     await wait(200);
   }
+  const frames0 = await page.evaluate(() => window.__apFrames);
   await page.evaluate(() => { window.__apStop = true; });
+  if (process.env.DD_AP_LOG) console.log(`    [autopilot ${mode}] ${frames0} frames in ${Date.now() - t0}ms = ${(frames0 / ((Date.now() - t0) / 1000)).toFixed(1)} fps, game ${(await page.evaluate(() => window.__apGame)).toFixed(1)}s`);
   if (await where(page) !== 'reporter') {
     const tele = await page.evaluate(() => (window.__dd && window.__dd.mg ? window.__dd.mg.tele : null));
-    throw new Error(`minigame never finished in ${timeoutMs}ms; tele=${JSON.stringify(tele)}`);
+    const frames = await page.evaluate(() => window.__apFrames);
+    const game = await page.evaluate(() => window.__apGame);
+    throw new Error(`minigame never finished in ${timeoutMs}ms of game time (${game.toFixed(1)}s game, ${((Date.now() - t0) / 1000).toFixed(1)}s wall, ${frames} frames); tele=${JSON.stringify(tele)}`);
   }
   return snapshot(page);
 }
