@@ -291,6 +291,8 @@ function lostPaper(s, content, x, loss, leg) {
     ? `${agent.name}'s ${VESSEL[leg.by] ?? 'party'} was lost on the way from ${stopName(content, leg.from)} to ${stopName(content, leg.to)}. ${loss.survived ? `${agent.name} survived and is home.` : `${agent.name} did not come back.`}`
     : `Part of ${agent.name}'s cargo was lost on ${way}. ${agent.name} goes on.`;
   const lines = [{ label: 'Lost', text: lost }];
+  const worth = lossWorth(s, content, loss), says = lossLine(content, x, loss, worth, costs);
+  if (says) lines.push({ label: 'In dinars', text: says });
   if (x.contract.kind === 'qirad') {
     lines.push({ label: 'The house', text: `${coins(content, costs.house)} of its money` });
     lines.push({ label: 'The partners', text: `${coins(content, costs.partners)} of theirs` });
@@ -301,7 +303,24 @@ function lostPaper(s, content, x, loss, leg) {
   if (line) lines.push({ label: 'Your order', text: line });
   const trip = tripFacts(content, x.agent, route, leg.to, mainGoodOf(x.book?.cargo ?? x.cargo), idx + 1 - x.sent, x.id);
   const entry = pickEntry(s, content, 'loss', { by: leg.by, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
-  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, orderLine: line, route: route.id, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, lines, costs, trip, ...askOf(content, entry, trip) } };
+  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, orderLine: line, route: route.id, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, lines, costs, worth, lossLine: says, trip, ...askOf(content, entry, trip) } };
+}
+
+/** What a loss took, in dinars: the goods at home's price today and the money that was aboard (MER-125). */
+function lossWorth(s, content, loss) {
+  const home = homeOf(content);
+  return Object.entries(loss.cargo).reduce((v, [g, n]) => v + n * (M.truePrice(s, content, home, g) ?? 0), loss.purse);
+}
+
+/** The lost paper's one sentence of money: what the house lost against what the sheet hoped it would make. A qirad's loss falls
+    on the partners too, so there the sentence gives the whole and the house's part. Null when nothing of value was aboard. */
+function lossLine(content, x, loss, worth, costs) {
+  if (!worth) return null;
+  const home = stopName(content, homeOf(content));
+  const h = x.hoped;   // what the sheet said the house would make, a loss when below zero; none for a trip sent before it was kept
+  const hoped = !Number.isFinite(h) ? '' : h > 0 ? ` It had hoped to make ${coins(content, h)}.` : h < 0 ? ` Even the sheet had said it would lose about ${coins(content, -h)}.` : ' It had hoped to break even.';
+  if (x.contract.kind === 'qirad') return `The goods and money lost came to about ${coins(content, worth)} at ${home}'s price, and the house's part of that is ${coins(content, costs.house)}.${hoped}`;
+  return `The house lost about ${coins(content, worth)}: the goods at ${home}'s price and the money that was aboard.${hoped}`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1719,7 +1738,9 @@ function settledLine(s, content, x, out, r) {
     return { expedition: x.id, agent: x.agent, result: 'lost', cargo: { ...x.book?.cargo }, text: `${agent.name}'s expedition to ${dest} was lost on the way. ${surv}`, houseNet: -x.staked.house };
   }
   const n = r.houseNet;
-  return { expedition: x.id, agent: x.agent, result: 'home', cargo: { ...x.book?.cargo }, text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
+  // what came back, goods and money, and the seasons the account counts (MER-125)
+  const back = { goods: Object.fromEntries(Object.entries(r.goodsBack ?? {}).filter(([, q]) => q > 0)), money: r.moneyBack ?? 0 };
+  return { expedition: x.id, agent: x.agent, result: 'home', cargo: { ...x.book?.cargo }, back, seasons: r.elapsed, text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
 }
 
 /** Settles `x` (settle, then bring it home or write it off). Returns its line. */
@@ -1760,6 +1781,7 @@ export function jump(s, content) {
   const to = played[s.t], from = played[s.t - 1];
   const years = Math.max(1, Math.round((to - from) / 4));
   const entry = { at: to, kind: 'jump', from, to, years, settled: [], loans: [], agents: [], events: [] };
+  const money0 = s.money;
 
   // 1. every expedition on the road is settled
   const papers = [];   // the return papers of the ones that came home, put on the desk once step 3 has said who is still in the house's service
@@ -1773,6 +1795,8 @@ export function jump(s, content) {
     close(s, content, x, to);
   }
   s.expeditions = [];
+  entry.net = entry.settled.reduce((n, l) => n + (l.houseNet ?? 0), 0);   // what the trips made for the house, goods at their price: the figure the page prints
+  entry.trips = s.money - money0;   // the cash the settled trips put into the house (and took out, in wages), for the ledger's line
 
   // 2. loans fall due, with interest for the years passed
   const due = s.loans.filter(l => l.due <= to);
@@ -1818,6 +1842,8 @@ export function jump(s, content) {
     applyAll(s, content, ev.do, { at: ev.at });
     entry.events.push({ id: ev.id, at: ev.at, ...(ev.interlude ? { interlude: ev.interlude } : {}) });
   }
+  entry.change = s.money - money0;   // all the jump did to the house's money; the ledger takes it out of the season it was written in
+  entry.money = s.money;             // what the house carries into the next years, the figure the page prints
   s.log.push(entry);
   s.phase = 'interlude';
 }
@@ -1828,7 +1854,7 @@ export function interludeOf(state, content) {
   const e = [...state.log].reverse().find(x => x.kind === 'jump');
   if (!e) return null;
   return {
-    from: year(content.calendar, e.from), to: year(content.calendar, e.to), years: e.years,
+    from: year(content.calendar, e.from), to: year(content.calendar, e.to), years: e.years, money: e.money ?? null,
     settled: e.settled, loans: e.loans, agents: e.agents,
     paragraphs: e.events.filter(x => x.interlude).map(x => ({ id: x.id, text: x.interlude })),
   };
@@ -1840,13 +1866,26 @@ export function interludeOf(state, content) {
 const sign = n => (n > 0 ? `+${n}` : `${n}`);
 
 /** What a fired later effect did that the player can see, as short phrases; [] if nothing. */
+const REP_SUBJECT = { partners: ['The partners', 'think'], agents: ['The agents', 'think'], court: ['The court', 'thinks'], foreign: ['Foreign merchants', 'think'] };
+
+/** One sentence for a group whose good name moved by `by` (nets to nothing: null): "Foreign merchants think better of the house." */
+export function repSentence(group, by) {
+  if (!by) return null;
+  const [who, verb] = REP_SUBJECT[group] ?? [cap(group), 'think'];
+  return `${who} ${verb} ${by > 0 ? (by > 1 ? 'much better' : 'better') : (by < -1 ? 'much less' : 'less')} of the house.`;
+}
+
 function changesOf(content, q, s) {
   const out = [];
   const nameOf = id => agentOf(content, id === '$agent' ? q.agent : id)?.name ?? id;
+  const reps = new Map();   // one sentence per group, however many moves it had
+  for (const e of q.do ?? []) {
+    if ('rep' in e) reps.set(e.rep, (reps.get(e.rep) ?? 0) + e.by);
+  }
   for (const e of q.do ?? []) {
     if ('money' in e) out.push(`${sign(e.money)} ${cityOf(content, 'accounts').currency ?? 'coins'}`);
     else if ('stock' in e) out.push(`${sign(e.by)} ${goodName(content, e.stock)}`);
-    else if ('rep' in e) out.push(`good name with ${e.rep} ${sign(e.by)}`);
+    else if ('rep' in e) { if (reps.has(e.rep)) { const w = repSentence(e.rep, reps.get(e.rep)); reps.delete(e.rep); if (w) out.push(w); } }
     else if ('trust' in e) out.push(`${nameOf(e.trust)}'s trust ${sign(e.by)}`);
     else if ('loan' in e) out.push(`a loan of ${e.loan.principal} from ${e.loan.from}`);
     else if ('hire' in e) out.push(`${nameOf(e.hire)} joins the house`);
@@ -1854,6 +1893,12 @@ function changesOf(content, q, s) {
   }
   return out;
 }
+
+/** The changes of one item as one line: the money and goods run on with commas, and each sentence (a group's good name) follows whole. */
+const accountWords = changes => {
+  const facts = changes.filter(c => !c.endsWith('.')), says = changes.filter(c => c.endsWith('.'));
+  return [facts.length ? `${facts.join(', ')}${says.length ? '.' : ''}` : '', ...says].filter(Boolean).join(' ');
+};
 
 /** One item for the accounts paper from a later effect that fired with no follow-up card. */
 export function accountItem(s, content, q) {
@@ -1866,7 +1911,7 @@ export function accountItem(s, content, q) {
   const choice = card?.choices?.find(c => c.id === choiceId);
   const title = q.viaCard ?? card?.title ?? null, label = q.viaChoice ?? choice?.label ?? null;
   const from = title ? `${title}${label ? `, "${label}"` : ''}` : (q.from ?? 'an earlier choice');
-  return { from: q.from ?? null, card: title, choice: label, changes, text: `From ${from}: ${changes.join(', ')}` };
+  return { from: q.from ?? null, card: title, choice: label, changes, text: `From ${from}: ${accountWords(changes)}` };
 }
 
 /** Puts one folded Accounts paper on the desk naming every item (a count, not a paper each). */

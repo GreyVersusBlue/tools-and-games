@@ -226,6 +226,19 @@ export function createDesk(app) {
     return parts.length ? `It carried ${parts.join(', ')}.` : '';
   };
 
+  /** "It was away four seasons and brought back 3 loads of silk and 12 dinars." for a trip that came home: what came back, goods
+      and money, and the seasons the return paper's account counts, or "" for a line from before they were written (MER-125). */
+  const backLine = x => {
+    if (x.result !== 'home' || !x.back) return '';
+    const things = Object.entries(x.back.goods ?? {}).filter(([, n]) => n > 0).map(([g, n]) => {
+      const good = content.goods.find(y => y.id === g), unit = good?.unit ?? 'load';
+      return `${n} ${n === 1 ? unit : `${unit}s`} of ${(good?.name ?? g).toLowerCase()}`;
+    });
+    if (x.back.money > 0) things.push(dinars(x.back.money));
+    const away = x.seasons > 0 ? `It was away ${x.seasons} ${x.seasons === 1 ? 'season' : 'seasons'} and brought back` : 'It brought back';
+    return `${away} ${things.length ? things.join(' and ') : 'nothing'}.`;
+  };
+
   function phasePage(phase) {
     const v = app.view();
     const wrap = (title, ...rest) => h('article', { class: 'paper sheet front kind-phase', dataset: { phase, face: 'front' }, 'aria-labelledby': 'phase-title' },
@@ -237,6 +250,7 @@ export function createDesk(app) {
         ...(gap?.settled ?? []).flatMap(x => [
           h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text),
           ...(cargoLine(x.cargo) ? [h('p', { class: 'sheet-body', id: `cargo-${x.expedition}` }, cargoLine(x.cargo))] : []),
+          ...(backLine(x) ? [h('p', { class: 'sheet-body', id: `back-${x.expedition}` }, backLine(x))] : []),
           // what the sheet hoped and the one reason for the gap, as the return paper will say it (MER-119)
           ...(x.why ? [h('p', { class: 'sheet-body', id: `hoped-${x.expedition}` }, returnLead(content, { kind: 'return', data: { hoped: x.hoped, why: x.why } }))] : []),
         ]),
@@ -246,7 +260,7 @@ export function createDesk(app) {
           return h('p', { class: 'sheet-body', dataset: { left: leftHow(app.state, g.id) ?? '' } }, `${name} ${leftHow(app.state, g.id) === 'retired' ? 'has retired' : 'has gone to work for another house'}.`);
         }),
         ...(gap?.paragraphs ?? []).map(p => h('p', { class: 'sheet-body' }, p.text)),
-        h('p', { class: 'sheet-body' }, `The house carries ${dinars(app.state.money)} into the next years.`),
+        h('p', { class: 'sheet-body' }, `The house carries ${dinars(gap?.money ?? app.state.money)} into the next years.`),
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
           `Open the house in ${cap(v.season)} ${v.year}`));
     }
