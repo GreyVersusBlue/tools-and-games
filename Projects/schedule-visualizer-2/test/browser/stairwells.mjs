@@ -250,7 +250,10 @@ test('a stairwell\'s properties: one way for every flight, the Letter field, a r
   await page.keyboard.press('Enter');
   await waitFor('#inspector-properties #inspector-title', 'Stairwell West');
   assert.deepEqual(await wells(), [['A', 'West'], ['B', 'West']]);
-  assert.equal(await said(), 'Stairwell A is now Stairwell West on every floor.');
+  // SV2-142, SV2-142b: Enter says the result once, in the toast (with Undo), as the
+  // other fields do; the announcer does not say it again
+  assert.equal(await toastText(), 'Stairwell A is now Stairwell West on every floor.');
+  assert.doesNotMatch(await said(), /Stairwell West/, 'heard twice: the announcer says it too');
   // a row for each of the three stops, each with Show; Remove from stairwell on all
   const rows = await page.$$eval('#well-stops li', (all) => all.map((li) => [li.querySelector('.bi-row__text').textContent, Array.from(li.querySelectorAll('button')).map((b) => b.textContent)]));
   assert.deepEqual(rows, [['Floor 1', ['Show', 'Remove from stairwell']], ['Floor 2 (this stop)', ['Show', 'Remove from stairwell']], ['Floor 3', ['Show', 'Remove from stairwell']]]);
@@ -370,6 +373,52 @@ test('Connect another floor… adds a stop from a stop: the banner names the sta
   const flight = (await building()).connections[2];
   assert.deepEqual([flight.a.floorId, flight.b.floorId], [(await building()).floors[2].id, (await building()).floors[3].id], 'from the nearest stop, Floor 3');
   assert.equal(await page.$eval('#connect-banner', (el) => el.hidden), true);
+});
+
+test('SV2-142, SV2-142b: the connect banner is docked (the plan starts under it, so it covers no cell), and at 1280 and 390 every cell stays where it was on screen and the zoom holds as it comes and goes', async () => {
+  await floors(3, [1, 2, 3], { flights: [[1, 2]] });
+  const rects = () => page.evaluate(() => {
+    const banner = document.getElementById('connect-banner').getBoundingClientRect();
+    const plan = document.getElementById('plan').getBoundingClientRect();
+    const stage = document.querySelector('.bld-stage').getBoundingClientRect();
+    return { bannerBottom: Math.round(banner.bottom), planTop: Math.round(plan.top), planBottom: Math.round(plan.bottom), stageTop: Math.round(stage.top), stageBottom: Math.round(stage.bottom), zoom: document.querySelector('.bld').editor.view.zoom };
+  });
+  for (const size of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewport({ ...size, deviceScaleFactor: 1 });
+    await still(page);
+    await showFloor('Floor 3');
+    const before = { ...(await rects()), cell: await point(page, 5, 10) };
+    await menuOn(14, 10);
+    await choose('Connect these stairs…');
+    await page.waitForFunction(() => !document.getElementById('connect-banner').hidden);
+    await still(page);
+    const open = { ...(await rects()), cell: await point(page, 5, 10) };
+    assert.ok(open.planTop > before.planTop, size.width + ' px: the banner shows above the plan');
+    assert.ok(open.planTop >= open.bannerBottom - 1, size.width + ' px: the plan starts at ' + open.planTop + ' under a banner that ends at ' + open.bannerBottom);
+    assert.equal(open.planBottom, open.stageBottom, size.width + ' px: the plan runs to the bottom of its stage');
+    assert.ok(Math.abs(open.cell.x - before.cell.x) <= 1 && Math.abs(open.cell.y - before.cell.y) <= 1, size.width + ' px: the cell stays at ' + JSON.stringify(before.cell) + ' when the banner shows, not ' + JSON.stringify(open.cell));
+    assert.equal(open.zoom, before.zoom, size.width + ' px: the zoom holds when the banner shows');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
+    await still(page);
+    const shut = { ...(await rects()), cell: await point(page, 5, 10) };
+    assert.equal(shut.planTop, shut.stageTop, size.width + ' px: the plan is the whole stage once the banner is gone');
+    assert.ok(Math.abs(shut.cell.x - before.cell.x) <= 1 && Math.abs(shut.cell.y - before.cell.y) <= 1, size.width + ' px: the cell is back at ' + JSON.stringify(before.cell) + ' when the banner goes, not ' + JSON.stringify(shut.cell));
+    assert.equal(shut.zoom, before.zoom, size.width + ' px: the zoom holds when the banner goes');
+  }
+  await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
+  await still(page);
+  // printed while connecting: no banner, and no blank band where it was
+  await menuOn(14, 10);
+  await choose('Connect these stairs…');
+  await page.waitForFunction(() => !document.getElementById('connect-banner').hidden);
+  await page.emulateMediaType('print');
+  const printed = await page.evaluate(() => ({ plan: document.getElementById('plan').getBoundingClientRect().top, stage: document.querySelector('.bld-stage').getBoundingClientRect().top, banner: getComputedStyle(document.getElementById('connect-banner')).display }));
+  await page.emulateMediaType(null);
+  assert.deepEqual([printed.plan, printed.banner], [printed.stage, 'none'], 'in print the plan starts at the top of its stage');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
+  await still(page);
 });
 
 // ---------------------------------------------------------------- stairwell through floors
@@ -569,6 +618,9 @@ test('the Floor tab lists a stairwell as one row with its letter, floors and way
   await page.keyboard.press('Enter');
   await waitFor('#inspector-floor [data-part="well-summary"]', 'Stairwell East · Floor 1 to Floor 3 · up only');
   assert.deepEqual(await wells(), [['A', 'East'], ['B', 'East']]);
+  // SV2-142b: heard once, by the toast; the announcer does not say it again
+  assert.equal(await toastText(), 'Stairwell A is now Stairwell East on every floor.');
+  assert.doesNotMatch(await said(), /Stairwell East/, 'heard twice: the announcer says it too');
   // the row is the same row after the rename: the focus stays in its Letter field
   const focused = () => page.evaluate(() => {
     const el = document.activeElement;

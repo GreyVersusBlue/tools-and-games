@@ -628,8 +628,11 @@ export function floorPanel(env) {
     // one row for a stairwell: its letter, its floors and way, the way for every flight, Split
     const buildWell = (entry) => {
       const letter = field({ label: 'Letter or name', value: entry.letter, commit: (value) => {
+        const steps = store.history.past.length;
         store.apply(setStairwellLetter, { well: current.letter, letter: value });
-        ctx.announce((store.undoOutcome || {}).text || 'Renamed the stairwell.');
+        // said once, by the toast (a live region) with Undo, as the other fields'
+        // results are: not by the announcer too (SV2-142, SV2-142b)
+        if (store.history.past.length > steps) ctx.toast({ text: (store.undoOutcome || {}).text || 'Renamed the stairwell.', action: { label: 'Undo', run: ctx.undo } });
       } });
       letter.input.dataset.key = 'well:' + entry.id;
       const summary = h('p', { class: 'bld-inspector__small', data: { part: 'well-summary' } });

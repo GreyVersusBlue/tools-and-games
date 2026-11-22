@@ -581,7 +581,11 @@ async function gate(page, ids) {
     derived.kept = (ref, ...rest) => {
       const id = typeof ref === 'string' ? ref : ref && ref.id;
       const one = window.__gates[id];
-      return one ? one.held.then(() => window.__orig.kept.call(derived, ref, ...rest)) : window.__orig.kept.call(derived, ref, ...rest);
+      if (!one) return window.__orig.kept.call(derived, ref, ...rest);
+      const answer = one.held.then(() => window.__orig.kept.call(derived, ref, ...rest));
+      // settled once the page has its answer for this id: a test can wait on it
+      one.answered = answer.then(() => true, () => true);
+      return answer;
     };
     derived.scenario = (...rest) => {
       const one = window.__gates.open;
@@ -965,9 +969,18 @@ test('122b 10: answers that come out of order: choose A then B in one flight, on
     await page.waitForFunction(() => document.querySelector('.scn').dataset.compare === 'ready');
     await ready(page);
     assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), HOSTILE);
+    // B's picture on the map: the map paints on the next frame, so the count
+    // is read once that frame has painted the picture made for B (SV2-143)
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.scn');
+      return el.difference.answer === el.scenarios.answer && el.difference.painted.made === el.dataset.differenceMade;
+    });
     const drawn = await page.evaluate(() => document.querySelector('.scn').difference.painted.made);
     await letGo(page, 'ekeptlib00');
+    // A's older answer has come to the page, and whatever it would draw has been drawn
+    await page.evaluate(() => window.__gates.ekeptlib00.answered);
     await frames(page);
+    assert.equal(await page.$eval('.scn', (el) => el.dataset.differenceMade), drawn, 'a picture was made for A');
     assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), HOSTILE, 'A did not draw');
     assert.match(await page.$eval('.scn-compare__status', (el) => el.textContent), new RegExp('^Compared with ' + HOSTILE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ': '));
     assert.equal(await page.$eval('.scn-difference-block', (el) => el.dataset.against), HOSTILE);

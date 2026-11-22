@@ -207,6 +207,9 @@ export const section = {
     // true from a fit until the map is moved by hand: the fit then follows the window
     let fitted = false;
     let fitBox = null;
+    // the plan's top within its stage and the stage's size at the last measure
+    let planTop = null;
+    let planStage = null;
     let styled = false;
     let queued = false;
     let cardDismissed = false;
@@ -277,10 +280,23 @@ export const section = {
 
     function measure() {
       if (!element.isConnected) return;
-      const box = stage.getBoundingClientRect();
+      // the plan's own box: under the connect banner while it shows (SV2-142)
+      const box = canvas.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) return;
+      const stageBox = stage.getBoundingClientRect();
       renderer.resize(box.width, box.height, window.devicePixelRatio || 1);
       view.resize(box.width, box.height);
+      // The connect banner coming or going moves the plan's top, not the
+      // window: every cell stays where it was on screen (the view pans by the
+      // change in the top) and a fitted plan is not fitted again, so its zoom
+      // holds (a mode never changes the plan's size or moves the view, as the
+      // options row above; SV2-142b). Only the stage's own size refits.
+      const top = box.top - stageBox.top;
+      const stageSize = Math.round(stageBox.width) + 'x' + Math.round(stageBox.height);
+      if (planTop !== null && top !== planTop) view.panBy(0, planTop - top);
+      const refit = stageSize !== planStage;
+      planTop = top;
+      planStage = stageSize;
       if (needsFit && styled) {
         needsFit = false;
         if (memory.view) {
@@ -295,7 +311,7 @@ export const section = {
       }
       // the fit follows the window, but never under a gesture that is going on
       // the fit follows the window: the same part of the floor, at the new size
-      if (fitted && fitBox) view.fit(fitBox);
+      if (fitted && fitBox && refit) view.fit(fitBox);
       settle();
       // the room the address asked for, now that the plan has a size
       if (asked && !needsFit) {
@@ -909,6 +925,7 @@ function commitPlain(action, payload, options) {
     darkQuery.addEventListener('change', onTheme);
     themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     observer.observe(stage);
+    observer.observe(canvas);
 
     // ------------------------------------------------------------ the selection
 
