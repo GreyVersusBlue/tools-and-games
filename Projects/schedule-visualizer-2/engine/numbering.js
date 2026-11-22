@@ -7,6 +7,7 @@
 //   plainNext(number)               the number after this one, used or not, or null
 //   nextRoomNumber(project, seed)   the number after the seed that no room has, or null
 //   firstRoomNumber(project, floorId)  where a floor's sequence starts
+//   copyNumber(number, used)        a duplicate's own number: "Library" is "Library 2"
 //
 // A number splits at its last run of digits: "B-12" is B-, 12, "" and "1004A"
 // is "", 1004, A. The next is the digits plus one at the same width or wider
@@ -72,4 +73,24 @@ export function firstRoomNumber(project, floorId) {
   }
   if (highest !== null) return nextRoomNumber(project, highest.number);
   return nextRoomNumber(project, String(Math.max(0, floor.level) * 100));
+}
+
+// A duplicated room's own number when its number cannot follow the floor
+// (ARCHITECTURE 22.17, Devon 2026-11-21): the number as typed with " 2" after
+// it, or " 3" and on when that is taken; a number already ending in a space and
+// a count ("Library 2", a copy's copy) goes on counting ("Library 3"). `used`
+// is a Set of roomNumberKey's keys; the one returned is added to it.
+export function copyNumber(number, used) {
+  const text = String(number).trim();
+  const counted = /^(.*\S) ([0-9]+)$/su.exec(text);
+  const base = counted ? counted[1] : text;
+  let n = counted ? BigInt(counted[2]) + 1n : 2n;
+  for (;;) {
+    const candidate = base + ' ' + n.toString();
+    if (!used.has(roomNumberKey(candidate))) {
+      used.add(roomNumberKey(candidate));
+      return candidate;
+    }
+    n += 1n;
+  }
 }

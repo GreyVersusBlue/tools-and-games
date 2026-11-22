@@ -17,15 +17,15 @@
         "id": "hire",
         "ui": "outfit-first",
         "label": "Hire Yusuf and send him",
-        "hint": "The clerk's fee is 10 dinars. The next sheet shows what sending him costs.",
+        "hint": "The clerk's fee is 4 dinars. The next sheet shows what sending him costs.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -4
           },
           {
             "hire": "yusuf"
@@ -63,6 +63,86 @@
       {
         "src": "goitein-1973",
         "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+      }
+    ]
+  },
+  {
+    "id": "ali-asks-for-work",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Ali, a young trader of Cairo",
+      "role": "Cairo",
+      "seal": "seal-2"
+    },
+    "title": "Ali asks for work",
+    "body": "Ali is bold and quick. He has travelled before and knows the south. He has no house of his own, and he asks you to take him on. A second agent means two sets of goods out at once. It also means a second wage.",
+    "when": {
+      "agent": "ali",
+      "hired": false
+    },
+    "weight": 100,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "hire",
+        "label": "Hire Ali",
+        "hint": "The clerk's fee is 4 dinars. Your other agents hear that you hire people, and think better of you in three seasons. The next sheet shows what sending him costs.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          },
+          {
+            "hire": "ali"
+          },
+          {
+            "trust": "ali",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "not-yet",
+        "label": "Not yet",
+        "hint": "You save the fee, and you keep one agent out at a time. Partners like a house that waits, and say so in two seasons.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A merchant of the Geniza papers did not always pay a travelling manager a wage. Sometimes he paid the manager's living costs on the road instead.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "pp. 322, 325 to 326; a travelling manager had his living expenses paid instead of a wage"
       }
     ]
   },
@@ -196,11 +276,11 @@
       "seal": "seal-1"
     },
     "title": "Yusuf asks to go further",
-    "body": "Before he leaves for {to}, Yusuf asks to go on if the price is better beyond it. Your orders say {to} and no further. He says he may do better, but he will keep to your orders if you say so.",
+    "body": "Yusuf is on the road to {to}. He sends word by a traveller. He asks to go on past {to} if the price is better there. He says he may do better, and he will keep to your plan if you say so.",
     "when": {
       "trip": {
         "agent": "yusuf",
-        "is": "ready"
+        "is": "out"
       }
     },
     "weight": 3,
@@ -209,7 +289,7 @@
       {
         "id": "widen",
         "label": "Let him go further if the price is better",
-        "hint": "He may do better. A longer road costs 25 dinars more, later, and you carry the risk.",
+        "hint": "He may do better. A longer road costs 4 dinars more, later, and you carry the risk.",
         "now": [
           {
             "trust": "yusuf",
@@ -225,7 +305,7 @@
             "in": 3,
             "do": [
               {
-                "money": -25
+                "money": -4
               }
             ]
           }
@@ -233,16 +313,16 @@
       },
       {
         "id": "keep",
-        "label": "Keep to your orders",
-        "hint": "Yusuf will keep his word.",
+        "label": "Keep him to {to}",
+        "hint": "Yusuf will keep his word, and partners like a house that holds its orders.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "trust": "yusuf",
-                "by": -1
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -312,7 +392,7 @@
             "in": 4,
             "do": [
               {
-                "money": -30
+                "money": -5
               }
             ]
           }
@@ -321,15 +401,15 @@
       {
         "id": "wage",
         "label": "Pay her a plain wage",
-        "hint": "It costs 20 dinars now. She is paid even if the goods are lost.",
+        "hint": "It costs 4 dinars now. She is paid even if the goods are lost.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -4
           },
           {
             "hire": "mariam"
@@ -355,7 +435,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -407,15 +487,15 @@
       {
         "id": "fee",
         "label": "Pay him a fee for the one job",
-        "hint": "It costs 20 dinars. He stays free to go.",
+        "hint": "It costs 5 dinars. He stays free to go.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -5
           },
           {
             "hire": "matteo"
@@ -435,15 +515,15 @@
       {
         "id": "wage",
         "label": "Hire him on a plain wage",
-        "hint": "It costs 40 dinars. He is paid whatever happens.",
+        "hint": "It costs 5 dinars. He is paid whatever happens.",
         "requires": {
           "money": {
-            "gte": 40
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -40
+            "money": -5
           },
           {
             "hire": "matteo"
@@ -476,7 +556,7 @@
             "in": 3,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }

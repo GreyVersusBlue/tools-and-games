@@ -9,7 +9,7 @@
       "seal": null
     },
     "title": "Farid's ship is late",
-    "body": "Farid was a partner in your last venture. His ship is late, and he cannot pay his debts this season. He asks you for 150 until it comes in.",
+    "body": "Farid is a merchant your house knows. His ship is late, and he cannot pay his debts this season. He asks you for 5 until it comes in.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -19,12 +19,12 @@
         "hint": "Ships are often late. Some never come.",
         "requires": {
           "money": {
-            "gte": 150
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -150
+            "money": -5
           },
           {
             "rep": "partners",
@@ -36,7 +36,7 @@
             "in": 2,
             "do": [
               {
-                "money": 100
+                "money": 4
               }
             ],
             "card": "farid-ship-lost"
@@ -46,11 +46,11 @@
       {
         "id": "refuse",
         "label": "Refuse",
-        "hint": "Farid will remember.",
+        "hint": "Farid will remember. The court likes a careful house.",
         "now": [
           {
-            "rep": "partners",
-            "by": -1
+            "rep": "court",
+            "by": 1
           }
         ],
         "later": [
@@ -88,7 +88,7 @@
       "seal": null
     },
     "title": "A friend asks for a loan",
-    "body": "Murad has been your friend for years. His goods are stuck, and he needs 60 dinars for a few seasons. He does not ask for a paper. He says you would do the same for him.",
+    "body": "Murad has been your friend for years. His goods are stuck, and he needs 7 dinars for a few seasons. He does not ask for a paper. He says you would do the same for him.",
     "when": {
       "rep": "partners",
       "gte": 1
@@ -98,16 +98,16 @@
     "choices": [
       {
         "id": "lend",
-        "label": "Lend him 60 dinars",
+        "label": "Lend him 7 dinars",
         "hint": "He may not repay it all. He will remember.",
         "requires": {
           "money": {
-            "gte": 60
+            "gte": 7
           }
         },
         "now": [
           {
-            "money": -60
+            "money": -7
           },
           {
             "rep": "partners",
@@ -119,7 +119,7 @@
             "in": 3,
             "do": [
               {
-                "money": 40
+                "money": 4
               }
             ]
           }
@@ -128,12 +128,16 @@
       {
         "id": "decline",
         "label": "Say you cannot",
-        "hint": "Murad will ask someone else.",
+        "hint": "Murad will ask someone else. The court likes a careful house.",
         "now": [],
         "later": [
           {
             "in": 3,
             "do": [
+              {
+                "rep": "court",
+                "by": 1
+              },
               {
                 "rep": "partners",
                 "by": -1
@@ -164,7 +168,7 @@
       "seal": "seal-3"
     },
     "title": "Samir asks who pays the road",
-    "body": "Samir is about to leave for {to} with {good}. He asks that the house pay for his food, boats and gate fees on the way. He says the house should carry those costs.",
+    "body": "Samir could go to {to} with {good}. If you send him, he asks the house to pay his food, boats and gate fees on the way. He says the house should carry those costs.",
     "when": {
       "trip": {
         "agent": "samir",
@@ -273,20 +277,20 @@
     "choices": [
       {
         "id": "partner",
-        "label": "Put in 80 dinars as her partner",
-        "hint": "It costs now. You would take a share of the profit.",
+        "label": "Put in 5 dinars as her partner",
+        "hint": "It costs now. You would take a share of the profit, and the whole market would see the partnership.",
         "requires": {
           "money": {
-            "gte": 80
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -80
+            "money": -5
           },
           {
             "rep": "partners",
-            "by": 1
+            "by": 2
           }
         ],
         "later": [
@@ -294,7 +298,7 @@
             "in": 4,
             "do": [
               {
-                "money": 70
+                "money": 4
               }
             ]
           }
@@ -302,11 +306,11 @@
       },
       {
         "id": "small",
-        "label": "Lend her 20 dinars as a kindness",
-        "hint": "A small help. She will repay it.",
+        "label": "Lend her 3 dinars as a kindness",
+        "hint": "A small help. She will repay it, and the street will hear of the kindness.",
         "now": [
           {
-            "money": -20
+            "money": -3
           }
         ],
         "later": [
@@ -314,7 +318,11 @@
             "in": 3,
             "do": [
               {
-                "money": 20
+                "money": 3
+              },
+              {
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -323,18 +331,18 @@
       {
         "id": "keep",
         "label": "Keep your money for your own trade",
-        "hint": "It stays free to work. Dalal may be hurt.",
+        "hint": "It stays free to work, and the court likes a careful house. Dalal may be hurt.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": 5
+                "money": 2
               },
               {
-                "rep": "partners",
-                "by": -1
+                "rep": "court",
+                "by": 1
               }
             ]
           }

@@ -7,7 +7,7 @@ import { h, qs } from './dom.js';
 import { loadContent } from '../data.js';
 import * as engine from '../engine/index.js';
 import { makeSlots, settingsDefaults } from '../save.js';
-import { renderTitle, TITLE_TEXT } from './screens/title.js';
+import { renderTitle, lastScore, TITLE_TEXT } from './screens/title.js';
 import { newGameBody } from './screens/newgame.js';
 import { settingsBody, applySettings } from './screens/settings.js';
 import { createDesk } from './screens/desk.js';
@@ -15,6 +15,7 @@ import { createMap } from './screens/map.js';
 import { createEnding, ENDING_PAGES } from './screens/ending.js';
 import { ledgerBody } from './screens/ledger.js';
 import { notebookBody } from './screens/notebook.js';
+import { num } from './screens/paper.js';
 
 const SCREENS = new Set(['title', 'desk', 'map', 'ending']);
 const NEEDS_GAME = new Set(['desk', 'map', 'ending']);
@@ -72,6 +73,13 @@ const label = () => {
   const v = app.view();
   return `${cap(v.season)} ${v.year}, Act ${WORDS[v.act - 1] ?? v.act}`;
 };
+
+/** What a new game costs the game in the slot, said for the confirm: a finished game by its score, one in play by its season. */
+function lossOf(state) {
+  const last = lastScore(state);
+  return last ? `Your finished game, ${num(last.total)} points, ${last.rank.charAt(0).toLowerCase()}${last.rank.slice(1)}, will be lost.`
+    : `Your game in ${label()} will be lost.`;
+}
 
 /** A small modal with buttons; resolves to the pressed button's value, or null on Esc. */
 function confirmDialog(title, body, actions) {
@@ -137,7 +145,7 @@ function buildPanel(name, opts = {}) {
   }
   const d = makePanel('settings', 'Settings', ...settingsBody(app, {
     onStartAgain: async opener => {
-      const v = await confirmDialog('Start again?', `Your game in ${label()} will be lost. You can export it first.`, [
+      const v = await confirmDialog('Start again?', `${lossOf(app.state)} You can export it first.`, [
         { id: 'confirm-cancel', label: 'Cancel', value: 'cancel' }, { id: 'confirm-again', label: 'Start again', value: 'again', primary: true }]);
       if (v !== 'again') { opener.focus(); return; }
       app.slots.game.clear(); app.state = null; app.running = false;
@@ -233,7 +241,7 @@ async function begin({ length, house }) {
   const saved = app.slots.game.load();
   if (saved) {
     app.state = saved;
-    const v = await confirmDialog('Start again?', `Your game in ${label()} will be lost. You can export it first.`, [
+    const v = await confirmDialog('Start again?', `${lossOf(app.state)} You can export it first.`, [
       { id: 'confirm-cancel', label: 'Cancel', value: 'cancel' },
       { id: 'confirm-export', label: 'Export', value: 'export' },
       { id: 'confirm-again', label: 'Start again', value: 'again', primary: true }]);
@@ -301,6 +309,7 @@ function renderScreen(name) {
   root.replaceChildren(renderTitle({
     city: app.content.city,
     save: saved ? { label: label() } : null,
+    last: lastScore(saved),
     onNew: b => open('newgame', b),
     onContinue: () => { app.running = true; goTo('desk'); },
     onAbout: b => open('about', b),

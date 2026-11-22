@@ -119,12 +119,12 @@
         "hint": "Girgis will owe you a favour.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -30
+            "money": -5
           },
           {
             "rep": "foreign",
@@ -197,10 +197,10 @@
       {
         "id": "take",
         "label": "Take Tadros and keep the glass",
-        "hint": "It costs 30 dinars to take him on. Ilyas will owe you.",
+        "hint": "It costs 5 dinars to take him on. Ilyas will owe you.",
         "requires": {
           "money": {
-            "gte": 30
+            "gte": 5
           }
         },
         "now": [
@@ -209,7 +209,7 @@
             "by": 2
           },
           {
-            "money": -30
+            "money": -5
           },
           {
             "hire": "tadros"
@@ -234,10 +234,10 @@
       {
         "id": "place",
         "label": "Keep the glass and find Tadros a place with a friend",
-        "hint": "It costs 10 dinars, and the friend pays you 50 in thanks. Ilyas will notice.",
+        "hint": "It costs 3 dinars, and the friend pays you 9 in thanks. Ilyas will notice.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 3
           }
         },
         "now": [
@@ -246,7 +246,7 @@
             "by": 2
           },
           {
-            "money": -10
+            "money": -3
           }
         ],
         "later": [
@@ -254,7 +254,7 @@
             "in": 2,
             "do": [
               {
-                "money": 50
+                "money": 9
               }
             ]
           },
@@ -284,7 +284,7 @@
             "in": 2,
             "do": [
               {
-                "money": 5
+                "money": 2
               }
             ]
           }
@@ -313,7 +313,7 @@
       "seal": null
     },
     "title": "A gift meant for Samir",
-    "body": "Samir is home from {to}. A buyer there was pleased with the price Samir got for him. He sends 20 dinars to your desk as a gift for the man who found him. The gift came to the house, but it was meant for Samir.",
+    "body": "Samir is home from {to}. A buyer Samir met there was pleased to deal with him. He sends 7 dinars to your desk as a gift for the man who found him. The gift came to the house, but it was meant for Samir.",
     "when": {
       "all": [
         {
@@ -332,7 +332,7 @@
     "choices": [
       {
         "id": "give",
-        "label": "Give Samir the 20 dinars",
+        "label": "Give Samir the 7 dinars",
         "hint": "It costs you nothing you had. Samir will tell others.",
         "now": [
           {
@@ -354,21 +354,21 @@
       },
       {
         "id": "half",
-        "label": "Give Samir ten and keep ten",
-        "hint": "You gain 10 dinars. Samir shrugs.",
+        "label": "Give Samir three and keep four",
+        "hint": "You gain 4 dinars. Samir shrugs.",
         "now": [
           {
-            "money": 10
+            "money": 4
           }
         ]
       },
       {
         "id": "keep",
         "label": "Keep it for the house",
-        "hint": "You gain 20 dinars. Samir is not told.",
+        "hint": "You gain 7 dinars. Samir is not told.",
         "now": [
           {
-            "money": 20
+            "money": 7
           },
           {
             "trust": "samir",
@@ -403,7 +403,7 @@
       "seal": null
     },
     "title": "Tadros is home from {to}",
-    "body": "Tadros has finished his first trip. Ilyas has written to ask how he behaved. Tadros asks if the house will keep him on, and if it will write back to his uncle.",
+    "body": "Tadros is home from {to}. Ilyas has written to ask how he behaved. Tadros asks if the house will keep him on, and if it will write back to his uncle.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -426,7 +426,7 @@
             "in": 2,
             "do": [
               {
-                "money": -5
+                "money": -2
               }
             ]
           }

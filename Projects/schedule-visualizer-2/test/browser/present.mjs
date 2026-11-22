@@ -735,6 +735,52 @@ test('Escape before the browser grants full screen: the grant that comes after i
   }
 });
 
+// SV2-143: the case above failed now and then on a slow machine: the late
+// grant held the section full screen until the look for the window's size
+// had run out, and nothing looked again when full screen was over
+test('a late grant that holds the section full screen past the look for the window: the map is put back when full screen is over', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
+  const { page } = session;
+  try {
+    await settled(page);
+    await handTimers(page);
+    await holdFullscreen(page);
+    // the browser slow to give full screen back too: the exit reaches it only at release
+    await page.evaluate(() => {
+      const real = Document.prototype.exitFullscreen;
+      Document.prototype.exitFullscreen = function heldExit() {
+        return new Promise((resolve, reject) => {
+          globalThis.__releaseExit = () => real.call(document).then(resolve, reject);
+        });
+      };
+    });
+    await page.focus('[data-action="present"]');
+    await page.keyboard.press('p');
+    await page.waitForFunction(() => document.querySelector('.mov').dataset.present === 'window');
+    const count = await restoredCount(page);
+    // Leave, and the browser's yes in the same task, before the map is put back
+    await page.evaluate(() => {
+      document.querySelector('[data-action="present-leave"]').click();
+      globalThis.__releaseFullscreen();
+    });
+    await page.waitForFunction(() => document.fullscreenElement === document.querySelector('.mov') && typeof globalThis.__releaseExit === 'function', { timeout: 10000 });
+    assert.equal((await read(page)).presenting, false, 'Leave did not leave');
+    assert.equal(await restoredCount(page), count, 'the map was put back before the grant came: the case tests nothing');
+    // the look for the window's size runs out while the section is the screen's
+    assert.notEqual(await runTimer(page, 'restore'), null, 'no look for the window was running: the case tests nothing');
+    assert.equal(await restoredCount(page), count, 'the map was put back at the screen\'s size');
+    // full screen given back: the map is put back in the section
+    await page.evaluate(() => globalThis.__releaseExit());
+    await outOfMode(page, count);
+    const now = await read(page);
+    assert.equal(now.anyFull, false, 'the page is full screen with the mode off');
+    assert.equal(now.inertCount, 0, 'something is left inert');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
 test('WebKit\'s prefixed full screen, which says no by an event and returns no promise: the refusal is said as one', async () => {
   const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
   const { page } = session;
@@ -1780,8 +1826,21 @@ test('Enter held down on Leave leaves once: its repeats on Present do not enter 
     await page.keyboard.press('p');
     await inMode(page);
     await page.evaluate(() => {
+      // each time the mode goes out or in, read from the attribute's records:
+      // a record's old value is the state before it, the next record's old
+      // value (or the attribute now) the state after. A write that leaves the
+      // mode as it was is neither: the browser's grant can come as its event
+      // and, a frame later, as its promise, after inMode has seen the first,
+      // and each says "full screen" again (SV2-143)
       globalThis.__presents = [];
-      new MutationObserver(() => globalThis.__presents.push(document.querySelector('.mov').dataset.present ? 'in' : 'out')).observe(document.querySelector('.mov'), { attributes: true, attributeFilter: ['data-present'] });
+      const root = document.querySelector('.mov');
+      new MutationObserver((records) => {
+        records.forEach((record, i) => {
+          const was = record.oldValue !== null;
+          const now = i + 1 < records.length ? records[i + 1].oldValue !== null : root.hasAttribute('data-present');
+          if (was !== now) globalThis.__presents.push(now ? 'in' : 'out');
+        });
+      }).observe(root, { attributes: true, attributeOldValue: true, attributeFilter: ['data-present'] });
     });
     await page.focus('[data-action="present-leave"]');
     const count = await restoredCount(page);

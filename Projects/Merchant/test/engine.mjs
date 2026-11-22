@@ -6,7 +6,7 @@ import { test, eq, ok, throws, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import * as rng from '../js/engine/rng.js';
 import * as cal from '../js/engine/calendar.js';
-import { freshState } from '../js/engine/state.js';
+import { freshState, addPaper } from '../js/engine/state.js';
 import { apply } from '../js/engine/effects.js';
 import { holds } from '../js/engine/conditions.js';
 import { steps } from '../js/engine/turn.js';
@@ -105,7 +105,7 @@ test('state: freshState has every field of ARCHITECTURE 3 with the right type', 
   eq(s.score, null);
   eq(s.phase, 'desk');
   eq(Object.keys(s).sort(), ['agents', 'city', 'desk', 'done', 'expeditions', 'flags', 'house', 'known', 'length', 'loans', 'log', 'market',
-    'money', 'notebook', 'phase', 'post', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
+    'money', 'notebook', 'notebookRead', 'phase', 'post', 'queue', 'rep', 'rng', 'score', 'seed', 'seen', 'stock', 't', 'v']);
 });
 test('state: the house sets money, stock, hired agents and reputation; the market starts level', () => {
   const s = fresh();
@@ -293,6 +293,22 @@ test('turn: newGame changes neither the content nor a second game made from it',
   eq(JSON.stringify(content), before, 'newGame mutated the content');
   eq(game().desk[0].state, 'open');
   eq(game().flags, {});
+});
+test('turn: choose records a trip card\'s title and label filled, as view().cards shows them (MER-109)', () => {
+  const c = variant(x => {
+    x.cards.push({ id: 'ready-news', group: 'orders', kind: 'trade', from: { name: 'Nell the broker', role: 'Testport', seal: null },
+      title: '{agent} is ready', body: '{agent} could take {good} to {to}.', when: { trip: { agent: 'mira', is: 'ready' } }, weight: 1,
+      choices: [{ id: 'hold', label: 'Keep {agent} to {to}', now: [], later: [{ in: 1, do: [] }] }],
+      note: 'An invented card for testing.', sources: [{ src: 'testport-fiction' }] });
+  });
+  let s = game(); s.stock.wool = 5;
+  addPaper(s, { id: 'p0-9', kind: 'card', ref: 'ready-news' });
+  const p = s.desk[s.desk.length - 1], seen = view(s, c).cards[p.id];
+  ok(seen && !/[{}]/.test(seen.title + seen.choices.hold.label), `the page shows the card filled: ${JSON.stringify(seen)}`);
+  const after = choose(s, c, p.id, 'hold');
+  const item = after.queue.find(q => q.from === 'ready-news/hold');
+  eq([item.viaCard, item.viaChoice], [seen.title, seen.choices.hold.label], 'the record holds the words the player saw');
+  ok(!/[{}]/.test(item.viaCard + item.viaChoice), 'no raw slot in the record');
 });
 test('turn: choose applies now-effects, queues later-effects with at, unlocks and logs', () => {
   const s = choose(game(), content, 'p0-1', 'buy');

@@ -104,6 +104,7 @@ html.large-text .title-what { display: none; }
 .bar-date .date { font-family: var(--font-paper); font-weight: 700; font-size: var(--step-1); line-height: 1.1; }
 .bar-date .count { font-size: var(--step--1); color: var(--paper-shade); }
 .bar-money { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.bar-money .worth { margin: 0; font-variant-numeric: tabular-nums; }
 .bar-money .money { display: flex; align-items: center; gap: var(--s2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .icon { display: inline-flex; color: var(--brass); }
 .bar-tools { display: flex; align-items: center; gap: var(--s1); }
@@ -139,6 +140,7 @@ html.large-text .title-what { display: none; }
 .sheet-head .sender { margin: 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
 .sheet-head .sender strong { color: var(--ink); font-weight: 600; }
 .sheet-title { font-size: var(--step-2); margin-bottom: var(--s2); }
+.return-lead { margin: 0 0 var(--s2); flex: 0 0 auto; }   /* a return's hoped, why and unsold sentences, in body type under its headline */
 .sheet-title:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
 .sheet-body { margin-bottom: var(--s3); }
 /* a letter's own lines (DESIGN 4.5): where and when it was written, and under the choices how long the answer takes */
@@ -165,10 +167,11 @@ html.large-text .title-what { display: none; }
 .sheet .next { margin: var(--s3) 0 var(--s2); }
 .sheet .source { font-size: var(--step--1); color: var(--ink-soft); margin-top: var(--s2); }
 .account summary { min-height: var(--hit); display: list-item; padding: var(--s2) 0; box-sizing: border-box; cursor: pointer; }
-.account table { width: 100%; border-collapse: collapse; margin-top: var(--s2); }
-.account th { text-align: left; font-weight: 400; }
-.account td { text-align: right; }
-.account th, .account td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); }
+/* every account table, the return's folded one and the loss paper's open one: label left, value right, one rule under each row (MER-97) */
+.accounts-table { width: 100%; border-collapse: collapse; margin-top: var(--s2); }
+.accounts-table th { text-align: left; font-weight: 400; }
+.accounts-table td { text-align: right; }
+.accounts-table th, .accounts-table td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); vertical-align: baseline; }
 /* a phone keeps each account row's label and its value on one line, the value at the right and wrapping under the label only when it must (MER-87, finding 12) */
 @media (max-width: 480px) { .accounts-table tr { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); border-bottom: 1px solid var(--paper-shade); }
   .accounts-table th, .accounts-table td { border: 0; } .accounts-table td { flex: 0 1 auto; min-width: 0; } }
@@ -212,13 +215,20 @@ html.large-text .title-what { display: none; }
 @media (max-width: 700px) and (min-height: 501px) {
   .desk-stills, .desk-still { height: 30svh; bottom: auto; }
   .desk-screen { padding-top: 30svh; background: var(--night); }
-  .topbar { flex-wrap: wrap; background: rgba(20, 17, 13, .78); }
+  /* MER-105: two rows, not three. The date and Map/Menu share the first, the money and the worth figure (kept whole) the second:
+     about 80 px, so the 7.4rem a placeholder still leaves above the papers always clears it. At three rows the bar was 149 px
+     and sat over the paper's sender line and the papers-left tag. */
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--s3); row-gap: 0;
+    background: var(--night); }   /* opaque (MER-108): on this frame the page scrolls under the fixed bar, and at .78 a paper's lines printed over the date and the money */
+  .topbar .bar-date { grid-column: 1; grid-row: 1; }
+  .topbar .bar-tools { grid-column: 2; grid-row: 1; }
+  .topbar .bar-money { grid-column: 1 / -1; grid-row: 2; row-gap: 0; }
   /* a placeholder still is a flat colour with a file name in it: 143 px of nothing between the bar and the first paper
      (MER-87, finding 15). Without it the papers start under the bar; a final picture keeps its band. */
   .desk-screen:has(.desk-still.placeholder) { padding-top: 7.4rem; }
   .desk-screen:has(.desk-still.placeholder) .desk-stills { display: none; }
   /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
-  .sheet-title { scroll-margin-top: 9rem; }
+  .sheet-title { scroll-margin-top: 5.5rem; }   /* the bar is two rows, 75 px (MER-105); 9rem was for three */
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
   /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
@@ -232,7 +242,7 @@ html.large-text .title-what { display: none; }
   .sheet { padding: var(--s3); }
   .choices .choice { min-height: 56px; }
   .end-row { position: sticky; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
-    background: rgba(20, 17, 13, .9); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }
+    background: var(--night); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }   /* opaque: at .9 the next paper's lines showed behind End the season (MER-105) */
   .end-reason { text-align: center; }
 }
 
@@ -327,7 +337,12 @@ html.large-text .title-what { display: none; }
 .stoplist .option.lit { outline: 2px solid var(--brass-dark); outline-offset: -2px; }
 .prices-open { display: none; }
 .prices-box { container-type: inline-size; }
-.prices-head { display: none; font-size: var(--step-1); margin: 0 0 var(--s2); }
+.prices-head { font-size: var(--step-1); margin: 0 0 var(--s1); }
+.trades { list-style: none; margin: var(--s2) 0; padding: 0; font-family: var(--font-chrome); font-size: var(--step-0); }
+.trade { padding: var(--s2) 0; border-bottom: 1px solid var(--paper-shade); }
+.trade .when { display: block; font-size: var(--step--1); color: var(--ink-soft); }
+.all-prices { margin: var(--s2) 0; }
+.prices-all[hidden] { display: none; }
 .prices { width: 100%; border-collapse: collapse; font-family: var(--font-chrome); font-size: var(--step-0); }
 .prices th, .prices td { padding: var(--s2) var(--s1); border-bottom: 1px solid var(--paper-shade); text-align: left; vertical-align: top; }
 .prices .when { display: block; font-size: var(--step--1); color: var(--ink-soft); }
@@ -390,16 +405,24 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 .outfit .summary .change { flex: none; }
 .outfit .change { min-height: var(--hit); min-width: var(--hit); padding: 0 var(--s2); background: none; color: var(--lapis); text-decoration: underline;
   font-family: var(--font-chrome); font-weight: 600; font-size: var(--step-0); }
+.outfit .typed { display: flex; align-items: center; gap: var(--s2); min-height: var(--hit); flex-wrap: wrap; }
+.outfit .typed input { min-height: var(--hit); width: 8rem; padding: 0 var(--s2); font: inherit; }
 .outfit .none, .outfit .total { font-family: var(--font-chrome); margin: var(--s2) 0 0; }
 .outfit .warn { color: var(--madder); font-family: var(--font-chrome); margin: var(--s2) 0 0; }
 .outfit .now.closed { color: var(--madder); font-weight: 600; }
 .outfit .legs { margin: 0; padding-left: 1.4rem; font-family: var(--font-chrome); }
 .outfit .legs li { padding: var(--s1) 0; }
 .agents, .contracts { display: grid; gap: var(--s2); grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-.agent, .contract { display: flex; gap: var(--s3); align-items: flex-start; text-align: left; min-height: 56px; padding: var(--s2) var(--s3);
+.agent, .contract, .back-pick, .back-none { display: flex; gap: var(--s3); align-items: flex-start; text-align: left; min-height: 56px; padding: var(--s2) var(--s3);
   background: transparent; color: var(--ink); border: 1px solid var(--ink-soft); border-left: .3rem solid var(--brass); border-radius: var(--radius); font-family: var(--font-paper); }
-.agent[aria-checked="true"], .contract[aria-checked="true"] { background: var(--paper-shade); border-color: var(--brass-dark); box-shadow: inset 0 0 0 2px var(--brass-dark); }
-.agent-text, .contract { flex-direction: column; }
+.agent[aria-checked="true"], .contract[aria-checked="true"], .back-pick[aria-checked="true"], .back-none[aria-pressed="true"] { background: var(--paper-shade); border-color: var(--brass-dark); box-shadow: inset 0 0 0 2px var(--brass-dark); }
+.agent-text, .contract, .back-pick, .back-none { flex-direction: column; }
+.back-pick, .back-none { width: 100%; font-family: var(--font-chrome); }
+.back-pick strong, .back-none strong { font-family: var(--font-paper); font-size: var(--step-1); }
+.back-pick span, .back-none span { font-size: var(--step--1); color: var(--ink-soft); }
+.back-pick .suggested { color: var(--lapis); font-weight: 600; }
+.back-good { display: block; }
+.send-row .estimate { font-family: var(--font-chrome); margin: 0 0 var(--s2); }
 .agent-text { display: flex; gap: .15rem; font-family: var(--font-chrome); }
 .agent-text strong { font-family: var(--font-paper); font-size: var(--step-1); }
 .agent-text .trust, .contract span { font-size: var(--step--1); color: var(--ink-soft); font-family: var(--font-chrome); }
@@ -460,6 +483,8 @@ dialog.book .panel-actions { flex: none; }
 .nb-entry { display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s2) 0; border-bottom: 1px solid var(--paper-shade); }
 .nb-entry h4 { font-size: var(--step-1); margin: 0 0 var(--s1); }
 .nb-entry .nb-body { margin: 0; }
+.nb-open summary { min-height: var(--hit); display: list-item; padding: var(--s1) 0; box-sizing: border-box; cursor: pointer; }
+.nb-open summary h4 { display: inline; margin: 0; }
 .nb-entry .source { font-size: var(--step--1); color: var(--ink-soft); margin: var(--s1) 0 0; }
 .nb-art { flex: none; width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: var(--radius); }
 .nb-blank { height: var(--s4); border-bottom: 1px solid var(--ink-soft); opacity: .45; }

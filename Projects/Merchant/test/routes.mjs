@@ -16,7 +16,7 @@ import { seasonIndex } from '../js/engine/calendar.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, recall, outfit, suggestPlan, checkPlan, routeFor, destinations, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
-const T = await loadContent('testport', { fs });
+const T0 = await loadContent('testport', { fs });
 const C = await loadContent('cairo', { fs });
 
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
@@ -26,6 +26,10 @@ const risk = (c, p = 0) => variant(c, x => { for (const r of x.routes) for (cons
 // timeline cases below pin the roads for an agent with no such trait; 'a careful agent takes one more
 // season' has its own cases on the unmodified content.
 const plainMira = c => variant(c, x => { x.agents.find(a => a.id === 'mira').traits = ['honest']; });
+// Hilltown, as the data has it, sells nothing the house trades at home, so money sent there has no good to bring back (MER-92).
+// The cases that send money need a stop with one: T, here, has Hilltown also sell salt, the cheapest good of the city, and a plan that
+// sends money names it in `buy` (SALTED below).
+const T = variant(T0, x => { x.stops.find(s => s.id === 'hilltown').sells.salt = { base: 6, depth: 40 }; });
 const calm = plainMira(risk(T, 0));
 const calmC = risk(C, 0);
 const game = (c = calm, over = {}) => newGame(c, { seed: 7, length: 'full', house: 'plain', ...over });
@@ -47,6 +51,7 @@ const at = (s, t) => ({ ...s, t });
 const peek = state => rng.next({ rng: state.rng });
 
 const WOOL = { agent: 'mira', route: 'harbour-hilltown', cargo: { wool: 10 }, purse: 0, contract: 'own', sell: ['wool'], buy: [] };
+const SALTED = { ...WOOL, buy: ['salt'] };   // a plan that may send money: the proceeds and the purse buy salt at Hilltown
 const reasons = (s, c, plan) => checkPlan(s, c, plan).reasons;
 
 // ---- outfit: every refusal, in words
@@ -64,9 +69,8 @@ test('outfit refuses each bad plan with its reason in words, and checkPlan says 
     ['half a load', { ...WOOL, cargo: { wool: 1.5 } }, /1.5 is not a number of loads/],
     ['nothing carried at all', { ...WOOL, cargo: {}, purse: 0 }, /Send some goods or some coins/],
     ['a good the house lacks and home does not sell', { ...WOOL, cargo: { lamps: 3 }, sell: [] }, /none in the warehouse and Harbour does not sell lamps/],
-    ['more money than the house has', { ...WOOL, purse: 9999 }, /The house has 500 coins and this costs 9,999 coins/],
+    ['more money than the house has', { ...SALTED, purse: 9999 }, /The house has 500 coins and this costs 9,999 coins/],
     ['selling what is not carried', { ...WOOL, sell: ['salt'] }, /Mira is not carrying any salt to sell/],
-    ['selling where the stop does not trade the good', { ...WOOL, cargo: { wool: 1, salt: 1 }, sell: ['salt'] }, /Hilltown does not trade in salt/],
     ['buying what the stop does not have', { ...WOOL, buy: ['lamps'] }, /Hilltown has no lamps to buy/],
     ['a contract that does not exist', { ...WOOL, contract: 'gift' }, /no contract called "gift"/],
     ['a qirad in a city without one', { ...WOOL, contract: 'qirad', partners: 50 }, /A qirad is not an option in Testport/],
@@ -78,6 +82,8 @@ test('outfit refuses each bad plan with its reason in words, and checkPlan says 
     ok(got.some(m => re.test(m)), `${what}: expected ${re}, got ${JSON.stringify(got)}`);
     throws(() => outfit(state, calm, plan), re);
   }
+  const unsalted = plainMira(risk(T0, 0));   // the data's own Hilltown, which does not trade salt
+  ok(reasons(game(unsalted), unsalted, { ...WOOL, cargo: { wool: 1, salt: 1 }, sell: ['salt'] }).some(m => /Hilltown does not trade in salt/.test(m)), 'selling where the stop does not trade the good');
   ok(reasons({ ...s, phase: 'ended' }, calm, WOOL).some(m => /only while the desk is open/.test(m)), 'a closed desk');
   const fine = checkPlan(s, calm, WOOL);
   eq([fine.ok, fine.reasons], [true, []]);
@@ -94,9 +100,9 @@ test('estimate: checkPlan\'s cost.total is exactly what outfit takes from the ho
   const s = game(c);
   const plans = [
     ['stock only', { ...WOOL, cargo: { wool: 10 } }],
-    ['bought in, price rising with each load', { ...WOOL, cargo: { wool: 28 }, purse: 10 }],
-    ['a qirad: the partners\' share is not the house\'s', { ...WOOL, cargo: { wool: 20 }, purse: 100, contract: 'qirad', partners: 60 }],
-    ['money only', { ...WOOL, cargo: {}, purse: 75, sell: [] }],
+    ['bought in, price rising with each load', { ...SALTED, cargo: { wool: 28 }, purse: 10 }],
+    ['a qirad: the partners\' share is not the house\'s', { ...SALTED, cargo: { wool: 20 }, purse: 100, contract: 'qirad', partners: 60 }],
+    ['money only', { ...SALTED, cargo: {}, purse: 75, sell: [] }],
   ];
   for (const [what, plan] of plans) {
     const chk = checkPlan(s, c, plan);
@@ -127,22 +133,22 @@ test('estimate: what the road takes later is listed apart from what is taken now
 
 test('refusals write numbers with commas, on any machine', () => {
   const rich = game(calm, { house: 'rich' });
-  const r = reasons(rich, calm, { ...WOOL, purse: 1234567 });
+  const r = reasons(rich, calm, { ...SALTED, purse: 1234567 });
   ok(r.some(m => /costs 1,234,567 coins/.test(m)), JSON.stringify(r));
-  ok(reasons(game(), calm, { ...WOOL, purse: 999 }).some(m => /costs 999 coins/.test(m)), 'three digits carry no comma');
+  ok(reasons(game(), calm, { ...SALTED, purse: 999 }).some(m => /costs 999 coins/.test(m)), 'three digits carry no comma');
 });
 
 test('outfit: a qirad needs partners, and partners cannot put in more than goes out', () => {
   const c = variant(calm, x => { x.city.contracts = { qirad: { agentShare: [1, 3] } }; });
   const s = game(c);
   ok(reasons(s, c, { ...WOOL, contract: 'qirad' }).some(m => /needs partners/.test(m)));
-  ok(reasons(s, c, { ...WOOL, contract: 'qirad', partners: 500, purse: 50 }).some(m => /cannot put in more than the 50 coins/.test(m)));
-  eq(reasons(s, c, { ...WOOL, contract: 'qirad', partners: 50, purse: 50 }), []);
+  ok(reasons(s, c, { ...SALTED, contract: 'qirad', partners: 500, purse: 50 }).some(m => /cannot put in more than the 50 coins/.test(m)));
+  eq(reasons(s, c, { ...SALTED, contract: 'qirad', partners: 50, purse: 50 }), []);
 });
 
 test('outfit moves the cargo and the money out of the house, buys the rest at the home price with glut, and puts the agent on the road', () => {
   const s = game();
-  const plan = { ...WOOL, cargo: { wool: 15 }, purse: 40 };      // ten from the warehouse, five bought now at 20 and rising
+  const plan = { ...SALTED, cargo: { wool: 15 }, purse: 40 };      // ten from the warehouse, five bought now at 20 and rising
   const t = outfit(s, calm, plan);
   const x = t.expeditions[0];
   eq([t.stock.wool, x.cargo, x.purse, t.agents.mira.where], [undefined, { wool: 15 }, 40, 'road']);
@@ -170,7 +176,7 @@ test('legs honour `opens`: a leg closed the season after sending waits one seaso
 
 test('legs honour `opens` on the way: an expedition whose next leg is closed waits, pays upkeep each season and starts when it opens', () => {
   const c = risk(variant(plainMira(T), y => { for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0; }), 0);
-  let s = outfit(game(c), c, { ...WOOL, purse: 20 });
+  let s = outfit(game(c), c, WOOL);   // the wool sold at Hilltown leaves a purse to pay the upkeep from
   s = play(s, c, 1);                                     // sent in spring (0); summer (1) it rides
   eq([s.expeditions[0].status, s.expeditions[0].left], ['out', 2]);
   s = play(s, c, 2);                                     // arrives at the end of autumn (2), trades; winter (3) is closed
@@ -396,7 +402,7 @@ test('winter risk: the roll itself is made against the winter figure for a galle
   const u = peek(s);
   ok(u < 0.7, `seed 11 draws ${u}`);
   const c = variant(calmC, y => { y.routes.find(r => r.id === 'cairo-famagusta').legs[1].risk = u / 1.2; });
-  const fam = { agent: 'hana', route: 'cairo-famagusta', cargo: { linen: 5 }, purse: 10, contract: 'own' };
+  const fam = { agent: 'hana', route: 'cairo-famagusta', cargo: { linen: 5 }, purse: 10, contract: 'own', buy: ['wool'] };
   const ride = start => {
     const t = outfit(s, c, fam);
     t.expeditions[0].rode = { leg: 1, start };
@@ -423,7 +429,7 @@ test('risk: traits adjust it in the table in agents.js, and each effect is its o
 
 test('risk: a loss is whole or partial from the seeded source; a partial one takes part of each good, a whole one the vessel, and both put a lost paper on the desk', () => {
   const c = risk(T, 1);
-  const base = outfit(game(c), c, { ...WOOL, cargo: { wool: 10 }, purse: 30 });
+  const base = outfit(game(c), c, { ...SALTED, cargo: { wool: 10 }, purse: 30 });
   const seen = { whole: 0, partial: 0, none: 0 };
   for (let seed = 1; seed <= 120; seed++) {
     const s = structuredClone(base);
@@ -467,8 +473,9 @@ test('risk: a vessel lost on the way never sells its cargo first, and a rolled s
 // ---- tolls and trade
 
 test('tolls are paid from the purse, then from the cargo at its home price, and nothing is invented', () => {
-  const c = variant(calm, y => { y.routes.find(r => r.id === 'harbour-saltmarsh').legs[0].toll = 7; });
-  const mk = purse => outfit(game(c), c, { agent: 'mira', route: 'harbour-saltmarsh', cargo: { wool: 3 }, purse, contract: 'own', sell: [], buy: [] });
+  // Money sent needs a good to bring back (MER-92): the plan names lamps, which cost 5,000 here, so the purse buys none and is still the purse
+  const c = variant(calm, y => { y.routes.find(r => r.id === 'harbour-saltmarsh').legs[0].toll = 7; y.stops.find(z => z.id === 'saltmarsh').sells.lamps.base = 5000; });
+  const mk = purse => outfit(game(c), c, { agent: 'mira', route: 'harbour-saltmarsh', cargo: { wool: 3 }, purse, contract: 'own', sell: [], buy: ['lamps'] });
   let s = play(mk(30), c, 2);                             // ride (1), arrive (end of 1): toll 7
   eq([s.expeditions[0].purse, s.expeditions[0].cargo.wool, s.expeditions[0].book.tolls], [23, 3, 7]);
   s = play(mk(0), c, 2);                                  // no purse: the toll is paid in wool, worth 20 a load: one load covers 7
@@ -595,7 +602,7 @@ test('a qirad end to end: the partners are paid their stake and share out of wha
     y.city.contracts = { qirad: { agentShare: [1, 3] } };
     for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0;
   }), 0);
-  let s = outfit(game(c, { house: 'plain' }), c, { ...WOOL, contract: 'qirad', partners: 100, purse: 100 });
+  let s = outfit(game(c, { house: 'plain' }), c, { ...SALTED, contract: 'qirad', partners: 100, purse: 100 });
   eq(s.expeditions[0].staked, { house: 200, partners: 100 });
   eq(s.expeditions[0].contract, { kind: 'qirad', agentShare: 1, of: 3 });
   const money0 = s.money;
@@ -606,7 +613,7 @@ test('a qirad end to end: the partners are paid their stake and share out of wha
   const d = s.desk.find(p => p.kind === 'return').data;
   const cash = before.x.purse;
   const { agent, partners, house } = d.shares;
-  eq(agent + partners + house, cash + 0, 'with every load sold, what came home is cash, and the three shares are all of it');
+  eq(agent + partners + house, d.account.find(r => r.label === 'Back home').amount, 'what came home, the cash and the salt it bought at its home price, is all the three shares add up to');
   eq(s.money - before.money, cash - agent - partners, 'the house\'s money rose by the cash less what it paid out');
   ok(agent > 0 && partners >= 100, `agent ${agent}, partners ${partners}`);
   eq(d.account.map(r => r.label).slice(-4), ["The partners put in", "Mira's share", "The partners' share", 'Profit']);
@@ -618,7 +625,7 @@ test('a qirad that loses everything costs the partners their stake and the house
   const c = risk(variant(T, y => { y.city.contracts = { qirad: { agentShare: [1, 3] } }; }), 1);
   let found = null;
   for (let seed = 1; seed <= 200 && !found; seed++) {
-    let s = outfit(game(c, { seed }), c, { ...WOOL, contract: 'qirad', partners: 100, purse: 100 });
+    let s = outfit(game(c, { seed }), c, { ...SALTED, contract: 'qirad', partners: 100, purse: 100 });
     const money = s.money;
     s = play(s, c, 1);
     s = play(s, c, 1);
@@ -676,6 +683,70 @@ test('the act jump settles every expedition at the quoted prices, resets markets
   ok(s.stock.wool === undefined && s.money > 500, 'the wool was sold at the quote and the money came home');
   const o = openSeason(s, c);
   eq([o.phase, view(o, c).interlude], ['desk', null]);
+});
+
+test('MER-98 (4) the act jump brings the news of every stop on a road up to the jump\'s last year: the first season after it has news one season old at most', () => {
+  let s = newGame(calmC, { seed: 5, length: 'acts', house: 'spice' });
+  const before = M.knownPrices(s, calmC);
+  s = play(s, calmC, 8);
+  eq(s.phase, 'interlude');
+  const ends = new Set(calmC.routes.map(r => r.to));
+  const ages = [];
+  const check = (st, label) => {
+    const k = M.knownPrices(st, calmC);
+    for (const stop of calmC.stops) for (const g of Object.keys(stop.sells ?? {})) {
+      if (!ends.has(stop.id)) continue;
+      ages.push(k[stop.id][g].age);
+      ok(k[stop.id][g].age !== null && k[stop.id][g].age <= 1, `${label}: ${stop.id}/${g} is ${k[stop.id][g].ageWords}`);
+    }
+  };
+  check(s, 'at the interlude');
+  const o = openSeason(s, calmC);
+  check(o, 'the first desk');
+  ok(ages.length > 100, `${ages.length} prices checked`);
+  const t = R.bestTrades(o, calmC, 100);
+  ok(t.length > 5 && t.every(x => x.age <= 1), `${t.length} trades, the oldest news ${Math.max(...t.map(x => x.age))} seasons old`);
+  // the prices are the new act's base prices, the market having been reset: the sheet is not guessing at the old act's
+  eq(M.knownPrices(s, calmC).damascus.wool.p, M.truePrice(s, calmC, 'damascus', 'wool'));
+  ok(Object.values(before).every(x => Object.keys(x).length >= 0));
+});
+
+test('MER-98 (5) a trip that comes home inside the jump leaves its return paper, with hoped and why, on the first desk after the interlude, besides the interlude\'s line', () => {
+  const c = risk(T, 0);
+  let s = game(c, { length: 'acts' });
+  s = play(s, c, 1);
+  s = outfit(s, c, WOOL);
+  s = play(s, c, 2);
+  eq(s.phase, 'interlude');
+  const page = view(s, c).interlude;
+  eq([page.settled.length, page.settled[0].result], [1, 'home'], 'the interlude page still has its line');
+  const money = s.money;
+  const o = openSeason(s, c);
+  eq(o.money, money, 'the paper moves no money: it came home at the jump');
+  const paper = o.desk.find(p => p.kind === 'return');
+  ok(paper, 'a return paper is on the first desk');
+  eq(typeof paper.data.hoped, 'number');
+  eq(typeof paper.data.why, 'string');
+  ok(/^Mira came home from Hilltown\. The house (made|lost) \d+ coins\.$|^Mira came home from Hilltown\./.test(paper.data.headline), paper.data.headline);
+  eq(paper.data.houseNet, page.settled[0].houseNet, 'the paper and the interlude line agree on what the house made');
+  ok(paper.id !== null, 'numbered like any paper on the desk');
+  const done = endSeason(answer(o, c), c);   // it can be answered, and the season can end
+  ok(done.t > o.t);
+  // a trip lost at the jump leaves no return paper
+  const doomed = variant(risk(T, 0.95), x => { x.city.jump = { wholeLoss: 1, survivesWhole: 1 }; });
+  let d = play(outfit(play(game(doomed, { length: 'acts' }), doomed, 1), doomed, WOOL), doomed, 2);
+  if (d.phase === 'interlude') eq(openSeason(d, doomed).desk.some(p => p.kind === 'return'), false);
+});
+
+test('MER-98 (5) an agent who retires at the jump gets a return paper that asks nothing: no bonus, no "send out again"', () => {
+  const c = variant(risk(T, 0), x => { x.city.jump = { retires: 1 }; });
+  let s = play(outfit(play(game(c, { length: 'acts' }), c, 1), c, WOOL), c, 2);
+  eq(view(s, c).interlude.agents.find(a => a.id === 'mira'), { id: 'mira', left: 'retired' });
+  const paper = openSeason(s, c).desk.find(p => p.kind === 'return');
+  ok(paper, 'the account is still left for the desk');
+  eq([paper.data.entry, paper.data.ask, paper.data.choices], [null, null, []]);
+  const o = openSeason(s, c);
+  eq(paperChoices(o, c, o.desk.find(p => p.kind === 'return').id).map(x => x.id), ['ok']);
 });
 
 test('the act jump charges an expedition on the road the wage of its whole road, not of the seasons it had ridden (MER-51b)', () => {
@@ -882,7 +953,7 @@ test('jump: retires in city.json decides who retires across the act jump', () =>
 });
 
 test('jump: wholeLoss, survivesWhole and partial in city.json decide what a loss takes', () => {
-  const base = c => outfit(game(c), c, { ...WOOL, cargo: { wool: 10 }, purse: 30 });
+  const base = c => outfit(game(c), c, { ...SALTED, cargo: { wool: 10 }, purse: 30 });
   const roll = (jump, seed) => {
     const c = variant(risk(T, 1), y => { y.city.jump = jump; });
     const s = base(c);
@@ -979,7 +1050,7 @@ test('(MER-88) seed 1324\'s first return: the headline profit is the account\'s 
   const said = (headline[1] === 'made' ? 1 : -1) * numberIn(headline[2]);
   eq(said, d.houseNet, 'the headline says houseNet');
   const profit = d.account.at(-1);
-  eq([profit.label, profit.amount, (profit.label === 'Loss' ? -1 : 1) * numberIn(profit.text)], ['Profit', d.houseNet, d.houseNet], 'the last row is the profit, and its words are the headline\'s number');
+  eq([profit.label, profit.amount, (profit.label === 'Loss' ? -1 : 1) * numberIn(profit.text)], [d.houseNet < 0 ? 'Loss' : 'Profit', d.houseNet, d.houseNet], 'the last row is the profit, and its words are the headline\'s number');
   const total = d.account.filter(r => r.amount !== undefined && !r.detail && r !== profit).reduce((n, r) => n + r.amount, 0);
   eq(total, d.houseNet, 'every row that is a sum adds up to the headline');
   // money on the desk: what the house held before the opening's returns step and after it. The goods that came home count at the price the paper values them at.
@@ -1038,12 +1109,16 @@ test('(MER-88) the same holds on a road that waits for its season: the estimate 
   ok(checked >= 3, `only ${checked} roads came home inside the search`);
 });
 
-/** Two loads of pepper go to Damascus with `purse` dinars and the buying list `buy`, calm roads; the return paper that comes home. */
+/** Two loads of pepper go to Damascus with `purse` dinars and the buying list `buy`, calm roads; the return paper that comes home.
+    MER-111b: the cases below need a trip that pays (they ask what the house does with goods that came home), and Damascus's pepper
+    is 144 in the data now, not 164: two loads no longer cover the wage and the tolls once the proceeds are spent on sugar. So the trip
+    runs on the same city with Damascus's pepper at the old 164, `dearC`. */
+const dearC = variant(calmC, x => { x.stops.find(s => s.id === 'damascus').sells.pepper.base = 164; });
 const tripOfPepper = ({ purse = 0, buy = [], sell = ['pepper'], stock = {} } = {}) => {
-  const s = cairo();
+  const s = newGame(dearC, { seed: 7, length: 'full', house: 'spice' });
   Object.assign(s.stock, { pepper: 4, ...stock });
-  let st = outfit(s, calmC, { agent: 'yusuf', route: 'cairo-damascus', cargo: { pepper: 2 }, purse, contract: 'own', sell, buy });
-  for (let i = 0; i < 8 && !st.desk.some(p => p.kind === 'return'); i++) st = step(st, calmC);
+  let st = outfit(s, dearC, { agent: 'yusuf', route: 'cairo-damascus', cargo: { pepper: 2 }, purse, contract: 'own', sell, buy });
+  for (let i = 0; i < 8 && !st.desk.some(p => p.kind === 'return'); i++) st = step(st, dearC);
   return { st, paper: st.desk.find(p => p.kind === 'return') };
 };
 test('(MER-88) "Sell the sugar now?" is asked of a trip that brought sugar home, and says sugar, not the pepper that went out', () => {
@@ -1222,7 +1297,7 @@ test('a loss paper carries the trip and a choices list likewise: a lost agent an
   const c = withReturns(risk(T, 1));
   const lose = (jump, seed) => {
     const x = variant(c, y => { y.city.jump = jump; });
-    const s = outfit(game(x), x, { ...WOOL, purse: 30 });
+    const s = outfit(game(x), x, { ...SALTED, purse: 30 });
     s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
     R.risk(s, x);
     return s;
@@ -1258,7 +1333,7 @@ test('a loss paper carries its cause, from the leg that struck, on the desk', ()
   const c = risk(T, 1);
   const lose = (jump, seed) => {
     const x = variant(c, y => { y.city.jump = jump; });
-    const s = outfit(game(x), x, { ...WOOL, purse: 30 });
+    const s = outfit(game(x), x, { ...SALTED, purse: 30 });
     s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
     R.risk(s, x);
     return [s.desk.find(p => p.kind === 'lost')];

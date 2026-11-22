@@ -346,7 +346,8 @@ test('removeStairwellStop: the middle stop out, the stops either side rejoined w
   assert.equal(joined.well, 'A');
   assert.equal(joined.direction, joined.a.floorId === floorId(1) ? 'ab' : 'ba', 'up only still');
   assert.equal(after.building.floors[1].cells[CELL], 'S', 'the stairs cell stays');
-  assert.match(text, /^Floor 2 is out of Stairwell A: Floor 1 and Floor 3 are joined directly, and the stairs on Floor 2 stay, not connected\.$/);
+  assert.equal(joined.label, 'A', 'SV2-142: the joining flight takes the lowest removed flight\'s label, so no letter is used up');
+  assert.equal(text, 'Floor 2 is out of Stairwell A: Floor 1 and Floor 3 are joined directly by one flight that is still Stairwell A (no new letter), and the stairs on Floor 2 stay, connected to nothing, so Checks will warn about them until you connect or remove them.');
   // joined with both ways when the flights did not agree
   const disagreeing = clone(made);
   disagreeing.building.connections.find((connection) => connection.id === 'cwell00002').direction = 'both';
@@ -361,6 +362,42 @@ test('removeStairwellStop: an end stop just goes, its flight with it', () => {
   assert.equal(top.building.connections.length, 2);
   const bottom = run(removeStairwellStop, made, { well: 'A', floorId: floorId(1) });
   assert.deepEqual(stairwells(bottom.building)[0].stops.map((stop) => stop.floorId), [2, 3, 4].map(floorId));
+});
+
+test('SV2-142b: removing a stop of a well lettered apart from its flights reuses the lower removed flight\'s label, and no new letter is used', () => {
+  // Stairwell East over flights A, B, C: Floor 3 out joins Floor 2 and Floor 4 with B's label
+  const east = run(makeStairwell, chain(4), { connectionId: 'cwell00001', letter: 'East' });
+  const { after, text } = step(east, removeStairwellStop, { well: 'East', floorId: floorId(3) }, 'Remove Floor 3 from Stairwell East');
+  const joined = after.building.connections.find((connection) => [connection.a.floorId, connection.b.floorId].sort().join() === [floorId(2), floorId(4)].join());
+  assert.equal(joined.label, 'B', 'the lower removed flight (Floor 2 to 3) gives its label');
+  assert.equal(stairsLetter(joined), 'East');
+  assert.deepEqual(letters(after), ['East', 'East']);
+  assert.equal(text, 'Floor 3 is out of Stairwell East: Floor 2 and Floor 4 are joined directly by one flight that is still Stairwell East (no new letter), and the stairs on Floor 3 stay, connected to nothing, so Checks will warn about them until you connect or remove them.');
+  // plain letters too: the label is B, not the well's A, and not a fresh D
+  const plain = run(removeStairwellStop, run(makeStairwell, chain(4), { connectionId: 'cwell00001' }), { well: 'A', floorId: floorId(3) });
+  assert.deepEqual(plain.building.connections.map((connection) => connection.label).sort(), ['A', 'B']);
+});
+
+test('SV2-142b: in wells of 4, 5 and 6 floors every middle stop, the top and the bottom come out whole, with labels only from the flights that were there', () => {
+  for (const n of [4, 5, 6]) {
+    const made = run(makeStairwell, chain(n), { connectionId: 'cwell00001' });
+    const labels = new Set(made.building.connections.map((connection) => connection.label));
+    for (let k = 1; k <= n; k += 1) {
+      const after = run(removeStairwellStop, made, { well: 'A', floorId: floorId(k) });
+      const found = stairwells(after.building);
+      const at = n + ' floors, Floor ' + k + ' out';
+      assert.equal(found.length, 1, at + ': one well');
+      assert.equal(found[0].parts, 1, at + ': whole');
+      assert.deepEqual(found[0].stops.map((stop) => stop.floorId), Array.from({ length: n }, (_, i) => floorId(i + 1)).filter((id) => id !== floorId(k)), at + ': the other stops');
+      assert.equal(after.building.connections.length, n - 2, at + ': one flight fewer');
+      assert.deepEqual(letters(after), Array(n - 2).fill('A'), at + ': every flight reads A');
+      assert.ok(after.building.connections.every((connection) => labels.has(connection.label)), at + ': no new label');
+      if (k > 1 && k < n) {
+        const joined = after.building.connections.find((connection) => [connection.a.floorId, connection.b.floorId].sort().join() === [floorId(k - 1), floorId(k + 1)].join());
+        assert.equal(joined.label, String.fromCharCode(65 + k - 2), at + ': the flight from Floor ' + (k - 1) + ' gives its label');
+      }
+    }
+  }
 });
 
 test('removeStairwellStop refuses a well of two stops, a floor it does not stop on and a missing well or floor', () => {
@@ -757,7 +794,7 @@ test('removeStairwellStop: a plain flight that already joins the stops either si
   assert.equal(flight(after, 'cwell00009').well, 'A');
   assert.deepEqual(stairwells(after.building)[0].stops.map((stop) => stop.floorId), [1, 3, 4].map(floorId), 'Floor 1 is still a stop');
   assert.equal(stairwells(after.building)[0].parts, 1);
-  assert.match(text, /^Floor 2 is out of Stairwell A: stairs Z already joined Floor 1 and Floor 3, so it joins the stairwell/);
+  assert.equal(text, 'Floor 2 is out of Stairwell A: stairs Z already joined Floor 1 and Floor 3, so that flight is now part of Stairwell A (no new flight, no new letter), and the stairs on Floor 2 stay, connected to nothing, so Checks will warn about them until you connect or remove them.', 'SV2-142b: worded as the joining flight\'s toast is');
   // a way the removed flights agreed on is written on it
   const down = run(setStairwellDirection, made, { well: 'A', direction: 'down' });
   delete flight(down, 'cwell00009').well;

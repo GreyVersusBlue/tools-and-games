@@ -8,7 +8,6 @@ import { num, dinars, seal } from './paper.js';
 import { stopName, traitWords, cap } from './outfit.js';
 
 export const SECTIONS = ['money', 'warehouse', 'road', 'people'];
-const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 const MINUS = '−';
 const VESSEL = { caravan: 'caravan', galley: 'galley', dhow: 'dhow', nileboat: 'river boat', mules: 'mule train' };
 
@@ -19,19 +18,17 @@ const GROUPS = { partners: 'Partners', agents: 'Agents', court: 'The court', for
 const signed = n => (n > 0 ? `+${num(n)}` : n < 0 ? `${MINUS}${num(-n)}` : '0');
 
 /** The changes in the house's money over the last four seasons that closed, newest last, from the
-    log's `season` entries ({ kind: 'season', at, change }). [] when the log has none. */
+    log's `season` entries ({ kind: 'season', at, change }). [] when the log has none. `gap` is the
+    years the act jump skipped, read from the log's own `jump` entry (its `years`, the number the
+    interlude page prints) when that jump sits between this season and the one before it; a gap in the
+    season entries with no jump entry in it says nothing (MER-113b). */
 export function moneyTrail(content, log) {
-  return (log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4)
-    .map(e => ({ at: e.at, season: writeSeason(content, e.at), change: e.change }));
-}
-
-/** When an expedition is expected home: the season it is on plus the seasons its legs have left. */
-function dueSeason(app, x) {
-  const legs = app.content.routes.find(r => r.id === x.route)?.legs ?? [];
-  let n = x.status === 'out' ? x.left : (legs[x.leg]?.seasons ?? 0);
-  for (let i = x.leg + 1; i < legs.length; i++) n += legs[i].seasons;
-  const v = app.view(), at = SEASONS.indexOf(v.season) + n;
-  return `${cap(SEASONS[at % 4])} ${v.year + Math.floor(at / 4)}`;
+  const jumps = (log ?? []).filter(e => e.kind === 'jump' && Number.isInteger(e.years));
+  const four = (log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4);
+  return four.map((e, i) => {
+    const j = i ? jumps.find(x => x.from >= four[i - 1].at && x.to <= e.at) : null;
+    return { at: e.at, season: writeSeason(content, e.at), change: e.change, gap: j ? j.years : 0 };
+  });
 }
 
 function whereIsExpedition(app, x) {
@@ -75,8 +72,10 @@ function money(app) {
       : h('p', { class: 'ledger-line', id: 'ledger-loans' }, 'The house owes nothing.'),
     h('h4', null, 'The last four seasons'),
     trail.length
-      ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, trail.map(t => h('li', { dataset: { change: String(t.change) } },
-        h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`))))
+      ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, trail.flatMap(t => [
+        ...(t.gap ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.gap) } }, `${t.gap === 1 ? 'A year' : `${t.gap} years`} passed before ${t.season}.`)] : []),
+        h('li', { dataset: { change: String(t.change) } },
+          h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`))]))
       : h('p', { class: 'ledger-line', id: 'ledger-trail' }, 'No season has been closed in the books yet.'));
 }
 
@@ -106,7 +105,7 @@ function road(app) {
     return h('li', { class: 'ledger-trip', dataset: { expedition: x.id } },
       h('strong', null, `${agent?.name ?? 'An agent'} to ${to}`), ' ',
       h('span', null, whereIsExpedition(app, x)), ' ',
-      h('span', null, x.status === 'home' ? 'Home now.' : `Due home about ${dueSeason(app, x)}.`));
+      h('span', null, x.status === 'home' ? 'Home now.' : `Due home about ${app.view().homeBy?.[x.id]?.season ?? 'a season not yet known'}.`));
   });
   return section('road', 'Out on the road',
     rows.length ? h('ul', { class: 'ledger-list', id: 'ledger-trips' }, rows) : h('p', { class: 'ledger-line', id: 'ledger-trips' }, 'No expedition is out.'));

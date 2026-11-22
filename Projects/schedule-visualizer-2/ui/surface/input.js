@@ -264,8 +264,10 @@ export function attachInput(canvas, host) {
 
   function onContextMenu(event) {
     event.preventDefault();
-    // a finger held down raises this too; the long-press timer has it
-    if (lastType === 'touch') return;
+    // a finger held down raises this too; the long-press timer has it. Not when a
+    // menu key was just pressed: a tablet with a keyboard has touched last, and
+    // Menu and Shift+F10 must still open the menu (SV2-142)
+    if (lastType === 'touch' && !(performance.now() - menuKeyAt < 500)) return;
     // the pen's barrel button pans; some systems raise this as it goes down,
     // some as it comes up
     if (barrel) {

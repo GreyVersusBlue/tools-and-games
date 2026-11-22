@@ -9,22 +9,22 @@
       "seal": null
     },
     "title": "Abu Bakr is back",
-    "body": "Two seasons ago you sold Abu Bakr ten loads of linen. He remembers a good neighbour. A friend of his has a boat going to Alexandria, with room for your goods at no charge. He asks for a small favour in return.",
+    "body": "Some time ago you sold Abu Bakr ten loads of linen. He remembers a good neighbour. A friend of his has a boat going to Alexandria, with room for your goods at no charge. He asks for a small favour in return.",
     "weight": 0,
     "repeat": false,
     "choices": [
       {
         "id": "favour",
         "label": "Take the place and do the favour",
-        "hint": "It costs 50 dinars. Abu Bakr is pleased.",
+        "hint": "It costs 5 dinars. Abu Bakr is pleased.",
         "requires": {
           "money": {
-            "gte": 50
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -50
+            "money": -5
           },
           {
             "rep": "partners",
@@ -36,7 +36,7 @@
             "in": 2,
             "do": [
               {
-                "money": 40
+                "money": 7
               }
             ]
           }
@@ -57,7 +57,7 @@
             "in": 2,
             "do": [
               {
-                "money": 40
+                "money": 7
               }
             ]
           }
@@ -86,7 +86,7 @@
       "seal": null
     },
     "title": "The silk has come",
-    "body": "Two seasons ago you found silk for the rich family. It has come from Damascus, and the family is waiting. Nabil knows another buyer who may pay more.",
+    "body": "Some time ago you found silk for the rich family. It has come from Damascus, and the family is waiting. Nabil knows another buyer who may pay more.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -159,7 +159,7 @@
       "seal": null
     },
     "title": "Rahel offers first pick",
-    "body": "Two seasons ago you split the difference with Rahel over the short indigo. Now a new shipment of dyes has come. She offers you first pick before anyone else.",
+    "body": "Some time ago you split the difference with Rahel over the weight of her indigo. Now a new shipment of dyes has come. She offers you first pick before anyone else.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -169,12 +169,12 @@
         "hint": "It costs money now. Dyers pay well.",
         "requires": {
           "money": {
-            "gte": 60
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -60
+            "money": -5
           },
           {
             "rep": "partners",
@@ -186,7 +186,7 @@
             "in": 2,
             "do": [
               {
-                "money": 50
+                "money": 4
               }
             ]
           }
@@ -195,14 +195,18 @@
       {
         "id": "wait",
         "label": "Wait for the price to fall",
-        "hint": "You keep your money.",
+        "hint": "You keep your money, and buyers abroad hear that you wait for a fair price.",
         "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
+              },
+              {
+                "rep": "foreign",
+                "by": 1
               }
             ]
           }
@@ -227,7 +231,7 @@
       "seal": null
     },
     "title": "Farid's ship never came",
-    "body": "Two seasons ago you lent Farid 150. His ship was lost at sea. He has paid back 100, which is all he has. He asks you to forgive the rest.",
+    "body": "Some time ago you lent Farid 5. His ship was lost at sea. He has paid back 4, which is all he has. He asks you to forgive the rest.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -246,7 +250,7 @@
             "in": 4,
             "do": [
               {
-                "money": 20
+                "money": 1
               }
             ]
           }
@@ -255,19 +259,18 @@
       {
         "id": "hold",
         "label": "Ask for the rest over a year",
-        "hint": "You may get it. Farid will be hurt.",
-        "now": [
-          {
-            "rep": "partners",
-            "by": -1
-          }
-        ],
+        "hint": "You may get it. Farid will be hurt, and the court likes a clear book.",
+        "now": [],
         "later": [
           {
             "in": 4,
             "do": [
               {
-                "money": 50
+                "money": 2
+              },
+              {
+                "rep": "court",
+                "by": 1
               }
             ]
           }
@@ -292,7 +295,7 @@
       "seal": null
     },
     "title": "The price of gold is falling",
-    "body": "Three seasons ago you bought two chests of gold while the Malians were in Cairo. Now they have gone on to Mecca, and gold sells for less. Jamil says the price may fall again.",
+    "body": "Some time ago you bought two chests of gold while the Malians were in Cairo. Now they have gone on to Mecca, and gold sells for less. Jamil says the price may fall again.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -303,10 +306,10 @@
           "stock": "gold",
           "gte": 2
         },
-        "hint": "You lose a little, and you are done.",
+        "hint": "Jamil pays 164 dinars, a little under what Cairo pays today. The gold leaves your warehouse, and your partners think well of you in two seasons.",
         "now": [
           {
-            "money": 176
+            "money": 164
           },
           {
             "stock": "gold",
@@ -319,7 +322,7 @@
             "do": [
               {
                 "rep": "partners",
-                "by": 1
+                "by": 2
               }
             ]
           }
@@ -328,14 +331,15 @@
       {
         "id": "hold",
         "label": "Hold the gold",
-        "hint": "It may rise again, or it may not.",
+        "hint": "The gold stays in your warehouse, worth whatever Cairo pays for it. Nothing comes to you now.",
         "now": [],
         "later": [
           {
             "in": 4,
             "do": [
               {
-                "money": 20
+                "flag": "gold-held",
+                "set": "now"
               }
             ]
           }
@@ -343,6 +347,9 @@
       }
     ],
     "note": "Al-Umari wrote that the price of gold fell after the king of Mali came to Cairo. Another scholar doubts that the fall lasted for years.",
+    "unlocks": [
+      "term-dinar"
+    ],
     "sources": [
       {
         "src": "levtzion-hopkins-1981",
@@ -405,7 +412,7 @@
             "in": 2,
             "do": [
               {
-                "money": 15
+                "money": 4
               }
             ]
           }
@@ -433,22 +440,22 @@
       "seal": null
     },
     "title": "Yehuda owes you a favour",
-    "body": "Two seasons ago your carter took Yehuda's goods on his day of rest. Now a buyer at Alexandria wants glass, and Yehuda knows him. He offers to send the buyer to you.",
+    "body": "Some time ago your carter took Yehuda's goods on his day of rest. Now a buyer at Alexandria wants glass, and Yehuda knows him. He offers to send the buyer to you.",
     "weight": 0,
     "repeat": false,
     "choices": [
       {
         "id": "take",
         "label": "Take the buyer",
-        "hint": "It costs money to fill the order. It may pay.",
+        "hint": "It costs money to fill the order. It may pay, and Alexandria hears of it.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -4
           }
         ],
         "later": [
@@ -456,7 +463,11 @@
             "in": 2,
             "do": [
               {
-                "money": 60
+                "money": 7
+              },
+              {
+                "rep": "foreign",
+                "by": 1
               }
             ]
           }
@@ -472,17 +483,7 @@
             "by": 1
           }
         ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "rep": "foreign",
-                "by": 1
-              }
-            ]
-          }
-        ]
+        "later": []
       }
     ],
     "note": "Jewish and Muslim merchants had long called each other business friends and done each other favours.",
@@ -503,7 +504,7 @@
       "seal": null
     },
     "title": "Amina says thank you",
-    "body": "Two seasons ago you bought three loads of sugar from Amina when she needed money. Now she offers you a place in her next pressing at a good price.",
+    "body": "Some time ago you bought three loads of sugar from Amina when she needed money. Now she offers you a place in her next pressing at a good price.",
     "when": {
       "notebook": "term-load"
     },
@@ -513,15 +514,19 @@
       {
         "id": "place",
         "label": "Buy a place in her next pressing",
-        "hint": "It costs money now. It may pay later.",
+        "hint": "It costs 5 dinars now and may pay 11 later. Other merchants hear of it.",
         "requires": {
           "money": {
-            "gte": 90
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -90
+            "money": -5
+          },
+          {
+            "rep": "foreign",
+            "by": 1
           }
         ],
         "later": [
@@ -529,7 +534,7 @@
             "in": 3,
             "do": [
               {
-                "money": 130
+                "money": 11
               }
             ]
           }
@@ -537,9 +542,12 @@
       },
       {
         "id": "thanks",
-        "label": "Thank her and keep your money",
-        "hint": "She will not mind.",
+        "label": "Thank her with a gift",
+        "hint": "It costs 3 dinars now. She will remember it.",
         "now": [
+          {
+            "money": -3
+          },
           {
             "rep": "partners",
             "by": 1
@@ -550,11 +558,16 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 1
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        }
       }
     ],
     "note": "Four of the 13 refineries owned by merchants were managed by Karimi.",
@@ -563,6 +576,9 @@
         "src": "sato-2006",
         "at": "p. 149; the managers of the merchants' refineries"
       }
+    ],
+    "unlocks": [
+      "term-dinar"
     ]
   },
   {
@@ -575,7 +591,7 @@
       "seal": null
     },
     "title": "Kamil's boat has arrived",
-    "body": "Two seasons ago you sent four loads of sugar with Kamil. His boat reached Alexandria, and the buyers paid. He asks you to ship with him again next year.",
+    "body": "Some time ago you sent four loads of sugar with Kamil. His boat reached Alexandria, and the buyers paid. He asks you to ship with him again next year.",
     "when": {
       "notebook": "term-load"
     },
@@ -597,7 +613,7 @@
             "in": 4,
             "do": [
               {
-                "money": 25
+                "money": 4
               }
             ]
           }
@@ -613,7 +629,7 @@
             "in": 4,
             "do": [
               {
-                "money": 40
+                "money": 5
               }
             ]
           }
@@ -642,7 +658,7 @@
       "seal": null
     },
     "title": "Binyamin comes back",
-    "body": "Two seasons ago you paid Idris and Binyamin each what he claimed. Now Binyamin says his cousin also put money in. He wants the same treatment.",
+    "body": "Some time ago you paid Idris and Binyamin each what he claimed. Now Binyamin says his cousin also put money in. He wants the same treatment.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -652,12 +668,12 @@
         "hint": "It costs you. Your name grows.",
         "requires": {
           "money": {
-            "gte": 40
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -40
+            "money": -4
           },
           {
             "rep": "partners",
@@ -669,7 +685,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -678,23 +694,18 @@
       {
         "id": "ledger",
         "label": "Show him the ledger first",
-        "hint": "It may hurt his pride now. You keep 15 dinars, and a fair count is respected later.",
-        "now": [
-          {
-            "rep": "partners",
-            "by": -1
-          }
-        ],
+        "hint": "It may hurt his pride now. You keep 4 dinars, and a fair count is respected later.",
+        "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "rep": "partners",
+                "rep": "court",
                 "by": 1
               },
               {
-                "money": 15
+                "money": 4
               }
             ]
           }
@@ -722,7 +733,7 @@
       "seal": null
     },
     "title": "Girgis remembers",
-    "body": "Three seasons ago you looked after the son of Girgis's partner. Now Girgis offers you a share in his next trip to Damascus.",
+    "body": "Some time ago you looked after the son of Girgis's partner. Now Girgis offers you a share in his next trip to Damascus.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -732,12 +743,12 @@
         "hint": "It costs money now. It may pay.",
         "requires": {
           "money": {
-            "gte": 100
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -100
+            "money": -5
           }
         ],
         "later": [
@@ -745,7 +756,11 @@
             "in": 3,
             "do": [
               {
-                "money": 150
+                "money": 8
+              },
+              {
+                "rep": "partners",
+                "by": 1
               }
             ]
           }
@@ -761,17 +776,7 @@
             "by": 1
           }
         ],
-        "later": [
-          {
-            "in": 2,
-            "do": [
-              {
-                "rep": "partners",
-                "by": 1
-              }
-            ]
-          }
-        ]
+        "later": []
       }
     ],
     "note": "Some friendships between merchants lasted for a lifetime. A few went on for generations.",
@@ -792,33 +797,43 @@
       "seal": null
     },
     "title": "News from the funduq",
-    "body": "Three seasons ago you took a share of the Karimi funduq. Now Khalid hears from merchants staying there that a road may close. He tells you first.",
+    "body": "Some time ago you took a share of the Karimi funduq. Now Khalid hears from merchants staying there that a road may close. He tells you first.",
     "weight": 0,
     "repeat": false,
     "choices": [
       {
         "id": "warn",
         "label": "Send a rider to warn your agents",
-        "hint": "It costs money. Your agents will be glad.",
+        "hint": "It costs 8 dinars now and 2 more later. Your agents will be glad.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 8
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -8
           },
           {
             "rep": "agents",
             "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              }
+            ]
           }
         ]
       },
       {
         "id": "quiet",
         "label": "Keep the news to yourself",
-        "hint": "It costs nothing, but it is not kind.",
+        "hint": "It brings 3 dinars later, but it is not kind.",
         "now": [
           {
             "rep": "foreign",
@@ -830,7 +845,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -839,7 +854,8 @@
     ],
     "note": "The Karimi brought spices from Aden to Cairo, Alexandria and Damascus.",
     "unlocks": [
-      "term-caravanserai"
+      "term-caravanserai",
+      "term-dinar"
     ],
     "sources": [
       {
@@ -858,22 +874,22 @@
       "seal": null
     },
     "title": "Zubayda wants a standing deal",
-    "body": "Two seasons ago you sold your linen in Zubayda's market. She was fair about the fee. Now she wants you to sell with her every season.",
+    "body": "Some time ago you took Zubayda's offer to sell in her market. She asked a small fee. Now she wants you to sell with her every season.",
     "weight": 0,
     "repeat": false,
     "choices": [
       {
         "id": "yes",
         "label": "Agree to a standing deal",
-        "hint": "It costs a fee. It makes a steady friend.",
+        "hint": "A fee of 3 dinars now, and 4 back in three seasons. It makes a steady friend.",
         "requires": {
           "money": {
-            "gte": 20
+            "gte": 3
           }
         },
         "now": [
           {
-            "money": -20
+            "money": -3
           },
           {
             "rep": "partners",
@@ -885,7 +901,7 @@
             "in": 3,
             "do": [
               {
-                "money": 25
+                "money": 4
               }
             ]
           }
@@ -894,14 +910,19 @@
       {
         "id": "no",
         "label": "Sell where you like",
-        "hint": "It costs nothing. It keeps you free.",
-        "now": [],
+        "hint": "You gain 3 dinars by choosing the best market. Zubayda will think you cold.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -914,6 +935,9 @@
         "src": "agir-2017",
         "at": "Background n. 24; shops of one trade grouped for time saving and lower transport costs"
       }
+    ],
+    "unlocks": [
+      "term-dinar"
     ]
   },
   {
@@ -936,12 +960,12 @@
         "hint": "It costs money now. It may pay.",
         "requires": {
           "money": {
-            "gte": 120
+            "gte": 5
           }
         },
         "now": [
           {
-            "money": -120
+            "money": -5
           }
         ],
         "later": [
@@ -949,7 +973,7 @@
             "in": 3,
             "do": [
               {
-                "money": 180
+                "money": 8
               }
             ]
           }
@@ -996,17 +1020,17 @@
       "seal": null
     },
     "title": "Two bales were poor",
-    "body": "Two seasons ago Salih bought six loads of linen for you. When the bales were opened, two were poor. Salih says the grower mixed them in. He offers to make it right.",
+    "body": "Some time ago Salih bought six loads of linen for you. When the bales were opened, two were poor. Salih says the grower mixed them in. He offers to make it right.",
     "weight": 0,
     "repeat": false,
     "choices": [
       {
         "id": "fee",
         "label": "Ask him to pay for the two poor bales",
-        "hint": "You win back 30 dinars. Brokers talk now, and trust a house that checks later.",
+        "hint": "You win back 20 dinars. Brokers talk now, and trust a house that checks later.",
         "now": [
           {
-            "money": 30
+            "money": 20
           },
           {
             "rep": "partners",
@@ -1046,7 +1070,7 @@
       {
         "id": "lesson",
         "label": "Call it a lesson",
-        "hint": "You gain nothing now. Salih will buy better bales for you.",
+        "hint": "You gain no money, and you keep your linen. Salih buys better bales for you. In two seasons the brokers think well of your house.",
         "now": [
           {
             "flag": "bales-lesson",
@@ -1059,10 +1083,7 @@
             "do": [
               {
                 "rep": "partners",
-                "by": 1
-              },
-              {
-                "money": 25
+                "by": 3
               }
             ]
           }
@@ -1099,15 +1120,15 @@
       {
         "id": "write",
         "label": "Write it down and seal it",
-        "hint": "It costs a clerk's time. Yusuf feels easier.",
+        "hint": "It costs 2 dinars for a clerk. Yusuf feels easier.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 2
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -2
           },
           {
             "trust": "yusuf",
@@ -1129,7 +1150,7 @@
       {
         "id": "spoken",
         "label": "Say your word is good enough",
-        "hint": "It costs nothing. Yusuf is more uneasy.",
+        "hint": "You save the clerk's 2 dinars. Yusuf is more uneasy.",
         "now": [
           {
             "trust": "yusuf",
@@ -1145,7 +1166,7 @@
             "in": 2,
             "do": [
               {
-                "money": 5
+                "money": 2
               }
             ]
           }
@@ -1214,7 +1235,7 @@
             "in": 2,
             "do": [
               {
-                "money": 10
+                "money": 3
               }
             ]
           }
@@ -1223,13 +1244,13 @@
       {
         "id": "let-go",
         "label": "Let him go",
-        "hint": "He goes to another house, and pays back 10 coins he owes.",
+        "hint": "He goes to another house, and pays back 3 coins he owes.",
         "now": [
           {
             "dismiss": "samir"
           },
           {
-            "money": 10
+            "money": 3
           },
           {
             "rep": "agents",
@@ -1255,8 +1276,8 @@
       "role": "Cairo",
       "seal": null
     },
-    "title": "Matteo has sold the linen",
-    "body": "Matteo has done the job and kept his fee. He asks to work for the house again. This time he wants the house's seal on his orders, so that other traders know who he works for.",
+    "title": "Matteo wants to work again",
+    "body": "Matteo took the house's fee. He asks to work for the house again. This time he wants the house's seal on his orders, so that other traders know who he works for.",
     "weight": 0,
     "repeat": false,
     "choices": [
@@ -1279,7 +1300,7 @@
                 "by": 1
               },
               {
-                "money": -30
+                "money": -5
               }
             ]
           }
@@ -1288,15 +1309,15 @@
       {
         "id": "fee",
         "label": "Pay him a fee for one more job",
-        "hint": "It costs 15 dinars. He stays free to go.",
+        "hint": "It costs 4 dinars. He stays free to go.",
         "requires": {
           "money": {
-            "gte": 15
+            "gte": 4
           }
         },
         "now": [
           {
-            "money": -15
+            "money": -4
           },
           {
             "trust": "matteo",
@@ -1308,7 +1329,7 @@
             "in": 2,
             "do": [
               {
-                "money": 20
+                "money": 6
               }
             ]
           }
@@ -1320,7 +1341,7 @@
         "hint": "He leaves you a small gift.",
         "now": [
           {
-            "money": 10
+            "money": 4
           }
         ]
       }

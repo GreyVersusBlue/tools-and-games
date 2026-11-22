@@ -5,17 +5,21 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { freshState } from '../js/engine/state.js';
-import { newGame, openSeason, choose, paperChoices, endSeason, recall, score, outfit } from '../js/engine/index.js';
+import { newGame, openSeason, choose, paperChoices, endSeason, recall, score, outfit, checkPlan } from '../js/engine/index.js';
+import * as M from '../js/engine/market.js';
+import { readEntry } from '../js/engine/turn.js';
 import { recallRisk, chanceWord } from '../js/engine/routes.js';
-import { scaled, netWealth, REP_POINTS, HOME_POINTS, HOME_TRUST_BONUS, NOTEBOOK_POINTS } from '../js/engine/score.js';
+import { scaled, netWealth, REP_GROUP_POINTS, HOME_POINTS, HOME_TRUST_BONUS, NOTEBOOK_POINTS } from '../js/engine/score.js';
 
 const testport = await loadContent('testport', { fs });
 const cairo = await loadContent('cairo', { fs });
 
-/** A plain-house state stripped to nothing: no money, stock, loans, rep, notebook, and no agent home. */
+/** A plain-house state stripped to nothing: no money, stock, loans, notebook, no agent home, and every
+    group of reputation at -3, which earns nothing (a group at 0 would earn half). */
 function bare(over = {}) {
   const s = freshState(testport, { seed: 1, length: 'acts', house: 'plain' });
-  s.money = 0; s.stock = {}; s.loans = []; s.notebook = [];
+  s.money = 0; s.stock = {}; s.loans = []; s.notebook = []; s.notebookRead = [];
+  for (const g of Object.keys(s.rep)) s.rep[g] = -3;
   for (const a of Object.values(s.agents)) a.where = 'dead';
   return Object.assign(s, over);
 }
@@ -62,14 +66,23 @@ test('score: wealth takes loans away', () => {
   eq(part(s, 'wealth').points, 0, 'a house in debt scores 0 here, never less');
 });
 
-test('score: reputation is the four groups summed, scaled, and never under 0', () => {
+test('score: reputation counts from the middle: a group at 0 earns half, -3 nothing, +3 all', () => {
   const s = bare();
-  s.rep = { partners: 1, agents: 2, court: 0, foreign: -1 };
-  eq(part(s, 'reputation').points, 2 * REP_POINTS);
-  s.rep = { partners: 3, agents: 3, court: 3, foreign: 3 };
-  eq(part(s, 'reputation').points, 12 * REP_POINTS);
-  s.rep = { partners: -3, agents: -3, court: -3, foreign: -3 };
-  eq(part(s, 'reputation').points, 0);
+  const rep = (...v) => { s.rep = { partners: v[0], agents: v[1], court: v[2], foreign: v[3] }; return part(s, 'reputation').points; };
+  eq(rep(-3, -3, -3, -3), 0);
+  eq(rep(0, 0, 0, 0), 4 * REP_GROUP_POINTS / 2, 'a house that never met anyone sits at half, not at the floor');
+  eq(rep(3, 3, 3, 3), 4 * REP_GROUP_POINTS);
+  eq(rep(0, 0, 0, 0) > rep(-3, 0, 0, 0), true, 'one group that was annoyed scores under a house that met no one');
+  eq(rep(3, -3, 0, 0), REP_GROUP_POINTS + 0 + REP_GROUP_POINTS / 2 * 2, 'each group is its own line: +3 all, -3 none, two at 0 half each');
+  eq(rep(1, 0, 0, 0), REP_GROUP_POINTS * (4 + 3 + 3 + 3) / 6);
+});
+
+test('score: the named case: an annoyed partner costs points a house that met no one keeps', () => {
+  const met = bare(); met.rep = { partners: 0, agents: 0, court: 0, foreign: 0 };
+  const annoyed = bare(); annoyed.rep = { partners: -2, agents: 0, court: 0, foreign: 0 };
+  const lost = part(met, 'reputation').points - part(annoyed, 'reputation').points;
+  ok(Math.abs(lost - REP_GROUP_POINTS / 6 * 2) < 1e-9, `lost ${lost}`);
+  ok(/below the middle/.test(part(annoyed, 'reputation').reason) && /at the middle/.test(part(met, 'reputation').reason), part(annoyed, 'reputation').reason);
 });
 
 test('score: people home counts the hired who made a trip and are alive in the home city, more at trust 2 or 3', () => {
@@ -134,6 +147,81 @@ test('score: the wealth part carries cash, stock with its loads, loans and what 
   ok(/3 loads of it with no known price and counted for nothing/.test(part(unknown, 'wealth').reason), part(unknown, 'wealth').reason);
 });
 
+test('score: goods on the road (MER-113) are onRoad, at the home price, and move neither net nor the score', () => {
+  const g = testport.goods[0].id, h2 = testport.goods[1].id;
+  const s = bare({ money: 500 });
+  s.known = { [home]: { [g]: { p: 50, at: 0 } } };
+  const before = { net: netWealth(s, testport).net, total: score(s, testport).total };
+  eq(netWealth(s, testport).onRoad, { loads: 0, value: 0, unpriced: 0, money: 0, goods: [], total: 0 }, 'nothing out, nothing on the road');
+  s.expeditions = [{ id: 'x1', cargo: { [g]: 10, [h2]: 4 }, purse: 120 }, { id: 'x2', cargo: { [g]: 2 }, purse: 0 }];
+  const w = netWealth(s, testport);
+  eq(w.onRoad.loads, 16);
+  eq(w.onRoad.value, 600, '12 loads at 50; the good with no known home price is not valued');
+  eq(w.onRoad.unpriced, 4, 'unpriced loads are counted as unpriced');
+  eq(w.onRoad.money, 120);
+  eq(w.onRoad.total, 720);
+  eq(w.onRoad.goods, [{ good: g, loads: 12, price: 50 }, { good: h2, loads: 4, price: null }]);
+  eq(w.net, before.net, 'net does not move');
+  eq(score(s, testport).total, before.total, 'the score does not move');
+  ok(/On the road, and counted on the top bar but not here: 16 loads of goods worth 600 at those prices, with 4 loads of it with no known price and counted for nothing and 120 in money sent to buy with, the house's share only\.$/.test(part(s, 'wealth').reason), part(s, 'wealth').reason);
+});
+
+// MER-113b: a qirad's partners put in part of the purse; the house paid only the rest, so the bar counts only the house's share.
+const still = () => {
+  const c = structuredClone(testport);
+  c.city.contracts = { qirad: { agentShare: [1, 3] } };
+  c.stops.find(x => x.id === 'hilltown').sells.salt = { base: 6, depth: 40 };
+  for (const g of c.goods) { g.sigma = 0; g.revert = 0; }
+  for (const r of c.routes) for (const l of r.legs) l.risk = 0;
+  const m = c.agents.find(a => a.id === 'mira'); m.traits = ['honest']; m.wage = 1;
+  return c;
+};
+const barFigure = (s, c) => { const w = netWealth(s, c); return w.net + w.onRoad.total; };
+const QIRAD = { agent: 'mira', route: 'harbour-hilltown', cargo: {}, purse: 100, contract: 'qirad', partners: 60, sell: [], buy: ['salt'] };
+function qiradGame(c) {
+  const s = newGame(c, { seed: 7, length: 'full', house: 'plain' });
+  s.money = 1000;
+  for (const g of ['wool', 'salt']) s.known[home] = { ...(s.known[home] ?? {}), [g]: { p: M.truePrice(s, c, home, g), at: s.t } };
+  return s;
+}
+
+test('score: a qirad with a purse of 100, 60 of it the partners\', moves the bar by nothing at Send: only the house\'s 40 is counted on the road (MER-113b)', () => {
+  const c = still(), before = qiradGame(c);
+  const after = outfit(structuredClone(before), c, QIRAD);
+  eq(before.money - after.money, 40, 'setup: the house paid 40 of the 100');
+  eq(netWealth(after, c).onRoad.money, 40, 'the house\'s share of the purse, not the whole of it');
+  eq(barFigure(after, c), barFigure(before, c), 'the bar figure is the same before and after Send to the dinar');
+});
+
+test('score: goods bought and sent on partner money are counted at the house\'s share too (MER-113b)', () => {
+  const c = still(), before = qiradGame(c);
+  const plan = { ...QIRAD, cargo: { wool: 3 }, purse: 100, partners: 80, sell: ['wool'] };
+  ok(checkPlan(before, c, plan).ok, JSON.stringify(checkPlan(before, c, plan).problems));
+  const after = outfit(structuredClone(before), c, plan);
+  const w = netWealth(after, c), x = after.expeditions[0];
+  eq(x.staked.partners, 80, 'setup: the partners put in 80');
+  const share = x.staked.house / (x.staked.house + 80);
+  eq(w.onRoad.loads, 3, 'the loads aboard stay whole');
+  eq(w.onRoad.money, Math.round(100 * share), 'the purse at the house\'s share');
+  eq(w.onRoad.value, Math.round(3 * M.truePrice(before, c, home, 'wool') * share), 'the goods at the house\'s share');
+  eq(barFigure(after, c), barFigure(before, c), 'the bar figure is the same before and after Send');
+});
+
+test('score: an expedition with no partners counts whole, and one with a staked house of nothing does not divide by zero (MER-113b)', () => {
+  const s = bare({ money: 0 }); const g = testport.goods[0].id;
+  s.known = { [home]: { [g]: { p: 10, at: 0 } } };
+  s.expeditions = [{ id: 'x1', cargo: { [g]: 5 }, purse: 30, staked: { house: 80, partners: 0 } }, { id: 'x2', cargo: { [g]: 1 }, purse: 7, staked: { house: 0, partners: 0 } }];
+  eq([netWealth(s, testport).onRoad.value, netWealth(s, testport).onRoad.money], [60, 37]);
+});
+
+test('score: the wealth line names money-only trips and unpriced loads on the road (MER-113b)', () => {
+  const s = bare({ money: 500 });
+  s.expeditions = [{ id: 'x1', cargo: {}, purse: 90 }];
+  ok(/On the road, and counted on the top bar but not here: 90 in money sent to buy with, the house's share only\.$/.test(part(s, 'wealth').reason), part(s, 'wealth').reason);
+  s.expeditions = [{ id: 'x1', cargo: { [testport.goods[0].id]: 2 }, purse: 0 }];
+  ok(/2 loads of goods, 2 loads of it with no known price and counted for nothing, the house's share only\.$/.test(part(s, 'wealth').reason), part(s, 'wealth').reason);
+});
+
 test('recall: the engine says each person\'s odds in words, on the road and at home, from the numbers it rolls with', () => {
   const c = structuredClone(testport);
   c.city.recall = { reach: { start: 0.9, perSeason: 0, floor: 0 }, recalledKeeps: 0.5, recalledSurvives: 0.9, stayedSurvives: 0.5, homeSurvives: 0.6, byStop: {} };
@@ -169,16 +257,40 @@ test('recall: a return at the end writes the money it brought, and the score\'s 
   eq(e.agents.mira.trips, 1);
 });
 
-test('score: the notebook gives points per entry found', () => {
+test('score: the notebook gives points per entry opened and read, not per entry found', () => {
   const s = bare();
   s.notebook = ['a', 'b', 'c', 'd'];
+  eq(part(s, 'notebook').points, 0, 'found and never opened is worth nothing');
+  eq(part(s, 'notebook').reason, 'No page of the notebook was opened and read.');
+  s.notebookRead = ['a', 'b', 'b', 'zz'];   // a repeat counts once, and a page never found is not counted
+  eq(part(s, 'notebook').points, 2 * NOTEBOOK_POINTS);
+  eq(part(s, 'notebook').reason, '2 pages in the notebook opened and read.');
+  s.notebookRead = ['a', 'b', 'c', 'd'];
   eq(part(s, 'notebook').points, 4 * NOTEBOOK_POINTS);
-  eq(part(s, 'notebook').reason, '4 pages in the notebook.');
+});
+
+test('score: an old save with no read list reads as having read nothing', () => {
+  const s = bare(); s.notebook = ['a', 'b']; delete s.notebookRead;
+  eq(part(s, 'notebook').points, 0);
+  eq(score(s, testport).total, 0);
+});
+
+test('readEntry: adds a found entry once, ignores one not found, and leaves its input alone', () => {
+  let s = bare(); s.notebook = ['a', 'b'];
+  const before = structuredClone(s);
+  const one = readEntry(s, testport, 'a');
+  eq(one.notebookRead, ['a']); eq(s, before);
+  eq(readEntry(one, testport, 'a'), one, 'a second reading changes nothing');
+  eq(readEntry(one, testport, 'zz').notebookRead, ['a'], 'an entry not found is not read');
+  eq(readEntry(readEntry(one, testport, 'b'), testport, 'a').notebookRead, ['a', 'b']);
+  delete s.notebookRead;
+  eq(readEntry(s, testport, 'b').notebookRead, ['b'], 'a state with no list gets one');
+  eq(part(readEntry(readEntry(s, testport, 'a'), testport, 'b'), 'notebook').points, 2 * NOTEBOOK_POINTS);
 });
 
 test('score: the house multiplier is on the sum, and the rank follows the total', () => {
-  const plain = bare({ money: 1000 }); plain.notebook = ['a', 'b'];       // 20 + two pages
-  const rich = bare({ money: 1000, house: 'rich' }); rich.notebook = ['a', 'b'];
+  const plain = bare({ money: 1000 }); plain.notebook = plain.notebookRead = ['a', 'b'];       // 20 + two pages read
+  const rich = bare({ money: 1000, house: 'rich' }); rich.notebook = rich.notebookRead = ['a', 'b'];
   const sum = 20 + 2 * NOTEBOOK_POINTS;   // the testport scale gives 20 for 1000, the notebook is a rate
   const a = score(plain, testport), b = score(rich, testport);
   eq(a.sum, sum); eq(a.multiplier, 1); eq(a.total, Math.round(sum));
@@ -187,7 +299,7 @@ test('score: the house multiplier is on the sum, and the rank follows the total'
   eq(big.total, 72);
   eq(big.rank, 'A small but steady house');
   // reputation and four notebook pages lift the same house over the line (rates are the game's, so the pin follows them)
-  const lifted = score(bare({ money: 8000, house: 'rich', notebook: ['a', 'b', 'c', 'd'], rep: { partners: 3, agents: 3, court: 3, foreign: 3 } }), testport);
+  const lifted = score(bare({ money: 8000, house: 'rich', notebook: ['a', 'b', 'c', 'd'], notebookRead: ['a', 'b', 'c', 'd'], rep: { partners: 3, agents: 3, court: 3, foreign: 3 } }), testport);
   ok(lifted.total >= 80, `total ${lifted.total} is under the respected line`);
   eq(lifted.rank, 'A respected house');
 });

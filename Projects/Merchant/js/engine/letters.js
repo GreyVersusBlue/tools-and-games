@@ -25,6 +25,9 @@
 // arrive after it reaches no one (a question needs the act's rule), while a report is in the
 // post and is delivered at the opening after the jump (4.7, `deliver`), so a report only needs
 // the game's rule.
+//
+// A letter about a trip never reaches the desk after that trip's return paper (MER-118): see `deliver`. Lost expeditions are
+// exempt, their letters are kept (DECISIONS 2026-11-17 12:10).
 import { seasonIndex, playedSeasons } from './calendar.js';
 import { holds, placeOf } from './conditions.js';
 import { applyAll } from './effects.js';
@@ -112,11 +115,30 @@ export function letters(s, content) {
   for (const x of s.expeditions) write(s, content, x, idx);
 }
 
+/** The season the expedition's trip came home and its return paper was made, or null while it is on the road or if it was
+    lost (a loss has its own paper, and a letter from a lost expedition is kept, DECISIONS 2026-11-17 12:10). Read from the log:
+    a return step writes `return` (ref the expedition), the act jump writes `settled` lines with `result: 'home'`. */
+function returnSeason(s, id) {
+  for (const e of s.log) {
+    if (e.kind === 'return' && e.ref === id) return e.at;
+    if (e.kind === 'jump' && (e.settled ?? []).some(l => l.expedition === id && l.result === 'home')) return e.at;
+  }
+  return null;
+}
+
 /** A letter whose season has come goes onto the desk, if there is room; if not it waits a season.
-    A report's `happened` effects apply now, once, as it reaches the house. */
+    A report's `happened` effects apply now, once, as it reaches the house.
+    A letter about a trip never reaches the desk after that trip's return paper (MER-118). The return step runs before this one,
+    so a letter that arrives in the season its trip's paper is made is put ahead of the paper. A letter that could only come
+    after it (the trip came home early, by a recall or an order home, or the paper took the last room on the desk) is dropped, and the log says so. */
 function deliver(s, content, idx) {
   const waiting = [];
   for (const p of s.post) {
+    const home = returnSeason(s, p.expedition);
+    if (home !== null && (home < idx || p.arrive > home)) {
+      s.log.push({ at: idx, kind: 'dropped', ref: p.id, reason: `the letter "${p.id}" could only have reached the desk after ${agentOf(content, p.agent)?.name ?? p.agent}'s return paper, so it was left out` });
+      continue;
+    }
     if (p.arrive > idx || deskFull(s)) { waiting.push(p); continue; }
     const letter = letterOf(content, p.id);
     if (!letter) continue;
@@ -126,6 +148,8 @@ function deliver(s, content, idx) {
     catch (e) { s.log.push({ at: idx, kind: 'dropped', ref: letter.id, reason: e.message }); continue; }
     applyAll(s, content, letter.happened, ctx); // the trial said it holds
     addPaper(s, { kind: 'letter', ref: letter.id, agent: p.agent, expedition: p.expedition, stop: p.stop, standing: p.standing, written: p.written, lag: p.lag, reached: idx });
+    const paper = s.desk.pop(), k = s.desk.findIndex(q => q.kind === 'return' && q.expedition === p.expedition);
+    s.desk.splice(k < 0 ? s.desk.length : k, 0, paper);                   // ahead of its own trip's return paper
     s.log.push({ at: idx, kind: 'letter', ref: letter.id });
   }
   s.post = waiting;

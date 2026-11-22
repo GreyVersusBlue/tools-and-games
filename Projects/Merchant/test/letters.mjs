@@ -624,8 +624,10 @@ function cairoGame(seed, length) {
       for (let k = 0; k < stops.length; k++) {
         const stop = stops[(turn + k) % stops.length], hit = reach.find(d => d.stop === stop);
         if (!hit) continue;
-        // money only, as the bots send to a road with nothing the house sells
-        const plan = { agent: a.id, route: hit.route, cargo: {}, purse: 40, contract: 'own', sell: [], buy: [] };
+        // money only, as the bots send to a road with nothing the house sells, and one good to bring back with it
+        // (DESIGN 2.2 rule 1: money with no good named is refused once routes.js RULES.refuseUnspentMoney is on)
+        const back = Object.keys(s.market[stop] ?? {}).find(g => s.market.cairo?.[g]);
+        const plan = { agent: a.id, route: hit.route, cargo: {}, purse: 40, contract: 'own', sell: [], buy: back ? [back] : [] };
         try { s = outfit(s, c, plan); turn += k + 1; } catch { continue; }
         break;
       }
@@ -712,6 +714,76 @@ test('(MER-88) over sixty games, every turn-back answer given to a living expedi
   }
   ok(checked >= 20, `only ${checked} games gave a turn-back answer to a living expedition`);
   ok(turned >= 1, 'some of them turned');
+});
+
+// ---- (MER-118) a letter about a trip never reaches the desk after that trip's return paper
+
+/** For every opening in a played game: each letter on the desk must be ahead of its trip's return paper, and no letter may be
+    on the desk in a season after the one the trip's return was written in. The return season is read from the log, the
+    letter's from the opening it is on the desk at; nothing is read from the post. Returns the faults and how many letters and
+    returns had a pair to compare. */
+function afterReturn(states, c) {
+  const faults = [], seen = { sameSeason: 0, later: 0, letters: 0 };
+  const homeAt = {};
+  for (const s of states) {
+    for (const e of s.log) {
+      if (e.kind === 'return') homeAt[e.ref] = e.at;
+      if (e.kind === 'jump') for (const l of e.settled) if (l.result === 'home') homeAt[l.expedition] = e.at;
+    }
+    const i = idx(s, c);
+    s.desk.forEach((p, k) => {
+      if (p.kind !== 'letter') return;
+      seen.letters++;
+      const back = homeAt[p.expedition];
+      if (back === undefined) return;
+      if (back < i) faults.push(`${p.ref} (${p.expedition}) on the desk in season ${i}, its return paper in season ${back}`);
+      else {
+        const r = s.desk.findIndex(q => q.kind === 'return' && q.expedition === p.expedition);
+        if (r >= 0) { seen.sameSeason++; if (r < k) faults.push(`${p.ref} (${p.expedition}) sits after its return paper in season ${i}`); }
+      }
+    });
+  }
+  return { faults, seen };
+}
+
+// reports at four stops, a question at the first, on a road of five stops where a leg is a season but the far ones are two
+const longRoad = () => writing(trek(calm, { n: 5, end: 23, lens: { 3: 2, 5: 2 } }),
+  question('q1', at('s1')), report('r1', at('s1')), report('r2', at('s2')), report('r3', at('s3')), report('r4', at('s4')), report('r5', at('s5')));
+const GOES_BY_SEED = ['on', 'home', 'wait'];
+
+test('(MER-118) over 240 seeded games, no letter about an expedition is on the desk after, or behind, that expedition\'s return paper', () => {
+  const c = longRoad();
+  const total = { sameSeason: 0, letters: 0 };
+  const bad = [];
+  for (let seed = 1; seed <= 240; seed++) {
+    // the third of the games each answer the question with a different order, so a trip comes home early, late or on time;
+    // a fourth of them are in the "acts" length, where the jump settles a trip and leaves its letters in the post
+    const length = seed % 4 === 0 ? 'acts' : 'full';
+    const states = play(c, seed, { plan: { length, route: 'trek' }, choices: { q1: GOES_BY_SEED[seed % 3] }, n: 16 });
+    const { faults, seen } = afterReturn(states, c);
+    total.sameSeason += seen.sameSeason; total.letters += seen.letters;
+    for (const f of faults) bad.push(`seed ${seed}: ${f}`);
+  }
+  eq(bad.slice(0, 5), [], `${bad.length} letters out of place`);
+  ok(total.letters >= 300, `only ${total.letters} letters reached a desk in 240 games`);
+  ok(total.sameSeason >= 20, `only ${total.sameSeason} letters shared a desk with their return paper, so the same-season case is not tested`);
+});
+
+test('(MER-118) a letter that could only come after its trip\'s return paper is dropped and logged, not delivered', () => {
+  // a trip told to turn back at once is home sooner than the road's plan: the letters written before the order that are
+  // still on the way arrive behind the return, and the log names each one
+  const c = longRoad();
+  let dropped = 0, delivered = 0;
+  for (let seed = 1; seed <= 120; seed++) {
+    const states = play(c, seed, { plan: { route: 'trek' }, choices: { q1: 'home' }, n: 16 });
+    const last = states.at(-1);
+    const gone = last.log.filter(e => e.kind === 'dropped' && /return paper/.test(e.reason ?? ''));
+    dropped += gone.length;
+    for (const e of gone) ok(!last.log.some(l => l.kind === 'letter' && l.ref === e.ref && l.at >= e.at), `seed ${seed}: ${e.ref} dropped and also delivered`);
+    delivered += last.log.filter(e => e.kind === 'letter').length;
+  }
+  ok(dropped >= 1, `only ${dropped} letters were dropped in 120 games with a turn-back answer`);
+  ok(delivered > dropped, 'most letters still arrive');
 });
 
 await done();

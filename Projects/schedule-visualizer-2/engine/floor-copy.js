@@ -15,13 +15,14 @@
 //   not copied  teachers in rooms, schedule references, exits, the traced image,
 //               scenario levers
 //
-// Room numbers: renumbered for the new level only when every numbered room's
-// number starts with a run of digits of one length n, n at least two longer than
-// the source level's own digits, whose first digits are the source level, and
-// the new level has as many digits and the results are unused. Otherwise the
-// copies have no number, and asking for the renumbering is refused in words,
-// never quietly turned into blanks.
-//
+// Room numbers, room by room (22.17; Devon 2026-11-21): a room whose number
+// starts with a run of digits at least two longer than the source level's own,
+// whose first digits are the source level, is renumbered for the new level when
+// the new level has as many digits and the result is unused (201 is 401). Any
+// other numbered room ("Library", "21", a number already taken) keeps its own
+// number with " 2" after it ("Library 2"), or " 3" and on when that is taken in
+// the school. Rooms are left without numbers only when the user chooses that.
+
 // Joining, at the floor directly below the new one (the old top floor), at the
 // same cell, when that cell is stairs (or an elevator stop of a car): one plain
 // flight there with no other run makes the two a stairwell lettered with that
@@ -33,6 +34,7 @@ import { action, ActionError, GEOMETRY, BUILDING, SCHEDULE, reporting } from './
 import { connectStairs } from './building.js';
 import { collectIds, isId } from './ids.js';
 import { checkSchedule } from './checks.js';
+import { copyNumber } from './numbering.js';
 import { nameKey, nextConnectionLabel, roomNumberKey, elevatorCars, isLiftCell, stairwells, stairsLetter, textLength, ELEVATOR_KIND } from './schema.js';
 
 function refuse(message, code) {
@@ -81,45 +83,68 @@ function numberedRooms(floor) {
   return floor.spaces.filter((space) => space.kind === 'room' && typeof space.number === 'string' && space.number.trim() !== '');
 }
 
-// The renumbering rule. Returns { possible, reason, rooms: [{ id, from, to }] }.
-// `reason` is why not, in the words of a sentence's tail, naming the number that
-// stops it: '‘1-01’ begins with 1 digit, too few to hold the level, 1, and a
-// room's own digits after it: that needs at least 3'.
+// The renumbering, room by room (ARCHITECTURE 22.17; Devon 2026-11-21: "Duplicates
+// should be 'library 2'"). Returns { possible, reason, rooms: [{ id, from, to,
+// level }], text }: `possible` when the floor has a numbered room, `reason`
+// 'none' when it has none, `level` true for a room renumbered for the new level
+// and false for one that keeps its own number with a count after it, and `text`
+// the dialog's one sentence: "Rooms 201 to 204 become 401 to 404; Library
+// becomes Library 2."
 function renumbering(building, source, newLevel) {
   const numbered = numberedRooms(source);
-  const none = { possible: false, reason: 'none', rooms: [] };
-  if (numbered.length === 0) return none;
+  if (numbered.length === 0) return { possible: false, reason: 'none', rooms: [], text: '' };
   const level = String(source.level);
-  const not = (reason) => ({ possible: false, reason, rooms: [] });
-  // quoted as the rest of the tool quotes what a user typed: ‘Library’
-  const quoted = (room) => '\u2018' + room.number.trim() + '\u2019';
-  const digits = (n) => plural(n, 'digit', 'digits');
-  if (!(source.level >= 1)) return not(source.name + ' is not on a level of 1 or more, and numbers carry the level only from there');
-  const runs = numbered.map((room) => /^[0-9]+/.exec(room.number.trim()));
-  const bare = runs.findIndex((run) => run === null);
-  if (bare !== -1) return not(quoted(numbered[bare]) + ' does not begin with a digit');
-  const length = runs[0][0].length;
-  const other = runs.findIndex((run) => run[0].length !== length);
-  if (other !== -1) return not(quoted(numbered[0]) + ' begins with ' + digits(length) + ' and ' + quoted(numbered[other]) + ' with ' + runs[other][0].length + ', and the level carries over only when every number has as many');
-  const least = level.length + 2;
-  if (length < least) return not(quoted(numbered[0]) + ' begins with ' + digits(length) + ', too few to hold the level, ' + level + ', and a room\'s own digits after it: that needs at least ' + least);
-  const off = runs.findIndex((run) => !run[0].startsWith(level));
-  if (off !== -1) return not(quoted(numbered[off]) + ' does not begin with ' + level + ', ' + source.name + '\'s level');
   const fresh = String(newLevel);
-  if (fresh.length !== level.length) return { possible: false, reason: 'the new floor\'s level, ' + fresh + ', has a different number of digits from ' + level, rooms: [] };
   const used = new Set();
-  for (const floor of building.floors) for (const space of floor.spaces) if (space.kind === 'room' && space.number.trim() !== '') used.add(roomNumberKey(space.number));
-  const rooms = numbered.map((room) => {
-    const text = room.number.trim();
-    return { id: room.id, from: text, to: fresh + text.slice(level.length) };
-  });
-  const seen = new Set();
-  for (const room of rooms) {
-    const key = roomNumberKey(room.to);
-    if (used.has(key) || seen.has(key)) return { possible: false, reason: 'a renumbered room would be ' + room.to + ', which is already a room number', rooms: [] };
-    seen.add(key);
+  for (const floor of building.floors) for (const space of floor.spaces) if (space.kind === 'room' && typeof space.number === 'string' && space.number.trim() !== '') used.add(roomNumberKey(space.number));
+  // first every room that follows the floor rule, so a count never takes the
+  // number a renumbered room would have
+  const levelled = new Map();
+  for (const room of numbered) {
+    const to = levelNumber(room.number.trim(), source.level, level, fresh);
+    if (to === null || used.has(roomNumberKey(to))) continue;
+    used.add(roomNumberKey(to));
+    levelled.set(room.id, to);
   }
-  return { possible: true, reason: '', rooms };
+  const rooms = numbered.map((room) => {
+    const from = room.number.trim();
+    if (levelled.has(room.id)) return { id: room.id, from, to: levelled.get(room.id), level: true };
+    return { id: room.id, from, to: copyNumber(from, used), level: false };
+  });
+  return { possible: true, reason: '', rooms, text: numbersText(rooms) };
+}
+
+// The floor rule for one room: the source level L at least 1, the number
+// beginning with a run of digits at least len(L) + 2 long whose first digits are
+// L, and the new level as many digits as L: those first digits become the new
+// level ("214B" on level 2 is "414B" on level 4). Null when the room cannot.
+function levelNumber(text, sourceLevel, level, fresh) {
+  if (!(sourceLevel >= 1) || fresh.length !== level.length) return null;
+  const run = /^[0-9]+/.exec(text);
+  if (run === null || run[0].length < level.length + 2 || !run[0].startsWith(level)) return null;
+  return fresh + text.slice(level.length);
+}
+
+// "Room 201 becomes 401", "Rooms 201 to 204 become 401 to 404" (a run with no
+// gap), "The 3 rooms from 201 to 214B become 401 to 414B"; then each room with a
+// count, "Library becomes Library 2", the first two and how many more past three.
+function numbersText(rooms) {
+  const parts = [];
+  const byNumber = (a, b) => a.from.localeCompare(b.from, undefined, { numeric: true });
+  const levelled = rooms.filter((room) => room.level).sort(byNumber);
+  if (levelled.length === 1) parts.push('Room ' + levelled[0].from + ' becomes ' + levelled[0].to);
+  else if (levelled.length === 2) parts.push('Rooms ' + levelled[0].from + ' and ' + levelled[1].from + ' become ' + levelled[0].to + ' and ' + levelled[1].to);
+  else if (levelled.length > 2) {
+    const first = levelled[0];
+    const last = levelled[levelled.length - 1];
+    const run = levelled.every((room, n) => /^[0-9]+$/.test(room.from) && room.from.length === first.from.length && BigInt(room.from) === BigInt(first.from) + BigInt(n));
+    parts.push((run ? 'Rooms ' : 'The ' + levelled.length + ' rooms from ') + first.from + ' to ' + last.from + ' become ' + first.to + ' to ' + last.to);
+  }
+  const counted = rooms.filter((room) => !room.level);
+  const becomes = (room) => room.from + ' becomes ' + room.to;
+  if (counted.length > 0 && counted.length <= 3) parts.push(list(counted.map(becomes)));
+  else if (counted.length > 3) parts.push(counted.slice(0, 2).map(becomes).join(', ') + ' and ' + (counted.length - 2) + ' more rooms keep their own numbers with a count after them');
+  return parts.join('; ') + '.';
 }
 
 // ---------------------------------------------------------------- joining
@@ -220,7 +245,7 @@ function joinsFor(building, source, top) {
 // user has typed so far, which the sentences then use.
 //   { floorId, name, newName, newLevel, topName,
 //     rooms, otherSpaces, namedCorridors, zones, refuges,
-//     numbered, renumber: { possible, reason, examples: [{ from, to }], count },
+//     numbered, renumber: { possible, reason, examples: [{ from, to }], count, counted, text },
 //     unnumbered, notes, noteCounts: { <check kind>: n }, notesText,
 //     joins: [{ type, cell, text }], joinText, separateText,
 //     copied, notCopied, notJoinedText, unjoinedText, sentence }
@@ -328,8 +353,10 @@ function describeCopy(project, floorId, options) {
     renumber: {
       possible: renumber.possible,
       reason: renumber.reason,
-      count: renumber.rooms.length,
-      examples: renumber.rooms.slice(0, 2).map((room) => ({ from: room.from, to: room.to })),
+      count: renumber.rooms.filter((room) => room.level).length,
+      counted: renumber.rooms.filter((room) => !room.level).length,
+      examples: renumber.rooms.filter((room) => room.level).slice(0, 2).map((room) => ({ from: room.from, to: room.to })),
+      text: renumber.text,
     },
     joins,
     joinText: joins.length === 0 ? '' : joins.map((join) => join.text).join('; ') + '.',
@@ -451,13 +478,13 @@ function idMaker(project, ids) {
 }
 
 // payload: { floorId, numbers?: "level" | "blank", join?: true | false, name?, id? }
-//   numbers  default "level" when that is possible, else "blank"; "level" when
-//            it is not possible is refused
+//   numbers  default "level": each numbered room renumbered for the new level,
+//            or its own number with a count; "blank" leaves every copy without one
 //   join     default true
 //   name     the new floor's name; left out, the default of describeFloorDuplicate
 //   id       the new floor's id, as addFloor takes one
 // The outcome (scheduleOutcome) says what was done:
-//   { text, floorId, newName, rooms, renumbered, blanked, joins }
+//   { text, floorId, newName, rooms, renumbered, counted, blanked, joins }
 // (the notes the copies raise are describeFloorDuplicate's, from the checks)
 export const duplicateFloor = action(
   {
@@ -491,10 +518,8 @@ export const duplicateFloor = action(
     }
 
     const renumber = renumbering(building, source, info.newLevel);
-    const numbers = data.numbers === undefined ? (renumber.possible ? 'level' : 'blank') : data.numbers;
-    if (numbers === 'level' && !renumber.possible) {
-      refuse(renumber.reason === 'none' ? source.name + ' has no numbered rooms, so there is nothing to renumber. Leave the numbers blank.' : 'The numbers cannot carry over: ' + renumber.reason + '. Leave the copies without numbers, and number them on the new floor.', 'cannot-renumber');
-    }
+    // "level" with no numbered room has nothing to do, and is not refused
+    const numbers = data.numbers === undefined ? 'level' : data.numbers;
     const toNumber = new Map(renumber.rooms.map((room) => [room.id, room.to]));
 
     const spaces = source.spaces.map((space) => {
@@ -555,7 +580,8 @@ export const duplicateFloor = action(
     }
 
     const joinsMade = info.joins.filter((join) => made.some((entry) => entry.cell === join.cell));
-    const renumbered = numbers === 'level' ? toNumber.size : 0;
+    const renumbered = numbers === 'level' ? renumber.rooms.filter((room) => room.level).length : 0;
+    const counted = numbers === 'level' ? renumber.rooms.length - renumbered : 0;
     const blanked = numbers === 'blank' ? numberedRooms(source).length : 0;
     const text = 'Duplicated ' + source.name + ' as ' + name + (joinsMade.length > 0 ? ': ' + joinsMade.map((join) => join.text).join('; ') + '.' : '.');
     const outcome = {
@@ -565,6 +591,7 @@ export const duplicateFloor = action(
       rooms: info.rooms,
       otherSpaces: info.otherSpaces,
       renumbered,
+      counted,
       blanked,
       joins: joinsMade.map((join) => ({ type: join.type, cell: join.cell, text: join.text })),
     };

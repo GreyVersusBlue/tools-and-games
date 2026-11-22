@@ -424,4 +424,36 @@ test('gone 3c trust at -2 reads the same on the page and in the refusal: one sto
   eq(view(s, calm).trust.mira.words, 'is uneasy with the house', 'and -1 is still uneasy');
 });
 
+// ---- MER-114: a second agent early in act one (play 2, M4c item 8)
+
+// The share of seeded three-act games on the real content in which, by the end of season 4, a card that would hire an agent the house
+// does not have yet is on the desk with a hire choice the house can take now, while it already has an agent to be the "second" to.
+// A house that starts with two agents has its second agent from the first season. The player answers every paper with the first
+// choice that holds, which hires Yusuf for the newcomer and nobody else; the cards are the engine's own draw, nothing is simulated.
+test('MER-114 a card that hires a second agent is on the desk by season 4 in at least 80 percent of 200 seeded three-act games, in every house', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  const hires = card => (card.choices ?? []).flatMap(ch => (ch.now ?? []).filter(e => e && typeof e === 'object' && 'hire' in e).map(e => e.hire));
+  const houses = cairo.houses.map(h => h.id), tally = Object.fromEntries(houses.map(h => [h, { games: 0, offered: 0 }]));
+  for (let seed = 1; seed <= 200; seed++) {
+    const house = houses[seed % houses.length];
+    let s = newGame(cairo, { seed, length: 'acts', house });
+    let offered = Object.values(s.agents).filter(a => a.hired).length >= 2;
+    for (let t = 0; t < 4 && !offered; t++) {
+      if (s.phase === 'interlude') s = openSeason(s, cairo);
+      const have = Object.values(s.agents).filter(a => a.hired).length;
+      offered = have >= 1 && s.desk.some(p => {
+        const card = p.kind === 'card' && cairo.cards.find(x => x.id === p.ref);
+        return card && hires(card).some(a => !s.agents[a].hired) &&
+          (card.choices ?? []).some(ch => (ch.now ?? []).some(e => e && typeof e === 'object' && 'hire' in e) && holds(ch.requires, s, cairo));
+      });
+      if (!offered) s = endSeason(answer(s, cairo), cairo);
+    }
+    tally[house].games++; if (offered) tally[house].offered++;
+  }
+  const share = (a, b) => Math.round(100 * a / b);
+  for (const h of houses) ok(share(tally[h].offered, tally[h].games) >= 80, `${h}: ${tally[h].offered} of ${tally[h].games} games, ${share(tally[h].offered, tally[h].games)} percent`);
+  const all = Object.values(tally).reduce((n, x) => n + x.offered, 0);
+  ok(share(all, 200) >= 80, `${all} of 200 games, ${share(all, 200)} percent`);
+});
+
 await done();

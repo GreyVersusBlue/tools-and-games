@@ -4,11 +4,11 @@
 // the ranks are the city's (city.json `score`); the other rates are the game's, below.
 import { REP_GROUPS, cityOf, find } from './state.js';
 
-export const REP_POINTS = 0.5;       // points per step of reputation, summed over the four groups (floor 0)
+export const REP_GROUP_POINTS = 2;   // most a group of reputation earns; counted from the middle (DESIGN 2.2 rule 6)
 export const HOME_POINTS = 10;      // per agent who made a trip for the house and is alive and home
 export const HOME_TRUST_BONUS = 3;  // more for one whose trust is 2 or 3
 export const TRUST_BONUS_AT = 2;
-export const NOTEBOOK_POINTS = 1.05; // per entry found
+export const NOTEBOOK_POINTS = 1.05; // per entry opened and read, not per entry found
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -41,10 +41,31 @@ export function netWealth(state, content) {
     loads += n;
     if (price === undefined) unpriced += n; else stock += n * price;
   }
+  // On the road (MER-113, MER-113b): what every expedition still out carries, at the same home prices, and the money sent
+  // with it, counted at the house's share only. A qirad's partners put in part of the purse and of the goods, and the house
+  // paid only the rest (routes.js: purse - partners), so each sum is scaled by house / (house + partners); with no partners
+  // the share is the whole. `loads` and `unpriced` stay whole counts of what is aboard. The bar adds this to `net`; `net`
+  // and the score do not, so a venture sent costs nothing on the bar.
+  const road = { loads: 0, value: 0, unpriced: 0, money: 0, goods: [] };
+  for (const x of state.expeditions ?? []) {
+    const house = x.staked?.house ?? 0, partners = x.staked?.partners ?? 0;
+    const share = partners > 0 && house + partners > 0 ? house / (house + partners) : 1;
+    road.money += (x.purse ?? 0) * share;
+    for (const [g, n] of Object.entries(x.cargo ?? {})) {
+      if (!(n > 0)) continue;
+      const price = state.known?.[home]?.[g]?.p;
+      const row = road.goods.find(r => r.good === g);
+      if (row) row.loads += n; else road.goods.push({ good: g, loads: n, price: price ?? null });
+      road.loads += n;
+      if (price === undefined) road.unpriced += n; else road.value += n * price * share;
+    }
+  }
+  road.money = Math.round(road.money); road.value = Math.round(road.value);
+  const onRoad = { ...road, total: road.value + road.money };
   const owed = (state.loans ?? []).reduce((a, l) => a + l.principal, 0);
   const brought = (state.log ?? []).filter(e => e.kind === 'recall')
     .reduce((a, e) => a + (e.results ?? []).reduce((b, r) => b + (r.brought ?? 0), 0), 0);
-  return { money: state.money, cash: state.money, stock, stockLoads: loads, unpriced, goods, owed, loans: owed, brought, net: state.money + stock - owed };
+  return { money: state.money, cash: state.money, stock, stockLoads: loads, unpriced, goods, owed, loans: owed, brought, onRoad, net: state.money + stock - owed };
 }
 
 /** The wealth line in words, every sum with its thousands separator: "The house holds 2,453 dinars:
@@ -53,7 +74,14 @@ export function netWealth(state, content) {
 export function wealthReason(w, money) {
   const bits = [`${fmt(w.cash)} in cash${w.brought ? ` (${fmt(w.brought)} of it brought home by a recall)` : ''}`];
   bits.push(w.stockLoads ? `${fmt(w.stock)} in ${plural(w.stockLoads, 'load', 'loads')} of stock at the last prices known at home${w.unpriced ? `, ${plural(w.unpriced, 'load', 'loads')} of it with no known price and counted for nothing` : ''}` : 'no stock');
-  return `The house holds ${fmt(w.net)} ${money}: ${bits.join(', ')}, ${w.owed ? `less ${fmt(w.owed)} owed` : 'and owes nothing'}.`;
+  // What is out with the agents: loads (priced and not) and money, said wherever there is any, so a money-only trip and
+  // an unpriced load are named too (MER-113b). The bar shows this figure, so the line says what the figure holds.
+  const out = w.onRoad ?? {};
+  const outBits = [];
+  if (out.loads) outBits.push(`${plural(out.loads, 'load', 'loads')} of goods${out.value ? ` worth ${fmt(out.value)} at those prices` : ''}${out.unpriced ? `${out.value ? ', with ' : ', '}${plural(out.unpriced, 'load', 'loads')} of it with no known price and counted for nothing` : ''}`);
+  if (out.money) outBits.push(`${fmt(out.money)} in money sent to buy with`);
+  const road = outBits.length ? ` On the road, and counted on the top bar but not here: ${outBits.join(' and ')}, the house's share only.` : '';
+  return `The house holds ${fmt(w.net)} ${money}: ${bits.join(', ')}, ${w.owed ? `less ${fmt(w.owed)} owed` : 'and owes nothing'}.${road}`;
 }
 
 export function score(state, content) {
@@ -69,11 +97,16 @@ export function score(state, content) {
     data: { cash: w.cash, stock: { value: w.stock, loads: w.stockLoads, goods: w.goods, unpriced: w.unpriced }, loans: w.loans, brought: w.brought, net: w.net },
   });
 
-  const repSum = REP_GROUPS.reduce((a, g) => a + (state.rep?.[g] ?? 0), 0);
+  // Reputation counts from the middle: a group at 0 earns half of REP_GROUP_POINTS, at -3 none, at +3 all,
+  // so a house that annoyed its partners scores under one that never met them (DESIGN 2.2 rule 6).
+  const repOf = g => Math.min(3, Math.max(-3, state.rep?.[g] ?? 0));
+  const repSum = REP_GROUPS.reduce((a, g) => a + repOf(g), 0);
+  const repPoints = REP_GROUPS.reduce((a, g) => a + REP_GROUP_POINTS * (repOf(g) + 3) / 6, 0);
   parts.push({
-    id: 'reputation', points: Math.max(0, repSum * REP_POINTS),
-    reason: repSum > 0 ? `Standing with partners, agents, the court and foreign merchants adds up to ${repSum}.`
-      : 'Standing with partners, agents, the court and foreign merchants adds up to nothing.',
+    id: 'reputation', points: repPoints,
+    reason: repSum > 0 ? `Standing with partners, agents, the court and foreign merchants adds up to ${repSum} above the middle.`
+      : repSum < 0 ? `Standing with partners, agents, the court and foreign merchants adds up to ${-repSum} below the middle.`
+      : 'Standing with partners, agents, the court and foreign merchants sits at the middle.',
   });
 
   const home = cityOf(content, 'score').home;
@@ -91,10 +124,12 @@ export function score(state, content) {
       + (stayed ? ` ${plural(stayed, 'other', 'others')} never left ${(content.stops ?? []).find(x => x.id === home)?.name ?? 'home'} and ${stayed === 1 ? 'counts' : 'count'} for nothing.` : ''),
   });
 
-  const pages = (state.notebook ?? []).length;
+  // Only a page that was found and then opened counts; an old save has no read list and reads as none.
+  const found = new Set(state.notebook ?? []);
+  const pages = new Set((state.notebookRead ?? []).filter(id => found.has(id))).size;
   parts.push({
     id: 'notebook', points: pages * NOTEBOOK_POINTS,
-    reason: pages ? `${plural(pages, 'page', 'pages')} in the notebook.` : 'The notebook is empty.',
+    reason: pages ? `${plural(pages, 'page', 'pages')} in the notebook opened and read.` : 'No page of the notebook was opened and read.',
   });
 
   const sum = parts.reduce((a, p) => a + p.points, 0);
