@@ -212,6 +212,19 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     return { ok: c.ok, reasons: c.reasons };
   }
 
+  // MER-122 (play a053): 'Change' on Where leaves for the map with the cargo set, and the next sheet of the same season keeps the loads the
+  // new stop still trades in, as many as the house can fill. A kept draft is used once, and not after the season turns.
+  const kept = app.outfitKeep && app.outfitKeep.t === app.state.t && app.outfitKeep.stop !== stopId ? app.outfitKeep : null;
+  app.outfitKeep = null;
+  if (kept && draft.agent) {
+    const fit = {};
+    for (const [g, n] of Object.entries(kept.cargo)) {
+      if (!(n > 0) || !carriable().includes(g)) continue;
+      const p = homePrice(g), most = stock(g) + (p ? Math.max(0, Math.floor(app.state.money / p)) : 0);
+      if (Math.min(n, most) > 0) fit[g] = Math.min(n, most);
+    }
+    if (Object.keys(fit).length) draft.cargo = fit;
+  }
   // ---- sections
   const section = (id, title, ...body) => h('section', { class: 'step', id: `outfit-${id}`, 'aria-labelledby': `outfit-${id}-h` },
     h('h3', { id: `outfit-${id}-h`, tabindex: '-1' }, title), ...body);
@@ -257,7 +270,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     }
     const total = `About ${words(hit.seasons)} ${plural(hit.seasons, 'season', 'seasons')} out and back.`;
     if (!expanded('where')) {
-      return section('where', `2. Where: ${stop.name}`, summary('where', `${homeStop.name} to ${stop.name}. ${total}`, () => onCancel(), 'where'));
+      return section('where', `2. Where: ${stop.name}`, summary('where', `${homeStop.name} to ${stop.name}. ${total}`, () => { app.outfitKeep = { t: app.state.t, stop: stopId, cargo: { ...draft.cargo } }; onCancel(); }, 'where'));
     }
     return section('where', `2. Where: ${stop.name}`,
       h('ol', { class: 'legs' }, hit.route.legs.map((leg, i) => h('li', null,
@@ -265,6 +278,18 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
         i === 0 ? h('span', { class: leg.opens.includes(v.season) ? 'now open' : 'now closed' }, leg.opens.includes(v.season) ? ' Open this season.' : ' Closed this season.') : null))),
       h('p', { class: 'total', id: 'outfit-time' }, total),
       ...hit.warnings.map(w => h('p', { class: 'warn' }, w)));
+  }
+
+  /** MER-122 (play b045, a060): money moves in 50s and the estimate in whole loads, so a press could change nothing and look broken.
+      True when one more press of the purse would bring home the same loads as now: the sheet then says so. Needs a second check
+      of the plan, so it runs only where the purse is on show. */
+  function purseFlat() {
+    const step = 50, more = draft.purse + step;
+    if (!draft.buy.length || more > app.state.money) return false;
+    const now = checked().estimate, then = engine.checkPlan(app.state, content, { ...plan(), purse: more }).estimate;
+    if (!now || !then) return false;
+    const loads = e => Object.values(e.back ?? {}).reduce((n, x) => n + x, 0);
+    return loads(then) === loads(now);
   }
 
   function carrySection() {
@@ -291,11 +316,12 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
         stepper({ key: `cargo-${g}`, label: `${cap(goodName(content, g))}, ${unitOf(content, g, 2)} to send`, value: Math.min(n, max), min: 0, max: Math.max(max, n),
           text: `${n} ${unitOf(content, g, n)}`, onChange: v2 => { draft.cargo[g] = v2; render(`step-cargo-${g}`); } }));
     });
-    const cost = quote();
+    const flat = purseFlat();
     return section('carry', '3. What they carry out',
       goods.length ? h('ul', { class: 'goods' }, rows) : h('p', { class: 'none' }, `${stop.name} trades in nothing the house holds or ${homeStop.name} sells.`),
       h('div', { class: 'good purse' },
-        h('div', { class: 'good-text' }, h('strong', null, 'Money to buy with on the way'), h('span', null, `The house has ${dinars(app.state.money)}.`)),
+        h('div', { class: 'good-text' }, h('strong', null, 'Money to buy with on the way'), h('span', null, `The house has ${dinars(app.state.money)}.`),
+          flat ? h('span', { class: 'purse-flat', id: 'outfit-purse-flat' }, 'More money buys no more loads until the next whole load.') : null),
         stepper({ key: 'purse', label: 'Money to buy with on the way', value: draft.purse, min: 0, max: Math.max(app.state.money, draft.purse), step: 50, fine: 10, big: 250,
           text: dinars(draft.purse), onChange: v2 => { draft.purse = v2; render('step-purse'); } }),
         typedBox({ key: 'purse', label: 'Money to buy with on the way, typed in dinars', value: draft.purse, say: app.say, onChange: v2 => { draft.purse = v2; render('typed-purse'); } })),
@@ -306,6 +332,15 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   const backGoods = () => Object.keys(stop.sells ?? {}).filter(g => homeStop?.sells?.[g]);
   /** The good the engine's own proposal brings back, else the first the stop offers: what the refusal's "name it" offers as a press. */
   const defaultBack = () => proposed?.plan.buy?.[0] ?? backGoods()[0] ?? null;
+
+  /** The good among `goods` that a refusal's sentence names first ("Porcelain is the best known one from Qus"), or null. */
+  const namedBy = (reason, goods) => {
+    if (!reason) return null;
+    const named = reason.slice(reason.indexOf('none is named.') + 1).toLowerCase();   // the sentence about the best good, not the one before it
+    const hits = goods.map(g => ({ g, at: named.indexOf(goodName(content, g)) })).filter(x => x.at >= 0);
+    hits.sort((a, b) => a.at - b.at || goodName(content, b.g).length - goodName(content, a.g).length);
+    return hits[0]?.g ?? null;
+  };
 
   /** "What they bring back": the goods the stop sells that the house sells at home, each one a press. All the money left after
       selling there buys what is chosen; a plan with money and nothing chosen is refused by the engine, and this part offers the default. */
@@ -322,8 +357,11 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     if (!expanded('back')) {
       return section('back', 'What they bring back', summary('back', line, () => { open.add('back'); render('outfit-back-h'); }, 'what they bring back'));
     }
-    const refused = draft.purse > 0 && !chosen.length && checked().reasons.some(r => /needs a good to bring back/.test(r));
-    const def = defaultBack();
+    const refusal = draft.purse > 0 && !chosen.length ? checked().reasons.find(r => /needs a good to bring back/.test(r)) : null;
+    const refused = !!refusal;
+    // MER-122: the button offers the good the red line names. The line is the engine's ("Porcelain is the best known one from Qus");
+    // the sheet's own default is only the fallback when the line names none of this stop's goods (a059: the button said pepper, the line porcelain).
+    const def = namedBy(refusal, goods) ?? defaultBack();
     const rows = goods.map(g => {
       const on = draft.buy.includes(g), far = there[g], homeP = homePrice(g);
       const farText = far?.p == null ? `No news of what ${goodName(content, g)} costs in ${stop.name}.` : `${stop.name} sold it for ${num(far.p)} (${far.written}, ${far.ageWords}).`;

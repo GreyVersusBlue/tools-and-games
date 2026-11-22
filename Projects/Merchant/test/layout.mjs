@@ -74,6 +74,10 @@ const OPEN_FRAMES = new Set(['board', 'laptop', 'laptop-small']);
 // MER-99: a return paper ends by asking, and its last choice is whole in view, clear of End the season, at the two frames a teacher plays on
 const LAST_CHOICE = { 'desk-return': '.sheet .choices .choice:last-of-type' };
 const LAST_FRAMES = new Set(['board', 'laptop']);
+// MER-122: on a return paper the headline wins where the two cannot both fit. With four papers stacked above it a 1366x768 or 1280x800
+// frame has room for the headline or for the choices, not both (the desk used to scroll the headline away, play a062 and b070), so a return's
+// choices are asserted whole in view at the board frame only; at the laptops the headline test below holds and the choices are one scroll or Tab away.
+const HEADLINE_WINS = new Set(['desk-return']);
 // MERCHANT_LAYOUT_ONLY=desk-loss,desk-return runs just those screens (a development shortcut; the suite must run whole to count)
 const ONLY = (process.env.MERCHANT_LAYOUT_ONLY || '').split(',').filter(Boolean);
 const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts']);
@@ -128,6 +132,10 @@ const states = {
     return s;
   })(),
 };
+// MER-122 (play a062, b070): a second return, where the desk used to open the account and scroll the stack down to the bonus choice,
+// leaving the focused headline above the top (y=-292). The engine's policy here sends one party a game, so the earlier return the desk
+// counts is the same entry logged twice: the page reads only how many there are.
+states.ret2 = (() => { const s = structuredClone(states.ret); s.log.push(structuredClone(s.log.find(e => e.kind === 'return'))); return s; })();
 // A question and a report from the road on the desk (MER-63): the engine's own delivery puts the paper
 // there from an entry in `post`; only the draw is placed by hand (every cairo letter has weight 0).
 const withLetter = (id, kind, stop, lag, standing) => {
@@ -237,6 +245,14 @@ const SCREENS = [
       await load(p, '#desk', { state: states.ret, large: f.large });
       await p.waitForSelector('#screen-desk .sheet-title');
       const id = states.ret.desk.find(x => x.kind === 'return' && x.state === 'open').id;
+      if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
+      await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
+    } },
+  { name: 'desk-return2',
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states.ret2, large: f.large });
+      await p.waitForSelector('#screen-desk .sheet-title');
+      const id = states.ret2.desk.find(x => x.kind === 'return' && x.state === 'open').id;
       if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
       await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
     } },
@@ -561,13 +577,13 @@ try {
       if (ready) {
         await page.screenshot({ path: path.join(SHOTS, `${screen.name}-${frame.name}.png`) });
         // measured first: the contrast pass below scrolls every scroller and puts it back at the top
-        if (OPENS_WITH[screen.name] && OPEN_FRAMES.has(frame.name) && !frame.large) {
+        if (OPENS_WITH[screen.name] && OPEN_FRAMES.has(frame.name) && !frame.large && !(HEADLINE_WINS.has(screen.name) && frame.name !== 'board')) {
           await test(`${tag}: what the paper asks is in view when it opens, no scrolling`, async () => {
             const bad = await page.evaluate(wholeInView, OPENS_WITH[screen.name]);
             ok(!bad, bad ?? '');
           });
         }
-        if (LAST_CHOICE[screen.name] && LAST_FRAMES.has(frame.name) && !frame.large) {
+        if (LAST_CHOICE[screen.name] && LAST_FRAMES.has(frame.name) && !frame.large && !(HEADLINE_WINS.has(screen.name) && frame.name !== 'board')) {
           await test(`${tag}: the last choice is in view above End the season, no scrolling`, async () => {
             const bad = await page.evaluate(wholeInView, LAST_CHOICE[screen.name]);
             ok(!bad, bad ?? '');
@@ -661,6 +677,14 @@ try {
             await page.evaluate(() => { document.querySelector('dialog[open]').scrollTop = 0; });
             await page.click('#change-back');
             await page.waitForSelector('#back-nothing', { timeout: 3000 });
+          });
+        }
+        if (screen.name === 'desk-return2' || screen.name === 'desk-return') {
+          // MER-122 (finding 7): a return opens on its headline, in view and focused, at every frame, whatever the account below it holds
+          await test(`${tag}: the return's headline is in view and has the focus when the paper opens`, async () => {
+            const got = await page.evaluate(wholeInView, '.sheet-title');
+            ok(!got, got ?? '');
+            eq(await page.evaluate(() => document.activeElement.className), 'sheet-title');
           });
         }
         if (screen.name === 'desk-return' && frame.name === 'board') {

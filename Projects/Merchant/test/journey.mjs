@@ -1126,7 +1126,7 @@ try {
       const best = await page.evaluate(() => window.__merchant.view.bestTrades);
       eq(best, [], 'no news yet, no best trades');
       eq(await page.$eval('#prices-head', e => e.textContent), 'Best known trades');
-      eq(await page.$eval('#best-trades', e => [e.tagName, e.textContent]), ['P', 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.']);
+      eq(await page.$eval('#best-trades', e => [e.tagName, e.textContent, e.dataset.why]), ['P', 'The house has no news yet of what goods sell for in other stops. Letters from far stops arrive late.', 'news'], 'MER-122: the line says why, and here the reason is no news');
       eq(await page.$('#prices'), null, 'the full table is not on the panel until it is asked for');
       eq(await page.$eval('#btn-all-prices', b => [b.getAttribute('aria-expanded'), b.textContent]), ['false', 'Every price in Damascus']);
       await page.click('#btn-all-prices');
@@ -1488,6 +1488,112 @@ try {
       eq(await checked(), 0, 'Space clears it too');
       await page.click('#outfit-cancel');
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+    });
+
+    const openSheet = async () => {
+      await goMap(page);
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+    };
+    const closeSheet = async () => { await page.click('#outfit-cancel'); await page.waitForFunction(() => !document.getElementById('panel-outfit')); };
+    await test('MER-122: the bring-back button names the good the red line names, also when the cargo already carries the sheet\'s own pick', async () => {
+      await openSheet();
+      await page.click('#change-carry'); await page.waitForSelector('#step-purse');
+      await page.click('#change-back'); await page.waitForSelector('.back-pick');
+      // the first good the sheet would offer (a059: it offered pepper while the engine, which leaves out what the trip carries, named porcelain)
+      const first = await page.$eval('.back-pick', b => b.dataset.good);
+      await page.click(`#step-cargo-${first}-plus`);
+      ok(Number(await page.$eval(`#step-cargo-${first}`, e => e.getAttribute('aria-valuenow'))) > 0, `setup: the cargo carries ${first}`);
+      await page.click('#back-nothing');
+      await page.click('#step-purse-plus');
+      await page.waitForSelector('#outfit-back-default');
+      const reason = await page.$eval('#outfit-reasons', e => e.textContent);
+      const named = /none is named\. (.+?) is the best known one from/.exec(reason)?.[1];
+      ok(named, `the engine names a good: ${reason}`);
+      eq(await page.$eval('#outfit-back-default', b => b.textContent), `Bring back ${named.toLowerCase()}`, 'the button and the line name the same good');
+      ok(!new RegExp(`bring back ${first}$`, 'i').test(await page.$eval('#outfit-back-default', b => b.textContent)), `setup: the carried good (${first}) is not the one offered`);
+      await page.click('#outfit-back-default');
+      await page.waitForFunction(() => document.getElementById('outfit-reasons').textContent === '');
+      eq(await page.$eval('.back-pick[aria-checked="true"]', b => b.querySelector('strong').textContent), named, 'one press takes the good the line named');
+      await closeSheet();
+    });
+    await test('MER-122: the purse stepper says when one more press buys no more loads, and only then', async () => {
+      await openSheet();
+      await page.click('#change-carry'); await page.waitForSelector('#step-purse');
+      await page.click('#change-back'); await page.waitForSelector('.back-pick');
+      await page.click('.back-pick');
+      const levels = [];
+      const money = await page.evaluate(() => window.__merchant.state.money);
+      for (let at = 0; at + 50 <= money && levels.length < 14; at += 50) {
+        if (at > 0) await page.click('#step-purse-plus');
+        const flat = await page.$('#outfit-purse-flat');
+        levels.push({ at, line: await page.$eval('#outfit-estimate', e => e.textContent), flat: !!flat, text: flat ? await page.$eval('#outfit-purse-flat', e => e.textContent) : null });
+      }
+      await page.click('#step-purse-plus');
+      const last = await page.$eval('#outfit-estimate', e => e.textContent);
+      ok(levels.length >= 6, `setup: ${levels.length} purse levels walked`);
+      ok(levels.some(l => l.flat) && levels.some(l => !l.flat), `setup: the walk meets both a flat step and a step that buys something: ${JSON.stringify(levels.map(l => [l.at, l.flat]))}`);
+      levels.forEach((l, i) => {
+        const next = i + 1 < levels.length ? levels[i + 1].line : last;
+        eq(l.flat, next === l.line, `the purse at ${l.at}: the sheet ${l.flat ? 'says one more press buys nothing' : 'says nothing'}, and one more press ${next === l.line ? 'leaves' : 'changes'} the estimate`);
+        if (l.flat) eq(l.text, 'More money buys no more loads until the next whole load.', 'one plain line');
+      });
+      await closeSheet();
+    });
+    await test('MER-122: Change on Where keeps the cargo the new stop still trades, and drops the rest', async () => {
+      const g = await engineState(page);
+      const view0 = await page.evaluate(() => window.__merchant.view);
+      const trades = id => Object.keys(nodeContent.stops.find(x => x.id === id).sells ?? {});
+      const roadOpen = id => { const r = eng.routeFor(g, nodeContent, id); return !!r && r.route.legs[0].opens.includes(view0.season); };
+      await openSheet();
+      await page.click('#change-carry'); await page.waitForSelector('#step-cargo-linen-plus');
+      await page.click('#step-cargo-linen-plus'); await page.click('#step-cargo-linen-plus');
+      const goods = await page.$eval('#outfit-total', e => e.textContent.replace(/^In all: /, '').replace(/ and [\d,]+ dinars?\.$/, '').replace(/\.$/, ''));
+      ok(/linen/.test(goods), `setup: linen is in the cargo: ${goods}`);
+      const [keeps, drops] = [['qus', trades('qus').includes('linen') && roadOpen('qus')], ['samarkand', !trades('samarkand').includes('linen') && roadOpen('samarkand')]];
+      ok(keeps[1] && drops[1], `setup: Qus trades linen and Samarkand does not, and both roads are open: ${keeps}, ${drops}`);
+      await page.click('#change-where');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      await page.click('#stop-qus, .dot[data-stop="qus"]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      eq(await page.$eval('#summary-carry', e => e.textContent), `${cap(goods)}.`, 'Qus: the cargo set for Damascus is still on the sheet');
+      await closeSheet();
+      // a draft is used once: the next sheet for Qus is the engine's own again
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      ok(await page.$eval('#summary-carry', (e, k) => e.textContent !== k, `${cap(goods)}.`), 'the kept cargo was used once; the next sheet for Qus is the engine\'s own');
+      await closeSheet();
+      // Samarkand trades no linen: the loads are dropped and the engine's own plain plan stands
+      await openSheet();
+      await page.click('#change-carry'); await page.waitForSelector('#step-cargo-linen-plus');
+      await page.click('#step-cargo-linen-plus');
+      await page.click('#change-where');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      await page.click('#stop-samarkand, .dot[data-stop="samarkand"]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      ok(!/linen/.test(await page.$eval('#summary-carry', e => e.textContent)), `Samarkand: no linen goes: ${await page.$eval('#summary-carry', e => e.textContent)}`);
+      await closeSheet();
+      await page.click('#stop-damascus, .dot[data-stop="damascus"]');   // the map keeps the stop selected, and the cases after this one are about Damascus
+      eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
+    });
+    await test('MER-122: an empty Best known trades list says why, in the house\'s terms: nobody free, too little money, no news, nothing pays', async () => {
+      const got = await page.evaluate(async () => {
+        const { noTradesWhy } = await import('./js/ui/screens/map.js');
+        const { content, state, view } = window.__merchant;
+        const clone = x => JSON.parse(JSON.stringify(x));
+        const home = content.city.home, app = st => ({ content, state: st });
+        const away = clone(state); for (const a of Object.values(away.agents)) a.where = 'damascus';
+        const broke = clone(state); broke.stock = {};
+        const withNews = clone(view); const far = Object.keys(withNews.prices).find(k => k !== home);
+        withNews.prices[far] = { ...withNews.prices[far], pepper: { ...(withNews.prices[far]?.pepper ?? {}), p: 90 } };
+        const noNews = clone(view); for (const k of Object.keys(noNews.prices)) if (k !== home) noNews.prices[k] = {};
+        return { nobody: noTradesWhy(app(away), view), money: noTradesWhy(app(broke), { ...view, money: 1 }), news: noTradesWhy(app(state), noNews), pays: noTradesWhy(app(state), withNews) };
+      });
+      eq(Object.fromEntries(Object.entries(got).map(([k, v]) => [k, v.id])), { nobody: 'nobody', money: 'money', news: 'news', pays: 'pays' });
+      eq(new Set(Object.values(got).map(v => v.text)).size, 4, 'four different lines');
+      ok(/^Nobody is free/.test(got.nobody.text) && /too little money for even one load \(\d+ dinars?\)/.test(got.money.text) && /no news yet/.test(got.news.text) && /no trade pays/.test(got.pays.text), JSON.stringify(got));
     });
 
     await test('MER-113b: Nothing does not promise money home when a purse is set; with no purse it says the goods come home as money', async () => {
@@ -2074,7 +2180,7 @@ try {
       });
 
       await test(`${how}: the ledger says the years the engine's own jump skipped, on testport and cairo, and says nothing where seasons run on (MER-113b)`, async () => {
-        const { moneyTrail } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
+        const { moneyTrail, jumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
         const { writeSeason } = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
         const fsp = await import('node:fs/promises');
         const testportContent = eng.validateContent(await loadContent('testport', { fs: fsp }));
@@ -2109,10 +2215,11 @@ try {
           ok(j && Number.isInteger(j.years), `${name}: setup: the engine's own jump is in the log`);
           const trail = moneyTrail(c, st.log);
           eq(pageYears, j.years, `${name}: setup: the interlude page the engine showed reads ${j.years} years`);
-          eq(trail.map(t => t.gap).filter(g => g), [j.years], `${name}: the ledger prints the jump's years, the same number the interlude page does`);
+          eq(trail.filter(t => t.after).map(t => t.after.years), [j.years], `${name}: the ledger prints the jump's years, the same number the interlude page does`);
+          eq(trail.find(t => t.after)?.at, j.from, `${name}: the jump is on the season it came after`);
           eq(trail.length, 4, `${name}: four seasons`);
           const noJump = moneyTrail(c, st.log.filter(e => e.kind !== 'jump'));
-          eq(noJump.map(t => t.gap), [0, 0, 0, 0], `${name}: a gap in the season entries that is not the act jump prints no line`);
+          eq(noJump.map(t => t.after), [null, null, null, null], `${name}: a gap in the season entries that is not the act jump prints no line`);
           years[name].push(j.years);
           if (name === 'cairo') cairoJumped = st;
         }
@@ -2122,10 +2229,30 @@ try {
         await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
         await page.goto(GAME + '#ledger', { waitUntil: 'load' });
         await opened(page, 'ledger');
-        const first = trail.findIndex(t => t.gap);
-        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j.years)]);
-        eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], `${j.years === 1 ? 'A year' : `${j.years} years`} passed before ${writeSeason(nodeContent, trail[first].at)}.`, 'the line the page prints');
-        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), trail.map(t => String(t.change)), 'the four that closed last');
+        // MER-125: the row whose `at` is the jump's `from` carries `after`; the page prints one line for it, right after that season's own line
+        const first = trail.findIndex(t => t.after);
+        const checkJumpLine = async (st2, why) => {
+          const j2 = st2.log.find(e => e.kind === 'jump'), tr = moneyTrail(nodeContent, st2.log), at = tr.findIndex(t => t.after);
+          ok(at >= 0 && tr[at].at === j2.from, `${why}: setup: the jump is on the season it came after`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1, `${why}: exactly one jump line`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j2.years)], `${why}: data-gap is the years`);
+          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], jumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.previousElementSibling?.dataset.change)), [String(tr[at].change)], `${why}: it sits right after that season's line`);
+          eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), tr.map(t => String(t.change)), `${why}: the changes the page shows are the trail's`);
+        };
+        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1);
+        ok(first >= 0, 'setup: the cairo trail has the jump');
+        await checkJumpLine(st, 'a season of the new act has closed');
+        // opened straight after the jump, before any new season closes
+        let fresh2 = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 80 && !fresh2.log.some(e => e.kind === 'jump'); i++) fresh2 = step(fresh2, nodeContent);
+        if (fresh2.phase === 'interlude') fresh2 = eng.openSeason(fresh2, nodeContent);
+        ok(fresh2.log.some(e => e.kind === 'jump') && !seasons(fresh2).some(e => e.at >= fresh2.log.find(x => x.kind === 'jump').to), 'setup: the jump is in the log and no season of the new act has closed');
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(fresh2)), SAVE_VERSION);
+        await page.goto(GAME + '#ledger', { waitUntil: 'load' });
+        await opened(page, 'ledger');
+        await checkJumpLine(fresh2, 'straight after the jump');
         // a book of at least four seasons that never jumped says nothing of years
         let run = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
         for (let i = 0; i < 40 && seasons(run).length < 5; i++) run = step(run, nodeContent);
@@ -2641,16 +2768,20 @@ try {
         ok(ids.length >= 3, `setup: three goods to carry: ${ids}`);
         for (const g of ids) { await page.focus(`#step-cargo-${g}`); await page.keyboard.press('Home'); }
         const good = g => nodeContent.goods.find(x => x.id === g), unit = (g, n) => `${good(g).unit ?? 'load'}${n === 1 ? '' : 's'}`;
-        const want = cargo => {
-          const e = Object.entries(cargo), first = good(e[0][0]).unit ?? 'load';
+        const line = e => {
+          const first = good(e[0][0]).unit ?? 'load';
           const parts = e.map(([g, n], i) => (i && (good(g).unit ?? 'load') === first ? `${n} of ${good(g).name.toLowerCase()}` : `${n} ${unit(g, n)} of ${good(g).name.toLowerCase()}`));
           return parts.length < 2 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
         };
+        // the sheet lists goods in the order the engine's proposal and the presses put them in its draft (MER-121b changed that order), so any order of the goods will do
+        const orders = es => es.length < 2 ? [es] : es.flatMap((x, i) => orders([...es.slice(0, i), ...es.slice(i + 1)]).map(r => [x, ...r]));
+        const want = cargo => orders(Object.entries(cargo)).map(line);
         const cargo = {}, n = [4, 2, 3];
         for (let i = 0; i < 3; i++) {
           cargo[ids[i]] = n[i];
           await page.focus(`#step-cargo-${ids[i]}`); for (let k = 0; k < n[i]; k++) await page.keyboard.press('ArrowUp');
-          eq(await page.$eval('#outfit-total', e => e.textContent), `In all: ${want(cargo)}.`, `${i + 1} good(s)`);
+          const said = await page.$eval('#outfit-total', e => e.textContent);
+          ok(want(cargo).map(w => `In all: ${w}.`).includes(said), `${i + 1} good(s): ${said}`);
         }
         ok(!/ and .* and /.test(await page.$eval('#outfit-total', e => e.textContent)), 'three goods chain one and');
         await page.click('#outfit-cancel');
@@ -3039,11 +3170,16 @@ try {
       const label = await page.$eval('#outfit-send', b => b.textContent);
       eq(label, 'Send Ali to Alexandria', 'the agent and the stop are the card\'s');
       eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(st, content77, 'p9-0', 'go'))), 'nothing is sent, and nothing is paid, before Send');
-      // the engine has no plan for Ali on this road that pays (MER-98): the sheet says why and Send waits for a plan the player builds
-      ok(await page.$('#outfit-why'), 'the sheet says why it has no plan');
-      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
-      await page.click('#change-carry');
-      await page.focus('#step-cargo-linen'); await page.keyboard.press('ArrowUp');
+      // where the engine has no plan for Ali on this road that pays (MER-98) the sheet says why and Send waits for a plan the player builds;
+      // where it has one (MER-121b's proposal searches more) the sheet opens on it and Send is open. Which it is, is the engine's answer, not a seed's.
+      const after = eng.choose(st, content77, 'p9-0', 'go'), proposal = eng.proposePlan(after, content77, 'ali', eng.routeFor(after, content77, 'alexandria').route.id);
+      const noPlan = !proposal || !!proposal.why;
+      eq(!!(await page.$('#outfit-why')), noPlan, 'the sheet says why it has no plan exactly when the engine has none');
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), noPlan ? 'true' : 'false');
+      if (noPlan) {
+        await page.click('#change-carry');
+        await page.focus('#step-cargo-linen'); await page.keyboard.press('ArrowUp');
+      }
       await page.click('#outfit-send');
       await page.waitForSelector('#map-toast:not([hidden])');
       const sent = JSON.parse(await page.evaluate(() => localStorage.getItem('merchant-save')));
@@ -3168,6 +3304,30 @@ try {
       eq(await page.$('#btn-next'), null, 'the paper does not offer Next while it asks');
       const after = await page.$eval('.sheet', e => [...e.children].map(c => c.className).join(' '));
       ok(after.indexOf('account') < after.indexOf('ask'), after);
+    });
+    // MER-122 (play a062, b070): from the second return on the desk used to open the account and scroll the stack down to the bonus choice, so the
+    // focused headline sat above the top of the sheet (y=-292). The earlier return the desk counts is the same entry logged twice.
+    const secondReturn = () => { const st = askingReturn(); st.log.push(structuredClone(st.log.find(e => e.kind === 'return'))); return st; };
+    const headlineIn = () => page.evaluate(() => {
+      const t = document.querySelector('.sheet-title'), box = t.closest('.stack-papers'), r = t.getBoundingClientRect(), b = box.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), from: Math.round(Math.max(b.top, bar.bottom)), to: Math.round(Math.min(b.bottom, innerHeight)), focus: document.activeElement === t };
+    });
+    const settledPage = () => page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
+    await test('MER-122: a return after the first opens with its headline in view and focused, and its account folded: loaded by keyboard, raised by pointer', async () => {
+      const st = secondReturn(), r = st.desk[0];
+      await load(st);
+      await settledPage();
+      eq(await page.$eval('.sheet details.account', e => e.open), false, 'the account is folded, so the paper is short enough to read from its headline');
+      let m = await headlineIn();
+      ok(m.focus && m.top >= m.from && m.bottom <= m.to, `loaded: the focused headline spans ${m.top} to ${m.bottom} and ${m.from} to ${m.to} is on screen`);
+      // the pointer: a second return lies on top, and a press on the edge of this one raises it
+      const two = structuredClone(st); two.desk = [{ ...structuredClone(r), id: 'p122-top' }, r];
+      await load(two);
+      await page.click(`.edge[data-paper="${r.id}"]`);
+      await page.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, r.id);
+      await settledPage();
+      m = await headlineIn();
+      ok(m.focus && m.top >= m.from && m.bottom <= m.to, `raised: the focused headline spans ${m.top} to ${m.bottom} and ${m.from} to ${m.to} is on screen`);
     });
     await test('Enter on a return\'s heading does not answer it while it asks', async () => {
       await load(ret);
@@ -3322,21 +3482,36 @@ try {
       eq(got.said, 'The house is open.');
       eq(got.plain, 'Nothing changed at once.');
     });
-    await test('MER-99: a drop in a group\'s standing never runs into a bare good one: "Still, they speak well of you."', async () => {
+    await test('MER-99, MER-122: a drop in a group\'s standing never runs into a bare good one; the verb agrees with the group', async () => {
       const got = await page.evaluate(async () => {
         const { happened } = await import('./js/ui/screens/paper.js');
-        const c = { agents: [] }, at = words => ({ view: () => ({ rep: { partners: { words }, agents: { words } } }) });
+        const c = { agents: [] }, at = words => ({ view: () => ({ rep: { partners: { words }, agents: { words }, court: { words }, foreign: { words } } }) });
         return {
           well: happened(c, [{ rep: 'partners', by: -1 }], at('They speak well of you')),
           first: happened(c, [{ rep: 'partners', by: -1 }], at('They come to you first')),
           warily: happened(c, [{ rep: 'partners', by: -1 }], at('They deal with you warily')),
           up: happened(c, [{ rep: 'agents', by: 1 }], at('They speak well of you')),
+          court: happened(c, [{ rep: 'court', by: 1 }]),
+          courtDown: happened(c, [{ rep: 'court', by: -1 }], at('They speak well of you')),
+          foreign: happened(c, [{ rep: 'foreign', by: 1 }]),
         };
       });
-      eq(got.well, 'Your partners think less of the house. Still, they speak well of you.');
-      eq(got.first, 'Your partners think less of the house. Still, they come to you first.');
-      eq(got.warily, 'Your partners think less of the house. They deal with you warily.');
+      eq(got.well, 'Your partners think less of the house.', 'no "Still, they speak well of you" after "think less"');
+      eq(got.first, 'Your partners think less of the house.', 'nor "Still, they come to you first"');
+      eq(got.warily, 'Your partners think less of the house. They deal with you warily.', 'a drop to a worse standing still says where it stands');
       eq(got.up, 'Your agents think better of the house. They speak well of you.', 'a rise keeps the bare words');
+      eq(got.court, 'The court thinks better of the house.', 'one court, so "thinks"');
+      eq(got.courtDown, 'The court thinks less of the house.');
+      eq(got.foreign, 'Foreign merchants think better of the house.', 'merchants, so "think"');
+    });
+    await test('MER-122: an Accounts item\'s changes read as one line: facts run on with commas, each sentence follows whole after a full stop', async () => {
+      const got = await page.evaluate(async () => {
+        const { accountLine } = await import('./js/ui/screens/paper.js');
+        return [accountLine(['+40 coins', 'The court thinks better of the house.']), accountLine(['+60 dinars', "Hasan's trust +1"]),
+          accountLine(['The court thinks better of the house.', 'Your agents think less of the house.']), accountLine(['+5 dinars'])];
+      });
+      eq(got, ['+40 coins. The court thinks better of the house.', "+60 dinars, Hasan's trust +1", 'The court thinks better of the house. Your agents think less of the house.', '+5 dinars'],
+        'never "+40 coins, The court thinks better of the house."');
     });
     await test('MER-99: a return whose goods came home unsold says so in its headline, in one sentence, with the price at home', async () => {
       const st = askingReturn(), r = st.desk[0];
