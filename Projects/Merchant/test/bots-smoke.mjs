@@ -40,13 +40,6 @@ test('smoke: an expedition still on the road at an act jump counts as a trip (th
   ok(settled > 0, `no expedition settled at a jump was counted in ${all.length} games`);
 });
 
-test('smoke: the bots differ (the careful bot sends smaller stakes than the greedy one)', () => {
-  // the mean, not the median: both bots' stakes sit on the same few depth-capped sizes (450 for both at 50 games), so
-  // a median over 50 games only measures which size the middle trip landed on
-  const mean = b => { const a = res.results[b].flatMap(g => g.capital); return a.reduce((n, x) => n + x, 0) / a.length; };
-  ok(mean('careful') < mean('greedy'), `careful ${mean('careful')}, greedy ${mean('greedy')}`);
-});
-
 test('smoke: the same seed plays the same game twice', () => {
   const args = { bot: 'greedy', seed: 4242, house: 'cloth' };
   eq(playGame(content, args), playGame(content, args));
@@ -392,6 +385,39 @@ test('venture bots: careful and greedy send what proposePlan proposes for the ro
     }
   }
   ok(sent >= 4, `${sent} ventures were chosen`);
+});
+
+test('venture bots: greedy runs more ventures at once than careful and stakes a smaller share of its money in each (DECISIONS 2026-11-21 18:06)', () => {
+  // The design: careful sends one venture at a time with half its money, greedy sends several at once with a fifth of its money each.
+  // The old case here said careful's stakes are smaller (the mean stake over 50 games), which held only while careful's plans left
+  // their stake unfilled: once the search fills a plan, a half of the money buys more than a fifth of what is left after two ventures.
+  // So the case reads the two things the design names, over the first sending of seeded desks: how many ventures are out after
+  // the bot has sent every free agent, and the share of the money it had that each venture took.
+  const sends = bot => {
+    const rows = [];
+    for (const seed of [5, 6, 7, 8, 9, 10, 11, 12]) {
+      let s = seasoned(seed, 5);
+      const out = [];
+      for (const a of content.agents) {
+        const r = s.agents[a.id];
+        if (!r?.hired || r.where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+        const plan = venturePlan(bot, s, content, a);
+        if (!plan) continue;
+        const sent = outfit(s, content, plan);
+        out.push((s.money - sent.money) / s.money);
+        s = sent;
+      }
+      rows.push({ seed, out: out.length, shares: out });
+    }
+    return rows;
+  };
+  const care = sends('careful'), greed = sends('greedy');
+  const total = rows => rows.reduce((n, r) => n + r.out, 0), mean = rows => rows.flatMap(r => r.shares).reduce((n, x) => n + x, 0) / total(rows);
+  for (const [c, g] of care.map((c, i) => [c, greed[i]])) ok(g.out >= c.out, `seed ${c.seed}: greedy sent ${g.out}, careful ${c.out}`);
+  ok(care.every(r => r.out <= 1) && greed.some(r => r.out >= 3), `careful has at most one out (${care.map(r => r.out)}) and greedy runs three or more at once somewhere (${greed.map(r => r.out)})`);
+  ok(total(greed) > 2 * total(care), `ventures sent at once: greedy ${total(greed)}, careful ${total(care)}`);
+  // measured on these eight desks: careful 0.46 of its money in each of its 8 ventures (one a desk), greedy 0.32 in each of its 23
+  ok(mean(greed) < mean(care), `share of its money in each venture: greedy ${mean(greed).toFixed(3)}, careful ${mean(care).toFixed(3)}`);
 });
 
 test('venture bots: careful takes a road with no waiting and at most six seasons there and back, and never has more than one out', () => {
