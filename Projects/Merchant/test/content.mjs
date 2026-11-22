@@ -607,8 +607,11 @@ test('(MER-123) "Bread is dear" is drawn only after the grain notice, and not in
 // to tell apart; a new pair fails here. Letters are held apart at run time by letters.js `repeatsRecent`; two cards are not.
 // A pair that shares a note or a source line is allowed only when the content itself keeps the two apart, so a player
 // never meets the same fact twice in one season or the next. `apart` names the proof, or null when there is none; a pair with
-// no proof must be listed in SHARED_FACTS, which is empty (MER-126: it held 15 pairs). Each proof reads the content, not a game.
-const SHARED_FACTS = [];
+// no proof must be listed in SHARED_FACTS (MER-126: it held 15 pairs, now 1). Each proof reads the content, not a game.
+// The one pair left (MER-126): the card and the letter tell Pegolotti's 4 percent for the sack. test/letters.mjs's MER-123 repeat case
+// names this very pair, and the letter is in data/cairo/letters.json, so neither can change under MER-126's ownership. Gating the card on
+// `out: { lte: 0 }` kept the two apart and moved venture's MER-116 (2) band and routes.mjs's seeded plain game, so it was reverted.
+const SHARED_FACTS = ['broker-linen-constantinople+constantinople-sacks'];
 const everything = [...cairo.cards, ...cairo.letters];
 const effectsOf = c => { const out = []; const walk = o => { if (Array.isArray(o)) o.forEach(walk); else if (o && typeof o === 'object') { out.push(o); Object.values(o).forEach(walk); } }; walk(c.choices ?? []); return out; };
 const sendersOf = id => everything.filter(c => effectsOf(c).some(e => e.card === id)).map(c => ({ card: c, lags: effectsOf(c).filter(e => e.card === id).map(e => e.in) }));
@@ -650,6 +653,7 @@ test('(MER-126) the pairs that remain are each kept apart by a proof', () => {
   const kept = sharedPairs(everything).map(p => `${p}: ${apart(...p.split('+'))}`);
   eq(kept, [
     'bales-middling+broker-bales: follow-up two seasons on',
+    'broker-linen-constantinople+constantinople-sacks: null',
     'ilyas-sends-his-nephew+tadros-first-trip: trip home after the hire',
     'matteo-comes-back+matteo-for-one-load: follow-up two seasons on',
     'opening-letter+opening-letter-broker: different houses',
