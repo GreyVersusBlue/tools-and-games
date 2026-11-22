@@ -74,6 +74,10 @@ const OPEN_FRAMES = new Set(['board', 'laptop', 'laptop-small']);
 // MER-99: a return paper ends by asking, and its last choice is whole in view, clear of End the season, at the two frames a teacher plays on
 const LAST_CHOICE = { 'desk-return': '.sheet .choices .choice:last-of-type' };
 const LAST_FRAMES = new Set(['board', 'laptop']);
+// MER-122: on a return paper the headline wins where the two cannot both fit. With four papers stacked above it a 1366x768 or 1280x800
+// frame has room for the headline or for the choices, not both (the desk used to scroll the headline away, play a062 and b070), so a return's
+// choices are asserted whole in view at the board frame only; at the laptops the headline test below holds and the choices are one scroll or Tab away.
+const HEADLINE_WINS = new Set(['desk-return']);
 // MERCHANT_LAYOUT_ONLY=desk-loss,desk-return runs just those screens (a development shortcut; the suite must run whole to count)
 const ONLY = (process.env.MERCHANT_LAYOUT_ONLY || '').split(',').filter(Boolean);
 const FITS = new Set(['title', 'title-continue', 'desk-letter', 'desk-question', 'desk-report', 'desk-papers', 'desk-return', 'desk-accounts', 'between-acts']);
@@ -573,13 +577,13 @@ try {
       if (ready) {
         await page.screenshot({ path: path.join(SHOTS, `${screen.name}-${frame.name}.png`) });
         // measured first: the contrast pass below scrolls every scroller and puts it back at the top
-        if (OPENS_WITH[screen.name] && OPEN_FRAMES.has(frame.name) && !frame.large) {
+        if (OPENS_WITH[screen.name] && OPEN_FRAMES.has(frame.name) && !frame.large && !(HEADLINE_WINS.has(screen.name) && frame.name !== 'board')) {
           await test(`${tag}: what the paper asks is in view when it opens, no scrolling`, async () => {
             const bad = await page.evaluate(wholeInView, OPENS_WITH[screen.name]);
             ok(!bad, bad ?? '');
           });
         }
-        if (LAST_CHOICE[screen.name] && LAST_FRAMES.has(frame.name) && !frame.large) {
+        if (LAST_CHOICE[screen.name] && LAST_FRAMES.has(frame.name) && !frame.large && !(HEADLINE_WINS.has(screen.name) && frame.name !== 'board')) {
           await test(`${tag}: the last choice is in view above End the season, no scrolling`, async () => {
             const bad = await page.evaluate(wholeInView, LAST_CHOICE[screen.name]);
             ok(!bad, bad ?? '');
@@ -675,7 +679,7 @@ try {
             await page.waitForSelector('#back-nothing', { timeout: 3000 });
           });
         }
-        if (screen.name === 'desk-return2') {
+        if (screen.name === 'desk-return2' || screen.name === 'desk-return') {
           // MER-122 (finding 7): a return opens on its headline, in view and focused, at every frame, whatever the account below it holds
           await test(`${tag}: the return's headline is in view and has the focus when the paper opens`, async () => {
             const got = await page.evaluate(wholeInView, '.sheet-title');

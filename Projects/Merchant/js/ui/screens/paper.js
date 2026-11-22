@@ -507,7 +507,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
   // again when the sheet's rise ends, which is the desk's second pass.
   const headline = () => {
     const box = sheet.closest('.stack-papers'), title = qs('.sheet-title', sheet);
-    if (!box || !title || getComputedStyle(box).overflowY !== 'auto') return;
+    if (paper.kind !== 'return' || !box || !title || getComputedStyle(box).overflowY !== 'auto') return;
     if (title.getBoundingClientRect().top < box.getBoundingClientRect().top) box.scrollTop = 0;
   };
   queueMicrotask(() => {
