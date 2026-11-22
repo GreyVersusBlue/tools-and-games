@@ -712,14 +712,14 @@
         ]
       }
     ],
-    "note": "Partnerships on paper were usually short. Friendships between merchants could last a lifetime.",
+    "note": "Merchants did not rely on friendship alone. When a quarrel over money would not end, they took it to the courts.",
     "unlocks": [
       "term-dinar"
     ],
     "sources": [
       {
-        "src": "goitein-1967",
-        "at": "pp. 169 to 170, as quoted by Edwards and Ogilvie (2008), p. 11"
+        "src": "edwards-ogilvie-2008",
+        "at": "partnerships ran beside informal friendship, and merchants used courts"
       }
     ]
   },
@@ -852,7 +852,7 @@
         ]
       }
     ],
-    "note": "The Karimi brought spices from Aden to Cairo, Alexandria and Damascus.",
+    "note": "The Karimi were a loose group of merchant families. They were not one company.",
     "unlocks": [
       "term-caravanserai",
       "term-dinar"
@@ -860,7 +860,7 @@
     "sources": [
       {
         "src": "sato-2006",
-        "at": "p. 149; the Karimi brought spices from Aden to Cairo, Alexandria and Damascus"
+        "at": "p. 150; a loose confederation"
       }
     ]
   },
@@ -1259,7 +1259,7 @@
         ]
       }
     ],
-    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "note": "In the Geniza contracts the traveller's share was normally one third.",
     "sources": [
       {
         "src": "goitein-1964",

@@ -605,22 +605,57 @@ test('(MER-123) "Bread is dear" is drawn only after the grain notice, and not in
 });
 // The notes and source lines two cards or letters share. The pairs that remain are the ones nobody has had the sources
 // to tell apart; a new pair fails here. Letters are held apart at run time by letters.js `repeatsRecent`; two cards are not.
-const SHARED_FACTS = [
-  'alexandria-galleys-back+broker-pepper-galleys', 'bales-middling+broker-bales', 'broker-linen-constantinople+constantinople-sacks',
-  'broker-pepper-damascus+khalid-news', 'girgis-favour+partner-loan', 'girgis-favour+partners-ask-again', 'ilyas-sends-his-nephew+tadros-first-trip',
-  'mariam-asks-for-work+samir-wants-a-share', 'matteo-comes-back+matteo-for-one-load', 'opening-letter+opening-letter-broker', 'opening-letter+yusuf-asks-for-work',
-  'opening-letter-broker+yusuf-asks-for-work', 'partner-loan+partners-ask-again', 'sabbath-carrier+yehuda-returns-favour', 'samir-share-count+samir-wants-a-share',
-];
-test('(MER-123) no two cards or letters share a note or a source line except the listed pairs; the Sinai khans are told once', () => {
+// A pair that shares a note or a source line is allowed only when the content itself keeps the two apart, so a player
+// never meets the same fact twice in one season or the next. `apart` names the proof, or null when there is none; a pair with
+// no proof must be listed in SHARED_FACTS, which is empty (MER-126: it held 15 pairs). Each proof reads the content, not a game.
+const SHARED_FACTS = [];
+const everything = [...cairo.cards, ...cairo.letters];
+const effectsOf = c => { const out = []; const walk = o => { if (Array.isArray(o)) o.forEach(walk); else if (o && typeof o === 'object') { out.push(o); Object.values(o).forEach(walk); } }; walk(c.choices ?? []); return out; };
+const sendersOf = id => everything.filter(c => effectsOf(c).some(e => e.card === id)).map(c => ({ card: c, lags: effectsOf(c).filter(e => e.card === id).map(e => e.in) }));
+const hiresOf = agent => everything.filter(c => effectsOf(c).some(e => e.hire === agent));
+const shortestRoundTrip = () => Math.min(...cairo.routes.map(r => r.legs.reduce((n, l) => n + l.seasons, 0)));
+const openingsWith = id => Object.values(cairo.city.opening).filter(list => list.includes(id)).length;
+const tripHomeOf = c => { const walk = o => (o && typeof o === 'object') ? (o.trip?.is === 'home' ? o.trip.agent : (Array.isArray(o) ? o : Object.values(o)).map(walk).find(Boolean)) : null; return walk(c.when); };
+function apart(a, b) {
+  const byId = id => everything.find(c => c.id === id);
+  for (const [x, y] of [[a, b], [b, a]]) {
+    // y is a follow-up that only x sends, and always two or more seasons later
+    const s = sendersOf(y);
+    if (s.length === 1 && s[0].card.id === x && s[0].lags.every(n => n >= 2) && byId(y).weight === 0) return 'follow-up two seasons on';
+    // y tells of a trip home by an agent that only x hires, and no road is shorter than two seasons there and back
+    const agent = tripHomeOf(byId(y));
+    if (agent && hiresOf(agent).length === 1 && hiresOf(agent)[0].id === x && shortestRoundTrip() >= 2) return 'trip home after the hire';
+  }
+  // two openings of different houses: neither is in the pool, and no house opens with both
+  const pool = id => byId(id).weight !== 0 || sendersOf(id).length > 0;
+  if (!pool(a) && !pool(b) && openingsWith(a) >= 1 && openingsWith(b) >= 1 && !Object.values(cairo.city.opening).some(l => l.includes(a) && l.includes(b))) return 'different houses';
+  return null;
+}
+const sharedPairs = cs => {
   const by = new Map();
-  for (const c of [...cairo.cards, ...cairo.letters]) {
+  for (const c of cs) {
     for (const k of [c.note && `n:${c.note}`, ...(c.sources ?? []).map(s => `s:${s.src}|${s.at}`)].filter(Boolean)) by.set(k, [...(by.get(k) ?? []), c.id]);
   }
   const pairs = new Set();
   for (const ids of by.values()) for (const a of ids) for (const b of ids) if (a < b) pairs.add(`${a}+${b}`);
-  eq([...pairs].sort(), SHARED_FACTS, 'the shared pairs');
-  const sinai = [...cairo.cards, ...cairo.letters].filter(c => /Sinai/.test(c.note ?? ''));
+  return [...pairs].sort();
+};
+test('(MER-126) no two cards or letters share a note or a source line unless the content keeps them apart; the Sinai khans are told once', () => {
+  const loose = sharedPairs(everything).filter(p => !apart(...p.split('+')));
+  eq(loose, SHARED_FACTS, 'the shared pairs with no proof that they stay apart');
+  const sinai = everything.filter(c => /Sinai/.test(c.note ?? ''));
   eq(sinai.map(c => c.id), ['damascus-early-caravan'], 'the khans in the sands of Sinai are one paper\'s note');
+});
+test('(MER-126) the pairs that remain are each kept apart by a proof', () => {
+  const kept = sharedPairs(everything).map(p => `${p}: ${apart(...p.split('+'))}`);
+  eq(kept, [
+    'bales-middling+broker-bales: follow-up two seasons on',
+    'ilyas-sends-his-nephew+tadros-first-trip: trip home after the hire',
+    'matteo-comes-back+matteo-for-one-load: follow-up two seasons on',
+    'opening-letter+opening-letter-broker: different houses',
+    'sabbath-carrier+yehuda-returns-favour: follow-up two seasons on',
+    'samir-share-count+samir-wants-a-share: follow-up two seasons on',
+  ], 'pairs and proofs');
 });
 
 await done();

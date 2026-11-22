@@ -1145,7 +1145,7 @@
         ]
       }
     ],
-    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by weight, with 4 in every hundred taken off for the sack.",
+    "note": "Pegolotti wrote a handbook for merchants about 1340. Its lists were a guide to what to expect. They were not a record of what anyone paid.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1155,7 +1155,7 @@
     "sources": [
       {
         "src": "pegolotti-1936",
-        "at": "the section on flax of Alexandria sold at Constantinople and Pera by weight, 4 percent off for the sack; 1766 printing pp. 16 to 17; the 1936 Evans page not confirmed"
+        "at": "the handbook as a whole: its lists guide a merchant and do not record prices"
       }
     ]
   },
@@ -1254,7 +1254,7 @@
         ]
       }
     ],
-    "note": "Venice's state galleys sailed to Alexandria again in 1345. A treaty with the sultan fixed the taxes on gold and silver at 2 in every hundred.",
+    "note": "Venice sent its state galleys to Alexandria in convoys from 1301 to 1312. A convoy was a fleet that sailed together for safety.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1265,7 +1265,7 @@
     "sources": [
       {
         "src": "jacoby-2018",
-        "at": "pp. 136 to 137; the treaty of 1345 and the galley service resumed in 1345"
+        "at": "p. 117; the galley convoys of 1301 to 1312"
       }
     ]
   },

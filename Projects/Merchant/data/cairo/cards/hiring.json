@@ -54,15 +54,15 @@
         ]
       }
     ],
-    "note": "Merchants had long sent agents to buy and sell in other towns, and kept in touch with them by letter.",
+    "note": "Traders in the Geniza papers spread their risk. They took part in many small partnerships instead of one large one.",
     "unlocks": [
       "term-load",
       "term-dinar"
     ],
     "sources": [
       {
-        "src": "goitein-1973",
-        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+        "src": "goitein-friedman-2008",
+        "at": "introduction, pp. 22 to 23; spreading risk by many small partnerships"
       }
     ]
   },
@@ -456,7 +456,7 @@
         ]
       }
     ],
-    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "note": "A traveller who was paid a share of the profit did not share in any loss.",
     "unlocks": [
       "term-qirad",
       "term-dinar",
