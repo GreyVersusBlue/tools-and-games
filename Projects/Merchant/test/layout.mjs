@@ -128,6 +128,10 @@ const states = {
     return s;
   })(),
 };
+// MER-122 (play a062, b070): a second return, where the desk used to open the account and scroll the stack down to the bonus choice,
+// leaving the focused headline above the top (y=-292). The engine's policy here sends one party a game, so the earlier return the desk
+// counts is the same entry logged twice: the page reads only how many there are.
+states.ret2 = (() => { const s = structuredClone(states.ret); s.log.push(structuredClone(s.log.find(e => e.kind === 'return'))); return s; })();
 // A question and a report from the road on the desk (MER-63): the engine's own delivery puts the paper
 // there from an entry in `post`; only the draw is placed by hand (every cairo letter has weight 0).
 const withLetter = (id, kind, stop, lag, standing) => {
@@ -237,6 +241,14 @@ const SCREENS = [
       await load(p, '#desk', { state: states.ret, large: f.large });
       await p.waitForSelector('#screen-desk .sheet-title');
       const id = states.ret.desk.find(x => x.kind === 'return' && x.state === 'open').id;
+      if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
+      await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
+    } },
+  { name: 'desk-return2',
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states.ret2, large: f.large });
+      await p.waitForSelector('#screen-desk .sheet-title');
+      const id = states.ret2.desk.find(x => x.kind === 'return' && x.state === 'open').id;
       if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
       await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
     } },
@@ -661,6 +673,14 @@ try {
             await page.evaluate(() => { document.querySelector('dialog[open]').scrollTop = 0; });
             await page.click('#change-back');
             await page.waitForSelector('#back-nothing', { timeout: 3000 });
+          });
+        }
+        if (screen.name === 'desk-return2') {
+          // MER-122 (finding 7): a return opens on its headline, in view and focused, at every frame, whatever the account below it holds
+          await test(`${tag}: the return's headline is in view and has the focus when the paper opens`, async () => {
+            const got = await page.evaluate(wholeInView, '.sheet-title');
+            ok(!got, got ?? '');
+            eq(await page.evaluate(() => document.activeElement.className), 'sheet-title');
           });
         }
         if (screen.name === 'desk-return' && frame.name === 'board') {
