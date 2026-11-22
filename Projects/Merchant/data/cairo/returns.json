@@ -13,7 +13,7 @@
       "brought": true
     },
     "title": "Sell the {good} now?",
-    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take two loads today for 200 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take two loads today for 200 dinars. That is about 17 in every hundred less than the usual price in Cairo. Or you can hold it and wait for news of prices.",
     "choices": [
       {
         "id": "sell",
@@ -77,7 +77,7 @@
       "brought": true
     },
     "title": "Sell the {good} now?",
-    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take one load today for 380 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take one load today for 380 dinars. That is about 16 in every hundred less than the usual price in Cairo. Or you can hold it and wait for news of prices.",
     "choices": [
       {
         "id": "sell",
@@ -141,7 +141,7 @@
       "brought": true
     },
     "title": "Sell the {good} now?",
-    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars. That is about 19 in every hundred less than the usual price in Cairo. Or you can hold it and wait for news of prices.",
     "choices": [
       {
         "id": "sell",
@@ -205,7 +205,7 @@
       "brought": true
     },
     "title": "Sell the {good} now?",
-    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars, a little under the market. Or you can hold it and wait for news of prices.",
+    "body": "{agent} is home from {to} after {seasons}, and the {good} is in your store. A broker will take three loads today for 110 dinars. That is about 19 in every hundred less than the usual price in Cairo. Or you can hold it and wait for news of prices.",
     "choices": [
       {
         "id": "sell",
@@ -516,10 +516,75 @@
       ],
       "contract": [
         "own"
-      ]
+      ],
+      "lost": true
     },
     "title": "The trip lost money",
     "body": "{agent} is home from {to} after {seasons}, and the trip lost money. {agent} says the road was bad luck, and not a fault. You paid {agent} a wage, so the loss is yours.",
+    "choices": [
+      {
+        "id": "forgive",
+        "label": "Say it was a fair risk",
+        "hint": "{agent} is grateful. Other agents hear of it.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "dock",
+        "label": "Take 20 dinars from {agent}'s next pay",
+        "hint": "The house gets some back. {agent} will not forget it.",
+        "now": [
+          {
+            "money": 20
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          },
+          {
+            "memory": "$agent",
+            "kind": "unfair"
+          }
+        ]
+      }
+    ],
+    "note": "In one Geniza case a man lost almost 50 of the 70 dinars he sent overseas. His community's elders convinced him he had no claim.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 325; the investor who lost almost fifty of seventy dinars"
+      }
+    ]
+  },
+  {
+    "id": "return-loss-price",
+    "paper": "return",
+    "facts": {
+      "outcome": [
+        "loss"
+      ],
+      "contract": [
+        "own"
+      ],
+      "lost": false
+    },
+    "title": "The trip lost money",
+    "body": "{agent} is home from {to} after {seasons}, and the trip lost money. {agent} says the work was done as you asked, and the sums came out against the house. You paid {agent} a wage, so the loss is yours.",
     "choices": [
       {
         "id": "forgive",

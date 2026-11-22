@@ -288,7 +288,7 @@
       "role": "Damascus"
     },
     "title": "The caravan that left today",
-    "body": "I am at Damascus. A caravan leaves today and has room. The next one leaves in a week and is larger. I did not wait for it. I took the early place and was first to the shops, and it brought 25 more than we planned.",
+    "body": "I am at Damascus. A caravan leaves today and has room. The next one leaves in a week and is larger. I did not wait for it. I took the early place, and we were first to the shops. The early place saved us 25 dinars, and I send them to you.",
     "when": {
       "at": "damascus"
     },
@@ -351,7 +351,8 @@
     "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
     "unlocks": [
       "term-caravan",
-      "term-caravanserai"
+      "term-caravanserai",
+      "term-dinar"
     ],
     "sources": [
       {
@@ -1097,7 +1098,7 @@
       "role": "Walata"
     },
     "title": "Salt is dear",
-    "body": "I am at Walata. Salt is dear here. A buyer offered a good price for part of our goods, so I sold at once. I did not wait for the next caravan to come in and change the price. It brought 40 more than we planned.",
+    "body": "I am at Walata. Salt is dear here. A buyer offered a good price for part of our goods, so I sold at once. I did not wait for the next caravan to come in and change the price. I send you 40 dinars from the sale.",
     "when": {
       "at": "walata"
     },
@@ -1179,7 +1180,7 @@
       "role": "On the road"
     },
     "title": "The flood fills the boats",
-    "body": "We are on the river. The Nile is in flood and every boat is loading in a rush. The boatmen asked double. I paid it and took the first boat, so our goods were not left on the bank.",
+    "body": "We are on the river. The Nile is in flood and every boat is loading in a rush. The boatmen asked double. I paid it and took the first boat, so our goods were not left on the bank. The next boat would have been a week away.",
     "when": {
       "all": [
         {
@@ -1297,23 +1298,8 @@
         ]
       },
       {
-        "id": "waited",
-        "label": "You should have waited",
-        "hint": "Your agent may remember it.",
-        "now": [
-          {
-            "memory": "$agent",
-            "kind": "blamed"
-          },
-          {
-            "trust": "$agent",
-            "by": -1
-          }
-        ]
-      },
-      {
-        "id": "bonus",
-        "label": "Send a bonus",
+        "id": "gift",
+        "label": "Send a thank-you gift",
         "hint": "It costs 15. Your agent will not forget it.",
         "now": [
           {
@@ -1350,7 +1336,7 @@
       "role": "On the road"
     },
     "title": "Too many goods, too few boats",
-    "body": "I am at Qus. Goods have come over the desert from the Red Sea, and they all wait for a boat down the river. Boats are few. I paid for a place on the next one.",
+    "body": "I am at Qus. Goods have come over the desert from the Red Sea, and they all wait for a boat down the river. Boats are few. I paid for a place on the next one. Waiting for a cheaper place could take weeks.",
     "when": {
       "at": "qus"
     },
@@ -1389,8 +1375,8 @@
         ]
       },
       {
-        "id": "bonus",
-        "label": "Send a bonus",
+        "id": "gift",
+        "label": "Send a thank-you gift",
         "hint": "It costs 15. Your agent will not forget it.",
         "now": [
           {
@@ -1451,21 +1437,6 @@
         ]
       },
       {
-        "id": "waited",
-        "label": "You should have waited",
-        "hint": "Your agent may remember it.",
-        "now": [
-          {
-            "memory": "$agent",
-            "kind": "blamed"
-          },
-          {
-            "trust": "$agent",
-            "by": -1
-          }
-        ]
-      },
-      {
         "id": "copy",
         "label": "Ask for the camel men's names",
         "hint": "It costs 5. Partners trust a house that keeps its papers.",
@@ -1504,7 +1475,7 @@
       "role": "On the road"
     },
     "title": "Ships fight the north wind",
-    "body": "I am at Quseir. Ships come up the Red Sea against the north wind, and it makes them slow. The owner of the next ship wants half the freight now. I paid it, so our goods have a place.",
+    "body": "I am at Quseir. Ships come up the Red Sea against the north wind, and it makes them slow. The owner of the next ship wants half the freight now. I paid it, so our goods have a place. If I had waited, the next ship might have been weeks away.",
     "when": {
       "at": "quseir"
     },
@@ -1585,7 +1556,7 @@
       "role": "On the road"
     },
     "title": "The short road from Qus",
-    "body": "I am at Quseir. The road from Qus took five days. Merchants here say that is why they come, and not to Aydhab. The camel men want a high price to take goods back, so I hired them early.",
+    "body": "I am at Quseir. The road from Qus took five days. Merchants here say that is why they come, and not to Aydhab. The camel men want a high price to take goods back, so I hired them early. They would have asked more if I had waited.",
     "when": {
       "at": "quseir"
     },
@@ -1624,8 +1595,8 @@
         ]
       },
       {
-        "id": "bonus",
-        "label": "Send a bonus",
+        "id": "gift",
+        "label": "Send a thank-you gift",
         "hint": "It costs 15. Your agent will not forget it.",
         "now": [
           {
@@ -1686,21 +1657,6 @@
           {
             "trust": "$agent",
             "by": 1
-          }
-        ]
-      },
-      {
-        "id": "waited",
-        "label": "You should have waited",
-        "hint": "Your agent may remember it.",
-        "now": [
-          {
-            "memory": "$agent",
-            "kind": "blamed"
-          },
-          {
-            "trust": "$agent",
-            "by": -1
           }
         ]
       },
@@ -1829,7 +1785,7 @@
       "role": "On the road"
     },
     "title": "The canal is filling",
-    "body": "I am at Alexandria. The canal from the Nile is filling with the flood, and loaded boats are setting sail. I booked a place on the first one before the price went up.",
+    "body": "I am at Alexandria. The canal from the Nile is filling with the flood, and loaded boats are setting sail. I booked a place on the first one before the price went up. A week later it would have cost more.",
     "when": {
       "all": [
         {
@@ -1877,8 +1833,8 @@
         ]
       },
       {
-        "id": "bonus",
-        "label": "Send a bonus",
+        "id": "gift",
+        "label": "Send a thank-you gift",
         "hint": "It costs 15. Your agent will not forget it.",
         "now": [
           {
@@ -1939,21 +1895,6 @@
         ]
       },
       {
-        "id": "waited",
-        "label": "You should have waited",
-        "hint": "Your agent may remember it.",
-        "now": [
-          {
-            "memory": "$agent",
-            "kind": "blamed"
-          },
-          {
-            "trust": "$agent",
-            "by": -1
-          }
-        ]
-      },
-      {
         "id": "complain",
         "label": "Tell the court in Cairo",
         "hint": "It costs 20. It may help every house in time.",
@@ -1994,7 +1935,7 @@
       "role": "On the road"
     },
     "title": "A Genoese buyer",
-    "body": "I am at Alexandria. Few Venetian ships have come, but a Genoese buyer did. He wanted my goods and paid a fair price at once. I sold more than I planned, so the house has cash in hand.",
+    "body": "I am at Alexandria. Few Venetian ships have come, but a Genoese buyer did. He wanted my goods and paid a fair price at once. I sold him some of my goods, so the house has cash in hand. I did not wait for a better buyer.",
     "when": {
       "all": [
         {
@@ -2111,21 +2052,6 @@
         ]
       },
       {
-        "id": "waited",
-        "label": "You should have waited",
-        "hint": "Your agent may remember it.",
-        "now": [
-          {
-            "memory": "$agent",
-            "kind": "blamed"
-          },
-          {
-            "trust": "$agent",
-            "by": -1
-          }
-        ]
-      },
-      {
         "id": "paper",
         "label": "Ask for the captain's paper",
         "hint": "It costs 5. Partners trust a house that keeps its papers.",
@@ -2167,7 +2093,7 @@
       "role": "On the road"
     },
     "title": "A place in the next pressing",
-    "body": "I am at Qus, where sugar cane grows. A press owner offered us a place in his next pressing if we paid half now. I paid, so the house has a claim on his next sugar.",
+    "body": "I am at Qus, where sugar cane grows. A press owner offered us a place in his next pressing if we paid half now. I paid, so the house has a claim on his next sugar. I did not wait to ask you, because the place would have gone to another buyer.",
     "when": {
       "at": "qus"
     },
@@ -2206,8 +2132,8 @@
         ]
       },
       {
-        "id": "bonus",
-        "label": "Send a bonus",
+        "id": "gift",
+        "label": "Send a thank-you gift",
         "hint": "It costs 15. Your agent will not forget it.",
         "now": [
           {
@@ -2246,7 +2172,7 @@
       "role": "On the road"
     },
     "title": "Venice's galleys are back",
-    "body": "I am at Alexandria. Venice's galleys, its long ships with oars, have come back after many years. Their buyers pay well for pepper. I sold at once, before more ships came and the price fell.",
+    "body": "I am at Alexandria. Venice's galleys, its long ships with oars, have come back after many years. Their buyers pay well for goods from the east. I sold at once and did not wait, because more ships were coming and the price would fall.",
     "when": {
       "all": [
         {

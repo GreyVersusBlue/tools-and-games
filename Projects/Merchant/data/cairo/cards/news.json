@@ -20,8 +20,7 @@
         },
         {
           "season": [
-            "summer",
-            "autumn"
+            "summer"
           ]
         }
       ]
@@ -294,11 +293,37 @@
       "seal": null
     },
     "title": "Bread is dear",
-    "body": "Bread is dear in Cairo this year. The sultan has grain brought up from Syria and Palestine, and buyers crowd the markets. Bilal needs carts for the grain roads, and he asks if the house will lend two.",
+    "body": "Bread is still dear in Cairo. Grain comes up from Syria and Palestine, and buyers crowd the markets. Bilal needs carts for the grain roads, and he asks if the house will lend two.",
     "when": {
-      "year": [
-        1336,
-        1336
+      "all": [
+        {
+          "flag": "grain-short-1336"
+        },
+        {
+          "any": [
+            {
+              "all": [
+                {
+                  "year": [
+                    1336,
+                    1336
+                  ]
+                },
+                {
+                  "season": [
+                    "winter"
+                  ]
+                }
+              ]
+            },
+            {
+              "year": [
+                1337,
+                1337
+              ]
+            }
+          ]
+        }
       ]
     },
     "weight": 6,

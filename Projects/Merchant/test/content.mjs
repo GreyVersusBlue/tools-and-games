@@ -14,7 +14,8 @@ import { freshState } from '../js/engine/state.js';
 import { validateContent, CONDITION_LEAVES } from '../js/engine/content.js';
 import { validateContent as exported } from '../js/engine/index.js';
 import { readingLevel, syllables, fkGrade, sentences, longestSentence, CEILINGS } from '../tools/reading-level.mjs';
-import { choiceVector, dominates, gradientFailures, lintContent, loadBanned, OPENING_LETTERS } from '../tools/lint-content.mjs';
+import { choiceVector, dominates, gradientFailures, lintContent, loadBanned, OPENING_LETTERS, offersIn } from '../tools/lint-content.mjs';
+import { playedSeasons, year, seasonName } from '../js/engine/calendar.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIX = path.join(ROOT, 'test/fixtures');
@@ -526,6 +527,100 @@ test('validate: returns.json facts include brought, a true-or-false key on a ret
   eq(problemsOf(edit('return', { brought: true })), [], 'a return entry may name it');
   ok(problemsOf(edit('return', { brought: 'yes' })).length > 0, 'it is true or false');
   ok(problemsOf(edit('loss', { brought: true })).some(p => /no fact "brought"/.test(p.message)), 'a loss entry has no such fact');
+});
+
+// ---- MER-123: offers that tell the truth, fees that cannot take the house below 0, notes that do not repeat
+
+const cairoEdit = edit => { const c = structuredClone(cairo); edit(c); return c; };
+const rulesOf = c => lintContent(c, { banned }).map(f => f.rule);
+const entryOf = (c, id) => c.returns.find(e => e.id === id), cardOf = (c, id) => c.cards.find(x => x.id === id), letterOf = (c, id) => c.letters.find(x => x.id === id);
+
+test('rule 11: Cairo\'s offers pass, and the numbers behind each broker offer are the ones its words name', () => {
+  eq(rulesOf(cairo).filter(r => r >= 11), []);
+  // the four broker offers: pepper 2 loads for 200 against 120, silk 1 for 380 against 450, sugar and linen 3 for 110 against 45
+  const gaps = Object.fromEntries(['pepper', 'silk', 'sugar', 'linen'].map(g => { const e = entryOf(cairo, `return-sell-${g}`); const o = offersIn(cairo, e.body, g); return [g, [o.length, o[0]?.gap, o[0]?.said]]; }));
+  eq(gaps, { pepper: [1, 17, 17], silk: [1, 16, 16], sugar: [1, 19, 19], linen: [1, 19, 19] });
+});
+test('rule 11: "a little under the market" on a gap of 16 to 31 in every hundred (the play\'s two offers) fails; the same words within 10 pass', () => {
+  const little = (id, g) => cairoEdit(c => { const e = entryOf(c, id); e.body = e.body.replace(/That is about \d+ in every hundred less than the usual price in Cairo\./, 'a little under the market.').replace(/(\d) dinars\. a little/, '$1 dinars, a little'); });
+  const text = (id, extra) => cairoEdit(c => { const e = entryOf(c, id); e.body = e.body.replace(/(for \d+ dinars)\. That is about \d+ in every hundred less than the usual price in Cairo\./, `$1, a little under the market.${extra ?? ''}`); });
+  eq(rulesOf(text('return-sell-silk')).filter(r => r === 11), [11], 'silk at 380 against 450 is 16 in every hundred under');
+  eq(rulesOf(text('return-sell-pepper')).filter(r => r === 11), [11], 'pepper at 100 a load against 120 is 17');
+  eq(rulesOf(cairoEdit(c => { const e = entryOf(c, 'return-sell-silk'); e.body = e.body.replace('380 dinars', '410 dinars').replace(/\. That is about \d+ in every hundred less than the usual price in Cairo\./, ', a little under the market.'); })).filter(r => r === 11), [], 'silk at 410 is 9 under, which is a little');
+});
+test('rule 11: an offer that names a gap must name the real one; a "under the market" with no price to check fails', () => {
+  eq(rulesOf(cairoEdit(c => { const e = entryOf(c, 'return-sell-silk'); e.body = e.body.replace('about 16', 'about 30'); })).filter(r => r === 11), [11]);
+  eq(rulesOf(cairoEdit(c => { cardOf(c, 'broker-bales').body += ' The broker pays a little under the market.'; })).filter(r => r === 11), [11]);
+  eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'gold-comes-to-cairo').choices.find(x => x.id === 'gold'); k.hint = k.hint.replace('90, a little under the 100', '70, a little under the 100'); })).filter(r => r === 11), [11], 'a chest at 70 against 100 is 30 under');
+});
+test('rule 12: every choice whose later effects cost money requires the money now and later together; take the requires off and the lint names it', () => {
+  eq(rulesOf(cairo).filter(r => r === 12), []);
+  const costly = [];
+  for (const k of ['cards']) for (const c of cairo[k]) for (const ch of c.choices) if ((ch.later ?? []).some(l => (l.do ?? []).some(e => typeof e.money === 'number' && e.money < 0))) costly.push([c.id, ch.id]);
+  ok(costly.length >= 11, `${costly.length} choices cost money later`);
+  for (const [cid, chid] of costly) eq(rulesOf(cairoEdit(c => { delete cardOf(c, cid).choices.find(x => x.id === chid).requires; })).filter(r => r === 12), [12], `${cid}/${chid}`);
+  eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'khalid-news').choices.find(x => x.id === 'warn'); k.requires = { money: { gte: 8 } }; })).filter(r => r === 12), [12], 'khalid-news costs 8 now and 2 later: requiring 8 is not enough');
+});
+test('rule 13: a bonus costs no more than the letter brings, a card bonus about a trip home needs that agent\'s profit, and a return bonus is for a profit', () => {
+  eq(rulesOf(cairo).filter(r => r === 13), []);
+  eq(rulesOf(cairoEdit(c => { letterOf(c, 'damascus-early-caravan').choices.find(x => x.id === 'bonus').now[0].money = -30; })).filter(r => r === 13), [13], 'a bonus of 30 on a letter that brings 25');
+  eq(rulesOf(cairoEdit(c => { delete cardOf(c, 'samir-comes-home').choices.find(x => x.id === 'more').requires; })).filter(r => r === 13), [13]);
+  eq(rulesOf(cairoEdit(c => { cardOf(c, 'samir-comes-home').choices.find(x => x.id === 'more').requires = { all: [{ money: { gte: 5 } }, { flag: 'samir-profit', gte: 2 }] }; })).filter(r => r === 13), [13], 'a flag that allows less than the bonus');
+  eq(rulesOf(cairoEdit(c => { entryOf(c, 'return-bonus').facts.outcome = ['profit', 'even']; })).filter(r => r === 13), [13]);
+});
+test('rule 14: a report offering "You should have waited" must name a wait; the five letters that had none no longer offer it', () => {
+  eq(rulesOf(cairo).filter(r => r === 14), []);
+  for (const id of ['qus-camels', 'constantinople-sacks', 'alexandria-twenty-in-a-hundred', 'galley-freight', 'nile-slow-boat']) {
+    ok(!letterOf(cairo, id).choices.some(ch => /should have waited/.test(ch.label)), `${id} offers no wait to blame`);
+    eq(rulesOf(cairoEdit(c => { letterOf(c, id).choices.splice(1, 0, structuredClone(letterOf(c, 'toll-at-aydhab').choices[1])); })).filter(r => r === 14), [14], `${id} with the choice back`);
+  }
+});
+
+/** The seasons a card's `when` can hold in by its dates and seasons alone: a flag or any other leaf counts as holding. */
+function drawable(card, length = 'acts') {
+  const ev = (w, idx) => {
+    if (!w || typeof w !== 'object') return true;
+    if (w.all) return w.all.every(x => ev(x, idx));
+    if (w.any) return w.any.some(x => ev(x, idx));
+    if (w.year) { const y = year(cairo.calendar, idx); return y >= w.year[0] && y <= w.year[1]; }
+    if (w.season) return w.season.includes(seasonName(idx));
+    return true;
+  };
+  return playedSeasons(cairo.calendar, length).filter(idx => ev(card.when, idx));
+}
+test('(MER-123) "Mali\'s king is in Cairo" can only be drawn before "the Malian company has left Cairo" reaches the desk', () => {
+  const arrives = cairo.events.find(e => e.id === 'musa-arrives-cairo').at, leaves = cairo.events.find(e => e.id === 'musa-gold-falls').at;
+  const seasons = drawable(cardOf(cairo, 'gold-comes-to-cairo'));
+  ok(seasons.length > 0, 'it can be drawn at all');
+  ok(Math.min(...seasons) >= arrives, `no earlier than the king's arrival (season ${arrives}): ${seasons}`);
+  ok(Math.max(...seasons) < leaves, `and no later than the season before the company leaves (season ${leaves}): ${seasons}`);
+});
+test('(MER-123) "Bread is dear" is drawn only after the grain notice, and not in the notice\'s season or the next', () => {
+  const ev = cairo.events.find(e => e.id === 'grain-shortage-1336'), card = cardOf(cairo, 'grain-from-syria');
+  ok(ev.do.some(e => e.flag === 'grain-short-1336'), 'the notice sets the flag the card reads');
+  ok(JSON.stringify(card.when).includes('grain-short-1336'), 'the card needs that flag, so it cannot come first');
+  const seasons = drawable(card);
+  ok(seasons.length > 0 && Math.min(...seasons) >= ev.at + 2, `the card's first season ${Math.min(...seasons)} is two or more after the notice's ${ev.at}`);
+  eq(JSON.stringify(card.sources.map(s => s.src)), JSON.stringify(ev.sources.map(s => s.src).filter(s => card.sources.some(c => c.src === s))), 'they do share a source, which is why the gap matters');
+});
+// The notes and source lines two cards or letters share. The pairs that remain are the ones nobody has had the sources
+// to tell apart; a new pair fails here. Letters are held apart at run time by letters.js `repeatsRecent`; two cards are not.
+const SHARED_FACTS = [
+  'alexandria-galleys-back+broker-pepper-galleys', 'bales-middling+broker-bales', 'broker-linen-constantinople+constantinople-sacks',
+  'broker-pepper-damascus+khalid-news', 'girgis-favour+partner-loan', 'girgis-favour+partners-ask-again', 'ilyas-sends-his-nephew+tadros-first-trip',
+  'mariam-asks-for-work+samir-wants-a-share', 'matteo-comes-back+matteo-for-one-load', 'opening-letter+opening-letter-broker', 'opening-letter+yusuf-asks-for-work',
+  'opening-letter-broker+yusuf-asks-for-work', 'partner-loan+partners-ask-again', 'sabbath-carrier+yehuda-returns-favour', 'samir-share-count+samir-wants-a-share',
+];
+test('(MER-123) no two cards or letters share a note or a source line except the listed pairs; the Sinai khans are told once', () => {
+  const by = new Map();
+  for (const c of [...cairo.cards, ...cairo.letters]) {
+    for (const k of [c.note && `n:${c.note}`, ...(c.sources ?? []).map(s => `s:${s.src}|${s.at}`)].filter(Boolean)) by.set(k, [...(by.get(k) ?? []), c.id]);
+  }
+  const pairs = new Set();
+  for (const ids of by.values()) for (const a of ids) for (const b of ids) if (a < b) pairs.add(`${a}+${b}`);
+  eq([...pairs].sort(), SHARED_FACTS, 'the shared pairs');
+  const sinai = [...cairo.cards, ...cairo.letters].filter(c => /Sinai/.test(c.note ?? ''));
+  eq(sinai.map(c => c.id), ['damascus-early-caravan'], 'the khans in the sands of Sinai are one paper\'s note');
 });
 
 await done();

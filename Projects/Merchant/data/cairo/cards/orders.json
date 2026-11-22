@@ -532,8 +532,8 @@
     "choices": [
       {
         "id": "his-fee",
-        "label": "Tell Rizq the fee is Yusuf's",
-        "hint": "You gain nothing. Yusuf will feel it.",
+        "label": "Pass the fee on to Yusuf",
+        "hint": "You gain nothing. Yusuf gets all of it and trusts you more.",
         "now": [
           {
             "trust": "yusuf",
@@ -790,11 +790,19 @@
       {
         "id": "more",
         "label": "Give him a bonus of 5 dinars first",
-        "hint": "It costs 5 dinars. He will be loyal.",
+        "hint": "It costs 5 dinars, and the trip must have made at least that much. He will be loyal.",
         "requires": {
-          "money": {
-            "gte": 5
-          }
+          "all": [
+            {
+              "money": {
+                "gte": 5
+              }
+            },
+            {
+              "flag": "samir-profit",
+              "gte": 5
+            }
+          ]
         },
         "now": [
           {
@@ -854,7 +862,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf is home with news",
-    "body": "Yusuf is home from {to}. You let him go further if the price was better. He says a merchant from Persia heard of your house on the road and wants to deal with it.",
+    "body": "Yusuf is home from {to}. You told him he could go further if the price was better. He says a merchant from Persia heard of your house on the road and wants to deal with it.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -901,14 +909,14 @@
         ]
       }
     ],
-    "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
+    "note": "The Persian merchant is invented. The records that were read say little about the road from Damascus to Aleppo. They say less about the road on to Tabriz, so the game's prices there are guesses.",
     "unlocks": [
       "term-dinar"
     ],
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 71 n. 1, pp. 71 to 72, and p. 118 n. 182; the stations in the sands of Sinai, and the days counted by Gibb from the dates"
+        "at": "estimate; the leg from Damascus to Aleppo and on to Tabriz is graded an estimate in the network notes"
       }
     ],
     "when": {
@@ -920,7 +928,7 @@
           }
         },
         {
-          "flag": "yusuf-widened"
+          "flag": "yusuf-widened-trip"
         }
       ]
     }

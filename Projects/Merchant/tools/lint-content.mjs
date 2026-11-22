@@ -19,6 +19,13 @@
 //   zero, so goods already sold would still pay (MER-102b, DECISIONS 2026-11-20 18:4x); and no choice that
 //   changes no stock has money only in its later effects when another choice on the card sells a good (removes
 //   stock and adds money now): holding would pay as well as selling and the bots read it as free (MER-107)
+// 11 an offer says what it is (MER-123): "a little under the market" only for a price within 10 percent of the
+//   market it names, and an offer worded "N in every hundred less than the usual price" names the gap it has
+// 12 a fee taken later cannot take the house below 0 (MER-123): a choice whose later effects cost money requires
+//   at least what it costs now and later together
+// 13 a bonus has a profit behind it (MER-123): a letter's bonus costs no more than the letter's own gain, and a card
+//   about a trip that came home requires that agent's `-profit` flag to be at least the bonus
+// 14 a letter that lets the house say "You should have waited" tells of a wait it could have made (MER-123)
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -50,6 +57,10 @@ export const RULES = {
   8: 'the direction of trade',
   9: 'a card that tells of a trip is bound to one',
   10: 'no later pay for stock',
+  11: 'an offer says what it is',
+  12: 'no fee below zero',
+  13: 'a bonus has a profit behind it',
+  14: 'a wait to blame',
 };
 
 // Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
@@ -81,6 +92,110 @@ export function tripFailures(content, card) {
   const agent = (content.agents ?? []).find(a => wordIn(text, a.name.split(' ')[0]));
   const place = stops.find(x => wordIn(text, x.name))?.name ?? text.match(ROAD_WORDS)?.[0];
   return agent && place ? [{ rule: 9, path: where, message: `names ${agent.name} and "${place}" but has no trip leaf` }] : [];
+}
+
+// ---- MER-123 rules
+
+const COUNT = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const OFFER_MAX = 10;   // "a little under" is at most this many in every hundred
+const choiceTexts = c => [c.title, c.body, ...(c.choices ?? []).flatMap(ch => [ch.label, ch.hint])].filter(t => typeof t === 'string');
+/** The house's home stop base price of a good (the usual price an offer is read against), or undefined. */
+const usual = (content, good) => (content.stops ?? []).find(s => s.id === content.city?.home)?.sells?.[good]?.base;
+
+/** Every offer worded against a market in `text`: { gap, said, words } where `gap` is the real gap in hundredths from the
+    numbers, or null when the words give no way to work it out, and `said` is the gap the words name (a number), or 0 for
+    "a little under". `good` is the good the offer is about when the text cannot say (a return entry's facts). */
+export function offersIn(content, text, good) {
+  const found = [];
+  const re = /(?:(?:take|takes)\s+(\w+)\s+loads?\s+today\s+for\s+|\bfor\s+)(\d+)(?:\s+dinars)?[,.]?\s*(?:That is about (\d+) in every hundred less than the usual price in [A-Z][a-z]+|a little under the market)/g;
+  for (const m of text.matchAll(re)) {
+    const loads = m[1] === undefined ? 1 : (COUNT[m[1]] ?? Number(m[1])), base = good ? usual(content, good) : undefined;
+    const gap = base && loads ? Math.round((1 - Number(m[2]) / loads / base) * 100) : null;
+    found.push({ gap, said: m[3] === undefined ? 0 : Number(m[3]), words: m[0] });
+  }
+  // "sells a chest for 90, a little under the 100 the market asks"
+  for (const m of text.matchAll(/(\d+), a little under the (\d+) the market asks/g)) found.push({ gap: Math.round((1 - Number(m[1]) / Number(m[2])) * 100), said: 0, words: m[0] });
+  return found;
+}
+
+/** Rule 11: an offer's words match its numbers. Any text that says "a little under" must have a gap it can be checked
+    against, and the gap must be at most OFFER_MAX; a "N in every hundred less" offer must name the real gap, give or take 1. */
+export function offerFailures(content) {
+  const out = [];
+  const check = (where, text, good) => {
+    const claims = (text.match(/a little under/g) ?? []).length + (text.match(/in every hundred less than the usual price/g) ?? []).length;
+    if (!claims) return;
+    const offers = offersIn(content, text, good);
+    if (offers.length < claims) { out.push({ rule: 11, path: where, message: 'says an offer is under the market but gives no price to check it against; give the numbers' }); return; }
+    for (const o of offers) {
+      if (o.gap === null) out.push({ rule: 11, path: where, message: `"${o.words}" cannot be checked: no usual price for its good` });
+      else if (o.said === 0 && o.gap > OFFER_MAX) out.push({ rule: 11, path: where, message: `says "a little under the market" for an offer ${o.gap} in every hundred under it (at most ${OFFER_MAX}); name the gap` });
+      else if (o.said > 0 && Math.abs(o.said - o.gap) > 1) out.push({ rule: 11, path: where, message: `names a gap of ${o.said} in every hundred but the numbers give ${o.gap}` });
+    }
+  };
+  for (const c of content.cards ?? []) for (const [i, t] of choiceTexts(c).entries()) check(`cards[${c.id}] text ${i}`, t, null);
+  for (const e of content.returns ?? []) for (const [i, t] of choiceTexts(e).entries()) check(`returns[${e.id}] text ${i}`, t, e.facts?.good?.[0]);
+  for (const l of content.letters ?? []) for (const [i, t] of choiceTexts(l).entries()) check(`letters[${l.id}] text ${i}`, t, null);
+  return out;
+}
+
+const loss = es => (es ?? []).reduce((n, e) => n + (e && typeof e.money === 'number' && e.money < 0 ? -e.money : 0), 0);
+/** The money a `requires` insists on at the top level, or 0: { money: { gte } } alone or inside an `all`. */
+const needs = r => {
+  if (!r) return 0;
+  if (r.money) return r.money.gte ?? 0;
+  return Array.isArray(r.all) ? Math.max(0, ...r.all.map(needs)) : 0;
+};
+
+/** Rule 12: a choice that costs money later requires the money now and later together. */
+export function feeFailures(content) {
+  const out = [];
+  for (const kind of ['cards', 'letters', 'returns']) for (const c of content[kind] ?? []) for (const ch of c.choices ?? []) {
+    const later = (ch.later ?? []).reduce((n, l) => n + loss(l.do), 0);
+    if (later && needs(ch.requires) < loss(ch.now) + later) {
+      out.push({ rule: 12, path: `${kind}[${c.id}].choices[${ch.id}]`, message: `costs ${later} later (and ${loss(ch.now)} now) but requires ${needs(ch.requires)}; the house could be taken below 0` });
+    }
+  }
+  return out;
+}
+
+/** The agent a card's `trip` leaf names, when its `is` is home (a card about a trip that came home), or null. */
+const homeAgent = c => { const l = tripLeaf(c.when); return l?.is === 'home' ? l.agent : null; };
+/** The `{ flag, gte }` leaves of a `requires`, anywhere in it. */
+const flagsIn = r => (!r ? [] : r.flag ? [r] : Array.isArray(r.all) ? r.all.flatMap(flagsIn) : []);
+
+/** Rule 13: a bonus has a profit behind it. */
+export function bonusFailures(content) {
+  const out = [];
+  const isBonus = ch => /bonus/i.test(ch.label ?? '') || /bonus/i.test(ch.id ?? '');
+  for (const l of content.letters ?? []) for (const ch of l.choices ?? []) {
+    if (!isBonus(ch)) continue;
+    const gain = (l.happened ?? []).reduce((n, e) => n + (e && typeof e.money === 'number' && e.money > 0 ? e.money : 0), 0);
+    if (loss(ch.now) > gain) out.push({ rule: 13, path: `letters[${l.id}].choices[${ch.id}]`, message: `offers a bonus of ${loss(ch.now)} on a letter that brings ${gain}` });
+  }
+  for (const c of content.cards ?? []) for (const ch of c.choices ?? []) {
+    if (!isBonus(ch) || !loss(ch.now)) continue;
+    const agent = homeAgent(c);
+    if (!agent) { out.push({ rule: 13, path: `cards[${c.id}].choices[${ch.id}]`, message: 'offers a bonus on a card that is not about a trip that came home, so no profit stands behind it' }); continue; }
+    const f = flagsIn(ch.requires).find(x => x.flag === `${agent}-profit`);
+    if (!f || (f.gte ?? 0) < loss(ch.now)) out.push({ rule: 13, path: `cards[${c.id}].choices[${ch.id}]`, message: `offers a bonus of ${loss(ch.now)} but does not require "${agent}-profit" to be at least that` });
+  }
+  // a return paper's bonus is cut to the profit when the paper is made (letters.js fitOffers); the entry must be one that is
+  for (const e of content.returns ?? []) for (const ch of e.choices ?? []) {
+    if (isBonus(ch) && loss(ch.now) && !(e.facts?.outcome ?? []).every(o => o === 'profit')) out.push({ rule: 13, path: `returns[${e.id}].choices[${ch.id}]`, message: 'a bonus on a return paper needs the outcome fact to be profit only' });
+  }
+  return out;
+}
+
+const WAIT_WORDS = /\bwait\w*\b|\buntil\b|\bmonths?\b|\bseasons?\b|\bweeks? (away|later)\b/i;
+/** Rule 14: a report that offers "You should have waited" must tell of a wait the agent could have made. */
+export function waitFailures(content) {
+  const out = [];
+  for (const l of content.letters ?? []) {
+    if (l.kind !== 'report' || !(l.choices ?? []).some(ch => /should have waited/i.test(ch.label ?? ''))) continue;
+    if (!WAIT_WORDS.test(l.body)) out.push({ rule: 14, path: `letters[${l.id}]`, message: 'offers "You should have waited" but the letter names nothing the agent could have waited for' });
+  }
+  return out;
 }
 
 /** Load a city the way the tools do. `overlay` is a folder whose files win over the city's. */
@@ -261,6 +376,10 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
 
   // rule 9
   for (const c of cards) out.push(...tripFailures(content, c));
+
+  // rules 11 to 14 (MER-123)
+  // Cairo only: Testport is the suites' fixture, written before these rules, and its cards are test inputs
+  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...bonusFailures(content), ...waitFailures(content));
 
   // rule 8
   for (const [i, g] of (content.city?.gradients ?? []).entries()) {
