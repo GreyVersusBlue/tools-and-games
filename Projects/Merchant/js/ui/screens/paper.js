@@ -373,6 +373,14 @@ export function back(app, paper, { now, fresh, onNext }) {
     sourceLine(app.content, s.sources));
 }
 
+/** One item's changes as one line (MER-122, as routes.js accountWords writes an item's own text): the money and goods run on with
+    commas, and each sentence (a group's good name, "The court thinks better of the house.") follows whole after a full stop, so a
+    sentence never sits after a comma. */
+export function accountLine(changes) {
+  const says = changes.filter(c => c.endsWith('.')), facts = changes.filter(c => !c.endsWith('.'));
+  return [facts.length ? `${facts.join(', ')}${says.length ? '.' : ''}` : '', ...says].filter(Boolean).join(' ');
+}
+
 /** The Accounts paper's lines grouped under the choice that caused them (DESIGN 2.1 rule 6), in the order the
     first line of each cause arrived: "After "Lend Hasan", you chose "Lend it":". A line whose card is gone
     from the content still names its cause as an earlier choice, never as a bare line. */
@@ -475,7 +483,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
     for (const g of accountGroups(paper.items ?? [], content)) {
       body.push(h('section', { class: 'account-group', dataset: { from: g.from ?? '' } },
         h('h3', { class: 'cause' }, g.cause),
-        ...g.items.map(i => h('p', { class: 'account-item' }, cap(i.changes?.join(', ') ?? i.text)))));
+        ...g.items.map(i => h('p', { class: 'account-item' }, cap(i.changes ? accountLine(i.changes) : i.text)))));
     }
   }
   // Focus lands on the heading, so Enter there sets the paper aside, as it turns a card's back
