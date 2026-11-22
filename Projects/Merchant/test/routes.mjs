@@ -653,7 +653,7 @@ test('later effects with no follow-up card are recorded and the next season open
   eq(papers.length, 1, 'one paper, however many items');
   eq(papers[0].items.map(i => i.text), [
     'From Four loads of wool, "Say no, politely": +400 coins, +2 wool',
-    'From Lamps for the winter, "Decline for now": good name with partners +1',
+    'From Lamps for the winter, "Decline for now": The partners think better of the house.',
   ], 'each item names its card and choice');
   eq(paperChoices(s, calm, papers[0].id), [{ id: 'ok', label: 'Noted' }]);
   ok(s.desk.some(p => p.ref === 'wool-due'), 'the follow-up card is a card, not an account');
