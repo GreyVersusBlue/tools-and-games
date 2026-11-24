@@ -221,7 +221,10 @@ function payFromExpedition(s, content, x, amount) {
       while (x.cargo[g] > 0 && owed > 0) { x.cargo[g]--; given[g] = (given[g] ?? 0) + 1; owed -= worth(g); }
       if (!x.cargo[g]) delete x.cargo[g];
     }
-    if (owed < 0) x.purse += -owed;   // the toll-keeper gives change for a load
+    if (owed < 0) {   // the toll-keeper gives change for a load, and the account says so (MER-139, play problem 6)
+      x.purse += -owed;
+      if (x.book) x.book.tollChange = (x.book.tollChange ?? 0) + -owed;
+    }
   }
   return given;
 }
@@ -707,7 +710,20 @@ export function suggestPlan(state, content, stopId) {
       const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
       Object.assign(plan, { contract: 'qirad', partners: stake, purse: stake });
     }
-    return build(structuredClone(state), content, plan).problems.length ? null : plan;
+    if (build(structuredClone(state), content, plan).problems.length) return null;
+    // The first sheet is the sheet's own rule (MER-139, play problem 5: linen only at +36 with 300 to 1,500 dinars idle, +83 to +87 with two
+    // loads of pepper added). It had been a separate rule that sent half of one good and nothing else. Now it is `proposePlan` for this agent and road,
+    // with one thing a card fixes: the good the opening card names, at the load it names (ten loads of linen), never less. Where `proposePlan`
+    // has no plan that pays, or the plan with the card's load does not fit, the plain plan above is what is offered, as before.
+    if (plan.contract === 'own') {
+      const p = proposePlan(state, content, agent.id, hit.route.id);
+      if (p && !p.why && p.contract === 'own') {
+        p.cargo[g] = Math.max(p.cargo[g] ?? 0, load);
+        if (!p.sell.includes(g)) p.sell.push(g);
+        if (!build(structuredClone(state), content, p).problems.length && estimate(state, content, p)) return p;
+      }
+    }
+    return plan;
   };
   // one who knows the stop first; an agent who refuses (a wage again, or a house they are leaving) is passed over for the next
   const order = [...free.filter(a => a.traits.includes(`knows-${stopId}`)), ...free.filter(a => !a.traits.includes(`knows-${stopId}`))];
@@ -1444,6 +1460,8 @@ export function risk(s, content) {
     const p = legRisk(content, agentOf(content, x.agent), leg, x.rode.start);
     if (next(s) >= p) continue;
     const loss = loseSome(s, content, x);
+    // robbers who found nothing aboard took nothing: no paper and no choices about a load that was not there (MER-139, play problem 7)
+    if (!loss.whole && !loss.purse && !Object.keys(loss.cargo).length) continue;
     x.book.lost = x.book.lost ?? {};
     for (const [g, n] of Object.entries(loss.cargo)) x.book.lost[g] = (x.book.lost[g] ?? 0) + n;
     put(s, lostPaper(s, content, x, loss, leg));
@@ -1720,6 +1738,8 @@ function returnPaper(s, content, r) {
   for (const e of book.sold) rows.push({ label: 'Sold', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}, for ${coins(content, e.got)}`, amount: e.got, detail: true });
   for (const e of book.bought) rows.push({ label: 'Bought', text: `${qty(content, e.good, e.q)} in ${stopName(content, e.stop)}, for ${coins(content, e.cost)}`, amount: -e.cost, detail: true });
   if (book.tolls) rows.push({ label: 'Tolls', text: `${coins(content, book.tolls)} paid on the road`, amount: -book.tolls, detail: true });
+  // a toll the purse could not cover was paid in goods, and the keeper gave change: the load that left the cargo is a row, not a gap (MER-139, play problem 6)
+  if (Object.keys(book.paidInGoods ?? {}).length) rows.push({ label: 'Paid in goods', text: `${cargoText(content, book.paidInGoods)} given to the toll-keepers${book.tollChange ? `, with ${coins(content, book.tollChange)} given back as change` : ''}`, amount: book.tollChange ?? 0, detail: true });
   if (book.upkeep) rows.push({ label: 'Waiting', text: `${words(x.waiting)} ${plural(x.waiting, 'season', 'seasons')} at a stop, kept at ${coins(content, UPKEEP)} a season`, amount: -book.upkeep, detail: true });
   if (book.lost && Object.keys(book.lost).length) rows.push({ label: 'Lost', text: cargoText(content, book.lost) });
   const back = [];
