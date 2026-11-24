@@ -660,4 +660,34 @@ test('(MER-126) the pairs that remain are each kept apart by a proof', () => {
   ], 'pairs and proofs');
 });
 
+// ---- MER-134: the words match what moves
+
+test('rule 15: a hint that says "You gain N dinars" puts the N in now so its +N tag shows; the play\'s +7 and a gain that comes later', () => {
+  eq(rulesOf(cairo).filter(r => r === 15), [], 'the content as it stands');
+  const keep = cardOf(cairo, 'yusuf-fee')?.choices.find(x => x.id === 'keep') ?? cairo.cards.flatMap(c => c.choices).find(x => x.label === 'Keep the whole fee for the house');
+  ok(keep.now.some(e => e.money === 7), 'Keep the whole fee brings its 7 now, like Split the fee brings its 4');
+  eq(keep.later.flatMap(l => l.do ?? []).filter(e => e.money).length, 0, 'and not again later');
+  const without = cairoEdit(c => { const k = c.cards.flatMap(x => x.choices).find(x => x.label === 'Keep the whole fee for the house'); k.now = k.now.filter(e => !e.money); });
+  eq(rulesOf(without).filter(r => r === 15), [15], 'with the 7 taken out of now, the hint has no tag behind it');
+  const zub = cairoEdit(c => { const k = cardOf(c, 'zubayda-fee').choices.find(x => x.id === 'no'); k.hint = k.hint.replace(' in two seasons', ''); });
+  eq(rulesOf(zub).filter(r => r === 15), [15], 'a gain that comes in two seasons must say so');
+});
+test('rule 16: a card\'s bonus for a trip that came home requires "<agent>-bonused" unset and sets it', () => {
+  eq(rulesOf(cairo).filter(r => r === 16), [], 'the content as it stands');
+  const card = cairo.cards.find(c => c.choices.some(ch => ch.id === 'more' && /bonus of 5 dinars/.test(ch.label)));
+  const bare = cairoEdit(c => { const k = c.cards.find(x => x.id === card.id).choices.find(x => x.id === 'more'); k.requires.all = k.requires.all.filter(r => r.flag !== 'samir-bonused'); });
+  eq(rulesOf(bare).filter(r => r === 16), [16], 'without the gate a 5 can follow a 30');
+  const unset = cairoEdit(c => { const k = c.cards.find(x => x.id === card.id).choices.find(x => x.id === 'more'); k.now = k.now.filter(e => e.flag !== 'samir-bonused'); });
+  eq(rulesOf(unset).filter(r => r === 16), [16], 'and without setting the flag a 30 can follow the 5');
+});
+test('MER-134: Ali\'s offer does not count the agents (a second, one at a time); "at no charge" says what it costs; the papers card needs a trip about to leave', () => {
+  const ali = cardOf(cairo, 'ali-asks-for-work');
+  ok(!/second agent|one agent out|at a time/.test(JSON.stringify(ali)), 'no count of agents in Ali\'s offer');
+  const free = cardOf(cairo, 'hajar-pilgrim').choices.find(x => x.id === 'free');
+  ok(!/no charge/i.test(free.label) && free.hint.includes('4 dinars'), `${free.label}: ${free.hint}`);
+  eq(free.now.find(e => e.money).money, -4, 'and the 4 is what it takes');
+  const papers = cardOf(cairo, 'karimi-papers');
+  ok(papers.when.all.some(c => c.trip?.is === 'ready'), 'Send two loads under his papers needs an agent ready to go');
+});
+
 await done();

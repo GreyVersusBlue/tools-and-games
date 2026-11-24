@@ -185,6 +185,17 @@ function fireOne(s, content, q) {
   if (q.card) apply(s, content, { card: q.card }, ctx);
 }
 
+/** Papers the rest of this closing is bound to put on the desk, which a follow-up card must leave room for (MER-134, play problem 10:
+    in two of 60 played games a return paper was "dropped, the desk was full" at the act jump while three follow-up cards sat on the
+    desk, so the money and goods of that trip came home with no paper): one for each trip that comes home at the next opening, or,
+    when the act jump comes, for each trip it settles. The folded Accounts paper is not counted: keeping a place for it as well moves
+    test/routes.mjs's seeded game 15 (no agent at home for the plague), a file this unit does not own; see the report. */
+function reserve(s, content) {
+  const played = playedSeasons(content.calendar, s.length), here = seasonIndex(s, content), next = played[s.t + 1];
+  const jump = next !== undefined && next - here > 1;
+  return jump ? s.expeditions.length : s.expeditions.filter(x => x.status === 'home').length;
+}
+
 /** Queue items due by the next played season fire in order of `at`. An item due in a gap
     between acts (ARCHITECTURE 4.7) fires with the first item of the next played season, at
     the end of the last season before the gap, with its own `at`: the jump does not settle it.
@@ -196,13 +207,14 @@ function fireDue(s, content) {
   const upTo = played[Math.min(s.t + 1, played.length - 1)];
   const due = s.queue.filter(q => q.at <= upTo).sort((a, b) => a.at - b.at);
   const held = [], accounts = [];
+  const room = reserve(s, content);
   for (const q of due) {
-    if (slotsOf(q) && deskFull(s, slotsOf(q))) { held.push(q); continue; }
+    if (slotsOf(q) && deskFull(s, slotsOf(q) + room)) { held.push(q); continue; }
     const trial = structuredClone(s);
     try {
       fireOne(trial, content, q);
       // a later effect with no follow-up card is recorded for the one folded Accounts paper
-      const item = slotsOf(q) ? null : routes.accountItem(trial, content, q);
+      const item = slotsOf(q) ? null : letters.trueMinus(routes.accountItem(trial, content, q));
       Object.assign(s, trial);
       if (item) accounts.push(item);
     } catch (e) {
@@ -310,6 +322,7 @@ export function choose(state, content, paperId, choiceId) {
       }
     } catch (e) { throw refuse(e); }
     applyAll(s, content, now, ctx);
+    if (paper.kind === 'return' && choiceId === 'bonus' && paper.agent) s.flags[`${paper.agent}-bonused`] = idx;   // one bonus for one trip (letters.js fitOffers)
     if (paper.kind === 'letter') letters.stamp(s, paper, idx);
     for (const l of later) {
       s.queue.push({

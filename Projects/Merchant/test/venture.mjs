@@ -11,7 +11,7 @@ import { steps } from '../js/engine/turn.js';
 import { WAIT } from '../js/engine/letters.js';
 import * as M from '../js/engine/market.js';
 import { seasonIndex, playedSeasons } from '../js/engine/calendar.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, proposePlan, estimate, bestTrades, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, proposePlan, estimate, bestTrades, mostLoads, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
 const T0 = await loadContent('testport', { fs });
@@ -111,8 +111,11 @@ test('proposePlan: where the stop buys nothing the house can send, the trip goes
   s.stock = {};
   const plan = proposePlan(s, c, 'mira', 'harbour-saltmarsh');
   eq([plan.cargo, plan.buy, plan.sell], [{}, ['salt'], []]);
-  ok(plan.purse > 0 && plan.purse <= s.money / 2, `${plan.purse} of ${s.money}`);
+  // MER-133: the sheet's plan stakes half the money and then more where a step pays (at least STRETCH_GAIN of the plan's estimate), keeping the wage
+  ok(plan.purse > s.money / 2 && plan.purse <= s.money - checkPlan(s, c, plan).cost.later.wage, `${plan.purse} of ${s.money}`);
   eq(checkPlan(s, c, plan).ok, true);
+  const half = proposePlan(s, c, 'mira', 'harbour-saltmarsh', { share: 0.5 });
+  ok(half.purse > 0 && half.purse <= s.money / 2, `a stake of half, as a bot asks for it: ${half.purse} of ${s.money}`);
 });
 
 test('proposePlan: an agent who will not go for a wage again is offered a qirad, and the plan is one the engine takes', () => {
@@ -582,7 +585,8 @@ test('MER-112 (3) proposePlan: the best trade the map knows for the road goes in
   const without = estimate(s, c, { ...plan, cargo: rest, sell: plan.sell.filter(g => g !== 'pepper') }).net;
   ok(estimate(s, c, plan).net > without + 100, `pepper adds ${estimate(s, c, plan).net - without}`);
   const cost = checkPlan(s, c, plan).cost.bought;
-  ok(cost <= s.money / 2, `bought ${cost}, inside the half of ${s.money} the sheet stakes`);
+  ok(cost <= s.money, `bought ${cost} of ${s.money} (the sheet stakes half and stretches past it where a step pays, MER-133)`);
+  ok(proposePlan(s, c, 'yusuf', 'cairo-damascus', { share: 0.5 }).cargo.pepper > 0, 'and inside the half a bot stakes, pepper is in the plan too');
   eq(checkPlan(s, c, plan).ok, true, 'and the engine takes it');
   // a pepper that does not raise the estimate stays out: nothing to gain at 125 against 120 at home once the loads sell lower
   const flat = structuredClone(s); know(flat, c, 'damascus', 'pepper', 125);
@@ -647,7 +651,7 @@ function longRoadStates(road, { seeds, ns, marks }) {
     for (let i = 0; i < n; i++) s = step(s, c);
     s.agents.ali.hired = true; s.agents.ali.where = 'cairo'; s.agents.yusuf.where = 'cairo';
     if (f !== 1) for (const m of Object.values(s.market.cairo)) { m.f = f; m.glut = glut; }
-    const plan = proposePlan(s, c, agent, road);
+    const plan = proposePlan(s, c, agent, road, { share: 0.5 });   // MER-133: the estimate bands below were fitted on plans that stake half the money; the sheet's default stretches past that, and a trip held by a letter then swings by whole loads
     if (!plan || plan.why) continue;
     const e = estimate(s, c, plan), seen = new Set(s.desk.map(p => p.id));
     let w = outfit(structuredClone(s), c, plan), paper;
@@ -1113,12 +1117,12 @@ test('MER-103 returnPaper: goodsBack and cargoValue say what came home unsold at
 // ---- one calculation for the map and the sheet (MER-121)
 
 /** The sheet's own pick for a road (outfit.js): the free agent who knows the stop first, then the rest, the first with a plan that pays. */
-function sheetFor(s, c, route) {
+function sheetFor(s, c, route, opts = {}) {
   const stop = c.routes.find(r => r.id === route).to;
   const free = c.agents.filter(a => s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id));
   const knows = a => a.traits?.includes(`knows-${stop}`);
   for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
-    const plan = proposePlan(s, c, a.id, route);
+    const plan = proposePlan(s, c, a.id, route, opts);
     if (plan && !plan.why) return { agent: a.id, plan };
   }
   return null;
@@ -1187,7 +1191,7 @@ test('MER-121 (2) adding one load of a good the map or a price letter names for 
   played(C, (s, at) => {
     const idx = seasonIndex(s, C), budget = Math.floor(s.money * 0.5);
     for (const d of R.destinations(s, C)) {
-      const sheet = sheetFor(s, C, d.route);
+      const sheet = sheetFor(s, C, d.route, { share: 0.5 });   // MER-133: the half the sheet stakes before it stretches; the stretch has its own case below
       if (!sheet) continue;
       const { plan } = sheet, base = estimate(s, C, plan).net, dest = C.stops.find(x => x.id === d.stop);
       // the goods named for the road: the map's trades and the goods the latest letter from the stop (this season's or last) gives a price for
@@ -1213,7 +1217,7 @@ test('MER-121 (2) adding one load of a good the map or a price letter names for 
       }
     }
   });
-  ok(tried >= 60 && named.size >= 4, `${tried} trials over ${named.size} goods`);
+  ok(tried >= 40 && named.size >= 4, `${tried} trials over ${named.size} goods`);   // MER-133: 40, not 60: the desks are played with the stretching sheet now, whose plans leave fewer states with a free load to add inside half the money
 });
 
 test('MER-121 (3) the plan does not send a good back to the stop the last trip bought it at; bringHome writes where each good was bought', () => {
@@ -1249,6 +1253,102 @@ test('MER-121 (3) over played states no proposal sends a good in the warehouse b
     }
   });
   ok(checked >= 10, `${checked} goods in the warehouse from a trip, in plans`);
+});
+
+test('MER-133 (1) the sheet\'s plan leaves nothing on the table: no single plus (one more load of a good the far stop buys, or 50 more dinars to buy with, paid out of what the house has after the wage) raises the estimate by more than 10 percent of the plan\'s in more than 5 percent of states', () => {
+  // The M4d play beat the house's own plan by pressing + on most trips (A2 +28 against +102 with one silk, A4 +23 against +99 with 100
+  // dinars, A14 +66 against +158 with 150 dinars and 174 left unspent). The old plan stopped at half the money. It still starts there
+  // and then goes on, a step at a time, while a step adds STRETCH_GAIN (8 percent) of what the plan makes and at least STRETCH_MIN dinars;
+  // the line here is 10 percent, so a step the plan declined cannot be one the player would find worth the click. Over the desks of
+  // six seeded games, every other desk: 413 states. The old plan (stopping at half the money) failed the line in 242 of them, 58.6 percent;
+  // broken once by switching the stretch off, the case fails on its own line with that count.
+  let states = 0; const bad = [];
+  let n = 0;
+  played(C, (s, at) => {
+    if (n++ % 2) return;
+    for (const d of R.destinations(s, C)) {
+      const sheet = sheetFor(s, C, d.route);
+      if (!sheet) continue;
+      const { plan } = sheet, base = estimate(s, C, plan).net, dest = C.stops.find(x => x.id === d.stop), home = C.stops.find(x => x.id === 'cairo');
+      states++;
+      let best = null;
+      const trial = (label, p) => {
+        const c = checkPlan(s, C, p);
+        if (!c.ok || c.cost.total > s.money - (p.contract === 'qirad' ? 0 : c.cost.later.wage)) return;
+        const gain = estimate(s, C, p).net - base;
+        if (!best || gain > best.gain) best = { label, gain };
+      };
+      for (const g of Object.keys(dest.sells ?? {})) if (home.sells?.[g]) trial(`one more ${g}`, { ...plan, cargo: { ...plan.cargo, [g]: (plan.cargo[g] ?? 0) + 1 }, sell: [...new Set([...plan.sell, g])] });
+      if (plan.buy.length) trial('50 more dinars', { ...plan, purse: plan.purse + 50 });
+      else for (const g of Object.keys(dest.sells ?? {})) if (home.sells?.[g]) trial(`50 dinars to buy ${g}`, { ...plan, purse: plan.purse + 50, buy: [g] });
+      if (best && best.gain > 0.1 * base) bad.push(`${at} ${d.route}: ${best.label} takes ${Math.round(base)} to ${Math.round(base + best.gain)}`);
+    }
+  });
+  ok(states >= 100, `${states} states`);
+  ok(bad.length <= 0.05 * states, `${bad.length} of ${states} states (${(100 * bad.length / states).toFixed(1)} percent) have a plus that adds more than 10 percent: ${bad.slice(0, 6).join('; ')}`);
+});
+
+test('MER-133 (2) the map and the sheet give one age for the same news: a listed trade\'s age is the estimate\'s age for that good, and the sheet\'s is the oldest of them, on trips the jump settles too (play a088, a090: map "two seasons old", sheet "from this season")', () => {
+  // A trip the act jump settles is valued at the far prices of the day it left (the quote), and its estimate used to count every such price
+  // as news of this season, because the quote is the price as it stands. The house's news of those prices is as old as its letters are,
+  // which is what the map's row says, and that is the age the sheet now says. Over every row the map lists on the desks of the six games.
+  let rows = 0, jumped = 0, older = 0;
+  played(C, (s, at) => {
+    for (const t of bestTrades(s, C, Infinity)) {
+      const sheet = sheetFor(s, C, t.route);
+      ok(sheet, `${at}: the map lists ${t.route} and no plan pays on it`);
+      const e = estimate(s, C, sheet.plan);
+      eq(e.ageOf[t.good], t.age, `${at} ${t.route} ${t.good}: the map says ${t.ageWords}, the sheet's news for it is ${e.ageOf[t.good]} seasons old`);
+      ok(e.age >= t.age && e.ageWords === M.ageWords(e.age), `${at} ${t.route}: the sheet's age ${e.age} is the oldest news in the plan`);
+      rows++; if (e.settledAtJump) jumped++; if (t.age > 0) older++;
+    }
+  });
+  ok(rows >= 100 && jumped >= 20 && older >= 20, `${rows} listed trades, ${jumped} settled at the jump, ${older} on news a season old or more`);
+});
+
+test('MER-133 (3) mostLoads: the most loads of a good the house can pay for, buying each dearer than the last: 9 sugar at 396 with 395 in hand is 8 (play a073: the stepper let the ninth through and Send refused it)', () => {
+  const s = newGame(C, { seed: 3, length: 'acts', house: C.houses[0].id });
+  s.stock = {}; s.agents.yusuf.where = 'cairo';
+  const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: {}, purse: 0, contract: 'own', sell: ['sugar'], buy: [] };
+  const cost = n => checkPlan(s, C, { ...plan, cargo: { sugar: n } }).cost.total;
+  const price = M.truePrice(s, C, 'cairo', 'sugar');
+  s.money = cost(9) - 1;
+  ok(Math.floor(s.money / price) >= 9, `today's price ${price} divides ${s.money} into ${Math.floor(s.money / price)}: the flat count lets the ninth through`);
+  eq(mostLoads(s, C, plan, 'sugar'), 8, 'the ninth costs one dinar more than the house has');
+  eq(checkPlan(s, C, { ...plan, cargo: { sugar: 9 } }).ok, false, 'and the engine refuses it');
+  ok(/The house has/.test(checkPlan(s, C, { ...plan, cargo: { sugar: 9 } }).reasons.join(' ')), 'in words about the money');
+  eq(checkPlan(s, C, { ...plan, cargo: { sugar: 8 } }).ok, true, 'and takes the eighth');
+  // loads already in the warehouse cost nothing now, and a purse and the other goods come out of the same money
+  const held = structuredClone(s); held.stock = { sugar: 3 };
+  eq(mostLoads(held, C, plan, 'sugar') >= 11, true, 'three held loads and the money for eight more');
+  const withPurse = { ...plan, purse: 100, buy: ['pepper'], cargo: { copper: 2 } };
+  const m = mostLoads(s, C, withPurse, 'sugar');
+  ok(m < 8, `${m} loads with a purse of 100 and two copper out of the same money`);
+  const total = n => checkPlan(s, C, { ...withPurse, cargo: { ...withPurse.cargo, sugar: n } }).cost.total;
+  ok(total(m) <= s.money && total(m + 1) > s.money, `${m} costs ${total(m)} and one more ${total(m + 1)} of ${s.money}`);
+});
+
+test('MER-133 (3) mostLoads over played states: for every good the far stop buys, the answer is paid for and one more load is not', () => {
+  let tried = 0, short = 0, seen = 0;
+  played(C, (s, at) => {
+    if (seen++ % 4) return;   // every fourth desk: each answer is a search of checkPlans
+    for (const d of R.destinations(s, C)) {
+      const sheet = sheetFor(s, C, d.route);
+      if (!sheet) continue;
+      const dest = C.stops.find(x => x.id === d.stop), home = C.stops.find(x => x.id === 'cairo');
+      for (const g of Object.keys(dest.sells ?? {})) {
+        if (!home.sells?.[g]) continue;
+        const n = mostLoads(s, C, sheet.plan, g);
+        const total = k => checkPlan(s, C, { ...sheet.plan, cargo: { ...sheet.plan.cargo, [g]: k } }).cost.total;
+        ok(total(n) <= s.money || n === 0, `${at} ${d.route} ${g}: ${n} loads cost ${total(n)} of ${s.money}`);
+        ok(total(n + 1) > s.money, `${at} ${d.route} ${g}: ${n + 1} loads cost ${total(n + 1)} and the house has ${s.money}`);
+        tried++;
+        const flat = (s.stock[g] ?? 0) + Math.floor(s.money / M.truePrice(s, C, 'cairo', g));
+        if (n < flat) short++;
+      }
+    }
+  });
+  ok(tried >= 100 && short >= 5, `${tried} goods tried, ${short} where the flat count is too high`);
 });
 
 await done();

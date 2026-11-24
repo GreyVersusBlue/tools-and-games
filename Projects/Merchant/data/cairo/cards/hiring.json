@@ -76,7 +76,7 @@
       "seal": "seal-2"
     },
     "title": "Ali asks for work",
-    "body": "Ali is bold and quick. He has travelled before and knows the south. He has no house of his own, and he asks you to take him on. A second agent means two sets of goods out at once. It also means a second wage.",
+    "body": "Ali is bold and quick. He has travelled before and knows the south. He has no house of his own, and he asks you to take him on. Another agent means another set of goods out at once. It also means another wage.",
     "when": {
       "agent": "ali",
       "hired": false
@@ -120,7 +120,7 @@
       {
         "id": "not-yet",
         "label": "Not yet",
-        "hint": "You save the fee, and you keep one agent out at a time. Partners like a house that waits, and say so in two seasons.",
+        "hint": "You save the fee. Partners like a house that waits, and say so in two seasons.",
         "now": [],
         "later": [
           {

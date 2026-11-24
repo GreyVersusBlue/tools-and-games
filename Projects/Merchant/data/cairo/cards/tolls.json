@@ -246,8 +246,18 @@
     "title": "Papers for the road",
     "body": "Nabil belongs to the Karimi, a loose group of merchants who trade spices. One writer says a spice office gave them papers for the road. It took 2.5 in every hundred of their goods. He says he could carry two loads for your house under his papers.",
     "when": {
-      "rep": "partners",
-      "gte": 1
+      "all": [
+        {
+          "trip": {
+            "agent": "yusuf",
+            "is": "ready"
+          }
+        },
+        {
+          "rep": "partners",
+          "gte": 1
+        }
+      ]
     },
     "weight": 3,
     "repeat": false,
