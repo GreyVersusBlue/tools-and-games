@@ -250,6 +250,7 @@ export function createMap(app, nav) {
         : h('p', { class: 'token-label token-stack', 'aria-hidden': 'true' }, h('span', { class: 'token-head' }, `${n} expeditions`),
           ...g.list.map(e => h('span', { class: 'token-line' }, seal(e), who(e))));
       out.push(h('div', { class: 'token', role: 'img', 'aria-label': spoken, style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n), from: g.leg.from, to: g.leg.to, ...(g.frac === 0 ? { start: '1' } : {}) } },
+        h('span', { class: 'token-leader', 'aria-hidden': 'true' }),
         h('div', { class: 'token-piece' }, h('img', { src: `assets/art/${tok.file}`, alt: '', width: 64, height: 64 }), n > 1 ? h('span', { class: 'token-count' }, String(n)) : null),
         caption));
     }
@@ -288,7 +289,7 @@ export function createMap(app, nav) {
       t.style.setProperty('--ox', `${Math.round(dx / len * d * k)}px`); t.style.setProperty('--oy', `${Math.round(dy / len * d * k)}px`);
     }
     for (const t of tokens) {   // measured from the caption's own css place, below its piece
-      delete t.dataset.side;
+      delete t.dataset.side; qs('.token-leader', t).hidden = true;
       const c = qs('.token-label', t); c.style.removeProperty('left'); c.style.removeProperty('top'); c.style.removeProperty('transform');
     }
     const dots = qsa('.dot', layer).map(n => ({ el: n, r: n.getBoundingClientRect() }));
@@ -337,6 +338,12 @@ export function createMap(app, nav) {
       // the token is drawn at 1/k of the layer's scale, so a screen distance is k times as many of its own px
       cap.style.left = `${(won.r.left - cx) * k}px`; cap.style.top = `${(won.r.top - cy) * k}px`; cap.style.transform = 'none';
       taken.push({ ...won.r, piece: false });
+      // a caption set apart from its piece is tied to it by a line from the piece's centre to the nearest point of the caption
+      const lead = qs('.token-leader', t);
+      if (won.name.includes('+')) {
+        const px = Math.max(won.r.left, Math.min(cx, won.r.right)), py = Math.max(won.r.top, Math.min(cy, won.r.bottom));
+        lead.style.width = `${Math.hypot(px - cx, py - cy) * k}px`; lead.style.transform = `rotate(${Math.atan2(py - cy, px - cx)}rad)`; lead.hidden = false;
+      } else lead.hidden = true;
     });
     // ---- 2. labels, then captions. The house's, the selected stop's and the stops a party stands on choose first; a caption has a dozen
     // places round its piece and a label of a crowded stop has few, so the captions choose last, among what the labels leave.

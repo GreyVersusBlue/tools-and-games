@@ -323,6 +323,8 @@ html.large-text .title-what { display: none; }
 .stop-label.on { outline: 2px solid var(--brass-dark); }
 .token { position: absolute; width: 0; height: 0; transform: scale(calc(1 / var(--k, 1))) translate(var(--ox, 0px), var(--oy, 0px));   /* MER-137: a token never moves for a label, so its place is the trip's own; a party still on its stop stands --ox, --oy along its road from the dot (map.js), and map.js chooses the side its caption sits on */
   pointer-events: none; transition: left var(--token-move-time) ease-in-out, top var(--token-move-time) ease-in-out; }   /* its anchor is the centre of its piece; the caption hangs below */
+.token-leader { position: absolute; left: 0; top: -1px; height: 2px; transform-origin: 0 50%; background: var(--paper); box-shadow: 0 0 0 1px var(--night); }   /* MER-137: map.js ties a caption set apart from its piece to it */
+.token-leader[hidden] { display: none; }
 .token-piece { position: absolute; left: calc(var(--token) / -2); top: calc(var(--token) / -2); width: var(--token); height: var(--token); }
 .token-piece img { width: 100%; height: 100%; display: block; }
 .token-count { position: absolute; right: -.3rem; top: -.3rem; min-width: 1.4rem; height: 1.4rem; padding: 0 .3rem; display: grid; place-items: center;
