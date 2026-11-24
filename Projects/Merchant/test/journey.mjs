@@ -3616,7 +3616,8 @@ try {
     let st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
     for (let i = 0; i < 60 && !(st.phase === 'desk' && st.t === 23); i++) st = st.phase === 'interlude' ? eng.openSeason(st, nodeContent) : eng.endSeason(answerAll(st), nodeContent);
     st = answerAll(st);
-    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = sheetPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
+    // the sheet's answer, else the engine's plain suggestion: since MER-133 the sheet offers nothing for a road where no step pays, and this case needs four on the road, not the sheet
+    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = sheetPlan(st, nodeContent, stop) ?? eng.suggestPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
     const road = eng.endSeason(st, nodeContent);
     const clone = x => JSON.parse(JSON.stringify(x));
     const DECIDED = Object.fromEntries(road.expeditions.map((x, i) => [x.id, i % 2 === 0 ? 'recall' : 'stay']));
