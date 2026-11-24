@@ -411,6 +411,23 @@ test('why, tolls: a toll paid in goods the far end would have bought for more co
   eq(paper.data.why, 'Tolls were paid in wool that would have sold for more in Hilltown.');
 });
 
+test('MER-139 (2) a toll paid in goods is a row of the account, with the change the keeper gave', () => {
+  // the play's A6: bought 5 pepper, came home with 4 and 114 dinars; the fifth had gone to a toll-keeper, who gave change, and no row said so.
+  // Here the keeper takes 50, the purse is empty and wool is 20 a load at home: three loads go, and 10 dinars of change come back
+  const open = ['spring', 'summer', 'autumn', 'winter'];
+  const leg = (from, to, toll) => ({ from, to, by: 'mules', seasons: 1, opens: open, risk: 0, toll });
+  const c = still(x => {
+    x.stops.find(z => z.id === 'hilltown').sells.wool = { base: 40, depth: 100 };
+    x.routes.push({ id: 'harbour-by-saltmarsh-hilltown', to: 'hilltown', legs: [leg('harbour', 'saltmarsh', 50), leg('saltmarsh', 'hilltown', 5), leg('hilltown', 'harbour', 5)] });
+  });
+  const s = know(game(c), c, 'hilltown', 'wool', 40);
+  const { paper } = toReturn(outfit(s, c, { ...WOOL, route: 'harbour-by-saltmarsh-hilltown' }), c);
+  const goods = paper.data.account.find(r => r.label === 'Paid in goods');
+  ok(goods && goods.detail, 'a row says goods left the cargo for a toll');
+  eq(goods.text, '3 loads of wool given to the toll-keepers, with 10 coins given back as change');  // testport's money is coins
+  eq(goods.amount, 10);
+});
+
 test('MER-112b (1) gapCauses, tolls: the loads a toll took are priced from the price the party found with the house\'s mark on it, not from the news price with none', () => {
   const c = still();
   const s = game(c);

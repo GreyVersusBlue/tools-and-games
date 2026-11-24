@@ -8,7 +8,7 @@ import { holds } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import * as M from '../js/engine/market.js';
-import { newGame, endSeason, view, paperChoices, choose } from '../js/engine/index.js';
+import { newGame, endSeason, view, paperChoices, choose, sellHome, sellHomeQuote, BROKER_CUT } from '../js/engine/index.js';
 
 const CITIES = {
   testport: { content: await loadContent('testport', { fs }), house: 'plain', stop: 'saltmarsh', good: 'lamps', far: 'hilltown', farLag: 2, nearLag: 1, foldAt: 2 },
@@ -402,6 +402,59 @@ test('chest unit: goods.json may say "chest"; an unknown unit is still refused',
   validateContent(raw);
   raw.goods.find(g => g.id === 'gold').unit = 'barrel';
   throws(() => validateContent(raw), /barrel|unit/);
+});
+
+// ---- selling the warehouse at home (MER-139, M4d play problem 1)
+const CAIRO = CITIES.cairo.content;
+const withCopper = n => { const s = newGame(CAIRO, { seed: 7, length: 'acts', house: 'cloth' }); s.stock.copper = n; return s; };
+test('sellHome: the money, the stock and the broker\'s cut come out as the quote said', () => {
+  const s = withCopper(20), price = M.sellPrice(s, CAIRO, 'cairo', 'copper');
+  const q = sellHomeQuote(s, CAIRO, 'copper', 1);
+  eq([q.ok, q.first, q.got, q.cut], [true, Math.round(price * (1 - BROKER_CUT)), Math.round(price * (1 - BROKER_CUT)), price - Math.round(price * (1 - BROKER_CUT))], 'one load fetches the price less the cut');
+  const t = sellHome(s, CAIRO, 'copper', 5), q5 = sellHomeQuote(s, CAIRO, 'copper', 5);
+  eq(t.money - s.money, q5.got, 'the house gets what the quote said');
+  eq([t.stock.copper, s.stock.copper], [15, 20], 'five loads left the warehouse, and the old state is untouched');
+  ok(q5.got < q5.gross && q5.cut === q5.gross - q5.got, 'the cut is the gap between what the market paid and what the house kept');
+  eq(BROKER_CUT, 0.15);
+});
+test('sellHome: the home market is marked by the house\'s own selling, as for any sale', () => {
+  const s = withCopper(20), before = M.sellPrice(s, CAIRO, 'cairo', 'copper');
+  const t = sellHome(s, CAIRO, 'copper', 10);
+  ok(t.market.cairo.copper.glut > s.market.cairo.copper.glut, 'glut rose');
+  ok(M.sellPrice(t, CAIRO, 'cairo', 'copper') < before, 'the next load fetches less');
+  eq(t.market.cairo.copper.glut, 0.333, 'ten loads over a depth of thirty, a load at a time, as noteSale rounds it');
+  eq(t.market.cairo.linen, s.market.cairo.linen, 'no other good moves');
+});
+test('sellHome: the Accounts paper and the ledger\'s log show the sale', () => {
+  const s = withCopper(20), t = sellHome(s, CAIRO, 'copper', 4);
+  const paper = t.desk.find(p => p.kind === 'accounts');
+  ok(paper, 'an Accounts paper is on the desk');
+  eq(paper.state, 'done', 'a sale the player made needs no answer');
+  ok(/Sold 4 loads of copper/.test(paper.items[0].text) && /broker's cut/.test(paper.items[0].text), paper.items[0].text);
+  eq(paper.items[0].changes[1], '−4 copper');
+  eq(t.log.filter(e => e.kind === 'sale'), [{ at: 0, kind: 'sale', good: 'copper', loads: 4, got: t.money - s.money, cut: sellHomeQuote(s, CAIRO, 'copper', 4).cut }]);
+  const u = sellHome(t, CAIRO, 'copper', 2);
+  eq(u.desk.filter(p => p.kind === 'accounts').length, 1, 'a second sale goes on the same paper');
+  eq(u.desk.find(p => p.kind === 'accounts').items.length, 2);
+  ok(endSeason(answer(u, CAIRO), CAIRO).phase === 'desk', 'the season still ends with the paper there');
+});
+test('sellHome: a house with none of the good, too few, a good home does not buy, or a bad count is refused with a reason', () => {
+  const s = withCopper(3);
+  for (const [good, n, re] of [['pepper', 1, /no pepper in the warehouse/], ['copper', 4, /only 3 loads of copper/], ['copper', 0, /at least one/], ['copper', 1.5, /at least one/], ['mumbo', 1, /does not deal/]]) {
+    const q = sellHomeQuote(s, CAIRO, good, n);
+    ok(!q.ok && re.test(q.reason), `${good} ${n}: ${q.reason}`);
+    throws(() => sellHome(s, CAIRO, good, n), re);
+  }
+  const c = structuredClone(CAIRO); delete c.stops.find(x => x.id === 'cairo').sells.copper; delete s.market.cairo.copper;
+  ok(/does not buy copper/.test(sellHomeQuote(s, c, 'copper', 1).reason));
+  eq(s.money, withCopper(3).money, 'a refusal changes nothing');
+});
+test('sellHome: selling all of 100 loads at once fetches less a load than selling 10', () => {
+  const s = withCopper(100), all = sellHomeQuote(s, CAIRO, 'copper', 100), ten = sellHomeQuote(s, CAIRO, 'copper', 10);
+  ok(all.average < ten.average, `${all.average} a load for 100, ${ten.average} for 10`);
+  ok(all.last < all.first, 'the last load fetches less than the first');
+  const t = sellHome(s, CAIRO, 'copper', 100);
+  eq([t.stock.copper, t.money - s.money], [undefined, all.got], 'the warehouse is empty and the quote held');
 });
 
 done();

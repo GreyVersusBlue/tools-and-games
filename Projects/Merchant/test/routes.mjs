@@ -222,10 +222,11 @@ test('suggestPlan offers the open, shorter road to Venice and a plan that outfit
   ok(closed.some(m => /A later leg, Alexandria to Venice, is not open in these years/.test(m)), JSON.stringify(closed));
 });
 
-test('suggestPlan: a free agent who knows the stop, the best road, half the stock of a good the stop trades; null when nothing fits', () => {
+test('suggestPlan: a free agent who knows the stop, the best road, the ten loads of the opening good; null when nothing fits', () => {
   const s = cairo();
   const plan = suggestPlan(s, calmC, 'damascus');
-  eq([plan.agent, plan.route, plan.cargo, plan.sell], ['yusuf', 'cairo-damascus', { linen: 10 }, ['linen']]);
+  // MER-139: the first sheet is proposePlan's (see the case below), so the cargo is more than linen; the agent, the road and the ten loads of linen are as before
+  eq([plan.agent, plan.route, plan.cargo.linen, plan.sell.includes('linen')], ['yusuf', 'cairo-damascus', 10, true]);
   eq(checkPlan(s, calmC, plan).ok, true);
   eq(suggestPlan(s, calmC, 'cairo'), null, 'nowhere to go from home to home');
   eq(suggestPlan(game(calm, { house: 'plain' }), calm, 'saltmarsh'), null, 'saltmarsh trades no wool, so nothing in the warehouse fits');
@@ -425,6 +426,36 @@ test('risk: traits adjust it in the table in agents.js, and each effect is its o
   eq(R.legRisk(C, agent('knows-z'), leg, 1), 0.1, 'knows some other stop');
   eq(R.legRisk(C, agent('careful', 'knows-a'), leg, 1), 0.1 * 0.5 * 0.85);
   eq(R.legRisk(C, agent('bold'), { ...leg, risk: 5 }, 1), 0.95, 'never above 0.95');
+});
+
+test('MER-139 (3) robbers who find nothing aboard take nothing: no lost paper, and no choices about a load that was not there', () => {
+  const c = risk(T, 0.5);
+  const base = outfit(game(c), c, { ...SALTED, cargo: { wool: 10 }, purse: 30 });
+  base.expeditions[0].cargo = {}; base.expeditions[0].purse = 0;   // sold at the stop before, purse spent
+  let whole = 0, papers = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const s = structuredClone(base);
+    s.rng = seed;
+    s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, c);
+    if (s.expeditions.length === 0) whole++;
+    for (const p of s.desk.filter(q => q.kind === 'lost')) { papers++; ok(p.data.whole, `a partial loss of nothing wrote "${p.data.lines[0].text}"`); }
+  }
+  ok(whole > 10, `${whole} whole losses in 200 rolls: the roll did happen`);
+  ok(papers === whole, `${papers} papers for ${whole} whole losses`);
+});
+
+test('MER-139 (5) the first expedition\'s sheet is the sheet\'s own rule: proposePlan for the road, with the ten loads of linen the opening card names, never less', () => {
+  for (const house of ['spice', 'cloth']) {
+    const s = cairo({ house });
+    const plan = suggestPlan(s, calmC, 'damascus');
+    const rule = R.proposePlan(s, calmC, plan.agent, 'cairo-damascus');
+    ok(Object.keys(plan.cargo).length > 1, `${house}: linen alone is not the first sheet (${JSON.stringify(plan.cargo)})`);
+    eq(plan.cargo.linen, 10, `${house}: the card's ten loads of linen`);
+    eq({ ...plan.cargo, linen: 0 }, { ...rule.cargo, linen: 0 }, `${house}: every other good is the one proposePlan names`);
+    ok(R.estimate(s, calmC, plan).net > R.estimate(s, calmC, { ...plan, cargo: { linen: 10 }, sell: ['linen'] }).net, `${house}: it makes more than linen alone`);
+    eq(R.checkPlan(s, calmC, plan).reasons, [], `${house}: and the engine takes it`);
+  }
 });
 
 test('risk: a loss is whole or partial from the seeded source; a partial one takes part of each good, a whole one the vessel, and both put a lost paper on the desk', () => {
@@ -1224,8 +1255,10 @@ const sound = s => {
 
 test('a seeded testport game with a scripted plan runs to the end in both lengths, and is the same game twice', () => {
   for (const length of ['acts', 'full']) {
-    const a = run(T, { seed: 7, length, house: 'rich', stops: ['hilltown'] });
-    const b = run(T, { seed: 7, length, house: 'rich', stops: ['hilltown'] });
+    // MER-139: seed 7 became 12. The first sheet is proposePlan's now and stakes most of the money, and the scripted answers (the first choice that holds, never
+    // asking whether the house can pay) take the purse below 0 in seed 7's game and in 5 of the next 6.
+    const a = run(T, { seed: 12, length, house: 'rich', stops: ['hilltown'] });
+    const b = run(T, { seed: 12, length, house: 'rich', stops: ['hilltown'] });
     eq(a.s.phase, 'ended');
     sound(a.s);
     eq(JSON.stringify(a.s), JSON.stringify(b.s), `${length}: a second run is the same game`);
@@ -1235,7 +1268,7 @@ test('a seeded testport game with a scripted plan runs to the end in both length
     ok(a.s.log.some(e => e.kind === 'recall'), 'the ending is in the log');
     eq(a.s.log.some(e => e.kind === 'jump'), length === 'acts');
   }
-  ok(JSON.stringify(run(T, { seed: 8, length: 'full', house: 'rich', stops: ['hilltown'] }).s) !== JSON.stringify(run(T, { seed: 7, length: 'full', house: 'rich', stops: ['hilltown'] }).s));
+  ok(JSON.stringify(run(T, { seed: 14, length: 'full', house: 'rich', stops: ['hilltown'] }).s) !== JSON.stringify(run(T, { seed: 12, length: 'full', house: 'rich', stops: ['hilltown'] }).s));
 });
 
 test('a seeded cairo three-act game with a scripted plan runs to the end in Node, jumps twice, and ends with the recall', () => {
@@ -1244,7 +1277,8 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   // MER-88: seed 15 became 13 (the wage now counts the season an agent leaves in, which moves the money every later card is drawn against).
   // MER-79: seed 13 became 15 for the same reason: four new trade cards change the pool, so no agent was home to face the plague in seed 13's game.
   // MER-128: seed 13 became 15. A card whose dates end this season gets an extra slot, so the second season deals one more card and every later draw moves; no agent was home to face the plague in seed 13's game.
-  const plan = { seed: 16, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  // MER-139: seed 16 became 17 for the same reason as MER-79 and MER-128: the first sheet's plan moves every later draw, and no agent was home to face the plague in seed 16's game.
+  const plan = { seed: 17, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
   const a = run(C, plan);
   const b = run(C, plan);
   ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');
