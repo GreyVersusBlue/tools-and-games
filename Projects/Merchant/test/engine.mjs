@@ -342,6 +342,31 @@ test('turn: endSeason advances t and opens the next season with cards drawn by w
   eq(s.desk.filter(p => p.kind === 'card').map(p => p.ref), ['lamp-order'], 'the second season holds the one card secondSeason asks for, drawn by weight');
   eq(s.desk.filter(p => p.kind !== 'card').map(p => p.kind), ['accounts'], 'and one folded Accounts paper for the opening cards\' later effects (MER-41)');
 });
+// MER-128: gold-price-falls was drawn in 0.8 percent of games because "Mali's king is in Cairo" is dated to the one season, the
+// second, whose one slot a trip card or another card took. A card whose dates end this season gets one more slot, dealt first.
+const dated = (id, when) => ({ id, group: `dated-${id}`, kind: 'world', from: { name: 'A traveller', role: 'Port' }, title: id, body: 'A test card.', when, weight: 1, repeat: false,
+  choices: [{ id: 'ok', label: 'Fine', now: [] }], note: id, sources: [{ src: 'test-src', at: id }] });
+const withCard = card => variant(c => { c.cards.push(card); });
+const secondSeason = (c, seed) => endSeason(answer(newGame(c, { seed, length: 'acts', house: 'plain' }), c), c);
+const refsOf = s => s.desk.filter(p => p.kind === 'card').map(p => p.ref);
+test('(MER-128) a card dated to the second season alone is on the desk of every game, beside the one card secondSeason asks for', () => {
+  const once = withCard(dated('once-in-summer', { all: [{ year: [1200, 1200] }, { season: ['summer'] }] }));
+  for (let seed = 1; seed <= 40; seed++) {
+    const refs = refsOf(secondSeason(once, seed));
+    ok(refs.includes('once-in-summer'), `seed ${seed}: dealt in its only season: ${refs}`);
+    eq(refs.length, 2, `seed ${seed}: and the season's own card is still dealt`);
+  }
+});
+test('(MER-128) a card whose dates come round again, or that has none, gets no extra slot', () => {
+  // summer returns at season 9 of a three-act game; "year 1200 to 1300" holds in every season after
+  const again = withCard(dated('every-summer', { season: ['summer'] })), long = withCard(dated('this-century', { year: [1200, 1300] }));
+  eq(Math.max(...[1, 2, 3, 4, 5, 6, 7, 8].map(seed => refsOf(secondSeason(again, seed)).length)), 1, 'the second season keeps its one card');
+  eq(Math.max(...[1, 2, 3, 4, 5, 6, 7, 8].map(seed => refsOf(secondSeason(long, seed)).length)), 1, 'a long span is not closing');
+});
+test('(MER-128) the extra slot obeys the pool rules: a card with no choice open is not dealt', () => {
+  const shut = withCard({ ...dated('shut', { all: [{ year: [1200, 1200] }, { season: ['summer'] }] }), choices: [{ id: 'pay', label: 'Pay', requires: { money: { gte: 99999 } }, now: [] }] });
+  for (let seed = 1; seed <= 12; seed++) ok(!refsOf(secondSeason(shut, seed)).includes('shut'), `seed ${seed}: a card nobody can answer is not reserved a slot`);
+});
 test('turn: a later effect fires on its season and not before', () => {
   let s = choose(game(), content, 'p0-1', 'buy');   // wool-due at season 2
   s = answer(choose(s, content, 'p0-0', 'later'), content); // 'later' costs 5 now, returns 5 at season 1

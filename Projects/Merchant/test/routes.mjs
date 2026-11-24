@@ -1216,7 +1216,8 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   // MER-78: seed 10 became 13. The draw's one-favour and no-two-of-a-kind rules deal other cards, so no agent was home to face the plague in seed 10's game.
   // MER-88: seed 15 became 13 (the wage now counts the season an agent leaves in, which moves the money every later card is drawn against).
   // MER-79: seed 13 became 15 for the same reason: four new trade cards change the pool, so no agent was home to face the plague in seed 13's game.
-  const plan = { seed: 13, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  // MER-128: seed 13 became 15. A card whose dates end this season gets an extra slot, so the second season deals one more card and every later draw moves; no agent was home to face the plague in seed 13's game.
+  const plan = { seed: 15, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
   const a = run(C, plan);
   const b = run(C, plan);
   ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');
