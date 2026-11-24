@@ -11,7 +11,7 @@ import { apply } from '../js/engine/effects.js';
 import { holds } from '../js/engine/conditions.js';
 import { steps } from '../js/engine/turn.js';
 import { playGame, BOTS } from '../tools/bots.mjs';
-import { newGame, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices } from '../js/engine/index.js';
+import { newGame, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices, outfit } from '../js/engine/index.js';
 
 const content = await loadContent('testport', { fs });
 const fresh = (over = {}) => freshState(content, { seed: 1, length: 'acts', house: 'rich', ...over });
@@ -1027,22 +1027,39 @@ test('money: a later effect larger than the money takes what there is and the Ac
   steps.fireDue(u, content);
   eq([u.money, u.desk.find(p => p.kind === 'accounts').items[0].changes], [0, ['−30 coins']]);
 });
-test('money: over 200 seeded games that take the first open choice, money is never below 0 after any step (MER-141)', async () => {
+test('money: over 200 seeded games that take the first open choice and send the sheet\'s own plan, money is never below 0 after any step (MER-141)', async () => {
   const cairo = await loadContent('cairo', { fs });
   const names = Object.keys(steps), saved = { ...steps };
-  let at = null, games = 0;
+  let at = null, games = 0, trips = 0, shorts = 0;
   for (const n of names) steps[n] = (st, ...a) => { const r = saved[n](st, ...a); if (at === null && st.money < 0) at = `${n}: ${st.money}`; return r; };
+  const first = (s, p) => { for (const ch of paperChoices(s, cairo, p.id)) { try { return choose(s, cairo, p.id, ch.id); } catch { /* closed: the next */ } } throw new Error(`no choice of "${p.ref}" can be taken`); };
   const bad = [];
   try {
     for (let seed = 1; seed <= 200; seed++) {
       at = null;
-      const out = playGame(cairo, { bot: 'first', seed, house: cairo.houses[seed % cairo.houses.length].id });
+      let s = newGame(cairo, { seed, length: 'acts', house: cairo.houses[seed % cairo.houses.length].id });
+      for (let guard = 0; guard < 400 && s.phase !== 'ended'; guard++) {
+        if (s.phase === 'interlude') { s = openSeason(s, cairo); continue; }
+        if (s.phase === 'recall') { s = recall(s, cairo, {}); continue; }
+        for (const p of s.desk) if (p.state === 'open') s = first(s, p);
+        // the house's plan on every sheet: the draft the outfit sheet opens with, sent as it stands, for each agent who is free
+        for (let k = 0; k < 4; k++) {
+          const d = view(s, cairo).venture;
+          if (!d) break;
+          try { s = outfit(s, cairo, d.plan); trips++; } catch { break; }
+        }
+        s = endSeason(s, cairo);
+        shorts += s.log.filter(e => e.kind === 'accounts' && e.items.some(t => /were not paid|was not paid/.test(t))).length;
+      }
       games++;
-      if (at !== null || out.brokeBy !== null) bad.push(`seed ${seed}: ${at ?? 'broke by season ' + out.brokeBy}`);
+      if (s.phase !== 'ended') bad.push(`seed ${seed}: did not end (${s.phase})`);
+      if (at !== null) bad.push(`seed ${seed}: ${at}`);
     }
   } finally { Object.assign(steps, saved); }
   eq(games, 200);
+  ok(trips >= 400, `the sheet's plan was sent ${trips} times: the games are not scripted trivially`);
   eq(bad, [], 'a step left the house below 0');
+  console.log(`  money: ${games} games, ${trips} trips sent, ${shorts} Accounts papers that said a fee went unpaid`);
 });
 
 await done();
