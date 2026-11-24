@@ -13,6 +13,7 @@ import * as rng from '../js/engine/rng.js';
 import * as M from '../js/engine/market.js';
 import { steps } from '../js/engine/turn.js';
 import { seasonIndex } from '../js/engine/calendar.js';
+import { netWealth } from '../js/engine/score.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, recall, outfit, suggestPlan, checkPlan, routeFor, destinations, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
@@ -1293,6 +1294,19 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   ok(end.results.some(r => r.how === 'home'), 'and an agent at home faced the plague');
   eq(new Set(end.results.map(r => r.agent)).size, end.results.length, 'no agent is rolled for twice');
   eq(end.results.every(r => typeof r.text === 'string' && r.text.length > 0), true);
+});
+
+test('MER-139 (4) the Years pass page and Open the house show the same worth: the home price is written when the markets reset, not at the click', () => {
+  // the play's A: worth rose 400 on Open the house with 100 loads of copper in the warehouse (copper 26 on the page, 30 once the desk opened)
+  let s = cairo({ house: 'cloth', length: 'acts' });
+  s.stock.copper = 100;
+  for (let i = 0; i < 60 && s.phase !== 'interlude'; i++) s = endSeason(answer(s, calmC), calmC);
+  eq(s.phase, 'interlude', 'the first act ended');
+  const worth = st => netWealth(st, calmC).stock;
+  const home = calmC.city.home;
+  eq(s.known[home].copper, { p: M.truePrice(s, calmC, home, 'copper'), at: seasonIndex(s, calmC) }, 'home\'s price is the reset one, this season');
+  const before = worth(s), opened = openSeason(s, calmC);
+  eq(worth(opened), before, 'worth is the same on the first page of the new act');
 });
 
 // ---- MER-78: what a return and a loss ask (returns.json, DESIGN 2.1 rules 3 and 4). data.js loads returns.json since MER-81;

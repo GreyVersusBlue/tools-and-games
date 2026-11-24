@@ -1944,6 +1944,11 @@ export function jump(s, content) {
     for (const g of Object.keys(s.market[stop.id] ?? {})) (s.known[stop.id] ??= {})[g] = { p: M.truePrice(s, content, stop.id, g), at: to - 1 };
   }
 
+  // 4c. the home market's price is always current (market.js `news` writes it at each opening): the reset above is the price the house sees at once,
+  // so the ledger on the Years pass page and the worth on the bar are the ones Open the house shows, and worth does not move by hundreds of dinars
+  // at the click for 100 loads of copper with no paper to say why (MER-139, play problem 13).
+  for (const g of Object.keys(s.market[homeOf(content)] ?? {})) (s.known[homeOf(content)] ??= {})[g] = { p: M.truePrice(s, content, homeOf(content), g), at: to };
+
   // 5. the events of this gap, in the order of their seasons
   const a = actOfSeason(content.calendar, s.length, from), b = actOfSeason(content.calendar, s.length, to);
   const evs = (content.events ?? []).filter(e => e.between && e.between[0] === a && e.between[1] === b).sort((p, q) => p.at - q.at);
