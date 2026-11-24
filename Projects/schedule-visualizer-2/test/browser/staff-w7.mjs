@@ -133,9 +133,14 @@ async function openPage(options) {
     globalThis.sv2StaffClock = { now: () => globalThis.sv2At || at, every: 3600000 };
     globalThis.print = () => {};
     globalThis.sv2Drawn = [];
+    // and per canvas: a floor's map is a canvas of its own, so what was drawn
+    // on the one on screen is never mixed with a map the page has left
+    globalThis.sv2DrawnOn = new WeakMap();
     const was = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function fillText(text, ...rest) {
       globalThis.sv2Drawn.push(String(text));
+      if (!globalThis.sv2DrawnOn.has(this.canvas)) globalThis.sv2DrawnOn.set(this.canvas, []);
+      globalThis.sv2DrawnOn.get(this.canvas).push(String(text));
       return was.call(this, text, ...rest);
     };
   }, opts.at || WED);
@@ -561,14 +566,19 @@ test('a three-stop stairwell is drawn on each floor of the staff map as one lett
   try {
     const { page } = session;
     // the plan is drawn more than once as the page settles: each time, a floor's
-    // first room's number is written once and a stop's letter once
+    // first room's number is written once and a stop's letter once. One
+    // document serves the three addresses and a map the page is leaving can
+    // still paint as it goes, so only the canvas of the map on screen for this
+    // floor is read, once it holds this floor's first room number.
     for (const [at, floor] of ['fsample001', 'fsample002', 'fsample003'].entries()) {
-      // one document serves the three addresses: what was drawn before is forgotten
-      await page.evaluate(() => { if (globalThis.sv2Drawn) globalThis.sv2Drawn.length = 0; });
+      const first = String((at + 1) * 100 + 1);
       await goto(page, files.w7, '#/map/' + floor);
-      await page.waitForFunction((id) => document.querySelector('.map')?.dataset.floor === id && document.querySelector('.map canvas'), { timeout: 10000 }, floor);
-      await page.waitForFunction(() => globalThis.sv2Drawn.includes('101') || globalThis.sv2Drawn.includes('201') || globalThis.sv2Drawn.includes('301'), { timeout: 10000 });
-      const drawn = await page.evaluate(() => globalThis.sv2Drawn.slice());
+      await page.waitForFunction((id, number) => {
+        const frame = document.querySelector('.map');
+        const canvas = frame && frame.querySelector('canvas');
+        return Boolean(frame) && frame.dataset.floor === id && canvas && (globalThis.sv2DrawnOn.get(canvas) || []).includes(number);
+      }, { timeout: 10000 }, floor, first);
+      const drawn = await page.evaluate(() => (globalThis.sv2DrawnOn.get(document.querySelector('.map canvas')) || []).slice());
       assert.ok(drawn.includes('W'), 'the letter W is drawn on floor ' + (at + 1) + ': ' + drawn.join(' '));
       assert.equal(drawn.filter((text) => text === 'W').length, drawn.filter((text) => text === String((at + 1) * 100 + 1)).length, 'one badge for the stop, not one for each flight, on floor ' + (at + 1) + ': ' + drawn.join(' '));
       assert.equal(drawn.includes('A') || drawn.includes('B'), false, 'neither flight\'s own letter, on floor ' + (at + 1));
