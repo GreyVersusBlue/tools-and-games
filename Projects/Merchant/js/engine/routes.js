@@ -676,6 +676,21 @@ export function outfit(state, content, plan) {
   return s;
 }
 
+/** The good the first expedition's card names: of the house's stock the stop trades, the one that sells best there over home's price
+    by what the house knows, then the larger stock. `suggestPlan` sends at least half of it, and the card's price line (paper.js) names
+    it, so the two cannot name different goods (MER-142: the line named the plan's first cargo, which `proposePlan` now orders by its own
+    rule). Null when the house holds nothing the stop trades. */
+export function openingGood(state, content, stopId) {
+  const home = homeOf(content);
+  const stop = stopOf(content, stopId);
+  if (!stop) return null;
+  const homePrice = g => state.known[home]?.[g]?.p ?? M.truePrice(state, content, home, g) ?? 0;
+  const there = g => state.known[stopId]?.[g]?.p ?? null;
+  const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0)
+    .sort((a, b) => ((there(b) ?? 0) - homePrice(b)) - ((there(a) ?? 0) - homePrice(a)) || state.stock[b] - state.stock[a] || (a < b ? -1 : 1));
+  return goods[0] ?? null;
+}
+
 /** A complete, valid plan for the one-press first expedition (DESIGN 4.8): the first free agent
     (one who knows the stop first), the best open route, half of a good the house holds that the
     stop trades, no money sent, the house's own contract. Null when nothing fits. */
@@ -694,10 +709,8 @@ export function suggestPlan(state, content, stopId) {
     if (!hit) return null;
     const homePrice = g => state.known[home]?.[g]?.p ?? M.truePrice(state, content, home, g) ?? 0;
     const there = g => state.known[stopId]?.[g]?.p ?? null;
-    const goods = Object.keys(state.stock).filter(g => stop.sells?.[g] && state.stock[g] > 0)
-      .sort((a, b) => ((there(b) ?? 0) - homePrice(b)) - ((there(a) ?? 0) - homePrice(a)) || state.stock[b] - state.stock[a] || (a < b ? -1 : 1));
-    if (!goods.length) return null;
-    const g = goods[0];
+    const g = openingGood(state, content, stopId);
+    if (!g) return null;
     const load = Math.max(1, Math.floor(state.stock[g] / 2));
     // buy back the good that is cheaper there than at home by what the house knows
     const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
