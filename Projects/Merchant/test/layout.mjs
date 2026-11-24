@@ -161,10 +161,10 @@ states.interludeLong = (() => {
 // MER-124: two parties out of Cairo on the engine's own plans, both on the first leg of their roads (a token on its stop's dot, where its
 // caption lay across the stop's label), and the same two on their second legs (a token on Damascus and one on Qus). Played in Node.
 states.two = (() => {
-  const s = structuredClone(states.second);
-  let g = s;
-  for (const stop of ['damascus', 'aydhab', 'alexandria', 'qus']) { if (g.expeditions.length >= 2) break; const plan = eng.suggestPlan(g, content, stop); if (plan) { try { g = eng.outfit(g, content, plan); } catch { /* not this one */ } } }
-  if (g.expeditions.length < 2) throw new Error('layout.mjs: two parties could not be sent on the engine\'s plans');
+  // Two parties on their first legs. The seeded play's stock no longer lets the engine plan a second party from this desk (MER-139's selling
+  // leaves it empty), so both are laid on their roads by hand from the expedition the ledger fixture was sent with on the engine's own plan.
+  const g = structuredClone(states.second), model = structuredClone(states.book.expeditions[0]);
+  g.expeditions = [['yusuf', 'cairo-damascus'], ['ali', 'cairo-aydhab']].map(([agent, route], i) => ({ ...structuredClone(model), id: `x-two-${i}`, agent, route, leg: 0, left: 1, status: 'out' }));
   return g;
 })();
 states.twoBack = (() => {
@@ -219,6 +219,13 @@ states.road = (() => {
   for (let i = 0; i < 80 && !(s.phase === 'desk' && s.t === 23); i++) s = s.phase === 'interlude' ? eng.openSeason(s, content) : playSeason(s);
   s = playPapers(s);
   for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = eng.suggestPlan(s, content, stop); if (plan) s = eng.outfit(s, content, plan); }
+  // the seeded stock no longer lets the engine plan every party (MER-139's selling leaves it empty), so the rest are laid on their roads by hand
+  const model = structuredClone(states.book.expeditions[0]);
+  for (const [agent, route] of [['yusuf', 'cairo-damascus'], ['ali', 'cairo-aydhab'], ['samir', 'cairo-alexandria'], ['mariam', 'cairo-qus']]) {
+    if (s.expeditions.length >= 4 || s.expeditions.some(x => x.agent === agent)) continue;
+    s = structuredClone(s); s.agents[agent].hired = true;
+    s.expeditions.push({ ...structuredClone(model), id: `x-road-${agent}`, agent, route, leg: 0, left: 1, status: 'out' });
+  }
   s = eng.endSeason(s, content);
   if (s.phase !== 'recall' || s.expeditions.length < 3) throw new Error('layout.mjs: the last season did not end with people on the road');
   return s;
