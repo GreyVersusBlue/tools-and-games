@@ -22,7 +22,7 @@ const calm = variant(T, x => {
 const game = (over = {}) => newGame(calm, { seed: 7, length: 'full', house: 'rich', ...over });
 const WOOL = { agent: 'mira', route: 'harbour-hilltown', cargo: { wool: 10 }, purse: 0, contract: 'own', sell: [], buy: [] };
 
-const answer = (s, c) => { for (const p of s.desk) if (p.state === 'open') s = choose(s, c, p.id, paperChoices(s, c, p.id).find(ch => holds(ch.requires, s, c)).id); return s; };
+const answer = (s, c) => { for (const p of s.desk) if (p.state === 'open') s = choose(s, c, p.id, paperChoices(s, c, p.id).find(ch => { try { choose(s, c, p.id, ch.id); return true; } catch { return false; } }).id); return s; };
 const step = (s, c) => (s.phase === 'interlude' ? openSeason(s, c) : endSeason(answer(s, c), c));
 
 /** An expedition for `agent` put at home and finished, with `purse` money to bring back, as the opening finds it. */

@@ -355,7 +355,7 @@ import { newGame, openSeason, endSeason, choose, paperChoices, outfit, proposePl
 function seasoned(seed, seasons) {
   let s = newGame(content, { seed, length: 'acts', house: content.houses[0].id });
   for (let i = 0; i < seasons; i++) {
-    for (const p of s.desk) if (p.state === 'open') { const ch = paperChoices(s, content, p.id).find(c => holds(c.requires, s, content)); s = choose(s, content, p.id, ch.id); }
+    for (const p of s.desk) if (p.state === 'open') { const ch = paperChoices(s, content, p.id).find(c => { try { choose(s, content, p.id, c.id); return true; } catch { return false; } }); s = choose(s, content, p.id, ch.id); }
     s = endSeason(s, content);
     if (s.phase === 'interlude') s = openSeason(s, content);
   }

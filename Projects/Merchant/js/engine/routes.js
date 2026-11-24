@@ -1993,7 +1993,7 @@ export function repSentence(group, by) {
   return `${who} ${verb} ${by > 0 ? (by > 1 ? 'much better' : 'better') : (by < -1 ? 'much less' : 'less')} of the house.`;
 }
 
-function changesOf(content, q, s) {
+function changesOf(content, q, s, shorts = []) {
   const out = [];
   const nameOf = id => agentOf(content, id === '$agent' ? q.agent : id)?.name ?? id;
   const reps = new Map();   // one sentence per group, however many moves it had
@@ -2001,13 +2001,21 @@ function changesOf(content, q, s) {
     if ('rep' in e) reps.set(e.rep, (reps.get(e.rep) ?? 0) + e.by);
   }
   for (const e of q.do ?? []) {
-    if ('money' in e) out.push(`${sign(e.money)} ${cityOf(content, 'accounts').currency ?? 'coins'}`);
+    if ('money' in e) {
+      const short = shorts.find(x => x.effect === e);
+      const moved = short ? -short.paid : e.money;   // a fee larger than the money took what there was (MER-141)
+      if (moved) out.push(`${sign(moved)} ${cityOf(content, 'accounts').currency ?? 'coins'}`);
+    }
     else if ('stock' in e) out.push(`${sign(e.by)} ${goodName(content, e.stock)}`);
     else if ('rep' in e) { if (reps.has(e.rep)) { const w = repSentence(e.rep, reps.get(e.rep)); reps.delete(e.rep); if (w) out.push(w); } }
     else if ('trust' in e) out.push(`${nameOf(e.trust)}'s trust ${sign(e.by)}`);
     else if ('loan' in e) out.push(`a loan of ${e.loan.principal} from ${e.loan.from}`);
     else if ('hire' in e) out.push(`${nameOf(e.hire)} joins the house`);
     else if ('dismiss' in e) out.push(`${nameOf(e.dismiss)} leaves the house`);
+  }
+  for (const x of shorts) {
+    const had = x.paid ? `only ${coins(content, x.paid)}` : 'nothing';
+    out.push(`The house owed ${coins(content, x.owed)} and had ${had}, so ${coins(content, x.owed - x.paid)} ${x.owed - x.paid === 1 ? 'was' : 'were'} not paid.`);
   }
   return out;
 }
@@ -2019,8 +2027,8 @@ const accountWords = changes => {
 };
 
 /** One item for the accounts paper from a later effect that fired with no follow-up card. */
-export function accountItem(s, content, q) {
-  const changes = changesOf(content, q, s);
+export function accountItem(s, content, q, shorts = []) {
+  const changes = changesOf(content, q, s, shorts);
   if (!changes.length) return null;
   // the card and the choice that set this effect: the words the player saw when choosing (turn.js `choose` records them in
   // the queue item), else looked up from the ids, else, for an item queued before they were recorded, a plain "earlier choice"

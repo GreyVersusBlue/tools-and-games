@@ -32,7 +32,7 @@ const know = (s, c, stop, good, p, age = 0) => { (s.known[stop] ??= {})[good] = 
 function answer(s, c) {
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
-    const ch = paperChoices(s, c, p.id).find(x => holds(x.requires, s, c));
+    const ch = paperChoices(s, c, p.id).find(x => { try { choose(s, c, p.id, x.id); return true; } catch { return false; } });   // the first choice the house can take (MER-141)
     s = choose(s, c, p.id, ch.id);
   }
   return s;

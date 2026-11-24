@@ -179,8 +179,8 @@ const slotsOf = q => (q.card ? 1 : 0) + (q.do ?? []).filter(e => e && typeof e =
 
 /** Fires one queue item on `s`: every effect with "now" equal to the item's own season
     (`at`) and the context of the paper that queued it. */
-function fireOne(s, content, q) {
-  const ctx = { later: true, at: q.at, from: q.from, ...(q.agent ? { agent: q.agent } : {}), ...(q.expedition ? { expedition: q.expedition } : {}) };
+function fireOne(s, content, q, shorts) {
+  const ctx = { later: true, at: q.at, from: q.from, shorts, ...(q.agent ? { agent: q.agent } : {}), ...(q.expedition ? { expedition: q.expedition } : {}) };
   applyAll(s, content, q.do, ctx);
   if (q.card) apply(s, content, { card: q.card }, ctx);
 }
@@ -211,11 +211,12 @@ function fireDue(s, content) {
   const room = reserve(s, content, due);
   for (const q of due) {
     if (slotsOf(q) && deskFull(s, slotsOf(q) + room)) { held.push(q); continue; }
-    const trial = structuredClone(s);
+    const trial = structuredClone(s), shorts = [];
     try {
-      fireOne(trial, content, q);
-      // a later effect with no follow-up card is recorded for the one folded Accounts paper
-      const item = slotsOf(q) ? null : routes.accountItem(trial, content, q);
+      fireOne(trial, content, q, shorts);
+      // a later effect with no follow-up card is recorded for the one folded Accounts paper; so is one that took
+      // less money than it asked for, card or not, since the paper must say what was owed and not paid (MER-141)
+      const item = slotsOf(q) && !shorts.length ? null : routes.accountItem(trial, content, q, shorts);
       Object.assign(s, trial);
       if (item) accounts.push(item);
     } catch (e) {
@@ -264,7 +265,7 @@ function isOpen(s, content, p, choice) {
   if (!holds(choice.requires, s, content)) return false;
   // on the copy throughout: letters.reachable logs a dropped order on the state it is given
   const trial = clone(s);
-  try { applyAll(trial, content, nowOf(trial, p, choice), { agent: p.agent, expedition: p.expedition }); return true; }
+  try { applyAll(trial, content, nowOf(trial, p, choice), { agent: p.agent, expedition: p.expedition, strict: true }); return true; }
   catch { return false; }
 }
 const anyOpen = (s, content, p, list) => list.some(c => isOpen(s, content, p, c));
@@ -305,6 +306,7 @@ export function choose(state, content, paperId, choiceId) {
     const via = { from: `${paper.kind === 'return' || paper.kind === 'lost' ? (paper.data?.entry ?? paper.ref) : card.id}/${choice.id}`, card: (paper.kind === 'return' || paper.kind === 'lost' ? paper.data?.ask?.title : (seen?.title ?? card.title)) ?? null, choice: (seen?.choices[choice.id]?.label ?? choice.label) ?? null };
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
     const ctx = { agent: paper.agent, expedition: paper.expedition };
+    const nowCtx = { ...ctx, strict: true };   // a choice's `now` takes only money the house holds (MER-141)
     const refuse = e => new Error(`choose: "${choice.label}" on card "${card.id}" is refused: ${e.message}`);
     const later = choice.later ?? [];
     const now = nowOf(s, paper, choice);
@@ -312,7 +314,7 @@ export function choose(state, content, paperId, choiceId) {
     // stop or agent refuses the choice here and never throws when the item fires.
     const trial = clone(s);
     try {
-      applyAll(trial, content, now, ctx);
+      applyAll(trial, content, now, nowCtx);
       for (const l of later) {
         if (!Number.isInteger(l.in) || l.in < 1) throw new Error(`later.in must be a whole number above 0`);
         const item = { do: l.do ?? [], ...(l.card ? { card: l.card } : {}) };
@@ -322,7 +324,7 @@ export function choose(state, content, paperId, choiceId) {
         applyAll(trial, content, item.do, { ...ctx, later: true, dry: true });
       }
     } catch (e) { throw refuse(e); }
-    applyAll(s, content, now, ctx);
+    applyAll(s, content, now, nowCtx);
     if ((paper.kind === 'return' || paper.kind === 'letter') && choiceId === 'bonus' && paper.agent) s.flags[`${paper.agent}-bonused`] = idx;   // one bonus for one trip (letters.js fitOffers)
     if (paper.kind === 'letter') letters.stamp(s, paper, idx);
     for (const l of later) {
