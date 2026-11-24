@@ -65,6 +65,8 @@ const FRAMES = [
   { name: 'phone-small', width: 360, height: 740, mobile: true },
 ];
 const MIN_TARGET = 44, MIN_CONTRAST = 4.5;
+// the plain sky of A18, from its manifest row: [x, y, w, h] as fractions of the picture
+const titleSafe = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'assets', 'art', 'manifest.json'), 'utf8')).assets.find(a => a.id === 'title').safe;
 // MER-87 (finding 7): what a paper asks is in view the moment it opens, with no scrolling by the player, at the two
 // frames the milestone play found it cut off at (the board and a small laptop) and the 1366 laptop between them.
 // The target is the paper's first choice, or Open the house on the page between the acts.
@@ -273,6 +275,18 @@ const SCREENS = [
       if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
       await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
     } },
+  // MER-132: the same two returns with the account unfolded, the paper at its tallest
+  ...[['desk-return-open', 'ret'], ['desk-return2-open', 'ret2']].map(([name, st]) => ({ name,
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states[st], large: f.large });
+      await p.waitForSelector('#screen-desk .sheet-title');
+      const id = states[st].desk.find(x => x.kind === 'return' && x.state === 'open').id;
+      if (await p.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await p.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await p.click(`.edge[data-paper="${id}"]`); }
+      await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
+      await p.$eval('.account summary', e => e.scrollIntoView({ block: 'center' }));
+      await p.click('.account summary');
+      await p.waitForSelector('.account[open] .accounts-table');
+    } })),
   { name: 'desk-loss',
     go: async (p, f) => { await load(p, '#desk', { state: states.loss, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
   { name: 'desk-accounts',
@@ -468,7 +482,8 @@ const collectText = scopeSel => {
       if (r.width < 2 || r.height < 2) continue;
       // keep what is on screen and inside every clipping ancestor
       let x0 = Math.max(r.left, 0), y0 = Math.max(r.top, 0), x1 = Math.min(r.right, vw), y1 = Math.min(r.bottom, vh);
-      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      // the element's own box clips its own text too (MER-132: a tab's title cut at the tab's width with an ellipsis was measured whole, over the picture beside it)
+      for (let a = el; a && a !== document.body; a = a.parentElement) {
         const ca = getComputedStyle(a);
         if (ca.overflow !== 'visible') { const b = a.getBoundingClientRect(); x0 = Math.max(x0, b.left); y0 = Math.max(y0, b.top); x1 = Math.min(x1, b.right); y1 = Math.min(y1, b.bottom); }
         // a fixed box is placed against the viewport: what scrolls or clips its ancestors does not clip it (the price board's phone dialog
@@ -665,10 +680,14 @@ try {
             const got = await page.evaluate(() => {
               const row = document.querySelector('.end-row'), last = document.querySelector('.sheet .choices .choice:last-of-type');
               if (!row || !row.checkVisibility() || !last) return { missing: true };
-              const rr = row.getBoundingClientRect(), lr = last.getBoundingClientRect();
+              // MER-132: the part of the choice a player can see, cut by every box that clips or scrolls (a choice scrolled out of the stack's box lies under the
+              // bar's rectangle on paper and under nothing on screen)
+              const rr = row.getBoundingClientRect(), lr = (e => { const q = e.getBoundingClientRect(), v = { left: q.left, right: q.right, top: q.top, bottom: q.bottom };
+                for (let x = e.parentElement; x && x !== document.body; x = x.parentElement) if (getComputedStyle(x).overflowY !== 'visible') { const c = x.getBoundingClientRect(); v.top = Math.max(v.top, c.top); v.bottom = Math.min(v.bottom, c.bottom); }
+                if (v.bottom < v.top) v.bottom = v.top; return v; })(last);
               const bg = getComputedStyle(row).backgroundColor.match(/[\d.]+/g).map(Number);
               const covers = getComputedStyle(row).position === 'sticky' || getComputedStyle(row).position === 'fixed';
-              return { covers, alpha: bg.length > 3 ? bg[3] : 1, overlap: lr.left < rr.right && lr.right > rr.left && lr.top < rr.bottom - 0.5 && lr.bottom > rr.top + 0.5, last: [Math.round(lr.top), Math.round(lr.bottom)], row: [Math.round(rr.top), Math.round(rr.bottom)] };
+              return { covers, alpha: bg.length > 3 ? bg[3] : 1, overlap: lr.bottom - lr.top > 1 && lr.left < rr.right && lr.right > rr.left && lr.top < rr.bottom - 0.5 && lr.bottom > rr.top + 0.5, last: [Math.round(lr.top), Math.round(lr.bottom)], row: [Math.round(rr.top), Math.round(rr.bottom)] };
             });
             await page.evaluate(() => window.scrollTo(0, 0));
             ok(!got.missing, 'End the season or the last choice is not on the desk');
@@ -676,12 +695,94 @@ try {
             ok(!got.overlap, `the bar (${got.row}) covers the last choice (${got.last})`);
           });
         }
+        // MER-132 (DESIGN 4.2): A18 (title.webp, never title-wide, which is for sharing) lies behind the panel over the whole frame at every frame, laid
+        // from the top left so the plain sky the manifest names (`safe`, the upper left 34 percent each way) is the part that always shows, and the
+        // title sits in it: the headline's box starts inside that corner and its top and left edges are the screen's own
+        if (/^title/.test(screen.name)) {
+          await test(`${tag}: A18 lies behind the panel over the whole frame, with the title in its plain upper left`, async () => {
+            const got = await page.evaluate(async safe => {
+              const img = document.querySelector('.title-still'), h1 = document.querySelector('.title-name'), menu = document.querySelector('.title-menu');
+              if (!img) return { missing: true };
+              await img.decode().catch(() => {});
+              const r = img.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = innerHeight, cs = getComputedStyle(img), t = h1.getBoundingClientRect();
+              const k = Math.max(vw / 1920, vh / 1080);   // cover, from the top left corner
+              const zOf = e => { const z = getComputedStyle(e).zIndex; return z === 'auto' ? 0 : Number(z); };
+              return { src: img.getAttribute('src'), loaded: img.complete && img.naturalWidth === 1920, fit: cs.objectFit, pos: cs.objectPosition, z: zOf(img), menuZ: zOf(menu),
+                covers: r.left <= 0.5 && r.top <= 0.5 && r.right >= vw - 0.5 && r.bottom >= vh - 0.5, shown: img.checkVisibility(),
+                box: { w: Math.round(safe[2] * 1920 * k), h: Math.round(safe[3] * 1080 * k) }, title: { left: Math.round(t.left), top: Math.round(t.top), right: Math.round(t.right), bottom: Math.round(t.bottom) } };
+            }, titleSafe);
+            ok(!got.missing, 'the title screen has no .title-still');
+            ok(/assets\/art\/title\.webp$/.test(got.src), `the picture is ${got.src}, not title.webp`);
+            ok(got.loaded && got.shown, `the picture loaded ${got.loaded}, shown ${got.shown}`);
+            ok(got.covers, 'the picture does not cover the frame');
+            ok(got.fit === 'cover' && /^0(px|%) 0(px|%)$/.test(got.pos), `laid from the top left, covering: ${got.fit} ${got.pos}`);
+            ok(got.z < got.menuZ || got.z < 0, `the picture (z ${got.z}) is not behind the panel (z ${got.menuZ})`);
+            ok(got.title.left >= 0 && got.title.top >= 0 && got.title.left < got.box.w && got.title.top < got.box.h, `the headline starts at ${got.title.left},${got.title.top}, outside the plain corner of ${got.box.w} x ${got.box.h}`);
+            ok(got.title.right <= got.box.w + 1 && got.title.bottom <= got.box.h + 1, `the headline (${JSON.stringify(got.title)}) runs out of the plain corner of ${got.box.w} x ${got.box.h}`);
+          });
+        }
+        // MER-132 (play a033, a082, a029, c011): on a return paper the last choice is never behind End the season ("Hold the pepper" at y=1055 under
+        // the bar at 991 to 1058), the other papers' tabs stay in view while "N papers left" shows, and the End bar never cuts a choice, with the
+        // account folded and unfolded, at every frame. A box is measured by what a player can see of it: cut by every ancestor that clips or scrolls.
+        if (/^desk-return2?(-open)?$/.test(screen.name)) {
+          await test(`${tag}: no choice of the return is behind End the season, as it opens or when scrolled to`, async () => {
+            await page.evaluate(() => window.scrollTo(0, 0));
+            const bad = await page.evaluate(() => {
+              const saved = [document.scrollingElement, ...document.querySelectorAll('.stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
+              const seen = e => { const q = e.getBoundingClientRect(); const v = { top: q.top, bottom: q.bottom, left: q.left, right: q.right };
+                for (let x = e.parentElement; x && x !== document.body; x = x.parentElement) { if (getComputedStyle(x).overflowY !== 'visible') { const c = x.getBoundingClientRect(); v.top = Math.max(v.top, c.top); v.bottom = Math.min(v.bottom, c.bottom); } }
+                return v; };
+              // boxes that only touch, or overlap by a hair, are not cut
+              const hit = (a, b) => a.left < b.right - 1.5 && a.right > b.left + 1.5 && a.top < b.bottom - 1.5 && a.bottom > b.top + 1.5;
+              const row = document.querySelector('.end-row'), choices = [...document.querySelectorAll('.sheet .choices .choice')], title = document.querySelector('.sheet-title');
+              if (!row || !row.checkVisibility() || choices.length < 2) return ['the return has no End the season bar or fewer than two choices'];
+              const tabs = document.querySelector('.edges'), stuck = tabs && getComputedStyle(tabs).position === 'sticky' && tabs.checkVisibility() ? tabs : null, out = [];
+              // where the headline and the last choice cannot both be on screen above the bar, the headline wins (MER-122) and a choice below the fold is not cut, only below it
+              const topBar = document.querySelector('.topbar').getBoundingClientRect().bottom, bar = row.getBoundingClientRect();
+              const fits = choices.at(-1).getBoundingClientRect().bottom - title.getBoundingClientRect().top <= bar.top - topBar - 8 && getComputedStyle(row).position !== 'absolute';
+              const where = (how, i, c) => {
+                const v = seen(c), r = c.getBoundingClientRect(), e = row.getBoundingClientRect();
+                const name = `${how}: choice ${i + 1} (${c.textContent.trim().slice(0, 18)}) at ${Math.round(r.top)} to ${Math.round(r.bottom)}`;
+                if (v.bottom - v.top > 1 && hit(v, e) && (how !== 'as it opens' || fits)) out.push(`${name} is behind End the season at ${Math.round(e.top)} to ${Math.round(e.bottom)}`);
+                if (how !== 'as it opens' && (v.bottom - v.top < r.height - 1 || hit(r, e))) out.push(`${name} is cut off or covered once scrolled to (End at ${Math.round(e.top)} to ${Math.round(e.bottom)}, box shows ${Math.round(v.top)} to ${Math.round(v.bottom)})`);
+                if (how !== 'as it opens' && stuck && hit(r, stuck.getBoundingClientRect())) out.push(`${name} lies under the tabs`);
+              };
+              choices.forEach((c, i) => where('as it opens', i, c));
+              choices.forEach((c, i) => { c.scrollIntoView({ block: 'nearest' }); where('scrolled to', i, c); });
+              for (const [e, t] of saved) e.scrollTop = t;
+              return out;
+            });
+            await page.evaluate(() => window.scrollTo(0, 0));
+            ok(!bad.length, brief(bad));
+          });
+          // where the stack is its own scroll box (a laptop or the board) the tabs are stuck to its top: each is whole in it, under nothing, and a press
+          // at its centre lands on it. The phones lay the tabs in the page's flow under the paper (upright) or in a column of their own (on its side).
+          await test(`${tag}: the other papers' tabs stay in view while the papers-left tag shows`, async () => {
+            await page.evaluate(() => window.scrollTo(0, 0));
+            const got = await page.evaluate(() => {
+              const tabs = [...document.querySelectorAll('.edge')], tag = document.querySelector('.stack-count'), box = document.querySelector('.stack-papers'), strip = document.querySelector('.edges');
+              if (!tag || !/papers? left/.test(tag.textContent) || !tabs.length) return { missing: true };
+              if (getComputedStyle(strip).position !== 'sticky') return { flow: true };
+              const bar = document.querySelector('.topbar').getBoundingClientRect(), b = box.getBoundingClientRect(), out = [];
+              for (const t of tabs) {
+                const r = t.getBoundingClientRect(), name = `tab "${t.textContent.trim().slice(0, 20)}" at ${Math.round(r.top)} to ${Math.round(r.bottom)}`;
+                if (r.top < b.top - 0.5 || r.bottom > b.bottom + 0.5) out.push(`${name} is out of the stack, which shows ${Math.round(b.top)} to ${Math.round(b.bottom)}`);
+                if (r.top < bar.bottom - 0.5) out.push(`${name} is under the top bar`);
+                const on = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                if (!on || !(t === on || t.contains(on))) out.push(`${name} is covered by ${on ? on.id || on.className || on.tagName : 'nothing'}`);
+              }
+              return { out };
+            });
+            ok(!got.missing, 'the return has no papers-left tag or no other paper to tab');
+            if (!got.flow) ok(!got.out.length, brief(got.out));
+          });
+        }
         if (screen.name === 'outfit-second-carry') {
           // elementFromPoint at the link's centre is the link, wherever the scroll puts it by a press, a focus or a scroll-into-view; then a real pointer press opens the section
           await test(`${tag}: #change-back is clear of the Send bar and a pointer press on it opens the bring-back section`, async () => {
             const got = await page.evaluate(() => {
-              const dlg = document.querySelector('dialog[open]'), link = document.getElementById('change-back');
-              if (!link || !dlg.querySelector('.send-row')) return { missing: true };
+              const dlg = document.querySelector('dialog[open]'), link = document.getElementById('change-back'), sc = dlg.querySelector('.outfit-body');   // MER-132: the sheet scrolls in .outfit-body, the bar is under it
+              if (!link || !dlg.querySelector('.send-row') || !sc) return { missing: true };
               const probe = how => {
                 const r = link.getBoundingClientRect(), d = dlg.getBoundingClientRect(), y = r.top + r.height / 2;
                 if (y < d.top || y > d.bottom) return null;   // scrolled out of the dialog: nothing covers it, nothing can press it
@@ -691,15 +792,15 @@ try {
               const bad = [];
               const run = (how, f) => { f(); const m = probe(how); if (m) bad.push(m); };
               run('as the carry press left it', () => {});
-              run('at the top', () => { dlg.scrollTop = 0; });
-              run('scrolled into view from the top', () => { dlg.scrollTop = 0; link.scrollIntoView({ block: 'nearest' }); });
-              run('scrolled into view from the foot', () => { dlg.scrollTop = dlg.scrollHeight; link.scrollIntoView({ block: 'nearest' }); });
-              run('focused from the top', () => { dlg.scrollTop = 0; link.focus(); });
+              run('at the top', () => { sc.scrollTop = 0; });
+              run('scrolled into view from the top', () => { sc.scrollTop = 0; link.scrollIntoView({ block: 'nearest' }); });
+              run('scrolled into view from the foot', () => { sc.scrollTop = sc.scrollHeight; link.scrollIntoView({ block: 'nearest' }); });
+              run('focused from the top', () => { sc.scrollTop = 0; link.focus(); });
               return { bad };
             });
             ok(!got.missing, 'the link or the Send bar is not on the sheet');
             ok(!got.bad.length, got.bad.join('; '));
-            await page.evaluate(() => { document.querySelector('dialog[open]').scrollTop = 0; });
+            await page.evaluate(() => { document.querySelector('dialog[open] .outfit-body').scrollTop = 0; });
             await page.click('#change-back');
             await page.waitForSelector('#back-nothing', { timeout: 3000 });
           });
@@ -707,22 +808,29 @@ try {
         // MER-124 (play c014, c041, c003, c005): what the phone's bars did to the controls under them
         if (screen.name === 'outfit-second-open') {
           // every control on the sheet, scrolled into view the two ways a player gets there (a scroll to it, a Tab or a tap that focuses it),
-          // is clear of the sticky Send bar: it sat on a stepper at y=560 and a tap there landed on Send (c014)
-          await test(`${tag}: no stepper, button or link sits under the Send bar once scrolled into view`, async () => {
+          // is clear of the Send bar: it sat on a stepper at y=560 and a tap there landed on Send (c014). MER-132: the bar is under the scrolling
+          // part, not over it (the sheet scrolls in .outfit-body), so no control can be scrolled to a place the bar covers: the scroller ends at
+          // the bar's top, and a point inside the scroller is never the bar
+          await test(`${tag}: no stepper, button or link sits under the Send bar once scrolled into view, and the scrolling part ends where the bar begins`, async () => {
             const bad = await page.evaluate(() => {
-              const dlg = document.querySelector('dialog[open]'), bar = dlg.querySelector('.send-row');
+              const dlg = document.querySelector('dialog[open]'), bar = dlg.querySelector('.send-row'), sc = dlg.querySelector('.outfit-body');
               const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
               const out = [];
+              if (!sc) return ['the sheet has no .outfit-body: it still scrolls under its own Send bar'];
+              if (sc.getBoundingClientRect().bottom > bar.getBoundingClientRect().top + 0.5) out.push(`the scrolling part ends at ${Math.round(sc.getBoundingClientRect().bottom)}, under the bar at ${Math.round(bar.getBoundingClientRect().top)}`);
+              if (bar.closest('.outfit-body')) out.push('the Send bar is inside the scrolling part');
               const els = [...dlg.querySelectorAll('.stepper, .step-btn, button, input, summary, a[href], [role=checkbox], [role=radio]')].filter(e => !bar.contains(e) && e.checkVisibility());
               for (const el of els) {
                 for (const how of ['scrollIntoView', 'focus']) {
-                  dlg.scrollTop = how === 'focus' ? dlg.scrollHeight : 0;
+                  sc.scrollTop = how === 'focus' ? sc.scrollHeight : 0;
                   if (how === 'scrollIntoView') el.scrollIntoView({ block: 'nearest' }); else el.focus();
                   const r = el.getBoundingClientRect(), b = bar.getBoundingClientRect();
-                  if (r.height < dlg.clientHeight - b.height && hit(r, b)) out.push(`${how} leaves ${el.id || el.className || el.tagName} at ${Math.round(r.top)} to ${Math.round(r.bottom)} under the bar at ${Math.round(b.top)}`);
+                  if (r.height < sc.clientHeight && hit(r, b)) out.push(`${how} leaves ${el.id || el.className || el.tagName} at ${Math.round(r.top)} to ${Math.round(r.bottom)} under the bar at ${Math.round(b.top)}`);
+                  const e = document.elementFromPoint(r.left + r.width / 2, Math.min(r.top + r.height / 2, sc.getBoundingClientRect().bottom - 1));
+                  if (r.top < sc.getBoundingClientRect().bottom - 1 && r.bottom > sc.getBoundingClientRect().top + 1 && e && bar.contains(e)) out.push(`${how}: a press at ${el.id || el.className} lands on the Send bar (${e.id || e.className})`);
                 }
               }
-              dlg.scrollTop = 0;
+              sc.scrollTop = 0;
               return out;
             });
             ok(!bad.length, brief(bad));

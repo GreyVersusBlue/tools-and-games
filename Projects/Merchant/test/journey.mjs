@@ -2949,7 +2949,8 @@ try {
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
         await test(`${frame.name}: the set-out toast lies in the board's flow, so Outfit and Back to the desk are what a finger lands on (MER-124)`, async () => {
-          eq(await page.$eval('#map-toast', t => [getComputedStyle(t).position, !!t.closest('#board')]), ['static', true]);
+          // MER-132: sticky to the board's top is still the board's flow (it was static, under the buttons); fixed over the picture is what this forbids
+          eq(await page.$eval('#map-toast', t => [['static', 'sticky'].includes(getComputedStyle(t).position), !!t.closest('#board')]), [true, true]);
           for (const id of ['btn-outfit', 'map-desk', 'map-desk-top']) {
             const hit = await page.$eval(`#${id}`, b => { const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === b || b.contains(e); });
             ok(hit, `${id}: its centre is the button's own`);
@@ -4072,6 +4073,272 @@ try {
         }
       });
       await test('MER-131: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
+
+
+  // ---- MER-132: the phone desk picture, the title picture, the Send bar under a tap, the stepper's limit, the houses' seals, the return account's figures.
+  {
+    const put = async (page, st, hash) => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+    };
+    const firstDone3 = () => { let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' }); for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, FIRST[p.ref]); return g; };
+
+    // (1) problem 2: the desk picture on a phone, eight seasons through a winter. The band is display:none while the night placeholder is in it, a
+    // hidden picture never runs its fade, and each season left one more still behind it; by season 7 four lay at opacity 0 and 0 x 0 (c016, c017).
+    {
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await start(page, 'pointer');
+      await answerFirst(page, 'pointer');
+      const look = () => page.evaluate(() => {
+        const imgs = [...document.querySelectorAll('.desk-stills .desk-still')], last = imgs.at(-1), r = last?.getBoundingClientRect();
+        return { n: imgs.length, files: imgs.map(i => i.getAttribute('src').replace(/^.*\//, '')), placeholder: !!last?.classList.contains('placeholder'),
+          opacity: last ? getComputedStyle(last).opacity : null, w: Math.round(r?.width ?? 0), h: Math.round(r?.height ?? 0), shown: !!last?.checkVisibility(),
+          season: document.documentElement.dataset.season, date: document.getElementById('bar-date')?.textContent };
+      });
+      await test('MER-132 phone-upright: through eight seasons and a winter the band holds one still, and a final picture is shown at full opacity, the winter after too', async () => {
+        const log = [];
+        for (let season = 1; season <= 8; season++) {
+          if (season > 1) {
+            const was = await page.$eval('#bar-date', e => e.textContent);
+            await uiSeason(page, 'pointer');
+            await page.waitForFunction(d => document.getElementById('bar-date')?.textContent !== d, { timeout: 10000 }, was);
+            const now = await look();
+            ok(now.n <= 2, `season ${season}, as it opens: ${now.n} stills in the band (${now.files}), two at most while one fades`);
+          }
+          // the fade ends: one still, and a final one at full opacity
+          await page.waitForFunction(() => document.querySelectorAll('.desk-stills .desk-still').length === 1 && (document.querySelector('.desk-stills .desk-still.placeholder') || getComputedStyle(document.querySelector('.desk-stills .desk-still')).opacity === '1'), { timeout: 3000 }).catch(() => {});
+          const got = await look();
+          log.push(`${got.date}: ${got.files}`);
+          eq(got.n, 1, `season ${season} (${got.date}): ${got.n} stills in the band: ${got.files}`);
+          if (!got.placeholder) {
+            eq(got.opacity, '1', `season ${season} (${got.date}): ${got.files} is at opacity ${got.opacity}`);
+            ok(got.shown && got.w > 300 && got.h > 100, `season ${season} (${got.date}): the final picture ${got.files} is ${got.w} x ${got.h}, shown ${got.shown}`);
+          }
+        }
+        ok(log.some(l => /night/.test(l)), `a winter placeholder was passed: ${log.join(' | ')}`);
+        ok(/day/.test(log[4]), `the spring after the winter shows the day desk: ${log[4]}`);
+      });
+      await test('MER-132 phone-upright: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (2) the title screen: A18 behind the panel, and the gradient only when the file will not load
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-132: the title screen shows title.webp (not title-wide) behind its panel, and the gradient stands in only for a file that fails to load', async () => {
+        const got = await page.evaluate(async () => {
+          const img = document.querySelector('#screen-title .title-still');
+          if (!img) return { missing: true };
+          await img.decode().catch(() => {});
+          return { src: img.getAttribute('src'), loaded: img.complete && img.naturalWidth > 0, z: getComputedStyle(img).zIndex, first: document.getElementById('screen-title').firstElementChild === img };
+        });
+        ok(!got.missing, 'the title screen has no .title-still');
+        ok(/assets\/art\/title\.webp$/.test(got.src), `the picture is ${got.src}`);
+        ok(got.loaded, 'the picture did not load');
+        eq(got.z, '-1', 'it lies behind the panel');
+        const failed = await page.evaluate(async () => {
+          const { renderTitle } = await import('./js/ui/screens/title.js');
+          const el = renderTitle({ city: { title: 'T', tagline: 't' }, art: { file: 'no-such-picture.webp' }, save: null, onNew() {}, onContinue() {}, onAbout() {}, onSettings() {} });
+          el.id = 'title-probe'; document.body.append(el);
+          await new Promise(r => setTimeout(r, 600));
+          const left = el.querySelector('.title-still'), bg = getComputedStyle(el).backgroundImage;
+          el.remove();
+          return { left: !!left, gradient: /linear-gradient/.test(bg) };
+        });
+        eq(failed, { left: false, gradient: true }, 'a picture that fails to load takes itself off, and the gradient is what shows');
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (4) problem c010: the set-out message is whole on a phone, upright with Large text and on its side. Under the buttons it lay beneath the board's sticky
+    // bar once the board scrolled, and "Watch the" was all of it that showed
+    for (const [frame, large] of [[FRAMES[3], false], [FRAMES[3], true], [FRAMES[4], true], [FRAMES[5], false]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-132 ${frame.name}${large ? ' with Large text' : ''}: the set-out message is whole on screen, with nothing over it, wherever the board is scrolled`, async () => {
+        await put(page, firstDone3(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        if (large) await setLarge(page, true);
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.waitForSelector('#outfit-send');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        const probe = how => page.evaluate(how => {
+          const t = document.getElementById('map-toast'), board = document.getElementById('board');
+          if (how === 'foot') board.scrollTop = board.scrollHeight; else board.scrollTop = 0;
+          const r = t.getBoundingClientRect(), b = board.getBoundingClientRect();
+          const covered = [[r.left + 4, r.top + 3], [r.right - 4, r.top + 3], [r.left + 4, r.bottom - 3], [r.right - 4, r.bottom - 3], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]
+            .map(([x, y]) => { const e = document.elementFromPoint(x, y); return e && !(t === e || t.contains(e)) ? (e.id || e.className || e.tagName) : null; }).filter(Boolean);
+          return { how, top: Math.round(r.top), bottom: Math.round(r.bottom), board: [Math.round(b.top), Math.round(b.bottom)], covered, whole: r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5, clipped: t.scrollHeight > t.clientHeight + 1 };
+        }, how);
+        for (const how of ['foot', 'top']) {
+          const got = await probe(how);
+          eq(got.covered, [], `board scrolled to its ${how}: the toast at ${got.top} to ${got.bottom} is covered`);
+          ok(got.whole, `board scrolled to its ${how}: the toast at ${got.top} to ${got.bottom} is out of the board (${got.board})`);
+          ok(!got.clipped, 'the toast clips its own text');
+        }
+      });
+      await test(`MER-132 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (5) the Send bar is outside the scrolling content: a tap on a stepper scrolled to the foot of the sheet is a tap on the stepper
+    {
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await test('MER-132 phone-upright: a tap on a stepper at the foot of the scrolling sheet moves the stepper and never sends the trip', async () => {
+        await put(page, firstDone3(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
+        await pressChange(page, '#change-carry');
+        await page.waitForSelector('#step-purse');
+        const ids = await page.$$eval('#panel-outfit .stepper', s => s.map(e => e.id));
+        ok(ids.length >= 2, `steppers on the sheet: ${ids}`);
+        let atFoot = 0;
+        for (const id of ids) {
+          // the sheet's scrolling part, wherever it is (the nearest ancestor that scrolls), moved until the stepper's plus button lies at the very foot of what scrolls
+          const where = await page.evaluate(sel => {
+            const btn = document.querySelector(sel); let sc = btn.parentElement;
+            while (sc && !(['auto', 'scroll'].includes(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight + 1)) sc = sc.parentElement;
+            if (!sc) return { noScroller: true };
+            const port = sc.getBoundingClientRect().bottom, r = btn.getBoundingClientRect();
+            sc.scrollTop += (r.top + r.height / 2) - (port - 2);
+            const r2 = btn.getBoundingClientRect();
+            return { y: Math.round(r2.top + r2.height / 2), foot: Math.abs(r2.top + r2.height / 2 - (port - 2)) < 3, port: Math.round(port), bar: Math.round(document.querySelector('#panel-outfit .send-row').getBoundingClientRect().top) };
+          }, `#${id}-plus`);
+          ok(!where.noScroller, 'the sheet has nothing that scrolls');
+          if (where.foot) atFoot++;
+          const before = await page.$eval(`#${id}`, e => e.getAttribute('aria-valuenow'));
+          await page.tap(`#${id}-plus`);
+          const after = await page.waitForFunction((i, v) => document.getElementById(i)?.getAttribute('aria-valuenow') !== v, { timeout: 2000 }, id, before).then(() => true, () => false);
+          const sent = await page.evaluate(() => ({ trips: window.__merchant.state.expeditions.length, open: !!document.getElementById('panel-outfit')?.open, hash: location.hash }));
+          eq(sent, { trips: 0, open: true, hash: '#outfit' }, `a tap at y=${where.y} on ${id}'s plus (the scrolling part ends at ${where.port}, the Send bar at ${where.bar}) sent the trip`);
+          ok(after, `${id}: a tap at y=${where.y} did not move the stepper from ${before}`);
+        }
+        ok(atFoot >= 2, `only ${atFoot} of ${ids.length} steppers could be put at the foot of what scrolls: the case proves nothing`);
+        await page.click('#outfit-cancel');
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (6) problem 11: the stepper's limit is the engine's mostLoads, not money over today's price. With 1,500 dinars the flat division allowed
+    // 16 pepper at Qus and the engine's own check refuses 15; money is cut here until the flat count is exactly one load over.
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-132: the cargo stepper stops at the engine\'s mostLoads, a load short of what money over today\'s price allows', async () => {
+        const base = firstDone3(), home = nodeContent.city.home;
+        const priceOf = (s, g) => eng.view(s, nodeContent).prices[home][g].p;
+        let pick = null;
+        for (let m = 1500; m >= 400 && !pick; m--) {
+          const s = structuredClone(base); s.money = m;
+          const plan = eng.suggestPlan(s, nodeContent, 'qus');
+          if (!plan) continue;
+          const flat = (s.stock.pepper ?? 0) + Math.floor(m / priceOf(s, 'pepper')), most = eng.mostLoads(s, nodeContent, plan, 'pepper');
+          if (flat - most === 1 && most >= 3) pick = { s, plan, flat, most };
+        }
+        ok(pick, 'no money in 400 to 1500 puts the flat count exactly one load over mostLoads');
+        const mk = n => ({ ...pick.plan, cargo: { ...pick.plan.cargo, pepper: n } });
+        eq(eng.checkPlan(pick.s, nodeContent, mk(pick.most)).ok, true, 'the engine pays for mostLoads');
+        eq(eng.checkPlan(pick.s, nodeContent, mk(pick.flat)).ok, false, 'and refuses the flat count');
+        await put(page, pick.s, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#stop-qus');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
+        await pressChange(page, '#change-carry');
+        await page.waitForSelector('#step-cargo-pepper');
+        eq(await page.$eval('#step-cargo-pepper', e => e.getAttribute('aria-valuemax')), String(pick.most), `the pepper stepper's limit (flat count ${pick.flat})`);
+        await page.focus('#step-cargo-pepper');
+        await page.keyboard.press('End');
+        await page.waitForFunction(m => document.getElementById('step-cargo-pepper')?.getAttribute('aria-valuenow') === m, { timeout: 2000 }, String(pick.most));
+        eq(await page.$eval('#step-cargo-pepper-plus', e => e.getAttribute('aria-disabled')), 'true', 'the plus is dead at the limit');
+        eq(await page.$eval('#outfit-send', e => e.getAttribute('aria-disabled')), 'false', 'the sheet can send the full load: the engine pays for it');
+        await page.click('#outfit-cancel');
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (7) the new-game screen: each house's own seal
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-132: the new-game screen shows each house\'s seal picture, a different one for each, and no plain disc', async () => {
+        await page.click('#btn-new');
+        await page.waitForFunction(() => document.getElementById('panel-newgame')?.open);
+        const got = await page.evaluate(async () => {
+          const rows = [...document.querySelectorAll('#panel-newgame .which-house .option')];
+          await Promise.all(rows.map(r => r.querySelector('img.seal')?.decode().catch(() => {})));
+          return rows.map(r => ({ house: r.querySelector('input').value, src: r.querySelector('img.seal')?.getAttribute('src') ?? null, plain: !!r.querySelector('.seal-plain'), ok: !!r.querySelector('img.seal')?.naturalWidth }));
+        });
+        eq(got.map(x => x.house), nodeContent.houses.map(x => x.id), 'one row for each house');
+        for (const x of got) { ok(x.src && x.ok && !x.plain, `${x.house}: seal ${x.src}, loaded ${x.ok}, plain disc ${x.plain}`); ok(/assets\/art\/seal-[1-8]\.webp$/.test(x.src), `${x.house}: ${x.src}`); }
+        eq(new Set(got.map(x => x.src)).size, got.length, 'each house has its own seal');
+        // the manifest says each seal is final: a placeholder seal is not worn by a house
+        const manifest = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'assets', 'art', 'manifest.json'), 'utf8'));
+        for (const x of got) eq(manifest.assets.find(a => `assets/art/${a.file}` === x.src)?.final, true, `${x.house}'s seal is a final picture`);
+        // a paper from someone with no seal keeps the disc
+        const plain = await page.evaluate(async () => { const { seal } = await import('./js/ui/screens/paper.js'); return seal({ art: new Map() }, null).className; });
+        ok(/seal-plain/.test(plain), `a sender with no seal: ${plain}`);
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (8) and (8b): the return account says each figure once, and each sign is one true minus
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const returnSave = () => {
+        let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 60; i++) {
+          g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
+          const p = g.desk?.find(x => x.kind === 'return' && x.state === 'open');
+          if (p) { g.desk = [p]; return g; }
+        }
+        throw new Error('MER-132: no return in the first sixty seasons');
+      };
+      await test('MER-132: the return account says what came home once, and a loss line carries one true minus, never a hyphen or two signs', async () => {
+        const gain = returnSave(), loss = structuredClone(gain), r = loss.desk[0];
+        // the same paper written as a loss: the headline, the sums and the closing row, the way routes.js writes a loss with the true minus
+        r.data.houseNet = -31; r.data.outcome = 'loss'; r.data.headline = r.data.headline.replace(/The house made [\d,]+ dinars?\./, 'The house lost 31 dinars.');
+        const rows = r.data.account, last = rows[rows.length - 1];
+        last.label = 'Loss'; last.text = 'about 31 dinars'; last.amount = -31;
+        const back = rows.find(x => x.label === 'Back home'); back.text = '31 dinars, 31 dinars in all'; back.amount = 31;
+        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent, cells: [...t.querySelectorAll('td')].map(c => c.textContent) }))); };
+        for (const [name, st] of [['a profit', gain], ['a loss', loss]]) {
+          const got = await read(st), all = got.flatMap(x => x.cells).join(' | ');
+          const home = got.find(x => x.label === 'Back home');
+          ok(!/ in all/.test(home.cells.join(' ')), `${name}: "Back home" still says "in all": ${home.cells}`);
+          const figures = home.cells.join(' ').match(/\d[\d,]*\s+dinars?/g) ?? [];
+          ok(new Set(figures).size === figures.length, `${name}: "Back home" says a figure twice: ${home.cells}`);
+          ok(!/[-‐‑–]\s?\d/.test(all), `${name}: a hyphen or dash before a figure in ${all}`);
+          ok(!/[+−-]\s?[+−-]\s?\d/.test(all), `${name}: two signs in a row in ${all}`);
+          for (const x of got) for (const c of x.cells) if (/^[+−]/.test(c)) ok(/^[+−]\d/.test(c), `${name}: ${x.label}: "${c}"`);
+        }
+        const got = await read(loss), sums = got.filter(x => x.cells.length === 2);
+        const lossRow = got.find(x => x.label === 'Loss'), sent = got.find(x => x.label === 'Sent out');
+        eq(lossRow.cells.at(-1), '−31 dinars', 'the Loss row: one U+2212 and the figure');
+        ok(/^−\d/.test(sent.cells.at(-1)), `Sent out is money out: ${sent.cells}`);
+        ok(sums.every(x => !/dinars? in all/.test(x.cells.join(' '))), 'no sum row repeats its total in words');
+        eq(await page.$eval('.sheet-title', e => e.textContent).then(t => /lost 31 dinars\./.test(t) && !/[−-]31/.test(t)), true, 'the headline says "lost 31 dinars" with no sign of its own');
+      });
+      await test('MER-132: accountText drops only the closing total, and says a row of money alone in words', async () => {
+        const got = await page.evaluate(async () => {
+          const { accountText } = await import('./js/ui/screens/paper.js');
+          return [accountText({ text: '527 dinars, 527 dinars in all', amount: 527 }), accountText({ text: '3 loads of silk (worth 450 dinars in Cairo now) and 12 dinars, 462 dinars in all', amount: 462 }),
+            accountText({ text: '3 loads of silk in Damascus, for 90 dinars', amount: 90, detail: true }), accountText({ text: 'nothing', amount: 0 }), accountText({ text: 'a, 5 dinars in all' })];
+        });
+        eq(got, ['All of it in money', '3 loads of silk (worth 450 dinars in Cairo now) and 12 dinars', '3 loads of silk in Damascus, for 90 dinars', 'nothing', 'a, 5 dinars in all']);
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
   }
