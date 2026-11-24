@@ -77,11 +77,13 @@ const noHappened = c => variant(c, x => { x.letters = x.letters.map(l => (l.kind
 const PLAN = { agent: 'tobin', route: 'trek', cargo: { wool: 2 }, purse: 0, contract: 'own', sell: [], buy: [] };
 /** A rich house with one expedition sent in season 0. `plan.length` picks the calendar's length. */
 const start = (c, seed, { length = 'full', ...plan } = {}) => outfit(newGame(c, { seed, length, house: 'rich' }), c, { ...PLAN, ...plan });
+/** The choices of `list` that `choose` takes now: one that costs more money than the house holds is refused (MER-141). */
+const takeable = (s, c, p, list) => list.filter(ch => { try { choose(s, c, p.id, ch.id); return true; } catch { return false; } });
 /** Answers every open paper: the choice named for its card or letter in `choices`, else the first that is open. */
 function pick(s, c, choices = {}) {
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
-    const all = paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c));
+    const all = takeable(s, c, p, paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c)));
     s = choose(s, c, p.id, (all.find(ch => ch.id === choices[p.ref]) ?? all[0]).id);
   }
   return s;
@@ -624,7 +626,7 @@ function cairoGame(seed, length, onOpen) {
     if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
     for (const p of s.desk) {
       if (p.state !== 'open') continue;
-      const all = paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c));
+      const all = takeable(s, c, p, paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c)));
       if (all.length) s = choose(s, c, p.id, all[roll(all.length)].id);
     }
     for (const a of c.agents) {

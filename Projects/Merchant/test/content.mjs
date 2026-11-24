@@ -561,6 +561,13 @@ test('rule 12: every choice whose later effects cost money requires the money no
   for (const [cid, chid] of costly) eq(rulesOf(cairoEdit(c => { delete cardOf(c, cid).choices.find(x => x.id === chid).requires; })).filter(r => r === 12), [12], `${cid}/${chid}`);
   eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'khalid-news').choices.find(x => x.id === 'warn'); k.requires = { money: { gte: 8 } }; })).filter(r => r === 12), [12], 'khalid-news costs 8 now and 2 later: requiring 8 is not enough');
 });
+test('rule 17: a choice that takes money now and could be the only open one requires the money; take the requires off two-judges "settle" and the lint names it (MER-141)', () => {
+  eq(rulesOf(cairo).filter(r => r === 17), []);
+  eq(rulesOf(cairoEdit(c => { delete cardOf(c, 'two-judges').choices.find(x => x.id === 'settle').requires; })).filter(r => r === 17), [17], 'settle has no sibling that is always open');
+  // a card with a way out that costs nothing and needs nothing is not held to it: aydhab-toll's "quseir" needs money, so give it a free third choice
+  eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; })).filter(r => r === 17), [17], 'pay with no requires and a sibling that needs money');
+  eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; k.choices.push({ id: 'wait', label: 'Wait', now: [] }); })).filter(r => r === 17), [], 'a choice that is always open lets the cost stand');
+});
 test('rule 13: a bonus costs no more than the letter brings, a card bonus about a trip home needs that agent\'s profit, and a return bonus is for a profit', () => {
   eq(rulesOf(cairo).filter(r => r === 13), []);
   eq(rulesOf(cairoEdit(c => { letterOf(c, 'damascus-early-caravan').choices.find(x => x.id === 'bonus').now[0].money = -30; })).filter(r => r === 13), [13], 'a bonus of 30 on a letter that brings 25');

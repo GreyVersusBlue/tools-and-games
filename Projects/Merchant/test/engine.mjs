@@ -979,4 +979,70 @@ test('turn: over 120 seeded bot games no return paper and no Accounts paper is d
   eq(bad, [], 'a paper dropped for a full desk means money or goods moved with no paper to say so');
 });
 
+// ---- MER-141: the house's money never goes below 0
+
+// the invented city's coin is a coin; Cairo's is a dinar
+test('money: quay-toll "pay-fee" at 5 coins is closed in words, the other choice stays open, and at 20 it pays to 0 (MER-141)', () => {
+  const s = game(); s.desk = []; s.money = 5;
+  addPaper(s, { id: 'p0-9', kind: 'card', ref: 'quay-toll' });
+  eq(paperChoices(s, content, 'p0-9').map(c => c.id), ['pay-fee', 'argue-fee'], 'the closed choice is still listed: the screen shows it closed');
+  throws(() => choose(s, content, 'p0-9', 'pay-fee'), /is refused: The house has 5 coins; this costs 20 coins$/);
+  eq(s.money, 5, 'a refused choice moves nothing');
+  eq(choose(s, content, 'p0-9', 'argue-fee').money, 5, 'the open choice is taken as before');
+  const rich = { ...s, money: 20 };
+  eq(choose(rich, content, 'p0-9', 'pay-fee').money, 0, 'the whole purse can be paid');
+  const one = { ...s, money: 1 };
+  throws(() => choose(one, content, 'p0-9', 'pay-fee'), /The house has 1 coin; this costs 20 coins$/);
+});
+test('money: a card whose only choice costs more than the house holds is answered "Leave it", and money stays (MER-141)', () => {
+  const c = variant(x => { x.cards.push({ id: 'only-fee', group: 'tolls', kind: 'world', from: { name: 'A warden', role: 'Testport', seal: null },
+    title: 'A fee', body: 'A fee is asked.', weight: 1, choices: [{ id: 'pay', label: 'Pay it', now: [{ money: -30 }], later: [{ in: 1, do: [] }] }],
+    note: 'An invented card for testing.', sources: [{ src: 'testport-fiction' }] }); });
+  const s = game(); s.desk = []; s.money = 12;
+  addPaper(s, { id: 'p0-9', kind: 'card', ref: 'only-fee' });
+  eq(paperChoices(s, c, 'p0-9').map(x => x.id), ['pay', 'leave']);
+  throws(() => choose(s, c, 'p0-9', 'pay'), /The house has 12 coins; this costs 30/);
+  eq(choose(s, c, 'p0-9', 'leave').money, 12);
+});
+test('money: a later effect larger than the money takes what there is and the Accounts paper says what was not paid (MER-141)', () => {
+  const s = game(); s.desk = []; s.money = 12;
+  s.queue = [{ at: s.t + 1, do: [{ money: -30 }], from: 'x/y' }];
+  steps.fireDue(s, content);
+  eq(s.money, 0);
+  eq(s.queue, [], 'no debt waits in the queue');
+  const acc = s.desk.find(p => p.kind === 'accounts');
+  ok(acc, 'a paper on the desk says it');
+  eq(acc.items[0].changes, ['−12 coins', 'The house owed 30 coins and had only 12 coins, so 18 coins were not paid.']);
+  // with nothing at all the paper says so, and there is no money line
+  const t = game(); t.desk = []; t.money = 0;
+  t.queue = [{ at: t.t + 1, do: [{ money: -1 }, { rep: 'court', by: 1 }], from: 'x/y' }];
+  steps.fireDue(t, content);
+  eq(t.money, 0);
+  const line = t.desk.find(p => p.kind === 'accounts').items[0].changes;
+  ok(line.includes('The house owed 1 coin and had nothing, so 1 coin was not paid.'), JSON.stringify(line));
+  ok(!line.some(x => x.startsWith('−')), 'nothing left the house, so no minus line');
+  // an effect the money covers is paid whole and says nothing of the kind
+  const u = game(); u.desk = []; u.money = 30;
+  u.queue = [{ at: u.t + 1, do: [{ money: -30 }], from: 'x/y' }];
+  steps.fireDue(u, content);
+  eq([u.money, u.desk.find(p => p.kind === 'accounts').items[0].changes], [0, ['−30 coins']]);
+});
+test('money: over 200 seeded games that take the first open choice, money is never below 0 after any step (MER-141)', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  const names = Object.keys(steps), saved = { ...steps };
+  let at = null, games = 0;
+  for (const n of names) steps[n] = (st, ...a) => { const r = saved[n](st, ...a); if (at === null && st.money < 0) at = `${n}: ${st.money}`; return r; };
+  const bad = [];
+  try {
+    for (let seed = 1; seed <= 200; seed++) {
+      at = null;
+      const out = playGame(cairo, { bot: 'first', seed, house: cairo.houses[seed % cairo.houses.length].id });
+      games++;
+      if (at !== null || out.brokeBy !== null) bad.push(`seed ${seed}: ${at ?? 'broke by season ' + out.brokeBy}`);
+    }
+  } finally { Object.assign(steps, saved); }
+  eq(games, 200);
+  eq(bad, [], 'a step left the house below 0');
+});
+
 await done();

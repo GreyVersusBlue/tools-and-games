@@ -26,6 +26,9 @@
 // 13 a bonus has a profit behind it (MER-123): a letter's bonus costs no more than the letter's own gain, and a card
 //   about a trip that came home requires that agent's `-profit` flag to be at least the bonus
 // 14 a letter that lets the house say "You should have waited" tells of a wait it could have made (MER-123)
+// 17 a money cost that could be a paper's only open choice says so (MER-141): the engine never lets a choice take money the
+//   house does not hold (it is shown closed, in words, and a card with none open is not dealt), so the content must name
+//   the sum in `requires` for any choice that takes money now and has no sibling open whatever the house holds
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -61,6 +64,7 @@ export const RULES = {
   12: 'no fee below zero',
   13: 'a bonus has a profit behind it',
   14: 'a wait to blame',
+  17: 'a money cost that could be the only open choice says so',
 };
 
 // Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
@@ -146,6 +150,22 @@ const needs = r => {
   if (r.money) return r.money.gte ?? 0;
   return Array.isArray(r.all) ? Math.max(0, ...r.all.map(needs)) : 0;
 };
+
+/** Rule 17: a choice that takes money now, on a paper where no other choice is always open (no money cost now, no `requires`),
+    could be the only open one, so its `requires` must hold the sum. Not testing the choice's later effects: rule 12 does. */
+export function lastWayFailures(content) {
+  const out = [];
+  const always = ch => !loss(ch.now) && !ch.requires;
+  for (const kind of ['cards', 'letters', 'returns']) for (const c of content[kind] ?? []) {
+    const list = c.choices ?? [];
+    for (const ch of list) {
+      if (loss(ch.now) && needs(ch.requires) < loss(ch.now) && !list.some(o => o !== ch && always(o))) {
+        out.push({ rule: 17, path: `${kind}[${c.id}].choices[${ch.id}]`, message: `takes ${loss(ch.now)} now and could be the only open choice, but requires ${needs(ch.requires)}; require the money so it shows closed when the house is short` });
+      }
+    }
+  }
+  return out;
+}
 
 /** Rule 12: a choice that costs money later requires the money now and later together. */
 export function feeFailures(content) {
@@ -407,7 +427,7 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
 
   // rules 11 to 14 (MER-123)
   // Cairo only: Testport is the suites' fixture, written before these rules, and its cards are test inputs
-  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...bonusFailures(content), ...waitFailures(content), ...gainFailures(content), ...bonusOnceFailures(content));
+  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...lastWayFailures(content), ...bonusFailures(content), ...waitFailures(content), ...gainFailures(content), ...bonusOnceFailures(content));
 
   // rule 8
   for (const [i, g] of (content.city?.gradients ?? []).entries()) {

@@ -40,7 +40,7 @@ const cairo = (over = {}) => newGame(calmC, { seed: 7, length: 'full', house: 's
 function answer(s, c) {
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
-    const ch = paperChoices(s, c, p.id).find(x => holds(x.requires, s, c));
+    const ch = paperChoices(s, c, p.id).find(x => { try { choose(s, c, p.id, x.id); return true; } catch { return false; } });   // the first choice the house can take (MER-141: one that costs more than it holds is refused)
     s = choose(s, c, p.id, ch.id);
   }
   return s;
