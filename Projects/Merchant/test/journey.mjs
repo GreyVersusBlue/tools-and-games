@@ -1846,7 +1846,9 @@ try {
       await test(`${frame.name}: close stops are one cluster label and pressing it zooms to an inset`, async () => {
         const cl = await page.$$eval('.cluster-label:not([hidden])', ls => ls.map(l => l.textContent));
         // the names are city.json's `clusters`, one label for each group of close stops
-        const want = Object.entries(nodeContent.city.clusters).map(([id, name]) => `${name}: ${nodeContent.stops.filter(x => x.cluster === id).length} stops`);
+        // MER-137: the group that holds the house says Cairo in its label, since Cairo's own is not drawn inside it
+        const holds = id => nodeContent.stops.some(x => x.cluster === id && x.id === nodeContent.city.home);
+        const want = Object.entries(nodeContent.city.clusters).map(([id, name]) => `${holds(id) ? `${nodeContent.stops.find(x => x.id === nodeContent.city.home).name}, ` : ''}${name}: ${nodeContent.stops.filter(x => x.cluster === id).length} stops`);
         eq(want.length, 5, 'Cairo names five clusters');
         eq(cl.slice().sort(), want.slice().sort(), 'every cluster is labelled by its name from city.json');
         eq(await page.$('.stop-label[data-stop="cairo"]'), null, 'Cairo has no label of its own until the inset');
@@ -4095,9 +4097,10 @@ try {
         const t = [...document.querySelectorAll('.token')].find(e => e.dataset.expedition.split(' ').includes(id));
         if (!t) return null;
         const r = t.querySelector('.token-piece').getBoundingClientRect();
-        const d = s => { const q = document.querySelector(`.dot[data-stop="${s}"]`).getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; };
-        const c = [r.left + r.width / 2, r.top + r.height / 2];
-        return { c, toCairo: Math.hypot(c[0] - d('cairo')[0], c[1] - d('cairo')[1]), toDamascus: Math.hypot(c[0] - d('damascus')[0], c[1] - d('damascus')[1]) };
+        // on a phone close stops are one square, so there is no dot of their own to measure from
+        const d = s => { const e = document.querySelector(`.dot[data-stop="${s}"]`); if (!e) return null; const q = e.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; };
+        const c = [r.left + r.width / 2, r.top + r.height / 2], dist = s => d(s) ? Math.hypot(c[0] - d(s)[0], c[1] - d(s)[1]) : null;
+        return { c, piece: r.width, toCairo: dist('cairo'), toDamascus: dist('damascus') };
       }, id);
       await test(`MER-137 ${frame.name}: the same trip in the same season is drawn on the same pixel whoever is free and whatever stop is selected, and on the day it leaves it is at its start`, async () => {
         let want = null;
@@ -4116,8 +4119,11 @@ try {
           }
         }
         // the day it leaves: on Cairo's dot, and far from Damascus, whatever the road's length at this frame
-        ok(want.toCairo < 6, `the token that has just set out is ${want.toCairo.toFixed(1)} px from its first stop`);
-        ok(want.toDamascus > want.toCairo * 4 && want.toDamascus > 40, `it is ${want.toDamascus.toFixed(1)} px from the far end, the stop it leaves for`);
+        // beside the dot, on the road: a piece's half-width and a gap out, never past the middle of the road
+        if (want.toCairo !== null && want.toDamascus !== null) {
+          ok(want.toCairo <= want.piece * 0.75 + 4, `the token that has just set out is ${want.toCairo.toFixed(1)} px from its first stop, a piece is ${want.piece} px`);
+          ok(want.toDamascus > want.toCairo * 1.7, `it is ${want.toDamascus.toFixed(1)} px from the far end, the stop it leaves for, and ${want.toCairo.toFixed(1)} px from the first`);
+        }
       });
       await test(`MER-137 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();

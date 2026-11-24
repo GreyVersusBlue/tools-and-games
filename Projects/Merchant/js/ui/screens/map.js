@@ -284,7 +284,7 @@ export function createMap(app, nav) {
       const a = pos[t.dataset.from], b = pos[t.dataset.to];
       if (!t.dataset.start || !a || !b) continue;
       const dx = (b.x - a.x) / 100 * frame.clientWidth * k, dy = (b.y - a.y) / 100 * frame.clientHeight * k, len = Math.hypot(dx, dy) || 1;
-      const d = Math.min(qs('.token-piece', t).offsetWidth / 2 + 6, len * 0.45);
+      const d = Math.min(qs('.token-piece', t).offsetWidth / 2 + 6, len * 0.35);
       t.style.setProperty('--ox', `${Math.round(dx / len * d * k)}px`); t.style.setProperty('--oy', `${Math.round(dy / len * d * k)}px`);
     }
     for (const t of tokens) {   // measured from the caption's own css place, below its piece
@@ -317,13 +317,10 @@ export function createMap(app, nav) {
       const others = taken.filter(q => q.piece ? q.left !== pr.left || q.top !== pr.top - 8 : true);
       let won = null;
       const fits = r => inside(r, clip) && !walls.some(q => hits(r, q));
-      for (const noDots of [true, false]) {
-        for (const [name, s] of Object.entries(sides)) {
-          const r = box(s);
-          if (!fits(r) || others.some(q => hits(r, q)) || (noDots && dots.some(d => hits(r, d.r)))) continue;
-          won = { name, r }; break;
-        }
-        if (won) break;
+      for (const [name, s] of Object.entries(sides)) {
+        const r = box(s);
+        if (!fits(r) || others.some(q => hits(r, q)) || dots.some(d => hits(r, d.r))) continue;
+        won = { name, r }; break;
       }
       // nowhere clear: the place that covers least (a piece counts three times, a dot a fixed amount), inside the picture if any is, and never
       // just the first
@@ -332,7 +329,7 @@ export function createMap(app, nav) {
         let best = Infinity;
         for (const [name, s] of Object.entries(sides)) {
           const r = box(s);
-          const cost = others.reduce((n, q) => n + area(r, q) * (q.piece ? 3 : 1), 0) + dots.filter(d => hits(r, d.r)).length * 400 + (fits(r) ? 0 : 1e7);
+          const cost = others.reduce((n, q) => n + area(r, q) * (q.piece ? 3 : 1), 0) + dots.filter(d => hits(r, d.r)).length * 2500 + (fits(r) ? 0 : 1e7);
           if (cost < best) { best = cost; won = { name, r }; }
         }
       }
