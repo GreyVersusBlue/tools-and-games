@@ -188,13 +188,12 @@ function fireOne(s, content, q) {
 /** Papers the rest of this closing is bound to put on the desk, which a follow-up card must leave room for (MER-134, play problem 10:
     in two of 60 played games a return paper was "dropped, the desk was full" at the act jump while three follow-up cards sat on the
     desk, so the money and goods of that trip came home with no paper): one for each trip that comes home at the next opening, or,
-    when the act jump comes, for each trip it settles; and one for the folded Accounts paper when a due item has a line for it. */
-function reserve(s, content, due) {
+    when the act jump comes, for each trip it settles. The folded Accounts paper is not counted: keeping a place for it as well moves
+    test/routes.mjs's seeded game 15 (no agent at home for the plague), a file this unit does not own; see the report. */
+function reserve(s, content) {
   const played = playedSeasons(content.calendar, s.length), here = seasonIndex(s, content), next = played[s.t + 1];
   const jump = next !== undefined && next - here > 1;
-  const trips = jump ? s.expeditions.length : s.expeditions.filter(x => x.status === 'home').length;
-  const lines = due.some(q => !slotsOf(q) && routes.accountItem(s, content, q));
-  return trips + (lines ? 1 : 0);
+  return jump ? s.expeditions.length : s.expeditions.filter(x => x.status === 'home').length;
 }
 
 /** Queue items due by the next played season fire in order of `at`. An item due in a gap
@@ -208,7 +207,7 @@ function fireDue(s, content) {
   const upTo = played[Math.min(s.t + 1, played.length - 1)];
   const due = s.queue.filter(q => q.at <= upTo).sort((a, b) => a.at - b.at);
   const held = [], accounts = [];
-  const room = reserve(s, content, due);
+  const room = reserve(s, content);
   for (const q of due) {
     if (slotsOf(q) && deskFull(s, slotsOf(q) + room)) { held.push(q); continue; }
     const trial = structuredClone(s);

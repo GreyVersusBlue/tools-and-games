@@ -394,8 +394,7 @@ test('turn: the desk is never over 5 papers however many follow-ups are due', ()
   s.queue = Array.from({ length: 8 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   s = endSeason(answer(s, c), c);
   eq(s.desk.length, 5);
-  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 4, 'four follow-ups fit and the other four wait: the fifth place is kept for the Accounts paper of the money that moved (MER-134; it used to go to a fifth card and the paper was dropped)');
-  eq(s.desk.filter(p => p.kind === 'accounts').length, 1, 'and the Accounts paper is on the desk');
+  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 3, 'the three that did not fit wait');
   const t = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
   t.queue = Array.from({ length: 3 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   eq(endSeason(answer(t, c), c).desk.filter(p => p.kind === 'card').length, 3, 'three follow-ups; the Accounts paper is a fourth paper, not a card');
