@@ -394,7 +394,8 @@ test('turn: the desk is never over 5 papers however many follow-ups are due', ()
   s.queue = Array.from({ length: 8 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   s = endSeason(answer(s, c), c);
   eq(s.desk.length, 5);
-  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 3, 'the three that did not fit wait');
+  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 4, 'four follow-ups fit and the other four wait: the fifth place is kept for the Accounts paper of the money that moved (MER-134; it used to go to a fifth card and the paper was dropped)');
+  eq(s.desk.filter(p => p.kind === 'accounts').length, 1, 'and the Accounts paper is on the desk');
   const t = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
   t.queue = Array.from({ length: 3 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   eq(endSeason(answer(t, c), c).desk.filter(p => p.kind === 'card').length, 3, 'three follow-ups; the Accounts paper is a fourth paper, not a card');
@@ -916,6 +917,42 @@ test('leave it: bots seed 1061 (random, cloth): a dealt card whose choices all c
   eq(canEndSeason(t).ok, true, 'the season can end');
   eq(t.log.at(-1), { at: 0, kind: 'card', ref: 'trap', choice: 'leave' });
   throws(() => choose(s, c, 'p0-0', 'go'), /is refused/);
+});
+
+// ---- MER-134: no money or goods without a paper
+
+const followUps = n => Array.from({ length: n }, (_, i) => ({ id: `g${i}`, group: 'followups', title: 't', body: 'b', choices: [{ id: 'ok', label: 'ok', now: [{ money: 1 }], later: [{ in: 1, do: [{ money: 1 }] }] }] }));
+const due = (s, n) => { s.queue = Array.from({ length: n }, (_, i) => ({ at: s.t + 1, do: [], card: `g${i}`, from: 'x/y' })); };
+test('turn: follow-up cards leave a place for the return paper of every trip that is home at the next opening (MER-134)', () => {
+  const c = variant(x => { x.cards.push(...followUps(8)); });
+  const open = homes => { const s = newGame(c, { seed: 7, length: 'acts', house: 'plain' }); s.desk = []; s.expeditions = Array.from({ length: homes }, (_, i) => ({ id: `x${i}`, status: 'home' })); due(s, 8); steps.fireDue(s, c); return s; };
+  eq(open(0).desk.filter(p => p.kind === 'card').length, 5, 'no trip home: the cards take the desk');
+  const two = open(2);
+  eq([two.desk.filter(p => p.kind === 'card').length, two.queue.length], [3, 5], 'two trips home: two places kept, five cards wait');
+  eq(open(2).expeditions.length, 2);
+});
+test('turn: and a place for every trip the act jump settles, whatever state it is in (MER-134)', () => {
+  const c = variant(x => { x.cards.push(...followUps(8)); });
+  const played = cal.playedSeasons(c.calendar, 'acts'), last = played.findIndex((n, i) => played[i + 1] - n > 1);
+  ok(last >= 0, 'the calendar has a jump');
+  const s = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  s.t = last; s.desk = []; s.expeditions = Array.from({ length: 3 }, (_, i) => ({ id: `x${i}`, status: 'out' })); due(s, 8);
+  steps.fireDue(s, c);
+  eq(s.desk.filter(p => p.kind === 'card').length, 2, 'three trips are settled at the jump: two places left for cards');
+  const mid = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  mid.t = 0; mid.desk = []; mid.expeditions = Array.from({ length: 3 }, (_, i) => ({ id: `x${i}`, status: 'out' })); due(mid, 8);
+  steps.fireDue(mid, c);
+  eq(mid.desk.filter(p => p.kind === 'card').length, 5, 'in mid-act a trip still on the road needs no place');
+});
+test('turn: an Accounts line writes its minus as a true minus sign, not a hyphen (MER-134)', () => {
+  const s = newGame(content, { seed: 7, length: 'acts', house: 'plain' });
+  s.desk = []; s.queue = [{ at: s.t + 1, do: [{ money: -4 }, { money: 6 }], from: 'x/y' }];
+  steps.fireDue(s, content);
+  const acc = s.desk.find(p => p.kind === 'accounts');
+  eq(acc.items[0].changes.length, 2);
+  ok(acc.items[0].changes[0].startsWith('\u22124 '), acc.items[0].changes[0]);
+  ok(acc.items[0].changes[1].startsWith('+6 '), acc.items[0].changes[1]);
+  ok(!/(^|[\s:])-\d/.test(acc.items[0].text), acc.items[0].text);
 });
 
 await done();
