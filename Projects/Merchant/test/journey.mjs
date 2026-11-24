@@ -684,7 +684,7 @@ try {
       eq(await engineState(page), JSON.parse(JSON.stringify(model)));
       const n = model.desk.filter(p => p.state === 'open').length;
       await page.waitForFunction(() => document.getElementById('live').textContent !== '');
-      eq(await liveText(page), `Summer 1324. ${['No', 'One', 'Two', 'Three'][n]} ${n === 1 ? 'paper' : 'papers'} on your desk.`);
+      eq(await liveText(page), `Summer 1324. ${['No', 'One', 'Two', 'Three', 'Four', 'Five'][n]} ${n === 1 ? 'paper' : 'papers'} on your desk.`);
       eq(await page.evaluate(() => document.querySelectorAll('[aria-live], [role="status"]').length), 1, 'one polite live region');
       eq(await page.$eval('#live', e => e.getAttribute('aria-live')), 'polite');
       eq(await page.$eval('.sheet-title', e => e === document.activeElement), true);
