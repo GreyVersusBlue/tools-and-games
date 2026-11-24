@@ -175,8 +175,8 @@
     "choices": [
       {
         "id": "free",
-        "label": "Take her at no charge",
-        "hint": "It costs a little. Your street will hear of it.",
+        "label": "Take her and pay for her food",
+        "hint": "It costs 4 dinars, for her food and water on the road. Your street will hear of it.",
         "requires": {
           "money": {
             "gte": 4
@@ -223,6 +223,7 @@
     ],
     "note": "In May 1326 Ibn Battuta left Cairo for Upper Egypt, on his way to Mecca by the Red Sea road through Aydhab. A writer of the 1180s says Saladin had ended the tax on pilgrims at Aydhab.",
     "unlocks": [
+      "term-dinar",
       "term-pilgrimage"
     ],
     "sources": [

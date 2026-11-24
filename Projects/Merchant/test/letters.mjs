@@ -17,8 +17,8 @@ import { loadContent } from '../js/data.js';
 import { validateContent } from '../js/engine/content.js';
 import { holds } from '../js/engine/conditions.js';
 import { seasonIndex } from '../js/engine/calendar.js';
-import { lagOf, writeSeason } from '../js/engine/market.js';
-import { LETTER_CHANCE, MAX_HOLD, letters, CLAIMS, repeatsRecent, claimsHold } from '../js/engine/letters.js';
+import { lagOf, writeSeason, truePrice } from '../js/engine/market.js';
+import { LETTER_CHANCE, MAX_HOLD, letters, CLAIMS, repeatsRecent, claimsHold, BROKER_MIN, BROKER_MAX, BROKER_SHOWN } from '../js/engine/letters.js';
 import { MAX_PAPERS, addPaper } from '../js/engine/state.js';
 import { MAX_WAIT, pickEntry } from '../js/engine/routes.js';
 import { next as dice } from '../js/engine/rng.js';
@@ -279,7 +279,10 @@ test('the desk holds 5 papers: a letter that arrives on a full desk waits in the
   eq([t.desk.length, t.post.length, salt(t)], [MAX_PAPERS, 1, had], 'no sixth paper, the letter waits, no happened effect either');
   t.desk.pop();
   letters(t, c);
-  eq([t.desk.length, t.desk.at(-1).ref, t.post.length, salt(t)], [MAX_PAPERS, 'r1', 0, had + 3]);
+  eq([t.desk.length, t.post.length, salt(t)], [MAX_PAPERS - 1, 1, had], 'one place is not enough: a letter that moves goods needs one for its Accounts line too (MER-134)');
+  t.desk.pop();
+  letters(t, c);
+  eq([t.desk.length, t.desk.at(-2).ref, t.desk.at(-1).kind, t.post.length, salt(t)], [MAX_PAPERS, 'r1', 'accounts', 0, had + 3]);
 });
 
 // ---- (7) the paper says where the agent was
@@ -908,7 +911,7 @@ test('(MER-123) a return paper\'s bonus is never above the profit: cut to half o
     p.data.houseNet = net; p.data.choices = structuredClone(entry.choices); delete p.data.fitted;
     reopen(s, CAIRO);
     const b = p.data.choices.find(c => c.id === 'bonus');
-    return b && { label: b.label, cost: -b.now.find(e => e.money).money, requires: b.requires.money.gte };
+    return b && { label: b.label, cost: -b.now.find(e => e.money).money, requires: (b.requires.all ?? [b.requires]).find(r => r.money).money.gte };
   };
   eq(offer(13)?.cost, 6, 'the play\'s case: 13 dinars of profit, a bonus of 30 offered; now 6');
   eq(offer(13)?.label, 'Pay {agent} a bonus of 6 dinars');
@@ -949,5 +952,123 @@ test('(MER-123) every card choice that costs money later is closed to a house th
   }
   ok(n >= 11, `${n} choices cost money later`);
 });
+
+// ---- MER-134: what the papers say matches what moved
+
+/** The home state with its first return paper made into a broker's offer for `entryId`, the home market's price for the good at `f`
+    times its base, and the paper's letters step run again. */
+function brokerPaper(entryId, f, { shown = 0 } = {}) {
+  const { s: base, p: k } = homeState();
+  const s = structuredClone(base), p = s.desk[k], entry = CAIRO.returns.find(e => e.id === entryId), good = entry.facts.good[0];
+  s.market.cairo[good].f = f;
+  p.data.entry = entryId; p.data.ask = { title: entry.title, body: entry.body }; p.data.choices = structuredClone(entry.choices); delete p.data.fitted;
+  if (shown) s.seen[`shown:${entryId}`] = shown;
+  reopen(s, CAIRO);
+  return { s, p, good, price: truePrice(s, CAIRO, 'cairo', good, idx(s, CAIRO)) };
+}
+const brokerOf = ({ p, price }) => {
+  const m = /take (\w+) loads? today for (\d+) dinars\. That is about (\d+) in every hundred less/.exec(p.data.ask.body ?? '');
+  const sell = p.data.choices.find(c => c.id === 'sell');
+  const out = sell.now.find(e => typeof e.stock === 'string'), pay = sell.now.find(e => typeof e.money === 'number');
+  return { said: Number(m[3]), offer: Number(m[2]), pay: pay.money, loads: -out.by, hint: sell.hint, gap: Math.round((1 - Number(m[2]) / (-out.by * price)) * 100) };
+};
+
+test('(MER-134, 7) a broker\'s "about N in every hundred less" is the gap between his offer and the price the house would get now, in every state', () => {
+  const said = new Set();
+  for (const id of ['return-sell-pepper', 'return-sell-silk', 'return-sell-sugar', 'return-sell-linen']) for (const f of [0.55, 0.8, 0.95, 1, 1.1, 1.3, 1.7]) {
+    const b = brokerPaper(id, f), o = brokerOf(b);
+    eq(o.said, o.gap, `${id} at ${f}: the words say ${o.said}, the offer ${o.offer} for ${o.loads} against ${b.price} is ${o.gap}`);
+    ok(o.said >= BROKER_MIN && o.said <= BROKER_MAX, `${id} at ${f}: ${o.said} in every hundred`);
+    eq(o.pay, o.offer, `${id} at ${f}: the money the choice pays is the offer in the words`);
+    ok(o.hint.includes(`${o.offer} dinars`), `${id} at ${f}: the hint says ${o.hint}`);
+    said.add(`${id}:${o.said}`);
+  }
+  ok(new Set([...said].filter(k => k.startsWith('return-sell-pepper')).map(k => k.split(':')[1])).size >= 3, 'the number follows the price: pepper says at least three different figures over seven prices');
+});
+
+test('(MER-134, 15) a broker\'s paper is shown twice in a game, and the third time the return carries no offer', () => {
+  eq(BROKER_SHOWN, 2);
+  const shown = n => brokerPaper('return-sell-pepper', 1, { shown: n }).p.data;
+  eq([shown(0).entry, shown(1).entry], ['return-sell-pepper', 'return-sell-pepper']);
+  const third = shown(2);
+  eq([third.entry, third.ask, third.choices], [null, null, []], 'no offer, no choices');
+  eq(brokerPaper('return-sell-pepper', 1, { shown: 0 }).s.seen['shown:return-sell-pepper'], 1, 'and each showing is counted');
+});
+
+test('(MER-134, 15) the partners\' row never says a part of the money is more than the money', () => {
+  const row = text => { const { s: base, p: k } = homeState(); const s = structuredClone(base), p = s.desk[k]; p.data.account = [{ label: "The partners' share", text, amount: -1 }]; delete p.data.fitted; reopen(s, CAIRO); return p.data.account[0].text; };
+  eq(row('281 dinars of the 228 dinars they put in, with their part of the profit'), '281 dinars: the 228 dinars they put in, with their part of the profit', 'the play\'s line');
+  eq(row('228 dinars of the 228 dinars they put in, with their part of the profit'), '228 dinars: the 228 dinars they put in, with their part of the profit', 'all of it back is no part of it either');
+  eq(row('1,200 dinars of the 1,500 dinars they put in, with their part of the profit'), '1,200 dinars of the 1,500 dinars they put in, with their part of the profit', 'a part that is less stands');
+});
+
+test('(MER-134, 15) one bonus for one trip: the return paper\'s bonus closes a card\'s bonus, and the card\'s closes the paper\'s', () => {
+  const { s: base, p: k } = homeState();
+  const agent = base.desk[k].agent;
+  const withBonus = () => { const s = structuredClone(base), p = s.desk[k], entry = CAIRO.returns.find(e => e.id === 'return-bonus'); p.data.houseNet = 100; p.data.choices = structuredClone(entry.choices); delete p.data.fitted; reopen(s, CAIRO); return s; };
+  const s = withBonus(), p = s.desk[k], bonus = p.data.choices.find(c => c.id === 'bonus');
+  ok(holds(bonus.requires, s, CAIRO), 'open before any bonus is paid');
+  s.money = Math.max(s.money, 500); p.state = 'open'; if (p.id === null) p.id = 'tp-9';
+  const paid = choose(s, CAIRO, p.id, 'bonus');
+  ok(`${agent}-bonused` in paid.flags, 'paying it sets the trip\'s flag');
+  ok(!holds(bonus.requires, paid, CAIRO), 'and closes the paper\'s own bonus');
+  const card = CAIRO.cards.find(c => c.id === 'samir-asks-again' || c.choices.some(ch => ch.id === 'more' && /bonus of 5 dinars/.test(ch.label)));
+  const more = card.choices.find(ch => ch.id === 'more');
+  const free = structuredClone(paid); delete free.flags['samir-bonused']; free.flags['samir-profit'] = 40; free.money = 500;
+  ok(holds(more.requires, free, CAIRO), 'the card\'s 5-dinar bonus is open with a profit and no bonus paid');
+  free.flags['samir-bonused'] = 1;
+  ok(!holds(more.requires, free, CAIRO), 'and closed once a bonus is paid for the trip');
+  const opened = structuredClone(free); opened.flags = {}; reopen(opened, CAIRO);
+  const gone = structuredClone(free); reopen(gone, CAIRO);
+  ok(!('samir-bonused' in gone.flags), 'the flag is cleared at the next opening, so the next trip can be thanked');
+});
+
+test('(MER-134, 9 and 10) money a letter moves goes on an Accounts paper at once, with a true minus sign, and a letter needs room for both', () => {
+  const { s: base, p: k } = homeState();
+  const arrive = (id, over = {}) => {
+    const s = structuredClone(base), ret = s.desk[k];
+    s.desk = []; s.log = s.log.filter(e => !(e.kind === 'return' && e.ref === ret.expedition));
+    s.post = [{ id, kind: 'report', expedition: 'gone', agent: ret.agent, stop: id === 'qus-sugar-press' ? 'qus' : 'damascus', standing: true, written: idx(s, CAIRO) - 1, lag: 1, arrive: idx(s, CAIRO), ...over }];
+    const money = s.money;
+    letters(s, CAIRO);
+    return { s, gained: s.money - money };
+  };
+  const paid = arrive('qus-sugar-press'), early = arrive('damascus-early-caravan');
+  eq(paid.gained, -30);
+  eq(early.gained, 25);
+  const acc = paid.s.desk.find(p => p.kind === 'accounts');
+  ok(acc, 'an Accounts paper is on the desk');
+  eq(acc.items.map(i => i.changes), [['\u221230 dinars']], 'the 30 that left the purse, with a true minus');
+  ok(!/-\d/.test(acc.items[0].text), acc.items[0].text);
+  ok(acc.items[0].text.includes('A place in the next pressing'), 'and names the letter');
+  eq(early.s.desk.find(p => p.kind === 'accounts').items.map(i => i.changes), [['+25 dinars']]);
+  ok(paid.s.desk.findIndex(p => p.kind === 'letter') < paid.s.desk.findIndex(p => p.kind === 'accounts'), 'the letter first');
+  ok(!CAIRO.letters.find(l => l.id === 'qus-sugar-press').body.includes('claim'), 'the letter no longer says the house has a claim on sugar nothing brings');
+  ok(CAIRO.letters.find(l => l.id === 'qus-sugar-press').body.includes('30 of your money'), 'it says what was paid');
+  // a second letter in the same season goes on the same paper
+  const two = structuredClone(paid.s); two.post = [{ id: 'damascus-early-caravan', kind: 'report', expedition: 'gone2', agent: 'yusuf', stop: 'damascus', standing: true, written: idx(two, CAIRO) - 1, lag: 1, arrive: idx(two, CAIRO) }];
+  letters(two, CAIRO);
+  eq(two.desk.filter(p => p.kind === 'accounts').length, 1, 'one Accounts paper');
+  eq(two.desk.find(p => p.kind === 'accounts').items.length, 2, 'two lines on it');
+});
+
+test('(MER-134, 9) a letter that waited for room does not arrive with the agent who wrote it; one on time still comes ahead of the return paper', () => {
+  const { s: base, p: k } = homeState();
+  const run = (arrive, written) => {
+    const s = structuredClone(base), ret = s.desk[k], now = idx(s, CAIRO);
+    s.desk = [ret];   // room for the letter and its Accounts paper
+    s.post = [{ id: 'damascus-early-caravan', kind: 'report', expedition: ret.expedition, agent: ret.agent, stop: 'damascus', standing: true, written: written(now), lag: 1, arrive: arrive(now) }];
+    letters(s, CAIRO);
+    return s;
+  };
+  const late = run(n => n - 1, n => n - 2);
+  ok(!late.desk.some(p => p.ref === 'damascus-early-caravan'), 'a letter that arrived a season ago and waited is not put on the desk beside the return');
+  ok(late.log.some(e => e.kind === 'dropped' && e.ref === 'damascus-early-caravan' && /return paper/.test(e.reason)), 'and the log says it was left out');
+  eq(late.post, [], 'and it is out of the post');
+  const onTime = run(n => n, n => n - 1);
+  const names = onTime.desk.map(p => p.ref ?? p.kind);
+  ok(names.indexOf('damascus-early-caravan') >= 0 && names.indexOf('damascus-early-caravan') < names.indexOf('return'), `an on-time letter comes before the return: ${names}`);
+});
+
 
 await done();

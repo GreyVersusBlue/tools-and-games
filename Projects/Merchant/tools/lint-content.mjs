@@ -187,6 +187,34 @@ export function bonusFailures(content) {
   return out;
 }
 
+/** Rule 15 (MER-134): a choice whose hint says "You gain N dinars" puts those N dinars in `now`, so its +N tag shows on the choice
+    like the one beside it. A gain that comes later says "later" or "in N seasons" and this rule does not read it. */
+export function gainFailures(content) {
+  const out = [];
+  for (const kind of ['cards', 'letters', 'returns']) for (const c of content[kind] ?? []) for (const ch of c.choices ?? []) {
+    const m = /\bYou gain (\d+) dinars?\b(?! (?:later|in \w+ seasons?))/.exec(ch.hint ?? '');
+    if (!m) continue;
+    const now = (ch.now ?? []).reduce((n, e) => n + (e && typeof e.money === 'number' && e.money > 0 ? e.money : 0), 0);
+    if (now !== Number(m[1])) out.push({ rule: 15, path: `${kind}[${c.id}].choices[${ch.id}]`, message: `the hint says "You gain ${m[1]} dinars" but the choice brings ${now} now, so no +${m[1]} tag shows` });
+  }
+  return out;
+}
+
+/** Rule 16 (MER-134): a card's bonus for the agent of a trip that came home is closed once a bonus has been paid for it: it
+    requires "<agent>-bonused" to be unset and sets it. The return paper's own bonus does the same (letters.js, turn.js choose). */
+export function bonusOnceFailures(content) {
+  const out = [];
+  for (const c of content.cards ?? []) for (const ch of c.choices ?? []) {
+    if (!/bonus/i.test(ch.label ?? '') || !loss(ch.now)) continue;
+    const agent = homeAgent(c);
+    if (!agent) continue;   // rule 13 says why such a card is wrong
+    const gate = flagsIn(ch.requires).some(x => x.flag === `${agent}-bonused` && x.not === true);
+    const sets = (ch.now ?? []).some(e => e && e.flag === `${agent}-bonused` && 'set' in e);
+    if (!gate || !sets) out.push({ rule: 16, path: `cards[${c.id}].choices[${ch.id}]`, message: `a bonus for ${agent} must require "${agent}-bonused" to be unset and set it, so one trip is not paid two bonuses` });
+  }
+  return out;
+}
+
 const WAIT_WORDS = /\bwait\w*\b|\buntil\b|\bmonths?\b|\bseasons?\b|\bweeks? (away|later)\b/i;
 /** Rule 14: a report that offers "You should have waited" must tell of a wait the agent could have made. */
 export function waitFailures(content) {
@@ -379,7 +407,7 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
 
   // rules 11 to 14 (MER-123)
   // Cairo only: Testport is the suites' fixture, written before these rules, and its cards are test inputs
-  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...bonusFailures(content), ...waitFailures(content));
+  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...bonusFailures(content), ...waitFailures(content), ...gainFailures(content), ...bonusOnceFailures(content));
 
   // rule 8
   for (const [i, g] of (content.city?.gradients ?? []).entries()) {
