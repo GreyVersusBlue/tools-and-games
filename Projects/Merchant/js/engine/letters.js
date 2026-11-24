@@ -178,7 +178,7 @@ function tripFacts(s, content) {
     if (p.kind !== 'return' || !p.data || !agentOf(content, p.agent)) continue;
     const net = p.data.houseNet, sold = (p.data.account ?? []).some(r => r.label === 'Sold' && r.amount > 0);
     s.flags[`${p.agent}-profit`] = net;
-    // a trip the road robbed already has its blame paper (the lost paper): the clerk does not blame Ali's selling for what the robbers took (MER-139, play problem 10)
+    // a trip the road robbed already has its blame paper (the lost paper): the clerk does not blame the agent's selling for what the robbers took (MER-139, play problem 10)
     const robbed = (p.data.account ?? []).some(r => r.label === 'Lost');
     if (sold && !robbed && Number.isFinite(p.data.hoped) && net < p.data.hoped) s.flags[`${p.agent}-undersold`] = 1;
     const sent = sentSeason(s, p.expedition), given = s.flags[`${p.agent}-widened`];

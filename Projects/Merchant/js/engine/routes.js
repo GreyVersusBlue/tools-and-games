@@ -711,9 +711,9 @@ export function suggestPlan(state, content, stopId) {
       Object.assign(plan, { contract: 'qirad', partners: stake, purse: stake });
     }
     if (build(structuredClone(state), content, plan).problems.length) return null;
-    // The first sheet is the sheet's own rule (MER-139, play problem 5: linen only at +36 with 300 to 1,500 dinars idle, +83 to +87 with two
-    // loads of pepper added). It had been a separate rule that sent half of one good and nothing else. Now it is `proposePlan` for this agent and road,
-    // with one thing a card fixes: the good the opening card names, at the load it names (ten loads of linen), never less. Where `proposePlan`
+    // The first sheet is the sheet's own rule (MER-139, play problem 5: one good only at +36 with 300 to 1,500 dinars idle, +83 to +87 with two
+    // loads of a second good added). It had been a separate rule that sent half of one good and nothing else. Now it is `proposePlan` for this agent and road,
+    // with one thing a card fixes: the good the opening card names, at the load it names, never less. Where `proposePlan`
     // has no plan that pays, or the plan with the card's load does not fit, the plain plan above is what is offered, as before.
     if (plan.contract === 'own') {
       const p = proposePlan(state, content, agent.id, hit.route.id);
@@ -1946,7 +1946,7 @@ export function jump(s, content) {
 
   // 4c. the home market's price is always current (market.js `news` writes it at each opening): the reset above is the price the house sees at once,
   // so the ledger on the Years pass page and the worth on the bar are the ones Open the house shows, and worth does not move by hundreds of dinars
-  // at the click for 100 loads of copper with no paper to say why (MER-139, play problem 13).
+  // at the click for a warehouse of a hundred loads with no paper to say why (MER-139, play problem 13).
   for (const g of Object.keys(s.market[homeOf(content)] ?? {})) (s.known[homeOf(content)] ??= {})[g] = { p: M.truePrice(s, content, homeOf(content), g), at: to };
 
   // 5. the events of this gap, in the order of their seasons

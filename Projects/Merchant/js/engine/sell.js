@@ -1,4 +1,4 @@
-// Selling the warehouse at home (MER-139, M4d play problem 1: 100 loads of copper worth 3,000 sat in the warehouse beside 33 dinars,
+// Selling the warehouse at home (MER-139, M4d play problem 1: a hundred loads worth 3,000 sat in the warehouse beside 33 dinars,
 // and the only way goods ever left it was a broker's card).
 //
 // `sellHomeQuote(state, content, good, loads)` is the price line the UI's Sell button reads; `sellHome` does it. The house sells at
