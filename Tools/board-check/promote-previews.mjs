@@ -53,6 +53,8 @@ const KNOWN = new Set([
   'torchbearer', 'orbital', 'blue-hour', 'signal-city', 'converter',
   'skywings64', 'throneshard', 'hearth', 'school-generator',
   'schedule-visualizer-2',
+  // 2026-11-24 (TG-106): the five that had only the board's own card.
+  'bell-to-bell', 'sports-bar-sim', 'anathema-archive', 'campaigns', 'characters',
 ]);
 
 const OUTPUTS = [

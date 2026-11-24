@@ -157,6 +157,10 @@
     letter-spacing: 0.35em; color: var(--ink); text-indent: 0.35em;
   }
   #title p { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); letter-spacing: 0.12em; }
+  /* Site sweep 2026-11-24: on a 390 px phone this line touched the left edge and
+     wrapped inside "E interact". Padding, centring, and non-breaking spaces so
+     each control stays whole when the line wraps. */
+  #title p.controls { margin-top: 26px; padding: 0 20px; text-align: center; line-height: 1.7; }
   #title .go {
     margin-top: 22px; font-family: var(--mono); font-size: 12px;
     color: var(--amber); letter-spacing: 0.2em;
@@ -215,7 +219,7 @@
     <h1>APHELION</h1>
     <p>a quiet life, far from anywhere</p>
     <div class="go">CLICK TO BOARD</div>
-    <p style="margin-top:26px">WASD move · mouse or arrow keys look · E interact · TAB logbook</p>
+    <p class="controls">WASD&nbsp;move · mouse&nbsp;or&nbsp;arrow&nbsp;keys&nbsp;look · E&nbsp;interact · TAB&nbsp;logbook</p>
     <a class="home" href="/">All games</a>
   </div>
 

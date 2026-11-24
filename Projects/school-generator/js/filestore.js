@@ -168,8 +168,10 @@ export const openPickerOptions = () => ({
 // survives a truncated tab better than a trailing mark.
 export function docTitle(sess) {
   const s = sess || makeFileSession();
-  const name = s.name || 'Untitled';
-  return `${s.dirty ? '• ' : ''}${name} — School Generator`;
+  // Until a school is named the tab reads just "School Generator", not
+  // "Untitled — School Generator" (site sweep 2026-11-24).
+  const lead = s.dirty ? '• ' : '';
+  return s.name ? `${lead}${s.name} — School Generator` : `${lead}School Generator`;
 }
 
 // The one sentence under the Save button, in every state it has.

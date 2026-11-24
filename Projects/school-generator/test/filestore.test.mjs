@@ -139,7 +139,7 @@ test('both pickers agree about what a .school file is', () => {
 // ---------- what the chrome says ----------
 
 test('the title bar names the file and marks the unsaved one', () => {
-  assert.equal(docTitle(null), 'Untitled — School Generator');
+  assert.equal(docTitle(null), 'School Generator');
   const s = noteOpened(makeFileSession(), { name: 'Hillcrest' });
   assert.equal(docTitle(s), 'Hillcrest.school — School Generator');
   assert.equal(docTitle(noteEdited(s)), '• Hillcrest.school — School Generator');

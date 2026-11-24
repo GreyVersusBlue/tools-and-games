@@ -98,7 +98,7 @@ function fileFor(href) {
 // instead of fighting it every time autocrlf converts a file.
 // Previews of a tool rather than a game: their share card is the tool in use,
 // not mid-play.
-const TOOL_PREVIEWS = new Set(['converter', 'schedule-visualizer-2']);
+const TOOL_PREVIEWS = new Set(['converter', 'schedule-visualizer-2', 'anathema-archive', 'campaigns', 'characters']);
 
 const urlFor = n => `${ORIGIN}/${n.href.replace(/ /g, '%20')}`;
 
