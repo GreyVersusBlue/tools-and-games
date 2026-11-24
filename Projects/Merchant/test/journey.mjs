@@ -1345,8 +1345,9 @@ try {
         });
         const want = [info.a[0] + (info.b[0] - info.a[0]) * 0.25, info.a[1] + (info.b[1] - info.a[1]) * 0.25];
         ok(Math.abs(ts[0].left - want[0]) < 0.15 && Math.abs(ts[0].top - want[1]) < 0.15, `token at ${ts[0].left}, ${ts[0].top}, a quarter along is ${want}`);
-        const soonest = await page.evaluate(() => Object.values(window.__merchant.view.homeBy).sort((p, q) => p.in - q.in)[0].season);
-        eq(ts[0].label, `2 expeditions, home about ${soonest}`, 'a stack says the soonest of its trips, from the engine\'s view');
+        // MER-131: a stack names each agent with that agent's own season, from the engine's view (it said only the soonest, which hid the later one)
+        const named = await page.evaluate(ids => ids.map(id => { const x = window.__merchant.state.expeditions.find(e => e.id === id); return `${window.__merchant.content.agents.find(a => a.id === x.agent).name}, home about ${window.__merchant.view.homeBy[id].season}`; }), ts[0].ids.split(' '));
+        eq(ts[0].label, `2 expeditions: ${named.join('; ')}`, 'a stack names each trip with its own season, from the engine\'s view');
       });
     }
     await page.close();
@@ -3101,7 +3102,7 @@ try {
       const settledOnPage = lines.filter(l => l.settled !== null).map(l => l.text);
       eq(settledOnPage, entry.settled.map(x => x.text), 'each settled trip, in the jump\'s words');
       const net = entry.settled.reduce((n, x) => n + x.houseNet, 0);
-      eq(lines.find(l => l.id === 'interlude-trips').text, `Your people's trips brought ${net.toLocaleString('en-US')} ${net === 1 ? 'dinar' : 'dinars'}.`, 'the money line from the trips');
+      eq(lines.find(l => l.id === 'interlude-trips').text, (net < 0 ? `Your people's trips cost ${(-net).toLocaleString('en-US')} ${net === -1 ? 'dinar' : 'dinars'}.` : net === 0 ? `Your people's trips came out even.` : `Your people's trips brought ${net.toLocaleString('en-US')} ${net === 1 ? 'dinar' : 'dinars'}.`), 'the money line from the trips (desk.js words a loss as "cost", never a negative "brought")');
       const leftOnPage = lines.filter(l => l.left);
       eq(leftOnPage.map(l => l.left), entry.agents.map(a => (a.left === 'retired' ? 'retired' : 'house')), 'each agent who left, with the reason');
       eq(leftOnPage.map(l => l.text), entry.agents.map(a => `${nodeContent.agents.find(x => x.id === a.id).name} ${a.left === 'retired' ? 'has retired' : 'has gone to work for another house'}.`), 'the reason in words');
