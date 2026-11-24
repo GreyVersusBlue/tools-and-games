@@ -626,7 +626,7 @@ export function checkPlan(state, content, plan) {
     place of the ones it has (every other good, the purse and the contract as they stand), costs no more than the house holds. The
     loads in the warehouse cost nothing now and the rest are bought at home one after the other, each dearer than the last, as `outfit`
     prices them; the purse and a prepaid wage come out of the same money. This is what a stepper for the good should stop at: dividing
-    the money by today's price lets through a load the buying itself makes dearer (play a073: 9 sugar at 396 with 395 in hand, refused
+    the money by today's price lets through a load the buying itself makes dearer (play a073: nine loads at 396 with 395 in hand, refused
     only when Send was pressed, MER-133). It reads the money alone, so a plan the engine refuses for another reason still has an answer.
     0 when even none costs more than the house has. */
 export function mostLoads(state, content, plan, good) {
