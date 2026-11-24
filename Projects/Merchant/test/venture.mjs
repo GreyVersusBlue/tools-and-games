@@ -11,7 +11,7 @@ import { steps } from '../js/engine/turn.js';
 import { WAIT } from '../js/engine/letters.js';
 import * as M from '../js/engine/market.js';
 import { seasonIndex, playedSeasons } from '../js/engine/calendar.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, proposePlan, estimate, bestTrades, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, proposePlan, estimate, bestTrades, mostLoads, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
 const T0 = await loadContent('testport', { fs });
@@ -1286,6 +1286,69 @@ test('MER-133 (1) the sheet\'s plan leaves nothing on the table: no single plus 
   });
   ok(states >= 100, `${states} states`);
   ok(bad.length <= 0.05 * states, `${bad.length} of ${states} states (${(100 * bad.length / states).toFixed(1)} percent) have a plus that adds more than 10 percent: ${bad.slice(0, 6).join('; ')}`);
+});
+
+test('MER-133 (2) the map and the sheet give one age for the same news: a listed trade\'s age is the estimate\'s age for that good, and the sheet\'s is the oldest of them, on trips the jump settles too (play a088, a090: map "two seasons old", sheet "from this season")', () => {
+  // A trip the act jump settles is valued at the far prices of the day it left (the quote), and its estimate used to count every such price
+  // as news of this season, because the quote is the price as it stands. The house's news of those prices is as old as its letters are,
+  // which is what the map's row says, and that is the age the sheet now says. Over every row the map lists on the desks of the six games.
+  let rows = 0, jumped = 0, older = 0;
+  played(C, (s, at) => {
+    for (const t of bestTrades(s, C, Infinity)) {
+      const sheet = sheetFor(s, C, t.route);
+      ok(sheet, `${at}: the map lists ${t.route} and no plan pays on it`);
+      const e = estimate(s, C, sheet.plan);
+      eq(e.ageOf[t.good], t.age, `${at} ${t.route} ${t.good}: the map says ${t.ageWords}, the sheet's news for it is ${e.ageOf[t.good]} seasons old`);
+      ok(e.age >= t.age && e.ageWords === M.ageWords(e.age), `${at} ${t.route}: the sheet's age ${e.age} is the oldest news in the plan`);
+      rows++; if (e.settledAtJump) jumped++; if (t.age > 0) older++;
+    }
+  });
+  ok(rows >= 100 && jumped >= 20 && older >= 20, `${rows} listed trades, ${jumped} settled at the jump, ${older} on news a season old or more`);
+});
+
+test('MER-133 (3) mostLoads: the most loads of a good the house can pay for, buying each dearer than the last: 9 sugar at 396 with 395 in hand is 8 (play a073: the stepper let the ninth through and Send refused it)', () => {
+  const s = newGame(C, { seed: 3, length: 'acts', house: C.houses[0].id });
+  s.stock = {}; s.agents.yusuf.where = 'cairo';
+  const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: {}, purse: 0, contract: 'own', sell: ['sugar'], buy: [] };
+  const cost = n => checkPlan(s, C, { ...plan, cargo: { sugar: n } }).cost.total;
+  const price = M.truePrice(s, C, 'cairo', 'sugar');
+  s.money = cost(9) - 1;
+  ok(Math.floor(s.money / price) >= 9, `today's price ${price} divides ${s.money} into ${Math.floor(s.money / price)}: the flat count lets the ninth through`);
+  eq(mostLoads(s, C, plan, 'sugar'), 8, 'the ninth costs one dinar more than the house has');
+  eq(checkPlan(s, C, { ...plan, cargo: { sugar: 9 } }).ok, false, 'and the engine refuses it');
+  ok(/The house has/.test(checkPlan(s, C, { ...plan, cargo: { sugar: 9 } }).reasons.join(' ')), 'in words about the money');
+  eq(checkPlan(s, C, { ...plan, cargo: { sugar: 8 } }).ok, true, 'and takes the eighth');
+  // loads already in the warehouse cost nothing now, and a purse and the other goods come out of the same money
+  const held = structuredClone(s); held.stock = { sugar: 3 };
+  eq(mostLoads(held, C, plan, 'sugar') >= 11, true, 'three held loads and the money for eight more');
+  const withPurse = { ...plan, purse: 100, buy: ['pepper'], cargo: { copper: 2 } };
+  const m = mostLoads(s, C, withPurse, 'sugar');
+  ok(m < 8, `${m} loads with a purse of 100 and two copper out of the same money`);
+  const total = n => checkPlan(s, C, { ...withPurse, cargo: { ...withPurse.cargo, sugar: n } }).cost.total;
+  ok(total(m) <= s.money && total(m + 1) > s.money, `${m} costs ${total(m)} and one more ${total(m + 1)} of ${s.money}`);
+});
+
+test('MER-133 (3) mostLoads over played states: for every good the far stop buys, the answer is paid for and one more load is not', () => {
+  let tried = 0, short = 0, seen = 0;
+  played(C, (s, at) => {
+    if (seen++ % 4) return;   // every fourth desk: each answer is a search of checkPlans
+    for (const d of R.destinations(s, C)) {
+      const sheet = sheetFor(s, C, d.route);
+      if (!sheet) continue;
+      const dest = C.stops.find(x => x.id === d.stop), home = C.stops.find(x => x.id === 'cairo');
+      for (const g of Object.keys(dest.sells ?? {})) {
+        if (!home.sells?.[g]) continue;
+        const n = mostLoads(s, C, sheet.plan, g);
+        const total = k => checkPlan(s, C, { ...sheet.plan, cargo: { ...sheet.plan.cargo, [g]: k } }).cost.total;
+        ok(total(n) <= s.money || n === 0, `${at} ${d.route} ${g}: ${n} loads cost ${total(n)} of ${s.money}`);
+        ok(total(n + 1) > s.money, `${at} ${d.route} ${g}: ${n + 1} loads cost ${total(n + 1)} and the house has ${s.money}`);
+        tried++;
+        const flat = (s.stock[g] ?? 0) + Math.floor(s.money / M.truePrice(s, C, 'cairo', g));
+        if (n < flat) short++;
+      }
+    }
+  });
+  ok(tried >= 100 && short >= 5, `${tried} goods tried, ${short} where the flat count is too high`);
 });
 
 await done();

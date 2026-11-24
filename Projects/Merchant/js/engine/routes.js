@@ -622,6 +622,30 @@ export function checkPlan(state, content, plan) {
   return { ok: problems.length === 0, reasons: problems, warnings, cost, estimate: problems.length ? null : hope ?? null };
 }
 
+/** The most loads of `good` the house can send in `plan` with its money: the largest n such that the plan, with n loads of `good` in the
+    place of the ones it has (every other good, the purse and the contract as they stand), costs no more than the house holds. The
+    loads in the warehouse cost nothing now and the rest are bought at home one after the other, each dearer than the last, as `outfit`
+    prices them; the purse and a prepaid wage come out of the same money. This is what a stepper for the good should stop at: dividing
+    the money by today's price lets through a load the buying itself makes dearer (play a073: 9 sugar at 396 with 395 in hand, refused
+    only when Send was pressed, MER-133). It reads the money alone, so a plan the engine refuses for another reason still has an answer.
+    0 when even none costs more than the house has. */
+export function mostLoads(state, content, plan, good) {
+  const costWith = n => {
+    const trial = { ...plan, cargo: { ...plan.cargo, [good]: n } };
+    if (!n) delete trial.cargo[good];
+    return build(structuredClone(state), content, trial).cost?.total ?? Infinity;
+  };
+  const home = homeOf(content), price = M.truePrice(state, content, home, good) ?? 0;
+  const have = state.stock[good] ?? 0;
+  let hi = have + (price > 0 ? Math.max(0, Math.floor(state.money / price)) : 0), lo = 0;   // the flat division is never too few: buying only raises the price
+  if (costWith(0) > state.money) return 0;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (costWith(mid) <= state.money) lo = mid; else hi = mid - 1;
+  }
+  return lo;
+}
+
 /** Sends an expedition, or throws with every reason the plan was refused, in words. */
 export function outfit(state, content, plan) {
   const s = structuredClone(state);
@@ -1053,6 +1077,8 @@ export function estimate(state, content, plan, memo = null) {
   const stakedHouse = stockValue + buyCost + purse - partners;
   const far = outEnd(route);
   let ages = [], guessed = false;
+  const ageOf = {};   // the age of the news each good's price rests on, in seasons, null for a guess: the number `bestTrades` rows carry as `age` (MER-133)
+  const newsOf = g => { const k = farPrice(state, content, dest.id, g); ageOf[g] = k ? k.age : null; if (k) ages.push(k.age); else guessed = true; };
   // a road that cannot come home inside its act is settled by `jump` (MER-116): at the prices the party left with, if it has not
   // yet reached the far end when the act ends (a party past it traded in play, and only its way home is settled)
   const count = wageCount(state, content, route, agent, proj);
@@ -1083,6 +1109,7 @@ export function estimate(state, content, plan, memo = null) {
       if (!far) { far = farMarket(state, content, dest.id, g, closings); memo?.set(key, far); }
       const e = far.m.market[dest.id][g];
       books[g] = { ...far, m: { ...far.m, market: { [dest.id]: { [g]: { ...e } } } } };   // the loads sold or bought move this copy, not the one kept
+      ageOf[g] = books[g].age;
       if (books[g].age === null) guessed = true; else ages.push(books[g].age);
     }
     return books[g];
@@ -1093,7 +1120,7 @@ export function estimate(state, content, plan, memo = null) {
     if (atQuote) {
       const p = quoted(g), cut = bargain(agent, dest.id, 'sell');
       if (p === null || p === undefined) continue;
-      pricesSell[g] = p; glutOf[g] = 0; impact[g] = 0; ages.push(0);
+      pricesSell[g] = p; glutOf[g] = 0; impact[g] = 0; newsOf(g);
       money += cargo[g] * Math.round(p * cut);
       delete goodsBack[g];
       continue;
@@ -1111,7 +1138,7 @@ export function estimate(state, content, plan, memo = null) {
     if (atQuote) {
       const cut = bargain(agent, dest.id, 'buy'), p = Math.max(1, Math.round(quoted(g) * cut));
       const q = Math.floor(Math.floor(money / (live.length - i)) / p);
-      pricesBuy[g] = quoted(g); glutOf[g] = 0; ages.push(0);
+      pricesBuy[g] = quoted(g); glutOf[g] = 0; newsOf(g);
       if (q) { money -= q * p; goodsBack[g] = (goodsBack[g] ?? 0) + q; impact[g] = 0; }
       return;
     }
@@ -1153,7 +1180,7 @@ export function estimate(state, content, plan, memo = null) {
   return {
     ok: true, net, gross, stake: stakedHouse, tolls: tollsAll, wage, upkeep, shares: { agent: shares.agent, partners: shares.partners }, seasons: proj.seasons, wageSeasons: count.seasons,
     settledAtJump: count.settled, ...(count.settled ? { jumpAt: count.at } : {}),
-    age, ageWords, news: old, risk: chance, riskWord: riskWord(chance),
+    age, ageWords, ageOf, news: old, risk: chance, riskWord: riskWord(chance),
     line: `If prices hold: about ${sign}${commas(Math.abs(net))} ${cityOf(content, 'expeditions').currency ?? 'coins'}. ${old}; the road is ${riskWord(chance)}.`,
     pricesSell, pricesBuy, pricesHome, impact, glut: glutOf, back: goodsBack,
   };
