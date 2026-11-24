@@ -1112,17 +1112,18 @@ try {
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
       });
     } else {
-      await test('keyboard: the stop list is a listbox, typeahead jumps and Enter selects', async () => {
+      await test('keyboard: the stop list is a listbox; typeahead and the arrows select the stop they land on, and Enter keeps it (MER-124)', async () => {
         await page.keyboard.press('Tab');
         eq(await page.evaluate(() => document.activeElement.id), 'stoplist');
         eq(await page.$eval('#stoplist', e => e.getAttribute('role')), 'listbox');
         for (const ch of 'alex') await page.keyboard.press(ch);
         eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-alexandria');
-        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus', 'moving the highlight selects nothing');
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Alexandria', 'the typeahead selects, and the heading follows');
         await page.keyboard.press('Enter');
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Alexandria');
         await page.keyboard.press('ArrowDown');
         eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-aydhab');
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Aydhab', 'an arrow selects, and the heading follows');
         await page.waitForFunction(() => true); await new Promise(r => setTimeout(r, 1100)); // the typeahead buffer clears
         for (const ch of 'dam') await page.keyboard.press(ch);
         eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-damascus');

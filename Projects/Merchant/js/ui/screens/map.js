@@ -380,7 +380,7 @@ export function createMap(app, nav) {
     const ids = order().map(s => s.id), i = ids.indexOf(lit);
     // MER-124: an arrow selects the stop it lands on, so the heading, the prices and Outfit follow it (a keyboard player had to press Enter
     // on every stop and the heading kept naming the old one); `select` redraws the options, and the list keeps its focus
-    const go = j => { e.preventDefault(); lit = ids[(j + ids.length) % ids.length]; select(lit, { keepFocus: true }); list.focus({ preventScroll: true }); };
+    const go = j => { e.preventDefault(); lit = ids[(j + ids.length) % ids.length]; select(lit, { keepFocus: true }); list.focus({ preventScroll: true }); markLit(); };   // markLit again: the board redraw can change the list's height
     if (e.key === 'ArrowDown') go(i + 1);
     else if (e.key === 'ArrowUp') go(i - 1);
     else if (e.key === 'Home') go(0);
@@ -392,7 +392,7 @@ export function createMap(app, nav) {
       typed = t - typedAt > 1000 ? e.key.toLowerCase() : typed + e.key.toLowerCase();
       typedAt = t;
       const hit = order().find(s => s.name.toLowerCase().startsWith(typed));
-      if (hit) { e.preventDefault(); select(hit.id, { keepFocus: true }); list.focus({ preventScroll: true }); }
+      if (hit) { e.preventDefault(); select(hit.id, { keepFocus: true }); list.focus({ preventScroll: true }); markLit(); }
     }
   }
 
