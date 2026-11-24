@@ -846,11 +846,12 @@ function homeState() {
   throw new Error('no cairo game in the search brought a trip home');
 }
 /** The facts the return paper at `k` of a state carries, set by hand: sold rows or none, the net and the hope. */
-function facts(base, k, { sold = true, net, hoped = null, agent = 'ali' }) {
+function facts(base, k, { sold = true, net, hoped = null, agent = 'ali', lost = false }) {
   const s = structuredClone(base), p = s.desk[k];
   p.agent = agent; p.data.houseNet = net; p.data.hoped = hoped;
   p.data.account = p.data.account.filter(r => r.label !== 'Sold');
   if (sold) p.data.account.push({ label: 'Sold', text: '1 load', amount: 80, detail: true });
+  if (lost) p.data.account.push({ label: 'Lost', text: '2 loads of pepper' });
   s.agents[agent].hired = true;
   return s;
 }
@@ -868,6 +869,13 @@ test('(MER-123) the facts a card\'s words rely on are written when a trip comes 
   eq([cleared.flags['ali-undersold'], cleared.flags['ali-profit']].map(Boolean), [true, true], 'set until the next opening');
   reopen(cleared, CAIRO);
   eq([cleared.flags['ali-undersold'], cleared.flags['ali-profit']], [undefined, undefined], 'and cleared at the next one, when no trip of his is home');
+});
+
+test('MER-139 (4) a trip the road robbed is not "undersold": the lost paper has already said where the shortfall went, and no second paper blames Ali\'s selling', () => {
+  const { s: base, p: k } = homeState();
+  const undersold = o => !!reopen(facts(base, k, { net: -12, hoped: 6, ...o }), CAIRO).flags['ali-undersold'];
+  eq(undersold({}), true, 'the same trip with nothing lost is still undersold');
+  eq(undersold({ lost: true }), false, 'robbers took part of the cargo: the road, not the selling');
 });
 
 test('(MER-123) "Ali and the price" is drawn only after a sale that fell short; its words no longer give a loss or a number', () => {
