@@ -11,6 +11,9 @@ import { lintContent, tripFailures } from '../tools/lint-content.mjs';
 import { destinations } from '../js/engine/routes.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view } from '../js/engine/index.js';
 import { seasonIndex } from '../js/engine/calendar.js';
+import { cityOf } from '../js/engine/state.js';
+import * as M from '../js/engine/market.js';
+import { writeSeason } from '../js/engine/market.js';
 
 const T = await loadContent('testport', { fs });
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
@@ -274,6 +277,146 @@ test('the jump\'s settled line carries the cargo the expedition was sent with, f
   const lost = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(seed => lineFor(doomed, seed)).find(l => l?.result === 'lost');
   ok(lost, 'no seed lost it at the jump');
   eq(lost.cargo, { wool: 10 });
+});
+
+// ---- MER-119: the account adds up, the return inside the years-pass page, the rest line
+/** Hilltown also sells salt, so a plan may send money and name a good to bring back (as test/routes.mjs does). */
+const salty = variant(calm, x => { x.stops.find(s => s.id === 'hilltown').sells.salt = { base: 6, depth: 40 }; });
+const SALTED = { ...WOOL, buy: ['salt'] };
+const noToll = c => variant(c, x => { for (const l of x.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0; });
+/** Plays a plan to its return paper. A trip that never comes home as a return (lost whole) gives null. */
+function returnOf(c, plan, seed = 7) {
+  let s = outfit(game(c, { seed }), c, plan);
+  const seen = new Set(s.desk.map(p => p.id));
+  for (let i = 0; i < 20 && s.phase !== 'recall' && s.phase !== 'ended'; i++) {
+    s = step(s, c);
+    const paper = s.desk.find(p => p.kind === 'return' && !seen.has(p.id));
+    if (paper) return paper.data;
+  }
+  return null;
+}
+/** The rows a child adds up: every row with an amount and no detail, but the Profit (or Loss) row they come to. */
+const sums = d => d.account.filter(r => Number.isFinite(r.amount) && !r.detail && r.label !== 'Profit' && r.label !== 'Loss');
+const total = d => sums(d).reduce((n, r) => n + r.amount, 0);
+const casesOfTrips = () => {
+  const qirad = noToll(variant(salty, x => { x.city.contracts = { qirad: { agentShare: [1, 3] } }; }));
+  const prepaid = variant(salty, x => { x.agents.find(a => a.id === 'mira').traits = ['honest']; });
+  const lossy = variant(salty, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0.5; });
+  return [
+    { name: 'own, goods only', c: salty, plan: WOOL },
+    { name: 'own, goods and money bought back', c: salty, plan: { ...SALTED, purse: 60 } },
+    { name: 'qirad', c: qirad, plan: { ...SALTED, contract: 'qirad', partners: 100, purse: 100 } },
+    { name: 'prepaid wage', c: prepaid, plan: { ...WOOL, prepay: true }, ready: s => { s.agents.mira.memory.push({ at: 0, kind: 'unfair' }, { at: 1, kind: 'unfair' }); } },
+    { name: 'a trip that lost goods', c: lossy, plan: SALTED, many: true },
+  ];
+};
+function playedAccounts() {
+  const rows = [];
+  for (const k of casesOfTrips()) {
+    for (const seed of k.many ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] : [7]) {
+      let s = game(k.c, { seed });
+      if (k.ready) k.ready(s);
+      s = outfit(s, k.c, k.plan);
+      if (!s.expeditions.length) continue;
+      const seen = new Set(s.desk.map(p => p.id));
+      let d = null;
+      for (let i = 0; i < 20 && !d && s.phase !== 'recall' && s.phase !== 'ended'; i++) { s = step(s, k.c); d = s.desk.find(p => p.kind === 'return' && !seen.has(p.id))?.data ?? null; }
+      if (d) rows.push({ at: `${k.name}/${seed}`, d, lost: d.account.some(r => r.label === 'Lost') });
+    }
+  }
+  return rows;
+}
+test('MER-119 (1) the account adds up: the rows that carry an amount come to the Profit row to the dinar, on own, prepaid, qirad and a loss', () => {
+  const rows = playedAccounts();
+  const kinds = new Set(rows.map(r => r.at.split('/')[0]));
+  eq([...kinds].sort(), ['a trip that lost goods', 'own, goods and money bought back', 'own, goods only', 'prepaid wage', 'qirad']);
+  ok(rows.some(r => r.lost), 'no played trip lost goods and came home');
+  for (const { at, d } of rows) {
+    const last = d.account.at(-1);
+    eq(total(d), last.amount, `${at}: the rows add up to the ${last.label} row`);
+    eq(last.amount, d.houseNet, `${at}: and the Profit row is the headline's number`);
+  }
+});
+test('MER-119 (1) the first row is what the house paid for what it sent: the warehouse goods at the price the sheet used, goods bought and the money', () => {
+  const d = returnOf(salty, WOOL);
+  const s = outfit(game(salty), salty, WOOL);
+  const x = s.expeditions[0];
+  eq(d.account[0].label, 'Sent out');
+  eq(d.account[0].amount, -(x.staked.house + x.staked.partners), 'the stake the house and its partners put out');
+  ok(d.account[0].amount < 0, 'ten loads of wool cost something');
+  ok(d.account.some(r => r.label === 'Back home') && d.account.some(r => /wage$/.test(r.label)), 'the other sums are there');
+});
+
+/** Testport's acts are three seasons long, so every road is settled by quotes at the jump. These calendars end act one at season
+    `end` and open the next six seasons later, so a trip sent at the start is either still on the road when the years pass
+    (`quoted`) or home at the closing into them. Found by condition, as layout.mjs's playUntil does, so a change of road or
+    calendar moves nothing here. */
+const withActEnd = (c, end) => variant(c, x => { x.calendar.lengths.acts.acts = [{ from: 0, to: end }, { from: end + 6, to: end + 8 }]; });
+const SALT_BACK = { ...SALTED };
+/** Plays SALT_BACK from the first season to the page between acts and opens the house: { line, paper, s } for the first calendar and
+    seed `want` accepts, or null. */
+function jumpedTrip(want, { seeds = [7, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12] } = {}) {
+  for (const end of [1, 2, 3, 4, 5, 6, 7, 8]) for (const seed of seeds) {
+    const c = withActEnd(salty, end);
+    let s = outfit(game(c, { length: 'acts', seed }), c, SALT_BACK);
+    let before = s;
+    for (let i = 0; i < 20 && s.phase !== 'interlude' && s.phase !== 'recall'; i++) { before = s; s = step(s, c); }
+    if (s.phase !== 'interlude') continue;
+    const line = view(s, c).interlude.settled[0];
+    if (line?.result !== 'home' || !want(line, s, c, before)) continue;
+    const paper = openSeason(s, c).desk.find(p => p.kind === 'return');
+    if (paper) return { c, line, paper, s, end, before };
+  }
+  return null;
+}
+test('MER-119 (2) a trip settled in the years-pass page carries its hoped line there, the number and the sentence its paper gives', () => {
+  for (const quoted of [true, false]) {
+    const j = jumpedTrip(l => l.quoted === quoted && l.why);
+    ok(j, `no calendar settled a trip with quoted ${quoted}`);
+    eq([j.line.hoped, j.line.why], [j.paper.data.hoped, j.paper.data.why], `quoted ${quoted}: the page and the paper say the same`);
+    ok(Number.isFinite(j.line.hoped) && typeof j.line.why === 'string', 'the line carries both');
+  }
+});
+test('MER-119 (2) a party home before the years passed: its why names the price in the season it came home, not the one after the jump', () => {
+  // the price the house read in the season it came home differs from the one after the closing into the next act
+  const j = jumpedTrip((l, s, c, before) => {
+    if (l.quoted) return false;
+    const home = cityOf(c, 'market').home;
+    return M.truePrice(before, c, home, 'salt') !== M.truePrice(s, c, home, 'salt') && / at home in /.test(l.why ?? '');
+  });
+  ok(j, 'no seed had a home price that moved across the jump with a home price in its why');
+  const from = j.s.log.findLast(e => e.kind === 'jump').from, home = cityOf(j.c, 'market').home;
+  // the price of the closing season, read from the state before that closing; the market is reset to the next act's by the jump
+  const then = M.truePrice(j.before, j.c, home, 'salt'), after = M.truePrice(j.s, j.c, home, 'salt');
+  const d = j.paper.data;
+  ok(then !== after, 'the two prices differ');
+  ok(new RegExp(`^Salt fetched ${then} at home in ${writeSeason(j.c, from)}, when Mira was back, `).test(d.why), `${d.why} (it was ${then} then and ${after} after the jump)`);
+  ok(!/by the time/.test(d.why), d.why);
+});
+test('MER-119 (2) a trip settled by quotes says so, and does not say the party was back when the price was read', () => {
+  const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''));
+  ok(j, 'no calendar had a quoted trip whose why names a home price');
+  const d = j.paper.data;
+  ok(/^The years passed before Mira was home, so salt was counted at \d+ at home, (not|more than|less than) the \d+ we hoped for\.$/.test(d.why), d.why);
+  ok(!/by the time|was back/.test(d.why), d.why);
+  eq(j.line.why, d.why);
+});
+
+// the words the engine writes on a paper; a card's choice "Let {agent} rest a season" is the player's to pick, not a claim about the agent
+const engineWords = d => [d.headline, d.route, d.account, d.why, d.orderLine, d.agentLine];
+const REST = /wants to rest|rest a season/i;   // the line MER-119 took out
+test('MER-119 (3) the paper does not say the agent wants to rest, because nothing makes her: the sheet sends her the season she is home', () => {
+  const c = salty;
+  let s = outfit(game(c), c, WOOL);
+  s = playTo(s, c, q => q.desk.some(p => p.kind === 'return'));
+  const paper = s.desk.find(p => p.kind === 'return');
+  eq('agentLine' in paper.data, false, 'the return paper carries no line about resting');
+  ok(!REST.test(JSON.stringify(engineWords(paper.data))), 'no word about resting anywhere on the paper');
+  const again = outfit(s, c, WOOL);
+  eq(again.expeditions.length, 1, 'the engine sends her at once, so a line that said she would rest would be false');
+  // and the page between acts does not say it either
+  const j = jumpedTrip(l => !!l.why);
+  ok(j && !REST.test(JSON.stringify(view(j.s, j.c).interlude)) && !REST.test(JSON.stringify(engineWords(j.paper.data))));
 });
 
 await done();

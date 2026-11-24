@@ -10,7 +10,7 @@ const ruled = fn => () => { const was = R.RULES.refuseUnspentMoney; R.RULES.refu
 import { steps } from '../js/engine/turn.js';
 import { WAIT } from '../js/engine/letters.js';
 import * as M from '../js/engine/market.js';
-import { seasonIndex } from '../js/engine/calendar.js';
+import { seasonIndex, playedSeasons } from '../js/engine/calendar.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, proposePlan, estimate, bestTrades, view } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
@@ -65,20 +65,43 @@ test('proposePlan: goods that sell better at the far end, bought with about half
   eq(proposePlan(s, c, 'mira', 'harbour-hilltown')?.cargo.wool ?? 0, 0, 'wool is dearer at home now: none goes');
 });
 
-test('proposePlan: the bring-back good is the widest margin the house has news of, not one the plan sends out, and a stop with no news is guessed at its base price', () => {
+test('proposePlan: the bring-back good is the one the map\'s best trade names for the road, not one the plan sends out, and a stop with no news is guessed at its base price', () => {
   const c = still();
   const s = game(c);
   know(s, c, 'hilltown', 'wool', 30);
   know(s, c, 'hilltown', 'salt', 8);
   eq(proposePlan(s, c, 'mira', 'harbour-hilltown').buy, ['salt'], 'the only one cheaper there');
-  // two goods cheaper there than at home: the wider margin is the one to bring back, whichever way the list or the alphabet runs
+  // two goods cheaper there than at home: the one that makes more once the loads are priced one after the other, whichever way the list or the alphabet runs
   const both = (wool, salt) => { const u = game(c); know(u, c, 'hilltown', 'wool', wool); know(u, c, 'hilltown', 'salt', salt); return proposePlan(u, c, 'mira', 'harbour-hilltown').buy; };
-  eq(both(10, 4), ['salt'], 'salt: 10 at home for 4 (2.5 times) beats wool: 20 for 10 (2 times)');
-  eq(both(5, 4), ['wool'], 'wool: 20 for 5 (4 times) beats salt: 10 for 4 (2.5 times)');
+  eq(both(10, 4), ['salt'], 'salt: 10 at home for 4, forty loads deep, makes more than wool: 20 for 10, fifteen deep');
   const none = game(c);
   const guess = proposePlan(none, c, 'mira', 'harbour-hilltown');
   ok(guess && guess.buy.length === 1, `with no news the stop's base prices guide the default: ${JSON.stringify(guess)}`);
   eq(estimate(none, c, guess).ageWords, 'no news', 'and the estimate says it is a guess');
+});
+
+test('MER-112b (5) proposePlan: the bring-back good is chosen by what the loads make, not by the price ratio: a thin market with the widest margin loses to a deep one (the old pick: salt, and no plan)', () => {
+  // Hilltown sells salt at 3 against 10 at home (3.3 times, but four loads deep: two loads fit) and wool at 20 against 40 (2 times, forty deep)
+  const c = still(x => {
+    const h = x.stops.find(z => z.id === 'hilltown');
+    h.sells.salt = { base: 6, depth: 4 }; h.sells.wool = { base: 30, depth: 40 };
+    x.stops.find(z => z.id === 'harbour').sells.wool.base = 40;
+  });
+  const s = know(know(game(c), c, 'hilltown', 'wool', 20), c, 'hilltown', 'salt', 3);
+  s.market.hilltown.wool.f = 20 / 30; s.market.hilltown.salt.f = 3 / 6;   // the news is true: the stop pays what the house heard
+  const trades = bestTrades(s, c, 9).filter(t => t.route === 'harbour-hilltown');
+  eq(trades.map(t => [t.good, t.direction]), [['wool', 'back']], 'the map names wool, bought at Hilltown and sold at home, and nothing else for the road');
+  const wide = (g) => M.truePrice(s, c, 'harbour', g) / s.known.hilltown[g].p;
+  ok(wide('salt') > wide('wool') * 1.5, `salt is the wider margin: ${wide('salt').toFixed(2)} against ${wide('wool').toFixed(2)}`);
+  const plan = proposePlan(s, c, 'mira', 'harbour-hilltown');
+  ok(!plan.why, plan.why);
+  eq([plan.buy, plan.cargo], [['wool'], {}], 'the plan brings wool back');
+  ok(plan.purse > 0, 'with money to buy it');
+  const e = estimate(s, c, plan);
+  ok(e.net > 0 && e.back.wool >= 8, `${e.net} dinars, ${e.back.wool} loads of wool`);
+  eq(checkPlan(s, c, plan).ok, true, 'and the engine takes it');
+  const { paper } = toReturn(outfit(s, c, plan), c);
+  ok(Math.abs(paper.data.houseNet - e.net) <= Math.abs(e.net) * 0.05 + 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
 });
 
 test('proposePlan: where the stop buys nothing the house can send, the trip goes as money, about half of it, to buy the good to bring back', () => {
@@ -278,17 +301,97 @@ test('why, old news, the other way: better than the news said', () => {
 
 test('why, old news, a good bought at the far end that cost more than the news said', () => {
   const c = still();
-  const s = know(know(game(c), c, 'hilltown', 'wool', 30), c, 'hilltown', 'salt', 2, 2);   // the news says salt is 2; it is 6
+  const s = know(know(game(c), c, 'hilltown', 'wool', 30), c, 'hilltown', 'salt', 3, 2);   // the news says salt is 3 (the lowest a price falls to, half the base); it is 6
   const { paper } = toReturn(outfit(s, c, { ...WOOL, buy: ['salt'] }), c);
-  ok(/^Salt cost 6 in Hilltown when Mira arrived, not the 2 the news, two seasons old, led us to expect\.$/.test(paper.data.why), paper.data.why);
+  ok(/^Salt cost 6 in Hilltown when Mira arrived, not the 3 the news, two seasons old, led us to expect\.$/.test(paper.data.why), paper.data.why);
 });
 
-test('why, glut: the house\'s own earlier sales at the stop had marked the price', () => {
+test('why, glut: a mark on the price that the estimate did not expect (another party sold there since) is named, and a mark it did expect is not', () => {
   const c = still();
   const s = know(game(c), c, 'hilltown', 'wool', 30);
-  s.market.hilltown.wool.glut = 0.6;     // halves at each closing: 0.15 when the party arrives
-  const { paper } = toReturn(outfit(s, c, WOOL), c);
-  eq(paper.data.why, 'Hilltown already had too much wool: the house\'s own earlier sales there had pushed the price down.');
+  const sent = outfit(s, c, WOOL);
+  // the sheet's expected mark is written in by hand here: none on the wool (`build` keeps one itself since MER-115, and the cases
+  // above play that; this one wants the other marks it sets up below to be a surprise). An expedition without one is read as
+  // expecting the mark it found.
+  sent.expeditions[0].hope.glut = { wool: 0 };
+  // by the time Mira arrives the house's own earlier sales have put a mark on: 0.6 now, 0.15 on arrival
+  const late = structuredClone(sent);
+  late.market.hilltown.wool.glut = 0.6;
+  eq(toReturn(late, c).paper.data.why, 'Hilltown already had too much wool: the house\'s own earlier sales there had pushed the price down.');
+  // the same mark the estimate knew of is no gap at all: it was in the price the estimate sold at
+  const marked = know(game(c), c, 'hilltown', 'wool', 12);   // the news carries the mark of 0.6: 12 is 30 less 60 percent
+  marked.market.hilltown.wool.glut = 0.6;
+  eq(toReturn(outfit(marked, c, WOOL), c).paper.data.why, 'The trip went about as hoped.');
+});
+
+/** Cairo with calm roads and prices that do not drift, 3,000 dinars and 45 linen, the house's own sales sent twice onto Damascus
+    in one season by two agents: the first (yusuf) arrives and sells before the second (ali), which put a mark on the price the
+    second's sheet could not have known when it was written. Played by the engine's own functions, nothing written into a save. */
+function twoSellers() {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  let s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.stock = { linen: 45 }; s.money = 3000;
+  s.agents.ali.hired = true; s.agents.ali.where = 'cairo';
+  const send = (st, agent, n) => outfit(st, c, { agent, route: 'cairo-damascus', cargo: { linen: n }, purse: 0, contract: 'own', sell: ['linen'], buy: [] });
+  s = send(send(s, 'yusuf', 25), 'ali', 20);
+  return { c, s };
+}
+
+test('MER-115 (1) build keeps the mark the estimate expected on each price, so the why can name the house\'s own earlier sales in live play: two parties sell linen at Damascus, the second finds the mark of the first', () => {
+  const { c, s } = twoSellers();
+  const [first, second] = s.expeditions;
+  eq(second.hope.glut, { linen: 0 }, 'the second sheet, written with no mark on Damascus linen, expected none');
+  eq(first.hope.glut, { linen: 0 });
+  const paper = toReturn(s, c).paper;   // the first to come home is the first sent
+  const seen = new Set(s.desk.map(p => p.id));
+  let w = s, second_paper;
+  for (let i = 0; i < 8 && !second_paper; i++) { w = step(w, c); second_paper = w.desk.find(p => p.kind === 'return' && p.data.trip.agent === 'ali' && !seen.has(p.id)); }
+  ok(second_paper, 'the second party came home');
+  eq(second_paper.data.why, 'Damascus already had too much linen: the house\'s own earlier sales there had pushed the price down.');
+  ok(!/own earlier sales/.test(paper.data.why ?? ''), `the first party met no mark of its own: ${paper.data.why}`);
+});
+
+test('MER-115 (1) an expedition saved before the sheet kept its mark (a hope with no glut) is read as having expected the mark it found: no gap is named for it, and nothing throws', () => {
+  const { c, s } = twoSellers();
+  for (const x of s.expeditions) delete x.hope.glut;
+  let w = s, paper;
+  const seen = new Set(s.desk.map(p => p.id));
+  for (let i = 0; i < 8 && !paper; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && p.data.trip.agent === 'ali' && !seen.has(p.id)); }
+  ok(paper && !/own earlier sales/.test(paper.data.why ?? ''), paper?.data.why);
+});
+
+/** Cairo calm, silk at home marked (the factor 1.5 and the house's own mark 0.2, so 540 against a base of 450) and the factor
+    pulled back each closing, a trip on `road` sent with its whole purse to buy silk, played home. { e, paper, s, c, home }: the
+    estimate before it, its return paper, the state it was sent from and the price at home when the party was back. */
+function markedHome(road, { revert = 0.5, seed = 3 } = {}) {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; if (g.id === 'silk') g.revert = revert; } });
+  let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+  s.market.cairo.silk = { f: 1.5, glut: 0.2, h: [] };
+  const plan = { agent: 'yusuf', route: road, cargo: {}, purse: 900, contract: 'own', sell: [], buy: ['silk'] };
+  const e = estimate(s, c, plan);
+  const seen = new Set(s.desk.map(p => p.id));
+  let w = outfit(structuredClone(s), c, plan), paper, home = null;
+  for (let i = 0; i < 10 && !paper; i++) { w = step(w, c); home = M.truePrice(w, c, 'cairo', 'silk'); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+  return { e, paper, s, c, home };
+}
+
+test('MER-115 (2) estimate: the bring-back good is valued at the price home will have when the party is back, the factor pulled toward its base and the house\'s mark halved each closing, not at today\'s price', () => {
+  for (const road of ['cairo-damascus', 'cairo-aleppo']) {
+    const { e, paper, s, c, home } = markedHome(road);
+    eq(M.truePrice(s, c, 'cairo', 'silk'), 540, 'silk is 540 at home when the trip is sent');
+    ok(home < 540 - 30, `${road}: silk fell to ${home} at home by the return`);
+    eq(e.pricesHome.silk, home, `${road}: the estimate valued silk at ${e.pricesHome.silk}, home paid ${home}`);
+    eq(paper.data.cargoValue, home * (paper.data.goodsBack.silk ?? 0), `${road}: the paper values the goods at that price`);
+    ok(Math.abs(e.net - paper.data.houseNet) <= 12, `${road}: estimated ${e.net}, made ${paper.data.houseNet}`);
+  }
+});
+
+test('MER-115 (2) estimate: a house mark at home that will not fade (the factor does not revert) is carried too, and a calm home is valued as it stands', () => {
+  const { e, home } = markedHome('cairo-damascus', { revert: 0 });
+  eq(e.pricesHome.silk, home, 'no revert: the mark alone halves each closing');
+  const g0 = newGame(C, { seed: 3, length: 'acts', house: C.houses[0].id });
+  const flat = estimate(g0, C, { agent: 'yusuf', route: 'cairo-damascus', cargo: {}, purse: 900, contract: 'own', sell: [], buy: ['silk'] });
+  eq(flat.pricesHome.silk, M.truePrice(g0, C, 'cairo', 'silk'), 'an unmarked home at its base is valued at its price now');
 });
 
 test('why, tolls: a toll paid in goods the far end would have bought for more costs the sales it took', () => {
@@ -303,6 +406,21 @@ test('why, tolls: a toll paid in goods the far end would have bought for more co
   const { paper, s: end } = toReturn(outfit(s, c, { ...WOOL, route: 'harbour-by-saltmarsh-hilltown' }), c);
   void end;
   eq(paper.data.why, 'Tolls were paid in wool that would have sold for more in Hilltown.');
+});
+
+test('MER-112b (1) gapCauses, tolls: the loads a toll took are priced from the price the party found with the house\'s mark on it, not from the news price with none', () => {
+  const c = still();
+  const s = game(c);
+  // Mira found Hilltown paying 18 for wool with the house's own mark of 0.4 on it (30 with none), sold seven loads, and paid a toll of three
+  const x = { agent: 'mira', route: 'harbour-hilltown', hope: { net: 0, sell: { wool: 30 }, tolls: 0, impact: {} },
+    book: { seen: [{ stop: 'hilltown', good: 'wool', p: 18, at: 0, glut: 0.4 }], sold: [{ good: 'wool', q: 7, got: 0, stop: 'hilltown' }], bought: [], paidInGoods: { wool: 3 }, tolls: 0, lost: {}, orders: [] } };
+  // what loads 8 to 10 fetch on the market the party met: the mark grows by a load over the depth each sale
+  const m = { ...s, market: { hilltown: { wool: { f: 1, glut: 0.4, h: [] } } } };
+  let lost = 0;
+  for (let k = 0; k < 10; k++) { if (k >= 7) lost += Math.round(M.sellPrice(m, c, 'hilltown', 'wool') * 1); M.noteSale(m, c, 'hilltown', 'wool', 1); }
+  const found = R.gapCauses(s, c, x, { goodsBack: {}, houseNet: 0 });
+  eq(found.causes.tolls, lost - 3 * M.truePrice(s, c, 'harbour', 'wool'), 'the three loads at what the marked market paid for loads 8 to 10, less what each is worth at home');
+  ok(lost < 3 * 30 * 0.6, `${lost} dinars: the marked price, nowhere near what three loads fetch at the 30 the news gave`);
 });
 
 test('why, a loss: what the road took, in the words of the trip', () => {
@@ -345,6 +463,22 @@ test('why: when two causes apply the larger one is named, and it is one sentence
   ok(/^Tolls were paid in wool/.test(small), small);
   ok(/^Hilltown paid \d+ for wool when Mira arrived, not the 60/.test(big), big);
   for (const w of [small, big]) ok(!/\u2014/.test(w) && (w.match(/\./g) ?? []).length === 1, w);
+});
+
+test('MER-112 (2) why: the cause that moved the result most is named, sized by what its sentence tells, not the first found and not a sum that other items cancel', () => {
+  const c = still();
+  let s = know(know(game(c), c, 'hilltown', 'wool', 30), c, 'hilltown', 'salt', 6);
+  s.stock.salt = 10;
+  s = outfit(s, c, { ...WOOL, cargo: { wool: 10, salt: 10 }, sell: ['wool', 'salt'] });
+  const x = s.expeditions[0];
+  eq(toReturn(structuredClone(s), c).paper.data.why, 'The trip went about as hoped.', 'the sheet as built is sound');
+  // by hand: wool fetched 4 a load less than hoped (40 on ten loads, the largest single item), salt 2 a load more (a gain of 20, so the
+  // news sums to 20), and the sheet allowed 30 too little for the house's own selling of wool (a cause of 30: larger than the news
+  // sum, smaller than the wool item). The code that compares sums names the selling; the cause that moved the result most is the price.
+  const gap = 40 - 20 + 30;
+  x.hope.sell.wool += 4; x.hope.sell.salt -= 2; x.hope.impact.wool -= 30; x.hope.net += gap; x.hoped += gap;
+  const why = toReturn(s, c).paper.data.why;
+  eq(why, 'Hilltown paid 30 for wool when Mira arrived, not the 34 the news, this season, led us to expect.');
 });
 
 // ---- the three widest trades, and the view
@@ -433,6 +567,212 @@ test('MER-98 (1) proposePlan: the plan it returns pays after tolls, each good it
     }
   }
   ok(plans > 10, `${plans} plans were checked (${nothing} roads had none that pays)`);
+});
+
+test('MER-112 (3) proposePlan: the best trade the map knows for the road goes in the plan when it raises the estimate inside the stake (play 2 trip 3: pepper at 187 against 132, left out)', () => {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  const s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.money = 1719; s.stock = { wool: 8, copper: 1, linen: 5 };
+  for (const [g, p] of [['pepper', 187], ['wool', 100], ['copper', 48], ['linen', 80]]) know(s, c, 'damascus', g, p);
+  const best = bestTrades(s, c, 10).find(t => t.route === 'cairo-damascus');
+  eq([best.good, best.direction], ['pepper', 'out'], 'the map names pepper first for the road');
+  const plan = proposePlan(s, c, 'yusuf', 'cairo-damascus');
+  ok(!plan.why && plan.cargo.pepper > 0, `the plan carries pepper: ${JSON.stringify(plan.cargo)}`);
+  const { pepper, ...rest } = plan.cargo;
+  const without = estimate(s, c, { ...plan, cargo: rest, sell: plan.sell.filter(g => g !== 'pepper') }).net;
+  ok(estimate(s, c, plan).net > without + 100, `pepper adds ${estimate(s, c, plan).net - without}`);
+  const cost = checkPlan(s, c, plan).cost.bought;
+  ok(cost <= s.money / 2, `bought ${cost}, inside the half of ${s.money} the sheet stakes`);
+  eq(checkPlan(s, c, plan).ok, true, 'and the engine takes it');
+  // a pepper that does not raise the estimate stays out: nothing to gain at 125 against 120 at home once the loads sell lower
+  const flat = structuredClone(s); know(flat, c, 'damascus', 'pepper', 125);
+  ok(!(proposePlan(flat, c, 'yusuf', 'cairo-damascus').cargo?.pepper > 0), 'a thin margin is left out');
+});
+
+test('MER-112b (4) every proposal is expected to make about what the trip makes: the same sign and within 3 percent of the stake, over at least 30 played states, two roads and two agents, on every trip with no loss event', () => {
+  // The band is what fails on 9aaa3721 (an estimate 100 against a trip's 119 on a 549 stake); the sign holds there too, and is the
+  // weaker claim kept so that a proposal that turns into a loss cannot hide in a wide band. Prices here have no noise (sigma 0),
+  // because noise is what no estimate can know; the roads keep their risk and a trip that lost anything is left out. Each state is a game played n seasons, then a first trip on one road played home (it leaves its mark on
+  // the stop and its news a few seasons later), then every proposal on the two roads for each of the two agents.
+  const c = variant(C, x => { for (const g of x.goods) g.sigma = 0; });
+  const roads = ['cairo-damascus', 'cairo-qus'];
+  const sendRide = (s, agent, plan) => {
+    let w = outfit(structuredClone(s), c, plan), lossy = false, paper;
+    const seen = new Set(w.desk.map(p => p.id));
+    for (let i = 0; i < 14 && !paper; i++) {
+      w = step(w, c);
+      if (w.expeditions.some(x => Object.keys(x.book.lost ?? {}).length)) lossy = true;
+      paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id));
+    }
+    return { w, paper, lossy };
+  };
+  let states = 0, compared = 0, lossy = 0;
+  const seenRoads = new Set(), seenAgents = new Set();
+  for (const seed of [1, 2, 3, 4, 5, 6]) for (const n of [1, 3, 5]) for (const firstRoad of roads) {
+    let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+    for (let i = 0; i < n; i++) s = step(s, c);
+    s.agents.ali.hired = true; s.agents.ali.where = 'cairo';
+    const p1 = proposePlan(s, c, 'yusuf', firstRoad);
+    if (!p1 || p1.why) continue;
+    const first = sendRide(s, 'yusuf', p1);
+    if (!first.paper || first.lossy) continue;
+    s = first.w;
+    for (let i = 0; i < 2; i++) s = step(s, c);   // the news of the first trip comes back
+    states++;
+    for (const agent of ['yusuf', 'ali']) for (const road of roads) {
+      const u = structuredClone(s); u.agents.yusuf.where = 'cairo'; u.agents.ali.where = 'cairo';
+      const plan = proposePlan(u, c, agent, road);
+      if (!plan || plan.why) continue;
+      const e = estimate(u, c, plan);
+      const { paper, lossy: lost } = sendRide(u, agent, plan);
+      if (!paper || lost) { lossy++; continue; }
+      compared++; seenRoads.add(road); seenAgents.add(agent);
+      const made = paper.data.houseNet, where = `${seed}/${n}/${firstRoad}/${agent}/${road}`;
+      eq(Math.sign(made), Math.sign(e.net), `${where}: estimated ${e.net}, made ${made}`);
+      ok(Math.abs(made - e.net) <= e.stake * 0.03, `${where}: estimated ${e.net}, made ${made}, stake ${e.stake}`);
+    }
+  }
+  ok(states >= 30, `${states} states`);
+  ok(compared >= 60 && seenRoads.size === 2 && seenAgents.size === 2, `${compared} trips compared on ${[...seenRoads]} for ${[...seenAgents]}, ${lossy} left out for a loss`);
+});
+
+/** Aleppo and Samarkand, the roads that take 4 and 12 seasons: every proposal on the road for both agents from seeded states, noise
+    off, home's price unmarked or marked high (factor 1.5, the house's mark 0.2) or low (0.7, -0.1) as the house leaves it by buying
+    and selling there. A trip that lost anything is left out (no estimate foresees a loss). { rows: [{ at, est, made, stake }], lossy }. */
+function longRoadStates(road, { seeds, ns, marks }) {
+  const c = variant(C, x => { for (const g of x.goods) g.sigma = 0; });
+  const rows = []; let lossy = 0;
+  for (const seed of seeds) for (const n of ns) for (const [f, glut] of marks) for (const agent of ['yusuf', 'ali']) {
+    let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+    for (let i = 0; i < n; i++) s = step(s, c);
+    s.agents.ali.hired = true; s.agents.ali.where = 'cairo'; s.agents.yusuf.where = 'cairo';
+    if (f !== 1) for (const m of Object.values(s.market.cairo)) { m.f = f; m.glut = glut; }
+    const plan = proposePlan(s, c, agent, road);
+    if (!plan || plan.why) continue;
+    const e = estimate(s, c, plan), seen = new Set(s.desk.map(p => p.id));
+    let w = outfit(structuredClone(s), c, plan), paper;
+    for (let i = 0; i < 30 && !paper && w.phase !== 'recall' && w.phase !== 'ended'; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+    if (!paper) continue;
+    if (/^The road took/.test(paper.data.why ?? '')) { lossy++; continue; }
+    rows.push({ at: `${seed}/${n}/${f}/${agent}`, est: e.net, made: paper.data.houseNet, stake: e.stake });
+  }
+  return { rows, lossy };
+}
+const errors = rows => ({ mean: rows.reduce((a, r) => a + Math.abs(r.est - r.made), 0) / rows.length, worst: Math.max(...rows.map(r => Math.abs(r.est - r.made))), rel: Math.max(...rows.map(r => Math.abs(r.est - r.made) / r.stake)) });
+
+test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmarked or marked: the same sign, a mean error of at most 8 dinars, at most two trips more than 13 dinars out, and on the marked-home trips a mean of at most 9.5', () => {
+  // The same 32 trips (2 seeds, 3 starts, both agents, three homes), measured before and after MER-115: mean 7.88 before, 6.88
+  // after; worst 16 both; the 22 marked-home trips 7.36 before and 5.91 after, which is what the last line holds (the carried
+  // home price is worth about 1.5 dinars a trip here, as the home price barely moves in four seasons). What is left is not the
+  // home price: a trip ending across the act jump (start 3) is settled by `jump`, which values the goods at home's price after the
+  // closing into the new act (the estimate stops its carry there) and charges the wage of the whole road, 4 seasons, where the
+  // estimate charged 5. MER-116 counts the wage as `jump` does (wageCount) and the four start-3 trips that were 8 or 9 dinars
+  // high on the wage alone are exact on it: the same 32 trips now read mean 5.81, worst 13, 1.46 percent of the stake, and 5.91 on
+  // the marked-home trips (6.88, 16, 2.1 and 5.91 before). The 13 is on the start-3 trips with the highest estimates (194 against 181 and 190 against 177); its cause
+  // was not traced.
+  // MER-111b: the go-further card (Yusuf's `contract-limits`) now waits for a trip on the road, so the cards the seeded states
+  // draw in their first three seasons are not the ones they drew, and the same 32 trips read mean 7.69 (not 5.81), 9.00 on the
+  // 22 marked-home trips (not 5.91), worst 38 (not 13). All of that is one state: seed 1, start 3, home marked high, Yusuf and
+  // Ali both, estimated 105 and 101 where the trips made 143 and 139 (a stake of 385). Both settle at the jump, and `jump` closes
+  // home's silk at 560 where the estimate carried it to 535; a price the estimate cannot know, so it is held as a count and not
+  // a worst case: at most two trips over 13 dinars out (before, none over 13). The means are what the MER-115 carry and the
+  // MER-116 wage count hold: reverting the wage count reads a mean of 8.38 and reverting the carry 9.88, both over the 8, and each fails on the mean line (broken once each). Damascus's pepper does not move
+  // these 32 trips (identical with the old base).
+  const { rows, lossy } = longRoadStates('cairo-aleppo', { seeds: [1, 2], ns: [0, 2, 3], marks: [[1, 0], [1.5, 0.2], [0.7, -0.1]] });
+  ok(rows.length >= 30, `${rows.length} trips compared, ${lossy} left out for a loss`);
+  for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
+  const all = errors(rows);
+  ok(all.mean <= 8, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
+  const far = rows.filter(r => Math.abs(r.est - r.made) > 13);
+  ok(far.length <= 2, `${far.length} trips more than 13 dinars out: ${far.map(r => `${r.at} estimated ${r.est}, made ${r.made}`).join('; ')}`);
+  ok(all.worst <= 38, `worst error ${all.worst} dinars`);
+  const marked = errors(rows.filter(r => !r.at.includes('/1/')));
+  ok(marked.mean <= 9.5, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
+});
+
+test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an act jump, which the estimate settles as `jump` does (the quotes it left with, the wage of the whole road): a mean error of at most 5 dinars, 12 at worst, 2.5 percent of the stake', () => {
+  // No Samarkand trip comes home inside an act (the road is 12 seasons, an act 8), so every one is settled by `jump`: at the far
+  // prices the party left with (`x.quote`, not the market it arrives to) and the wage of the whole road. MER-115 measured these 10
+  // trips (4 seeds, 2 starts, both agents, home unmarked) at mean 74.4, worst 92, 14.2 percent of the stake, because the estimate
+  // priced the arrival and charged the wage of the road's waits. MER-116 reads mean 4.8, worst 12, 2.1 percent. What is left is
+  // 12 dinars on four of the ten trips (seeds 1, 3 and 4, start 0), the estimate low each time; its cause was not
+  // traced. The seeded road risk loses 4 of every 14 of these trips, which are left out.
+  const { rows, lossy } = longRoadStates('cairo-samarkand', { seeds: [1, 2, 3, 4], ns: [0, 2], marks: [[1, 0]] });
+  ok(rows.length >= 8, `${rows.length} trips compared, ${lossy} left out for a loss`);
+  for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
+  const { mean, worst, rel } = errors(rows);
+  ok(mean <= 5, `mean ${mean.toFixed(1)} dinars over ${rows.length} trips`);
+  ok(worst <= 12, `worst ${worst} dinars`);
+  ok(rel <= 0.025, `${(rel * 100).toFixed(1)} percent of the stake`);
+});
+
+/** The wage the sheet charged and the wage the return paper shows, for every proposal on `road` from seeded states, own or prepaid
+    (a city with no qirad and an agent with two unfair memories, the case that pays first). A trip that lost anything is left out,
+    as in `longRoadStates`. { rows: [{ at, sheet, paid, prepay, jumped, said }], lossy }: `jumped` is whether a jump came while
+    the party was out, read from the log, `said` what the estimate says about it. */
+function playedWages(road, { seeds, ns, prepaid, tamper = 0 }) {
+  const c = variant(C, x => {
+    for (const g of x.goods) g.sigma = 0;
+    if (prepaid) delete x.city.contracts.qirad;
+  });
+  const rows = []; let lossy = 0;
+  for (const seed of seeds) for (const n of ns) for (const agent of ['yusuf', 'ali']) {
+    let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
+    for (let i = 0; i < n; i++) s = step(s, c);
+    s.agents.ali.hired = true; s.agents.ali.where = 'cairo'; s.agents.yusuf.where = 'cairo';
+    const plan = proposePlan(s, c, agent, road);   // before the memories: a proposal is never made for one who refuses a wage
+    if (!plan || plan.why) continue;
+    if (prepaid) { s.agents[agent].memory.push({ at: 0, kind: 'unfair' }, { at: 1, kind: 'unfair' }); plan.prepay = true; }
+    const e = estimate(s, c, plan), prepay = R.prepayCost(s, c, road, agent), seen = new Set(s.desk.map(p => p.id)), sent = seasonIndex(s, c);
+    let w = outfit(structuredClone(s), c, plan), paper;
+    if (!w.expeditions.length) continue;
+    if (tamper) w.expeditions[0].book.wagePaid += tamper;
+    for (let i = 0; i < 30 && !paper && w.phase !== 'recall' && w.phase !== 'ended'; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+    if (!paper) continue;
+    if (/^The road took/.test(paper.data.why ?? '')) { lossy++; continue; }
+    const row = paper.data.account.find(r => /wage/.test(r.label));
+    rows.push({ at: `${seed}/${n}/${agent}`, sheet: e.wage, paid: -row.amount, prepay, jumped: w.log.some(l => l.kind === 'jump' && l.at > sent), said: e.settledAtJump, text: row.text });
+  }
+  return { rows, lossy };
+}
+
+test('MER-116 (1) the wage is one count: the estimate\'s wage, the prepay sum and the wage on the return paper are the same dinars on every played trip, own and prepaid, on the road that comes home inside its act and the one that crosses the jump', () => {
+  // MER-115 found the sheet one season high on Aleppo (5 seasons against 4, 8 dinars) and 3 seasons high on Samarkand (19
+  // against 16): the return paper counts the closings the party was away for, or, when `jump` settles it, the seasons of its whole road.
+  let inAct = 0, crossed = 0;
+  for (const prepaid of [false, true]) for (const [road, seeds, ns] of [['cairo-aleppo', [1, 2], [0, 2, 3]], ['cairo-samarkand', [1, 2, 3, 4], [0, 2]]]) {
+    const { rows } = playedWages(road, { seeds, ns, prepaid });
+    ok(rows.length >= 6, `${rows.length} ${road} trips (prepaid ${prepaid})`);
+    for (const r of rows) {
+      const where = `${road} ${r.at} prepaid ${prepaid}`;
+      eq(r.sheet, r.paid, `${where}: the sheet said ${r.sheet} and the paper paid ${r.paid} (${r.text})`);
+      if (prepaid) eq(r.prepay, r.paid, `${where}: the prepay sum was ${r.prepay} and the paper paid ${r.paid}`);
+      eq(r.said, r.jumped, `${where}: the estimate says it is settled at the jump: ${r.said}; a jump came while it was out: ${r.jumped}`);
+      if (r.jumped) crossed++; else inAct++;
+    }
+  }
+  ok(inAct >= 8 && crossed >= 20, `${inAct} trips home inside their act and ${crossed} across the jump were compared`);
+});
+
+test('MER-116 (2) estimate says when `jump` settles the trip, and in which season: a field the sheet can word, and none where the trip comes home in its act', () => {
+  const c = variant(C, x => { for (const g of x.goods) g.sigma = 0; });
+  let s = newGame(c, { seed: 1, length: 'acts', house: c.houses[0].id });
+  s.agents.yusuf.where = 'cairo';
+  const short = estimate(s, c, proposePlan(s, c, 'yusuf', 'cairo-aleppo'));
+  eq([short.settledAtJump, 'jumpAt' in short, short.wageSeasons, short.seasons], [false, false, 5, 5]);
+  const long = estimate(s, c, proposePlan(s, c, 'yusuf', 'cairo-samarkand'));
+  eq(long.settledAtJump, true);
+  const played = playedSeasons(c.calendar, 'acts');
+  eq(long.jumpAt, played.find((q, i) => i && q - played[i - 1] > 1), 'the first played season after the years skip');
+  eq(long.wageSeasons, 16, 'the whole road: 16 seasons by yusuf\'s pace, where the 22 the return opens in count its waits and the sending season');
+  eq(long.wage, 16 * c.agents.find(a => a.id === 'yusuf').wage);
+});
+
+test('MER-116 (1) a prepaid expedition already on the road keeps the wage it paid: the return shows the sum written at outfitting, not a recount', () => {
+  // an old save carries `book.wagePaid` from the count it was sent under: bringHome reads it and never recomputes
+  const { rows } = playedWages('cairo-aleppo', { seeds: [1], ns: [0, 3], prepaid: true, tamper: 7 });
+  ok(rows.length >= 2, `${rows.length} trips`);
+  for (const r of rows) eq(r.paid, r.prepay + 7, `${r.at}: prepaid ${r.prepay}, paper paid ${r.paid}`);
 });
 
 test('MER-98 (1) proposePlan: a good the far end pays barely more for stays at home when its extra loads sell lower than they cost', () => {
@@ -534,6 +874,101 @@ test('MER-98 (3) bestTrades: news older than about eight seasons ranks below fre
 });
 
 // ---- MER-98 (6): the why
+
+/** Cairo with no drift and calm roads, 3,000 dinars, and the house's own mark on Damascus porcelain (`glut` now, halved at the one
+    closing before Yusuf arrives). The news is what the market itself recorded: the price `age` seasons ago, with the mark it had then
+    (`glut` doubled for each season since), so the house knows what a news letter would carry (MER-112b). */
+function porcelainTrip(glut, age = 0) {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  let s = step(newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id }), c);   // one season in, so there is news a season old
+  s.money = 3000;
+  const base = M.baseOf(s, c, 'damascus', 'porcelain');
+  s.market.damascus.porcelain.f = 78 / base;   // 78 with no mark on it
+  s.market.damascus.porcelain.glut = glut;
+  know(s, c, 'damascus', 'porcelain', Math.round(78 * (1 - glut * 2 ** age)), age);
+  const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: {}, purse: 2200, contract: 'own', sell: [], buy: ['porcelain'] };
+  const e = estimate(s, c, plan);
+  const paper = toReturn(outfit(s, c, plan), c).paper;
+  const bought = -paper.data.account.find(r => r.label === 'Bought').amount;
+  return { e, paper, bought, loads: paper.data.account.find(r => r.label === 'Bought').text };
+}
+
+test('MER-112 (1) estimate, play 2 trip 3: 18 loads of porcelain bought at Damascus on news of 78 are priced at what the buying pushes the price to, within 5 percent of what the trade charges', () => {
+  // This case has no mark on the price, so the market the estimate builds is the same market 9aaa3721 built: it pins arithmetic that
+  // was already right (the old code passes it), and the marked cases below and the Cairo trips after them are what fail on the old code.
+  const { e, paper, bought, loads } = porcelainTrip(0);
+  const q = e.back.porcelain, flat = Math.round(78 * 1);
+  ok(q >= 15, `${q} loads bought`);
+  ok(new RegExp(`^${q} loads of porcelain`).test(loads), `the trade bought ${loads}, the estimate ${q}`);
+  const cost = q * flat + e.impact.porcelain;
+  ok(Math.abs(cost - bought) <= bought * 0.05, `estimated ${cost}, the trade charged ${bought}`);
+  ok(bought / q > flat * 1.15, `${bought} for ${q} is ${(bought / q).toFixed(1)} a load, well over the 78 the news gave`);
+  ok(Math.abs(paper.data.houseNet - e.net) <= Math.abs(e.net) * 0.05 + 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
+});
+
+test('MER-112 (1) estimate: news written with the house\'s own mark on the price is taken off it and the mark the party will find put back, so the buying there is priced from that mark by market.js', () => {
+  // the news is a season old and carries the mark of 0.6 (0.3 now, doubled); it says 31 for porcelain that is 78 with no mark on it,
+  // and by arrival the mark is 0.15, so the first load costs 66. Taking the 31 as the price at arrival (9aaa3721) buys a third more loads.
+  const { e, paper, bought, loads } = porcelainTrip(0.3, 1);
+  const q = e.back.porcelain;
+  ok(new RegExp(`^${q} loads of porcelain`).test(loads), `the trade bought ${loads}, the estimate ${q}`);
+  ok(Math.abs(e.net - paper.data.houseNet) <= 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
+  ok(Math.abs(q * 66 + e.impact.porcelain - bought) <= bought * 0.05, `${q * 66 + e.impact.porcelain} against ${bought}`);
+  eq(paper.data.why, 'The trip went about as hoped.', 'and the paper has no gap to explain');
+});
+
+test('MER-112 (1) estimate: the house\'s own selling at the far end, with the news carrying the mark, is what the trade fetches', () => {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  let s = step(newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id }), c);
+  s.stock = { linen: 30 };
+  s.market.damascus.linen.f = 60 / M.baseOf(s, c, 'damascus', 'linen');
+  s.market.damascus.linen.glut = 0.2;
+  know(s, c, 'damascus', 'linen', 36, 1);   // 60 with the mark of 0.4 it had a season ago
+  const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 20 }, purse: 0, contract: 'own', sell: ['linen'], buy: [] };
+  const e = estimate(s, c, plan);
+  const paper = toReturn(outfit(s, c, plan), c).paper;
+  const got = paper.data.account.find(r => r.label === 'Sold').amount;
+  ok(Math.abs(20 * 54 - e.impact.linen - got) <= got * 0.05, `estimated ${20 * 54 - e.impact.linen} (the first load at 54: 60 less the mark of 0.1), the trade fetched ${got}`);
+  ok(Math.abs(e.net - paper.data.houseNet) <= 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
+});
+
+// ---- MER-112b: a repeat trip, from a first trip played out
+
+/** Cairo with calm roads and prices that do not drift, a first trip played home, and `plan` for a second from the state it leaves.
+    Returns { e, paper, s } for the second: the estimate before it, its return paper, and the state it was sent from. */
+function afterFirstTrip(first, plan, seasons) {
+  const c = variant(C, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0; for (const g of x.goods) { g.sigma = 0; g.revert = 0; } });
+  let s = newGame(c, { seed: 3, length: 'acts', house: c.houses[0].id });
+  s.stock = { ...first.stock };
+  s.money = 3000;
+  s = outfit(s, c, first.plan);
+  for (let i = 0; i < seasons; i++) s = step(s, c);
+  const e = estimate(s, c, plan(s));
+  const seen = new Set(s.desk.map(p => p.id));
+  let w = outfit(structuredClone(s), c, plan(s)), paper;
+  for (let i = 0; i < 8 && !paper; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+  return { e, paper, s, c };
+}
+
+test('MER-112b (2) estimate, a repeat trip after the house sold 25 linen at Damascus: the news of 40 carries the mark of the first trip, so the second sells at what the stop will pay, not at 40 (9aaa3721: -506 against -315)', () => {
+  const first = { stock: { linen: 25 }, plan: { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 25 }, purse: 0, contract: 'own', sell: ['linen'], buy: [] } };
+  const second = () => ({ agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 20 }, purse: 0, contract: 'own', sell: ['linen'], buy: [] });
+  const { e, paper, s, c } = afterFirstTrip(first, second, 3);
+  eq(s.known.damascus.linen, { p: 40, at: 2 }, 'the house knows 40 for linen at Damascus, written the season of the first trade');
+  eq(M.truePrice(s, c, 'damascus', 'linen'), 48, 'the stop pays 48 now, the mark halved');
+  ok(Math.abs(e.net - paper.data.houseNet) <= Math.abs(paper.data.houseNet) * 0.1, `estimated ${e.net}, made ${paper.data.houseNet}`);
+  ok(paper.data.houseNet < 0, 'the trip loses (linen bought at home for 20 loads costs more than it sells for): the sign is right too');
+  eq(paper.data.why, 'The trip went about as hoped.', 'and the paper does not blame the mark the estimate knew of');
+});
+
+test('MER-112b (2) estimate, a negative mark: the house bought porcelain at Damascus (the price is up), and the second trip sells it there, priced from the mark it will find, not the raised news price (9aaa3721: -115 against -174)', () => {
+  const first = { stock: {}, plan: { agent: 'yusuf', route: 'cairo-damascus', cargo: {}, purse: 2000, contract: 'own', sell: [], buy: ['porcelain'] } };
+  let loads = 0;
+  const second = s => { loads = s.stock.porcelain; return { agent: 'yusuf', route: 'cairo-damascus', cargo: { porcelain: s.stock.porcelain }, purse: 0, contract: 'own', sell: ['porcelain'], buy: [] }; };
+  const { e, paper, s } = afterFirstTrip(first, second, 4);
+  ok(loads >= 10 && s.market.damascus.porcelain.glut < 0, `${loads} loads came home and the mark at Damascus is ${s.market.damascus.porcelain.glut}`);
+  ok(Math.abs(e.net - paper.data.houseNet) <= Math.abs(paper.data.houseNet) * 0.1 + 6, `estimated ${e.net}, made ${paper.data.houseNet}`);
+});
 
 test('MER-98 (6) why, the house\'s own buying: named with the loads and the price before and after when it is the largest cause', () => {
   const c = still(x => { x.stops.find(z => z.id === 'hilltown').sells.salt = { base: 20, depth: 20 }; });

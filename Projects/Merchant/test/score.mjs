@@ -5,7 +5,8 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { freshState } from '../js/engine/state.js';
-import { newGame, openSeason, choose, paperChoices, endSeason, recall, score, outfit } from '../js/engine/index.js';
+import { newGame, openSeason, choose, paperChoices, endSeason, recall, score, outfit, checkPlan } from '../js/engine/index.js';
+import * as M from '../js/engine/market.js';
 import { readEntry } from '../js/engine/turn.js';
 import { recallRisk, chanceWord } from '../js/engine/routes.js';
 import { scaled, netWealth, REP_GROUP_POINTS, HOME_POINTS, HOME_TRUST_BONUS, NOTEBOOK_POINTS } from '../js/engine/score.js';
@@ -144,6 +145,81 @@ test('score: the wealth part carries cash, stock with its loads, loans and what 
   eq(plain.reason, `The house holds 1,200 ${testport.city.currency}: 1,200 in cash, no stock, and owes nothing.`);
   const unknown = bare({ money: 100 }); unknown.stock = { [g]: 3 };
   ok(/3 loads of it with no known price and counted for nothing/.test(part(unknown, 'wealth').reason), part(unknown, 'wealth').reason);
+});
+
+test('score: goods on the road (MER-113) are onRoad, at the home price, and move neither net nor the score', () => {
+  const g = testport.goods[0].id, h2 = testport.goods[1].id;
+  const s = bare({ money: 500 });
+  s.known = { [home]: { [g]: { p: 50, at: 0 } } };
+  const before = { net: netWealth(s, testport).net, total: score(s, testport).total };
+  eq(netWealth(s, testport).onRoad, { loads: 0, value: 0, unpriced: 0, money: 0, goods: [], total: 0 }, 'nothing out, nothing on the road');
+  s.expeditions = [{ id: 'x1', cargo: { [g]: 10, [h2]: 4 }, purse: 120 }, { id: 'x2', cargo: { [g]: 2 }, purse: 0 }];
+  const w = netWealth(s, testport);
+  eq(w.onRoad.loads, 16);
+  eq(w.onRoad.value, 600, '12 loads at 50; the good with no known home price is not valued');
+  eq(w.onRoad.unpriced, 4, 'unpriced loads are counted as unpriced');
+  eq(w.onRoad.money, 120);
+  eq(w.onRoad.total, 720);
+  eq(w.onRoad.goods, [{ good: g, loads: 12, price: 50 }, { good: h2, loads: 4, price: null }]);
+  eq(w.net, before.net, 'net does not move');
+  eq(score(s, testport).total, before.total, 'the score does not move');
+  ok(/On the road, and counted on the top bar but not here: 16 loads of goods worth 600 at those prices, with 4 loads of it with no known price and counted for nothing and 120 in money sent to buy with, the house's share only\.$/.test(part(s, 'wealth').reason), part(s, 'wealth').reason);
+});
+
+// MER-113b: a qirad's partners put in part of the purse; the house paid only the rest, so the bar counts only the house's share.
+const still = () => {
+  const c = structuredClone(testport);
+  c.city.contracts = { qirad: { agentShare: [1, 3] } };
+  c.stops.find(x => x.id === 'hilltown').sells.salt = { base: 6, depth: 40 };
+  for (const g of c.goods) { g.sigma = 0; g.revert = 0; }
+  for (const r of c.routes) for (const l of r.legs) l.risk = 0;
+  const m = c.agents.find(a => a.id === 'mira'); m.traits = ['honest']; m.wage = 1;
+  return c;
+};
+const barFigure = (s, c) => { const w = netWealth(s, c); return w.net + w.onRoad.total; };
+const QIRAD = { agent: 'mira', route: 'harbour-hilltown', cargo: {}, purse: 100, contract: 'qirad', partners: 60, sell: [], buy: ['salt'] };
+function qiradGame(c) {
+  const s = newGame(c, { seed: 7, length: 'full', house: 'plain' });
+  s.money = 1000;
+  for (const g of ['wool', 'salt']) s.known[home] = { ...(s.known[home] ?? {}), [g]: { p: M.truePrice(s, c, home, g), at: s.t } };
+  return s;
+}
+
+test('score: a qirad with a purse of 100, 60 of it the partners\', moves the bar by nothing at Send: only the house\'s 40 is counted on the road (MER-113b)', () => {
+  const c = still(), before = qiradGame(c);
+  const after = outfit(structuredClone(before), c, QIRAD);
+  eq(before.money - after.money, 40, 'setup: the house paid 40 of the 100');
+  eq(netWealth(after, c).onRoad.money, 40, 'the house\'s share of the purse, not the whole of it');
+  eq(barFigure(after, c), barFigure(before, c), 'the bar figure is the same before and after Send to the dinar');
+});
+
+test('score: goods bought and sent on partner money are counted at the house\'s share too (MER-113b)', () => {
+  const c = still(), before = qiradGame(c);
+  const plan = { ...QIRAD, cargo: { wool: 3 }, purse: 100, partners: 80, sell: ['wool'] };
+  ok(checkPlan(before, c, plan).ok, JSON.stringify(checkPlan(before, c, plan).problems));
+  const after = outfit(structuredClone(before), c, plan);
+  const w = netWealth(after, c), x = after.expeditions[0];
+  eq(x.staked.partners, 80, 'setup: the partners put in 80');
+  const share = x.staked.house / (x.staked.house + 80);
+  eq(w.onRoad.loads, 3, 'the loads aboard stay whole');
+  eq(w.onRoad.money, Math.round(100 * share), 'the purse at the house\'s share');
+  eq(w.onRoad.value, Math.round(3 * M.truePrice(before, c, home, 'wool') * share), 'the goods at the house\'s share');
+  eq(barFigure(after, c), barFigure(before, c), 'the bar figure is the same before and after Send');
+});
+
+test('score: an expedition with no partners counts whole, and one with a staked house of nothing does not divide by zero (MER-113b)', () => {
+  const s = bare({ money: 0 }); const g = testport.goods[0].id;
+  s.known = { [home]: { [g]: { p: 10, at: 0 } } };
+  s.expeditions = [{ id: 'x1', cargo: { [g]: 5 }, purse: 30, staked: { house: 80, partners: 0 } }, { id: 'x2', cargo: { [g]: 1 }, purse: 7, staked: { house: 0, partners: 0 } }];
+  eq([netWealth(s, testport).onRoad.value, netWealth(s, testport).onRoad.money], [60, 37]);
+});
+
+test('score: the wealth line names money-only trips and unpriced loads on the road (MER-113b)', () => {
+  const s = bare({ money: 500 });
+  s.expeditions = [{ id: 'x1', cargo: {}, purse: 90 }];
+  ok(/On the road, and counted on the top bar but not here: 90 in money sent to buy with, the house's share only\.$/.test(part(s, 'wealth').reason), part(s, 'wealth').reason);
+  s.expeditions = [{ id: 'x1', cargo: { [testport.goods[0].id]: 2 }, purse: 0 }];
+  ok(/2 loads of goods, 2 loads of it with no known price and counted for nothing, the house's share only\.$/.test(part(s, 'wealth').reason), part(s, 'wealth').reason);
 });
 
 test('recall: the engine says each person\'s odds in words, on the road and at home, from the numbers it rolls with', () => {

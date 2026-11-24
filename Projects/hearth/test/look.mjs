@@ -1,7 +1,7 @@
 // Hearth's look rig (A0 of DESIGN-arc-three.md): eight scenes of seed 7, each drawn at zoom 1 and zoom 3.2, timed, and optionally
 // written out as pictures.
 //
-//   node look.mjs [--out <dir>] [--budget-median 12] [--budget-p95 24]
+//   node look.mjs [--out <dir>] [--budget-median 13] [--budget-p95 26] [--tier0-margin 5]
 //
 // The page is opened over http (serve.mjs) so the canvas is never tainted, and its own loop is paused as harness.mjs does, so every
 // step is this file's. Viewport 880 by 560 at scale 1 with the HUD and log hidden: one world pixel is one canvas pixel at zoom 1.
@@ -14,8 +14,10 @@ import path from 'node:path';
 import { serve } from './serve.mjs';
 
 function arg(name, dflt) { const i = process.argv.indexOf('--' + name); return i >= 0 ? process.argv[i + 1] : dflt; }
-const BUDGET_MEDIAN = +arg('budget-median', 12); // 3.2 asks for 6 ms; A14 tightens it. 12 is today's looser ceiling.
-const BUDGET_P95 = +arg('budget-p95', 24);
+// Design 3.2 asked for 6 ms median and 12 ms p95; Devon relaxed that on 2026-11-21 (#1093). 13 and 26 sit 25% above the worst picture-identical
+// frame measured (median 10.25 ms in S4 fog at zoom 3.2, p95 16.5 ms in S5 snow at zoom 1), so a loaded machine does not turn it red.
+const BUDGET_MEDIAN = +arg('budget-median', 13);
+const BUDGET_P95 = +arg('budget-p95', 26);
 const OUT = arg('out', null) || fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-look-'));
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -32,9 +34,9 @@ const SCENES = [
 ];
 
 // what the same scenes cost at A0, before any of A2 to A10 (the first run of this rig, [zoom 1, zoom 3.2] median ms, seed 7 on Huginn, commit 61d7cf08).
-// Tier 0 has to come in at or under this plus 1 ms (design A14).
+// Tier 0 has to come in at or under this plus TIER0_MARGIN (design A14 said 1 ms; relaxed to 5 ms by Devon, 2026-11-21, #1093: the worst row, S4 fog at zoom 3.2, is 3.5 over).
 const A0_BASE = { S1: [5.65, 4.00], S2: [4.40, 5.10], S3: [4.00, 3.05], S4: [5.40, 6.20], S5: [4.60, 3.80], S6: [5.60, 5.90], S7: [5.50, 6.40], S8: [5.60, 8.00] };
-const TIER0_MARGIN = +arg('tier0-margin', 1);
+const TIER0_MARGIN = +arg('tier0-margin', 5);
 const LAUNCH = { args: ['--autoplay-policy=no-user-gesture-required'] };
 const browser = await chromium.launch(LAUNCH).catch(() => chromium.launch({ ...LAUNCH, executablePath: '/opt/pw-browsers/chromium' }));
 const srv = await serve();
@@ -937,16 +939,16 @@ check(`timing: every scene's draw() median is at or under ${BUDGET_MEDIAN} ms an
   rows.filter(r => r.med > BUDGET_MEDIAN || r.p95 > BUDGET_P95).map(r => `${r.id} z${r.z} ${r.med.toFixed(1)}/${r.p95.toFixed(1)}`).join(', '));
 console.log('\ntier cost (median ms)          zoom   tier 2   tier 1   tier 0   A0 baseline');
 for (const t of tierRows) console.log(`${t.id.padEnd(30)} ${String(t.z).padEnd(5)} ${t.t2.toFixed(2).padStart(7)} ${t.t1.toFixed(2).padStart(8)} ${t.t0.toFixed(2).padStart(8)} ${A0_BASE[t.id][t.z === 1 ? 0 : 1].toFixed(2).padStart(11)}`);
-// A14: the design asks for tier 0 at or under the A0 baseline plus 1 ms in every scene. Measured here that is met in 8 of 16 and missed by up to 3 ms in the
-// winter scenes, where 240 bare trees are most of the frame (HISTORY). So the assertion is the part of it the code can honestly keep: tier 0 is measurably cheaper
-// than tier 2 (the sum of its 16 medians at most 92% of tier 2's) and in no scene dearer by more than half a millisecond. The gap to A0 plus 1 is printed, and
-// --strict-tier0 asserts it. Break: force lookQ 2 in the tier-0 run and the sum assertion fails.
+// A14: the design asked for tier 0 at or under the A0 baseline plus 1 ms in every scene; measured, that was met in 10 of 16 rows and missed by up to 3.5 ms
+// (S4 fog, where the screen-sized fog blits are most of the frame, HISTORY). Devon relaxed it to plus 5 ms on 2026-11-21 (#1093) and that is asserted below,
+// beside two shape checks: tier 0's 16 medians sum to at most 92% of tier 2's, and no scene is dearer than tier 2 by more than half a millisecond.
+// Break: force lookQ 2 in the tier-0 run and the sum assertion fails.
 const sum = k => tierRows.reduce((a, t) => a + t[k], 0), base = t => A0_BASE[t.id][t.z === 1 ? 0 : 1];
 const meets = tierRows.filter(t => t.t0 <= base(t) + TIER0_MARGIN).length;
 console.log(`tier 0 sum of medians ${sum('t0').toFixed(1)} ms against tier 2 ${sum('t2').toFixed(1)} (${(100 * sum('t0') / sum('t2')).toFixed(0)}%), tier 1 ${sum('t1').toFixed(1)}; at or under A0 plus ${TIER0_MARGIN} ms in ${meets} of ${tierRows.length} rows`);
 check('tier 0: the sum of its 16 medians is at most 92% of tier 2\'s', sum('t0') <= .92 * sum('t2'), `${sum('t0').toFixed(1)} against ${sum('t2').toFixed(1)}`);
 check('tier 0: no scene costs more than half a millisecond above tier 2', tierRows.every(t => t.t0 <= t.t2 + .5), tierRows.filter(t => t.t0 > t.t2 + .5).map(t => `${t.id} z${t.z} ${t.t0.toFixed(1)} against ${t.t2.toFixed(1)}`).join(', '));
-if (process.argv.includes('--strict-tier0')) {
+{
   const over0 = tierRows.filter(t => t.t0 > base(t) + TIER0_MARGIN);
   check(`tier 0: every scene's draw() median is at or under its A0 baseline plus ${TIER0_MARGIN} ms`, over0.length === 0, over0.map(t => `${t.id} z${t.z} ${t.t0.toFixed(1)} against ${base(t)}`).join(', '));
 }

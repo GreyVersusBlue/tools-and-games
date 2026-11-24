@@ -57,15 +57,15 @@
       {
         "id": "gold",
         "label": "Buy two chests of gold now",
-        "hint": "A chest of gold costs 100. Two chests are a venture on one price, so the sum is large.",
+        "hint": "Jamil's friend sells a chest for 90, a little under the 100 the market asks. Two chests are a venture on one price, so the sum is large.",
         "requires": {
           "money": {
-            "gte": 200
+            "gte": 180
           }
         },
         "now": [
           {
-            "money": -200
+            "money": -180
           },
           {
             "stock": "gold",
