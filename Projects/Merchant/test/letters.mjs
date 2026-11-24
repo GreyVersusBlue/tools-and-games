@@ -24,6 +24,7 @@ import { MAX_WAIT, pickEntry } from '../js/engine/routes.js';
 import { next as dice } from '../js/engine/rng.js';
 import { steps } from '../js/engine/turn.js';
 import { repair } from '../js/save.js';
+import { playGame } from '../tools/bots.mjs';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view } from '../js/engine/index.js';
 
 const T = await loadContent('testport', { fs });
@@ -1107,6 +1108,43 @@ test('(MER-134, 9) a letter that waited for room does not arrive with the agent 
   const onTime = run(n => n, n => n - 1);
   const names = onTime.desk.map(p => p.ref ?? p.kind);
   ok(names.indexOf('damascus-early-caravan') >= 0 && names.indexOf('damascus-early-caravan') < names.indexOf('return'), `an on-time letter comes before the return: ${names}`);
+});
+
+
+// ---- MER-136: the share of long trips that bring a letter holds its floor, in a check CI runs
+// test/mix.mjs measures the same share over 1,000 games and is run by hand. For a week it read 22 percent while the engine gave about 72:
+// `deliver` puts a letter ahead of its own trip's return paper (MER-118), and mix.mjs looked for new letters at the end of the desk,
+// where the return paper had taken their place. So the papers are compared, not the length of the desk, and this case plays enough
+// seeded bot games (36: careful, greedy and qirad in turn, every house) to tell 25 percent from 50: about 110 trips of three seasons or more.
+const SHARE_GAMES = 36, SHARE_FLOOR = 0.4;
+function letterShare(games) {
+  const { letters: orig, returns: ret } = steps;
+  let game = null, trips = 0, lettered = 0;
+  steps.returns = (s, c, ...a) => {
+    const was = new Set(s.desk);
+    ret(s, c, ...a);
+    for (const p of s.desk) if (!was.has(p) && p.kind === 'return' && p.data?.trip?.seasons >= 3) game.home.push(p.expedition);
+  };
+  steps.letters = (s, c, ...a) => {
+    const was = new Set(s.desk);       // not the desk's length: a letter is put ahead of its trip's return paper
+    orig(s, c, ...a);
+    for (const p of s.desk) if (!was.has(p) && p.kind === 'letter') game.wrote.add(p.expedition);
+  };
+  try {
+    for (let i = 0; i < games; i++) {
+      game = { home: [], wrote: new Set() };
+      playGame(CAIRO, { bot: ['careful', 'greedy', 'qirad'][i % 3], seed: 1000 + i, house: CAIRO.houses[i % CAIRO.houses.length].id });
+      trips += game.home.length;
+      lettered += game.home.filter(id => game.wrote.has(id)).length;
+    }
+  } finally { Object.assign(steps, { letters: orig, returns: ret }); }
+  return { trips, lettered, share: trips ? lettered / trips : 0 };
+}
+test(`(MER-136) at least ${SHARE_FLOOR * 100} percent of trips of three seasons or more that come home brought a letter, over ${SHARE_GAMES} seeded bot games`, () => {
+  const m = letterShare(SHARE_GAMES);
+  console.log(`  ${SHARE_GAMES} bot games: ${m.trips} trips of three seasons or more came home, ${m.lettered} with a letter (${(m.share * 100).toFixed(1)} percent)`);
+  ok(m.trips >= 80, `only ${m.trips} long trips came home, too few to tell 25 percent from 50`);
+  ok(m.share >= SHARE_FLOOR, `${(m.share * 100).toFixed(1)} percent of long trips brought a letter, under ${SHARE_FLOOR * 100} (the design's floor is 50, test/mix.mjs; the engine gave about 72 on 2026-11-24)`);
 });
 
 

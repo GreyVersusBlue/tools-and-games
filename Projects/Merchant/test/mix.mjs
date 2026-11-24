@@ -38,9 +38,10 @@ steps.returns = (s, c, ...a) => {
   for (const p of s.desk.slice(before)) if (p.kind === 'return' && p.data?.trip) game.returned.push({ expedition: p.expedition, seasons: p.data.trip.seasons, route: p.data.trip.route });
 };
 steps.letters = (s, c, ...a) => {
-  const before = s.desk.length;
+  // a letter is put ahead of its own trip's return paper (letters.js `deliver`, MER-118), so it is not at the end of the desk: compare the papers, not the length
+  const was = new Set(s.desk);
   letters(s, c, ...a);
-  for (const p of s.desk.slice(before)) if (p.kind === 'letter') game.lettered.add(p.expedition);
+  for (const p of s.desk) if (!was.has(p) && p.kind === 'letter') game.lettered.add(p.expedition);
 };
 steps.drawCards = (s, c, ...a) => {
   const before = s.desk.length, live = s.expeditions.length > 0 || s.desk.some(p => p.kind === 'return' || p.kind === 'lost');
