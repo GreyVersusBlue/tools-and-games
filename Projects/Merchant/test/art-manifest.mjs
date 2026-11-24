@@ -115,7 +115,9 @@ test('check() catches the faults it names', () => {
   ok(/over its ceiling/.test(flaw(c => { c.assets[0].maxBytes = 100; })));
   ok(/no alt/.test(flaw(c => { c.assets[0].alt = ''; })));
   ok(/safe box/.test(flaw(c => { delete c.assets[0].safe; })));
-  ok(/still the placeholder/.test(flaw(c => { c.assets[0].final = true; })));
+  // the file's own hash is listed as a placeholder, so the case holds whichever pictures are final
+  const ownHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(ART, m.assets[0].file))).digest('hex');
+  ok(/still the placeholder/.test(flaw(c => { c.placeholderHash = [...(c.placeholderHash ?? []), ownHash]; c.assets[0].final = true; })));
 });
 
 if (!process.argv[1] || path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) done();

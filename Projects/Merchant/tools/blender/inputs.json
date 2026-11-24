@@ -1,0 +1,683 @@
+{
+ "note": "Every outside input used by the Merchant art scripts. Files live on Windows in inputs/ and are not delivered. Batch 1, 2026-11-16. Web addresses are left out here (the site allows no offsite links); each input is found by its name in the library named.",
+ "inputs": [
+  {
+   "name": "dark_wood",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/dark_wood/dark_wood_diff_2k.jpg",
+    "tex/dark_wood/dark_wood_nor_2k.jpg",
+    "tex/dark_wood/dark_wood_rough_2k.jpg",
+    "tex/dark_wood/dark_wood_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A01",
+    "A03",
+    "A04",
+    "A02"
+   ],
+   "as": "walnut, walnut_inlay, carved_wood"
+  },
+  {
+   "name": "wood_table_worn",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/wood_table_worn/wood_table_worn_diff_2k.jpg",
+    "tex/wood_table_worn/wood_table_worn_nor_2k.jpg",
+    "tex/wood_table_worn/wood_table_worn_rough_2k.jpg",
+    "tex/wood_table_worn/wood_table_worn_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A01",
+    "A02",
+    "A07",
+    "A11",
+    "A14",
+    "A18"
+   ],
+   "as": "plain_wood (also reed pens, prayer beads, lattice screen)"
+  },
+  {
+   "name": "weathered_planks",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/weathered_planks/weathered_planks_diff_2k.jpg",
+    "tex/weathered_planks/weathered_planks_nor_2k.jpg",
+    "tex/weathered_planks/weathered_planks_rough_2k.jpg",
+    "tex/weathered_planks/weathered_planks_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A06",
+    "A07",
+    "A10",
+    "A13",
+    "A14",
+    "A17"
+   ],
+   "as": "ship_timber"
+  },
+  {
+   "name": "rough_linen",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/rough_linen/rough_linen_diff_2k.jpg",
+    "tex/rough_linen/rough_linen_nor_2k.jpg",
+    "tex/rough_linen/rough_linen_rough_2k.jpg",
+    "tex/rough_linen/rough_linen_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A15",
+    "A14",
+    "A17"
+   ],
+   "as": "linen, sailcloth (weave only; colour set in common.py)"
+  },
+  {
+   "name": "hessian_230",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/hessian_230/hessian_230_diff_2k.jpg",
+    "tex/hessian_230/hessian_230_nor_2k.jpg",
+    "tex/hessian_230/hessian_230_rough_2k.jpg",
+    "tex/hessian_230/hessian_230_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A01",
+    "A15",
+    "A02",
+    "A06",
+    "A12",
+    "A17"
+   ],
+   "as": "hessian (pepper sack), carpet weave"
+  },
+  {
+   "name": "hessian_380",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/hessian_380/hessian_380_diff_2k.jpg",
+    "tex/hessian_380/hessian_380_nor_2k.jpg",
+    "tex/hessian_380/hessian_380_rough_2k.jpg",
+    "tex/hessian_380/hessian_380_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A01",
+    "A02",
+    "A15",
+    "A16",
+    "A06",
+    "A12"
+   ],
+   "as": "rope, thread, scale cords"
+  },
+  {
+   "name": "crepe_satin",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/crepe_satin/crepe_satin_nor_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A15"
+   ],
+   "as": "silk (normal map only)"
+  },
+  {
+   "name": "caban",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/caban/caban_nor_2k.jpg",
+    "tex/caban/caban_rough_2k.jpg",
+    "tex/caban/caban_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A01",
+    "A02",
+    "A15",
+    "A12",
+    "A17"
+   ],
+   "as": "wool (weave only; colour set in common.py)"
+  },
+  {
+   "name": "brown_leather",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/brown_leather/brown_leather_diff_2k.jpg",
+    "tex/brown_leather/brown_leather_nor_2k.jpg",
+    "tex/brown_leather/brown_leather_rough_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A01",
+    "A02",
+    "A15",
+    "A16"
+   ],
+   "as": "leather (ledger cover)"
+  },
+  {
+   "name": "white_stucco",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/white_stucco/white_stucco_diff_2k.jpg",
+    "tex/white_stucco/white_stucco_nor_2k.jpg",
+    "tex/white_stucco/white_stucco_rough_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A01",
+    "A03",
+    "A02",
+    "A05",
+    "A12",
+    "A18"
+   ],
+   "as": "lime_plaster (room walls)"
+  },
+  {
+   "name": "large_sandstone_blocks",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/large_sandstone_blocks/large_sandstone_blocks_diff_2k.jpg",
+    "tex/large_sandstone_blocks/large_sandstone_blocks_nor_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A05",
+    "A06",
+    "A10",
+    "A12",
+    "A17",
+    "A18"
+   ],
+   "as": "striped_stone (ablaq) shading"
+  },
+  {
+   "name": "brown_mud_dry",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/brown_mud_dry/brown_mud_dry_diff_2k.jpg",
+    "tex/brown_mud_dry/brown_mud_dry_nor_2k.jpg",
+    "tex/brown_mud_dry/brown_mud_dry_rough_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A05",
+    "A18"
+   ],
+   "as": "mud_brick"
+  },
+  {
+   "name": "sand_01",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/sand_01/sand_01_diff_2k.jpg",
+    "tex/sand_01/sand_01_nor_2k.jpg",
+    "tex/sand_01/sand_01_rough_2k.jpg"
+   ],
+   "used_by": [
+    "A00",
+    "A08",
+    "A17"
+   ],
+   "as": "sand"
+  },
+  {
+   "name": "black_walnut_veneer_01",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/black_walnut_veneer_01/*"
+   ],
+   "used_by": [],
+   "as": "downloaded and tried for walnut; its colour map has almost no grain, so it was replaced by dark_wood. Not used."
+  },
+  {
+   "name": "Natural Earth 1:50m land",
+   "library": "Natural Earth (natural-earth-vector GitHub repository)",
+   "licence": "Public domain",
+   "files": [
+    "geo/ne_50m_land.geojson"
+   ],
+   "used_by": [
+    "A03"
+   ],
+   "as": "coastlines (land mask)"
+  },
+  {
+   "name": "Natural Earth 1:50m lakes",
+   "library": "Natural Earth (natural-earth-vector GitHub repository)",
+   "licence": "Public domain",
+   "files": [
+    "geo/ne_50m_lakes.geojson"
+   ],
+   "used_by": [
+    "A03"
+   ],
+   "as": "inland water, with modern reservoirs and the shrunken Aral removed"
+  },
+  {
+   "name": "Natural Earth 1:50m rivers and lake centerlines",
+   "library": "Natural Earth (natural-earth-vector GitHub repository)",
+   "licence": "Public domain",
+   "files": [
+    "geo/ne_50m_rivers_lake_centerlines.geojson"
+   ],
+   "used_by": [
+    "A03"
+   ],
+   "as": "Nile, Niger, Tigris, Euphrates inlay lines"
+  },
+  {
+   "name": "ETOPO1 Ice Surface, 1 arc-minute global relief (subset)",
+   "library": "NOAA National Centers for Environmental Information, via the NOAA CoastWatch ERDDAP server (dataset etopo180)",
+   "licence": "Public domain (US Government work)",
+   "files": [
+    "geo/etopo1_4min.asc"
+   ],
+   "used_by": [
+    "A03"
+   ],
+   "as": "relief heights, 4 arc-minute spacing, 10W-80E, 5N-48N"
+  },
+  {
+   "name": "medieval_red_brick",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/medieval_red_brick/medieval_red_brick_diff_2k.jpg",
+    "tex/medieval_red_brick/medieval_red_brick_nor_2k.jpg",
+    "tex/medieval_red_brick/medieval_red_brick_rough_2k.jpg",
+    "tex/medieval_red_brick/medieval_red_brick_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A14"
+   ],
+   "as": "red_brick"
+  },
+  {
+   "name": "coral_stone_wall",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/coral_stone_wall/coral_stone_wall_diff_2k.jpg",
+    "tex/coral_stone_wall/coral_stone_wall_nor_2k.jpg",
+    "tex/coral_stone_wall/coral_stone_wall_rough_2k.jpg",
+    "tex/coral_stone_wall/coral_stone_wall_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A07"
+   ],
+   "as": "coral_stone"
+  },
+  {
+   "name": "rock_face",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/rock_face/rock_face_diff_2k.jpg",
+    "tex/rock_face/rock_face_nor_2k.jpg",
+    "tex/rock_face/rock_face_rough_2k.jpg",
+    "tex/rock_face/rock_face_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A05",
+    "A06",
+    "A07",
+    "A09",
+    "A11",
+    "A13",
+    "A17",
+    "A18"
+   ],
+   "as": "rock, rocky_ground, kit_terrain.rock_snow_mat"
+  },
+  {
+   "name": "snow_02",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/snow_02/snow_02_diff_2k.jpg",
+    "tex/snow_02/snow_02_nor_2k.jpg",
+    "tex/snow_02/snow_02_rough_2k.jpg",
+    "tex/snow_02/snow_02_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A09"
+   ],
+   "as": "snow_ground"
+  },
+  {
+   "name": "thatch_roof_angled",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/thatch_roof_angled/thatch_roof_angled_diff_2k.jpg",
+    "tex/thatch_roof_angled/thatch_roof_angled_nor_2k.jpg",
+    "tex/thatch_roof_angled/thatch_roof_angled_rough_2k.jpg",
+    "tex/thatch_roof_angled/thatch_roof_angled_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A13"
+   ],
+   "as": "thatch"
+  },
+  {
+   "name": "reed_roof_04",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/reed_roof_04/reed_roof_04_diff_2k.jpg",
+    "tex/reed_roof_04/reed_roof_04_nor_2k.jpg",
+    "tex/reed_roof_04/reed_roof_04_rough_2k.jpg",
+    "tex/reed_roof_04/reed_roof_04_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A07",
+    "A13"
+   ],
+   "as": "reed_mat"
+  },
+  {
+   "name": "seaworn_sandstone_brick",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/seaworn_sandstone_brick/seaworn_sandstone_brick_diff_2k.jpg",
+    "tex/seaworn_sandstone_brick/seaworn_sandstone_brick_nor_2k.jpg",
+    "tex/seaworn_sandstone_brick/seaworn_sandstone_brick_rough_2k.jpg",
+    "tex/seaworn_sandstone_brick/seaworn_sandstone_brick_disp_2k.jpg"
+   ],
+   "used_by": [
+    "A06",
+    "A12",
+    "A14",
+    "A17"
+   ],
+   "as": "quay_stone"
+  },
+  {
+   "name": "rocky_terrain_02",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/rocky_terrain_02/rocky_terrain_02_diff_2k.jpg",
+    "tex/rocky_terrain_02/rocky_terrain_02_nor_2k.jpg",
+    "tex/rocky_terrain_02/rocky_terrain_02_rough_2k.jpg",
+    "tex/rocky_terrain_02/rocky_terrain_02_disp_2k.jpg"
+   ],
+   "used_by": [],
+   "as": "downloaded, not used (green grass)"
+  },
+  {
+   "name": "castle_brick_02_white",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "tex/castle_brick_02_white/castle_brick_02_white_diff_2k.jpg",
+    "tex/castle_brick_02_white/castle_brick_02_white_nor_2k.jpg",
+    "tex/castle_brick_02_white/castle_brick_02_white_rough_2k.jpg",
+    "tex/castle_brick_02_white/castle_brick_02_white_disp_2k.jpg"
+   ],
+   "used_by": [],
+   "as": "downloaded, not used (small red brick)"
+  },
+  {
+   "name": "island_tree_01",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/island_tree_01/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A07",
+    "A13"
+   ],
+   "as": "model: mangroves, coastal trees"
+  },
+  {
+   "name": "island_tree_02",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/island_tree_02/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A13"
+   ],
+   "as": "model: coastal woods"
+  },
+  {
+   "name": "island_tree_03",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/island_tree_03/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A07",
+    "A13"
+   ],
+   "as": "model: mangroves, bushes"
+  },
+  {
+   "name": "searsia_burchellii",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/searsia_burchellii/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A07",
+    "A11",
+    "A17"
+   ],
+   "as": "model: scrub, thorn-tree foliage"
+  },
+  {
+   "name": "searsia_lucida",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/searsia_lucida/ (glTF 2k)"
+   ],
+   "used_by": [],
+   "as": "model: downloaded, not used"
+  },
+  {
+   "name": "wild_rooibos_bush",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/wild_rooibos_bush/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A07",
+    "A17"
+   ],
+   "as": "model: desert scrub"
+  },
+  {
+   "name": "namaqualand_boulder_02",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/namaqualand_boulder_02/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A07"
+   ],
+   "as": "model: boulders"
+  },
+  {
+   "name": "namaqualand_boulder_03",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/namaqualand_boulder_03/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A07"
+   ],
+   "as": "model: boulders"
+  },
+  {
+   "name": "namaqualand_boulder_05",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/namaqualand_boulder_05/ (glTF 2k)"
+   ],
+   "used_by": [
+    "A07"
+   ],
+   "as": "model: boulders"
+  },
+  {
+   "name": "namaqualand_cliff_01",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/namaqualand_cliff_01/ (glTF 2k)"
+   ],
+   "used_by": [],
+   "as": "model: downloaded, not used"
+  },
+  {
+   "name": "coast_rocks_01",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/coast_rocks_01/ (glTF 2k)"
+   ],
+   "used_by": [],
+   "as": "model: downloaded, not used"
+  },
+  {
+   "name": "coast_rocks_02",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/models/coast_rocks_02/ (glTF 2k)"
+   ],
+   "used_by": [],
+   "as": "model: downloaded, not used"
+  },
+  {
+   "name": "kloofendal_48d_partly_cloudy_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/kloofendal_48d_partly_cloudy_puresky_*.hdr"
+   ],
+   "used_by": [
+    "A07"
+   ],
+   "as": "sky photo (HDRI 8k)"
+  },
+  {
+   "name": "mud_road_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/mud_road_puresky_*.hdr"
+   ],
+   "used_by": [
+    "A13",
+    "A17"
+   ],
+   "as": "sky photo (HDRI 8k), darkened"
+  },
+  {
+   "name": "table_mountain_1_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/table_mountain_1_puresky_*.hdr"
+   ],
+   "used_by": [],
+   "as": "sky photo, downloaded, not used"
+  },
+  {
+   "name": "belfast_sunset_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/belfast_sunset_puresky_*.hdr"
+   ],
+   "used_by": [],
+   "as": "sky photo, downloaded, not used yet"
+  },
+  {
+   "name": "wasteland_clouds_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/wasteland_clouds_puresky_*.hdr"
+   ],
+   "used_by": [],
+   "as": "sky photo (16k), tried, not used"
+  },
+  {
+   "name": "scythian_tombs_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/scythian_tombs_puresky_*.hdr"
+   ],
+   "used_by": [],
+   "as": "sky photo (16k), tried, not used"
+  },
+  {
+   "name": "snow_field_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/snow_field_puresky_*.hdr"
+   ],
+   "used_by": [],
+   "as": "sky photo, downloaded, not used yet"
+  },
+  {
+   "name": "lonely_road_afternoon_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/lonely_road_afternoon_puresky_*.hdr"
+   ],
+   "used_by": [],
+   "as": "sky photo, downloaded, not used yet"
+  },
+  {
+   "name": "qwantani_moonrise_puresky",
+   "library": "Poly Haven",
+   "licence": "CC0",
+   "files": [
+    "inputs/hdri/qwantani_moonrise_puresky_*.hdr"
+   ],
+   "used_by": [],
+   "as": "sky photo, downloaded, not used yet"
+  }
+ ]
+}
