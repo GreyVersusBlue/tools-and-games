@@ -108,6 +108,17 @@ const tabOrder = async (page, n) => {
 };
 const setLarge = (page, on) => page.evaluate(v => document.documentElement.classList.toggle('large-text', v), on);
 const hashOf = page => page.evaluate(() => location.hash);
+/** A point `off` px from the centre of a dot, on the side away from the nearest other dot, so that a press there is closest to this dot at every
+    frame however close the real map puts its neighbour (Damascus and Aleppo are 50 px apart at 1920 wide and 24 px at laptop width, a delta and an
+    Upper Egypt square 18 px on a phone). A press that misses the dot itself, which is what the nearest-stop rule is for. */
+const pressPoint = (page, selector, off) => page.evaluate((sel, off) => {
+  const mid = d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  const me = document.querySelector(sel), [x, y] = mid(me);
+  let near = null, nd = Infinity;
+  for (const o of document.querySelectorAll('.dot')) { if (o === me) continue; const [ox, oy] = mid(o), d = Math.hypot(ox - x, oy - y); if (d < nd) { nd = d; near = [ox, oy]; } }
+  const u = near ? [(x - near[0]) / nd, (y - near[1]) / nd] : [1, 0];
+  return [x + u[0] * off, y + u[1] * off];
+}, selector, off);
 /** Every sheet opens as the summary (MER-99). Presses each Change link that opens a section in place (not Where, which goes back to the map)
     so the steppers, the agents and the contracts are on the page. Safe to call on a sheet that is already open. */
 const openAll = async page => {
@@ -1107,8 +1118,8 @@ try {
         const [bx, by] = await at('aden');
         await page.mouse.click(bx - 40, by + 30);   // 50 px away: nothing is that close
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Samarkand', 'a press 50 px from every stop selects nothing');
-        const [dx, dy] = await at('damascus');
-        await page.mouse.click(dx + 20, dy - 6);
+        const [dx, dy] = await pressPoint(page, '.dot[data-stop="damascus"]', 10);
+        await page.mouse.click(dx, dy);
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
       });
     } else {
@@ -1852,12 +1863,12 @@ try {
         eq(want.length, 5, 'Cairo names five clusters');
         eq(cl.slice().sort(), want.slice().sort(), 'every cluster is labelled by its name from city.json');
         eq(await page.$('.stop-label[data-stop="cairo"]'), null, 'Cairo has no label of its own until the inset');
-        const [x, y] = await page.$eval('.dot.cluster[data-cluster="delta"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
-        await page.mouse.click(x + 10, y + 6);
+        const [x, y] = await pressPoint(page, '.dot.cluster[data-cluster="delta"]', 9);
+        await page.mouse.click(x, y);
         await page.waitForSelector('#map-unzoom:not([hidden])');
         ok(await page.$('.stop-label[data-stop="cairo"]') && await page.$('.stop-label[data-stop="alexandria"]'), 'both stops are named in the inset');
-        const [cx, cy] = await page.$eval('.dot[data-stop="alexandria"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
-        await page.mouse.click(cx + 12, cy - 12);
+        const [cx, cy] = await pressPoint(page, '.dot[data-stop="alexandria"]', 12);
+        await page.mouse.click(cx, cy);
         eq(await page.$eval('#stop-alexandria', e => e.getAttribute('aria-selected')), 'true');
         await page.click('#map-unzoom');
         eq(await page.$('.stop-label[data-stop="cairo"]'), null);
