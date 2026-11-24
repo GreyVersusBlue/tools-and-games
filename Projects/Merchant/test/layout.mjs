@@ -842,17 +842,25 @@ try {
             await page.evaluate(() => new Promise(r => setTimeout(r, 300)));   // a token slides to its place over the token-move time
             const got = await page.evaluate(() => {
               const box = e => { const b = e.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; };
-              const named = e => (e.classList.contains('token') ? 'token ' : 'label ') + (e.textContent.trim().slice(0, 26) || e.className);
-              const items = [...document.querySelectorAll('.stop-label:not([hidden]), .token')].filter(e => e.checkVisibility()).map(e => ({ n: named(e), r: box(e), token: e.classList.contains('token') }));
+              // MER-131: a token's anchor is the centre of its piece and the element itself has no size, so the piece and its caption are measured
+              const tok = e => e.closest('.token');
+              const named = e => (tok(e) ? 'token ' : 'label ') + (e.textContent.trim().slice(0, 26) || e.className);
+              const items = [...document.querySelectorAll('.stop-label:not([hidden]), .token-piece, .token-label')].filter(e => e.checkVisibility()).map(e => ({ n: named(e), r: box(e), token: !!tok(e), own: tok(e), piece: e.classList.contains('token-piece'), home: !!e.dataset.keep }));
               const hits = [];
               for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
                 const a = items[i].r, b = items[j].r;
-                if ((items[i].token || items[j].token) && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5) hits.push(`${items[i].n} over ${items[j].n}`);
+                if (items[i].own && items[i].own === items[j].own) continue;   // a token's piece and its own caption
+                if (items[i].home || items[j].home) continue;   // MER-131: Cairo's label is drawn over a token's edge when two parties leave it on roads too short to clear it
+                // two pieces on roads too short to part them may share edges (MER-131: a token never leaves its road), never their middles
+                const core = (r, p) => { const k = p ? (r.right - r.left) / 4 : 0; return { left: r.left + k, right: r.right - k, top: r.top + k, bottom: r.bottom - k }; };
+                const pp = items[i].piece && items[j].piece;
+                const [a2, b2] = [core(a, pp), core(b, pp)];
+                if ((items[i].token || items[j].token) && a2.left < b2.right - 0.5 && a2.right > b2.left + 0.5 && a2.top < b2.bottom - 0.5 && a2.bottom > b2.top + 0.5) hits.push(`${items[i].n} over ${items[j].n}`);
               }
               const fr = box(document.querySelector('.map-frame')), board = document.querySelector('#board').getBoundingClientRect();
               const out = items.filter(x => x.token && (x.r.left < fr.left - 0.5 || x.r.right > fr.right + 0.5 || x.r.top < fr.top - 0.5 || x.r.bottom > fr.bottom + 0.5)).map(x => x.n);
               const homeLabel = [...document.querySelectorAll('.stop-label')].find(l => l.dataset.stop === 'cairo' || (l.dataset.cluster && /delta/i.test(l.dataset.cluster)));
-              return { tokens: items.filter(x => x.token).length, hits, out, home: !!homeLabel && !homeLabel.hidden, board: board.width > 0 };
+              return { tokens: new Set(items.filter(x => x.token).map(x => x.own)).size, hits, out, home: !!homeLabel && !homeLabel.hidden, board: board.width > 0 };
             });
             ok(got.tokens >= 2, `${got.tokens} tokens are drawn, the case needs two`);
             ok(!got.hits.length, brief(got.hits));

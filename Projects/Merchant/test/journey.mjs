@@ -3962,6 +3962,119 @@ try {
   }
 
 
+  // ---- MER-131: each map token on its own road, a merged caption that names everyone, the first press on a low stop, no caption over a dot.
+  // The M4d play saw a Damascus caravan by Aden, a Nile boat to Qus above Constantinople and a Quseir trip by Tuat: MER-124 let a token
+  // slide up to 420 px to clear a label. The states below are the engine's own game with trips laid on the roads by hand (a leg, and the
+  // seasons left on it), so every road a token can stand on is tried: Damascus, Qus, Quseir, Aydhab, Jeddah to Aden, Aleppo to Tabriz.
+  {
+    const first = () => { let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' }); for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' }[p.ref]); return g; };
+    const trips = list => {
+      let g = eng.outfit(first(), nodeContent, eng.suggestPlan(first(), nodeContent, 'damascus'));
+      const model = structuredClone(g.expeditions[0]);
+      g = structuredClone(g);
+      g.expeditions = list.map(([agent, route, leg, left], i) => ({ ...structuredClone(model), id: `x${i + 1}`, agent, route, leg, left, status: 'out' }));
+      return g;
+    };
+    const STATES = {
+      three: trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1], ['samir', 'cairo-qus', 0, 1]]),
+      roads: trips([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-aydhab', 1, 1], ['samir', 'cairo-aden', 3, 1], ['mariam', 'cairo-tabriz', 2, 1]]),
+      two: trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1]]),
+      // two parties leaving Cairo at once, the Tuat caravan on a 2-season leg: with no rule against it, the Tuat caption slid onto the Qus and Quseir dots at 1280 x 800
+      crowd: trips([['yusuf', 'cairo-alexandria', 0, 1], ['ali', 'cairo-tuat', 0, 2]]),
+      // two trips on one leg at one place, due home in different seasons: one token, and its caption names each agent with that agent's own season
+      merged: trips([['yusuf', 'cairo-qus', 0, 1], ['ali', 'cairo-quseir', 0, 1]]),
+    };
+    const frames = [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3], FRAMES[5]];   // laptop, board, laptop-small, phone upright, phone on its side
+    const put = async (page, st, hash) => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.evaluate(() => new Promise(r => setTimeout(r, 400)));   // a token moves to its place over the token-move time
+    };
+    /** Each token's piece centre, and how far it is from the straight segment its leg's two stops are drawn on (px on screen). */
+    const reach = page => page.evaluate(() => {
+      const road = document.querySelector('.map-roads'), rr = road.getBoundingClientRect();
+      const out = [];
+      for (const t of document.querySelectorAll('.token')) {
+        const line = [...road.querySelectorAll('line')].find(l => (l.dataset.from === t.dataset.from && l.dataset.to === t.dataset.to) || (l.dataset.from === t.dataset.to && l.dataset.to === t.dataset.from));
+        const px = v => rr.left + v / 1920 * rr.width, py = v => rr.top + v / 1080 * rr.height;
+        const [x1, y1, x2, y2] = [px(line.getAttribute('x1')), py(line.getAttribute('y1')), px(line.getAttribute('x2')), py(line.getAttribute('y2'))];
+        const r = t.querySelector('.token-piece').getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const dx = x2 - x1, dy = y2 - y1, k = Math.max(0, Math.min(1, ((cx - x1) * dx + (cy - y1) * dy) / (dx * dx + dy * dy || 1)));
+        out.push({ ids: t.dataset.expedition, leg: `${t.dataset.from}>${t.dataset.to}`, cx: Math.round(cx * 10) / 10, cy: Math.round(cy * 10) / 10, off: Math.hypot(cx - (x1 + dx * k), cy - (y1 + dy * k)) });
+      }
+      return out;
+    });
+    for (const frame of frames) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-131 ${frame.name}: every token's centre is within 24 px of the segment its leg is drawn on, and a redraw puts it where it was`, async () => {
+        for (const [name, st] of Object.entries(STATES)) {
+          await put(page, st, '#map');
+          const a = await reach(page);
+          eq(a.length, name === 'merged' ? 1 : st.expeditions.length, `${name}: one token for each place a party stands`);
+          for (const t of a) ok(t.off <= 24, `${name}: the token for ${t.ids} on ${t.leg} stands ${t.off.toFixed(1)} px from its road`);
+          // a second render of the same state: a resize redraws the map, and a press on another stop redraws it again
+          await page.evaluate(() => dispatchEvent(new Event('resize')));
+          await page.evaluate(() => new Promise(r => setTimeout(r, 400)));
+          eq((await reach(page)).map(t => [t.ids, t.cx, t.cy]), a.map(t => [t.ids, t.cx, t.cy]), `${name}: a redraw moved a token`);
+          await put(page, st, '#map');
+          eq((await reach(page)).map(t => [t.ids, t.cx, t.cy]), a.map(t => [t.ids, t.cx, t.cy]), `${name}: a reload moved a token`);
+        }
+      });
+      await test(`MER-131 ${frame.name}: no trip caption covers a stop's dot`, async () => {
+        for (const [name, st] of Object.entries(STATES)) {
+          await put(page, st, '#map');
+          const bad = await page.evaluate(() => {
+            const dots = [...document.querySelectorAll('.dot')].map(d => [d.dataset.stop ?? d.dataset.cluster, d.getBoundingClientRect()]);
+            const out = [];
+            for (const l of document.querySelectorAll('.token-label')) {
+              if (!l.checkVisibility()) continue;
+              const r = l.getBoundingClientRect();
+              for (const [id, d] of dots) if (r.left < d.right && r.right > d.left && r.top < d.bottom && r.bottom > d.top) out.push(`"${l.textContent.slice(0, 20)}" covers ${id}`);
+            }
+            return out;
+          });
+          eq(bad, [], `${name}: ${bad}`);
+        }
+      });
+      await test(`MER-131 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-131: a merged caption names each agent and the season that agent is due home', async () => {
+        await put(page, STATES.merged, '#map');
+        const got = await page.$eval('.token', t => ({ count: t.dataset.count, text: t.querySelector('.token-label').textContent }));
+        eq(got.count, '2');
+        const by = eng.view(STATES.merged, nodeContent).homeBy, name = id => nodeContent.agents.find(a => a.id === id).name;
+        const seasons = ['x1', 'x2'].map(id => by[id].season);
+        ok(seasons[0] !== seasons[1], `the case needs two seasons, and both are ${seasons[0]}`);
+        const want = ['x1', 'x2'].map((id, i) => `${name(STATES.merged.expeditions[i].agent)}, home about ${by[id].season}`);
+        for (const w of want) ok(got.text.includes(w), `the caption "${got.text}" lacks "${w}"`);
+      });
+      await test('MER-131: the first press on a low row of the stop list selects it, with the list scrolled and nothing in it focused', async () => {
+        const low = nodeContent.stops.slice().sort((a, b) => (a.id === nodeContent.city.home ? -1 : b.id === nodeContent.city.home ? 1 : a.name.localeCompare(b.name))).slice(-3).map(s => s.id);
+        for (const id of low) {
+          await put(page, STATES.two, '#map');
+          const row = await page.evaluate(sid => {
+            const l = document.querySelector('#stoplist');
+            document.activeElement.blur(); l.scrollTop = l.scrollHeight;
+            const r = document.querySelector(`#stop-${sid}`).getBoundingClientRect(), lr = l.getBoundingClientRect();
+            return { scrollable: l.scrollHeight > l.clientHeight + 1, top: l.scrollTop, x: r.left + r.width / 2, y: r.top + r.height / 2, inView: r.top >= lr.top && r.bottom <= lr.bottom };
+          }, id);
+          ok(row.scrollable && row.top > 0, 'the list holds more stops than it shows, so the case is meaningful');
+          ok(row.inView, `${id} is in view at the end of the list`);
+          await page.mouse.click(row.x, row.y);
+          eq(await page.$eval('#board-title', e => e.textContent), `Prices in ${nodeContent.stops.find(s => s.id === id).name}`, `one press on ${id} selected it`);
+        }
+      });
+      await test('MER-131: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
+
 } finally {
   await browser.close();
   server.close();

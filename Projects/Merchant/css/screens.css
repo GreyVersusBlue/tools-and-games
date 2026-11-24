@@ -309,15 +309,14 @@ html.large-text .title-what { display: none; }
 .stop-label[hidden] { display: none; }
 .stop-label.home { font-size: var(--step-1); font-weight: 700; }
 .stop-label.on { outline: 2px solid var(--brass-dark); }
-.token { position: absolute; transform: translate(-50%, -50%) scale(calc(1 / var(--k, 1))) translate(var(--ox, 0px), var(--oy, 0px));   /* --ox, --oy: map.js slides a token clear of a label or another token */
-  display: flex; flex-direction: column; align-items: center; pointer-events: none;
-  transition: left var(--token-move-time) ease-in-out, top var(--token-move-time) ease-in-out; }
+.token { position: absolute; width: 0; height: 0; transform: scale(calc(1 / var(--k, 1))) translate(var(--ox, 0px), var(--oy, 0px));   /* --ox, --oy: map.js moves a token along its road, or a few px across it, clear of a label or another token (MER-131) */
+  pointer-events: none; transition: left var(--token-move-time) ease-in-out, top var(--token-move-time) ease-in-out; }   /* its anchor is the centre of its piece; the caption hangs below */
 .token.bare .token-label { display: none; }   /* map.js: no clear spot for the caption's width on a crowded picture */
-.token-piece { position: relative; width: var(--token); height: var(--token); }
+.token-piece { position: absolute; left: calc(var(--token) / -2); top: calc(var(--token) / -2); width: var(--token); height: var(--token); }
 .token-piece img { width: 100%; height: 100%; display: block; }
 .token-count { position: absolute; right: -.3rem; top: -.3rem; min-width: 1.4rem; height: 1.4rem; padding: 0 .3rem; display: grid; place-items: center;
   background: var(--madder); color: var(--paper); border-radius: 1rem; font-family: var(--font-chrome); font-size: var(--step--1); font-weight: 600; }
-.token-label { margin: 0; padding: 0 .35rem; display: flex; align-items: center; gap: .25rem; white-space: nowrap; background: var(--paper); color: var(--ink);
+.token-label { position: absolute; left: 0; top: calc(var(--token) / 2); transform: translateX(-50%); margin: 0; padding: 0 .35rem; display: flex; align-items: center; gap: .25rem; white-space: nowrap; background: var(--paper); color: var(--ink);
   font-family: var(--font-chrome); font-size: var(--step--1); border-radius: var(--radius); }
 .token-seal { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
 .map-unzoom { position: absolute; left: var(--s3); top: var(--s3); z-index: 2; }
