@@ -2947,8 +2947,8 @@ try {
         await page.waitForSelector('#outfit-send');
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
-        await test(`${frame.name}: the set-out toast takes no taps, so Outfit and Back to the desk are what a finger lands on`, async () => {
-          eq(await page.$eval('#map-toast', t => getComputedStyle(t).pointerEvents), 'none');
+        await test(`${frame.name}: the set-out toast lies in the board's flow, so Outfit and Back to the desk are what a finger lands on (MER-124)`, async () => {
+          eq(await page.$eval('#map-toast', t => [getComputedStyle(t).position, !!t.closest('#board')]), ['static', true]);
           for (const id of ['btn-outfit', 'map-desk', 'map-desk-top']) {
             const hit = await page.$eval(`#${id}`, b => { const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === b || b.contains(e); });
             ok(hit, `${id}: its centre is the button's own`);
