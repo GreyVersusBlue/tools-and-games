@@ -139,6 +139,7 @@ function buildPanel(name, opts = {}) {
   if (name === 'newgame') {
     return makePanel('newgame', 'New game', ...newGameBody({
       content: app.content,
+      art: app.art,
       onBegin: begin,
       onCancel: () => closeDialog(openPanel.dialog),
     }));
@@ -308,6 +309,7 @@ function renderScreen(name) {
   app.state = saved ?? null;
   root.replaceChildren(renderTitle({
     city: app.content.city,
+    art: app.art.get('title') ?? null,
     save: saved ? { label: label() } : null,
     last: lastScore(saved),
     onNew: b => open('newgame', b),

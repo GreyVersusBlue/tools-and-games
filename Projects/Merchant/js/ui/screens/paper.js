@@ -431,11 +431,31 @@ function pictureSlot(app) {
     asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null);
 }
 
+/** How much of a scroll box's top the tabs of the papers lower in the stack cover (screens.css keeps them stuck there while the paper under them
+    scrolls: MER-132, play a029, the tabs went out of sight above the box on every return). 0 where they scroll with the page or are not drawn. */
+export function stuckHeight(box) {
+  const tabs = box && qs('.edges', box);
+  if (!tabs || getComputedStyle(tabs).position !== 'sticky' || !tabs.checkVisibility?.()) return 0;
+  return tabs.getBoundingClientRect().height + (parseFloat(getComputedStyle(box).rowGap) || 0);
+}
+
 const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v));
-/** An account row for a return: label, words, and the signed dinars when the row is one of the sums. */
+/** The words of an account row for a return. A sum row (an `amount`, no `detail`) shows its total in the last column, so the engine's
+    closing ", 527 dinars in all" is dropped from the words (MER-132, play: "Back home / 527 dinars, 527 dinars in all / +527 dinars" said
+    the figure three times). What is left is what came home; a row of money alone, whose words would be the figure again, says so in words. */
+export function accountText(r) {
+  const text = String(r.text ?? '');
+  if (!Number.isFinite(r.amount) || r.detail) return text;
+  const m = /^(.*), (\S+ \S+) in all$/.exec(text);
+  if (!m) return text;
+  return m[1] === m[2] ? 'All of it in money' : m[1];
+}
+
+/** An account row for a return: label, words, and the signed dinars when the row is one of the sums. The one sign is this file's: the
+    engine's words carry none in front of a figure the column shows (a loss is U+2212, never a hyphen, and never twice). */
 const sumRow = r => {
   const sum = Number.isFinite(r.amount) && !r.detail;
-  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, r.text),
+  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, accountText(r)),
     sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
 };
 
@@ -508,7 +528,9 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
   const headline = () => {
     const box = sheet.closest('.stack-papers'), title = qs('.sheet-title', sheet);
     if (paper.kind !== 'return' || !box || !title || getComputedStyle(box).overflowY !== 'auto') return;
-    if (title.getBoundingClientRect().top < box.getBoundingClientRect().top) box.scrollTop = 0;
+    // the tabs stuck over the box's top (stuckHeight) lie over the first part of the window: the headline is put just under them
+    const stuck = stuckHeight(box), want = box.getBoundingClientRect().top + stuck;
+    if (title.getBoundingClientRect().top < want) box.scrollTop = stuck ? Math.max(0, box.scrollTop - (want - title.getBoundingClientRect().top) - 4) : 0;
   };
   queueMicrotask(() => {
     if (!sheet.isConnected) return;

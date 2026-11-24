@@ -22,11 +22,16 @@ export function lastScore(state) {
   return sc && Number.isFinite(sc.total) && typeof sc.rank === 'string' ? { total: sc.total, rank: sc.rank } : null;
 }
 
-/** Render the title screen. `save` is null, or { label } for the game that Continue opens
+/** Render the title screen. `art` is the manifest's A18 still (title.webp), laid behind the panel (MER-132); null or a file that fails to load leaves the gradient.
+    `save` is null, or { label } for the game that Continue opens
     ("Summer 1325, Act one"). `last` is { total, rank } of a finished game (lastScore), or null. Each handler gets the button that was pressed. */
-export function renderTitle({ city, save, onNew, onContinue, onAbout, onSettings, last = null }) {
+export function renderTitle({ city, art = null, save, onNew, onContinue, onAbout, onSettings, last = null }) {
   const btn = (id, label, onclick, ...more) => h('button', { class: 'choice', type: 'button', id, onclick: e => onclick(e.currentTarget) }, label, ...more);
+  // the picture is decoration: the headline and the panel say everything it does, so it has no alt text. A file that fails to load takes itself
+  // off the page and the stylesheet's gradient shows, as it did before the picture came.
+  const still = art ? h('img', { class: 'title-still', src: `assets/art/${art.file}`, alt: '', decoding: 'async', fetchpriority: 'high', onerror: e => e.currentTarget.remove() }) : null;
   return h('main', { class: 'title-screen', id: 'screen-title' },
+    still,
     h('div', { class: 'title-head' },
       h('h1', { class: 'title-name', tabindex: '-1' }, city?.title ?? TITLE_TEXT.title),
       h('p', { class: 'title-tagline' }, city?.tagline ?? TITLE_TEXT.tagline)),

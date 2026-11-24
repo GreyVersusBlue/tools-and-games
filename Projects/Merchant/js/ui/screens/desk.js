@@ -5,7 +5,7 @@
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { leftHow } from '../../engine/agents.js';
-import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, RECORD_KINDS } from './paper.js';
+import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, stuckHeight, RECORD_KINDS } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
@@ -66,13 +66,21 @@ export function createDesk(app) {
     if (!asset || id === stillId) return;
     const first = stillId === null;
     stillId = id;
+    // MER-132 (play c016, c017): a fade that was still under way is finished first, so the band holds the picture in view and the new one
+    // and no more. On a phone the band is display:none while a night placeholder is in it (screens.css), a hidden image never runs its
+    // animation, and `animationend` never came: each season left one more still behind it, four by season seven, all at opacity 0.
+    for (const o of [...still.children].slice(0, -1)) o.remove();
     const img = h('img', { class: `desk-still${asset.final === false ? ' placeholder' : ''}`, src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' });
     const old = [...still.children];
     still.append(img);
     const drop = () => old.forEach(o => o.remove());
-    if (first || !cssMs('--season-fade-time')) { drop(); return; }
+    const fade = cssMs('--season-fade-time');
+    // a fade is skipped when there is nothing to fade (the first picture, no fade time set) or nothing to see it in (the band is hidden)
+    if (first || !fade || still.checkVisibility?.() === false) { drop(); return; }
     img.classList.add('fading');
     img.addEventListener('animationend', drop, { once: true });
+    // and a fade always ends: a tab in the background, or an animation the browser drops, leaves no picture waiting behind the new one
+    setTimeout(drop, fade + 200);
   }
   function layout() {
     const asset = app.art.get(stillId);
@@ -207,12 +215,14 @@ export function createDesk(app) {
     const target = qs('.choice, #btn-next', sheet);
     if (!target) return;
     const boxRect = box.getBoundingClientRect();
+    // MER-132: the tabs of the other papers stay stuck over the top of the box, so what lies under them is not in view
+    const top = boxRect.top + stuckHeight(box);
     let need = target.getBoundingClientRect().bottom + 6 - boxRect.bottom;
     // a return's or loss's paper ends by asking, often two choices: the last one is brought clear of the End the season bar
     // too, as far as the first still stays in view (MER-99)
     if (/\bkind-(return|lost)\b/.test(sheet.className)) {
       const last = qsa('.choice', sheet).at(-1);
-      if (last && last !== target) need = Math.max(need, Math.min(last.getBoundingClientRect().bottom + 6 - boxRect.bottom, target.getBoundingClientRect().top - boxRect.top));
+      if (last && last !== target) need = Math.max(need, Math.min(last.getBoundingClientRect().bottom + 6 - boxRect.bottom, target.getBoundingClientRect().top - top));
     }
     if (need > 0) box.scrollTop += need;   // the head may scroll off: the choice is the part a player cannot do without
     const at = box.scrollTop;

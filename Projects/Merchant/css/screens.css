@@ -20,10 +20,15 @@ body { background: var(--night); }
     var(--night);
 }
 .title-head { max-width: 34em; }
+/* MER-132: A18 behind the panel at every frame. The sky in its upper left is plain and pale, so the title takes the tagline's scrim and
+   the picture is laid from the top left corner: the plain corner is the one part of it that always shows, whatever the frame's shape. */
+.title-screen { position: relative; isolation: isolate; }
+.title-still { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 0 0; z-index: -1; color: transparent; font-size: 0; pointer-events: none; }
 .title-name {
   font-size: var(--step-4);
   letter-spacing: .01em;
   text-shadow: 0 .1rem .6rem rgba(0,0,0,.55);
+  width: fit-content; padding: 0 var(--s3); background: rgba(20, 17, 13, .72); border-radius: var(--radius);   /* MER-132: paper on the pale sky of A18 is under 2:1 without it */
 }
 .title-tagline {
   margin-top: var(--s2);
@@ -194,8 +199,13 @@ html.large-text .title-what { display: none; }
 .account-group .cause { font-size: var(--step-0); font-family: var(--font-chrome); margin: 0 0 var(--s1); }
 .account-group .account-item { margin: 0 0 var(--s1) var(--s3); }
 
-.edges { order: -1; display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; }
+/* MER-132 (play a029): the tabs of the other papers stay in view over the paper that is raised. They are one row, stuck to the top of the scrolling
+   stack, with each title cut at the tab's width (its full title is its label); they went up out of the box on every return, when the stack was
+   scrolled to bring the paper's choices into view, while "5 papers left" still showed. The phones below put them back in the flow. */
+.edges { order: -1; display: flex; flex-wrap: nowrap; gap: var(--s2); justify-content: center; position: sticky; top: 0; z-index: 1; padding-bottom: var(--s1); }
 .edges:empty { display: none; }
+.edge { min-width: 0; flex: 0 1 auto; }
+.edge > span:not(.seal) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .edge { display: inline-flex; align-items: center; gap: var(--s2); min-height: var(--hit); padding: var(--s1) var(--s3);
   background: var(--paper); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow);
   transform: rotate(var(--tilt, 0deg)); font-family: var(--font-paper); font-size: var(--step-0); }
@@ -231,8 +241,8 @@ html.large-text .title-what { display: none; }
      (MER-87, finding 15). Without it the papers start under the bar; a final picture keeps its band. */
   /* MER-124: the papers start a hand's breadth under the measured bar, not 7.4rem down: the rem was the three-row bar's and left 43 px of
      bare ground between the money line and "papers left" (play c003 saw 100). desk.js keeps --bar-h at the bar's real height. */
-  .desk-screen:has(.desk-still.placeholder) { padding-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }
-  .desk-screen:has(.desk-still.placeholder) .desk-stills { display: none; }
+  .desk-screen:has(.desk-still.placeholder:last-child) { padding-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }
+  .desk-screen:has(.desk-still.placeholder:last-child) .desk-stills { display: none; }   /* MER-132: the picture now in the band, not one still fading out of it: a final picture shows again the season after a placeholder one */
   /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
   .sheet-title { scroll-margin-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }   /* the bar is two rows, 75 px (MER-105); desk.js keeps --bar-h at its measured height (MER-124) */
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
@@ -241,10 +251,11 @@ html.large-text .title-what { display: none; }
      page always ends below the last answer and the stack never runs under the "papers still need an
      answer" line (MER-71, finding 10; it was fixed over the page with 9rem guessed under the sheet). */
   .stack { position: static; width: auto; padding: var(--s2) .5rem 0; overflow: visible; min-height: calc(100dvh - 30svh); }
-  .desk-screen:has(.desk-still.placeholder) .stack { min-height: calc(100dvh - var(--bar-h, 4.7rem) - var(--s2)); }
+  .desk-screen:has(.desk-still.placeholder:last-child) .stack { min-height: calc(100dvh - var(--bar-h, 4.7rem) - var(--s2)); }
   html { scroll-padding-bottom: calc(var(--end-h, 7rem) + var(--s2)); }   /* the End the season bar's measured height (desk.js): a control scrolled into view stops above it */
   .stack-papers { overflow: visible; flex: none; padding: 0 0 var(--s3); }
-  .edges { order: 0; }
+  .edges { order: 0; position: static; flex-wrap: wrap; padding-bottom: 0; }
+  .edge > span:not(.seal) { overflow: visible; text-overflow: clip; white-space: normal; }
   .sheet { padding: var(--s3); }
   .choices .choice { min-height: 56px; }
   .end-row { position: sticky; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
@@ -268,7 +279,8 @@ html.large-text .title-what { display: none; }
   .sheet-head { margin-bottom: var(--s1); }
   .letter-line { margin-bottom: var(--s1); }
   .choices { flex: none; }
-  .edges { order: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); scroll-padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); }
+  .edges { order: 0; position: static; padding-bottom: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); scroll-padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); }
+  .edge > span:not(.seal) { overflow: visible; text-overflow: clip; white-space: normal; }
   /* End the season sits under the edges, at the right, so the raised paper keeps the full height */
   .end-row { position: absolute; right: 0; bottom: 0; width: calc(30% - var(--s2)); margin: 0; flex-direction: column; align-items: stretch; }
   .end-reason { text-align: center; }
@@ -323,7 +335,9 @@ html.large-text .title-what { display: none; }
 .map-unzoom[hidden] { display: none; }
 /* MER-124: the set-out toast is a note in the board's flow, above its buttons, at every frame: nothing on the picture is under it. It was
    fixed over the picture, and on a phone it covered the top third of the map and its labels (play c017). */
-.map-toast { flex: none; margin: 0; padding: var(--s2) var(--s3); background: var(--paper-shade); color: var(--ink); border-left: .3rem solid var(--brass);
+/* MER-132 (play c010): it comes first in the board and sticks to its top. Under the buttons it lay beneath the sticky bar at the foot as soon as
+   the board scrolled (Large text, a phone on its side), and "Watch the" was all of it that showed; at the top nothing lies over it. */
+.map-toast { order: -1; position: sticky; top: var(--s2); z-index: 2; flex: none; margin: 0; padding: var(--s2) var(--s3); background: var(--paper-shade); color: var(--ink); border-left: .3rem solid var(--brass);
   border-radius: var(--radius); font-family: var(--font-chrome); }
 .map-toast[hidden] { display: none; }
 
@@ -398,7 +412,14 @@ html.large-text .title-what { display: none; }
 @media (max-width: 700px) and (min-height: 501px) { .map-screen { --token: 32px; } }
 
 /* ---- Outfitting (DESIGN 4.8) ---- */
-dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: var(--s3) var(--s4); scroll-padding-bottom: 9rem; }
+dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: 0; overflow: hidden; }
+dialog.outfit[open] { display: flex; flex-direction: column; }
+/* MER-132 (MER-124's stepper case, 4 px on the first stepper pressed): every .paper slides up 2rem as it arrives (base.css), and a sheet that is being
+   pressed in its first 220 ms is still rising, so a stepper moved by the rise and not by the press. The sheet fades in and does not move. */
+dialog.outfit { animation-name: arrive-fade; }
+@keyframes arrive-fade { from { opacity: 0; } to { opacity: 1; } }
+/* MER-132: the sheet scrolls in .outfit-body and the Send bar is under it, not over it (play c008: a stepper scrolled under the bar still took the tap as Send) */
+.outfit-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--s3) var(--s4); }
 .outfit h2 { font-size: var(--step-2); margin-bottom: var(--s2); }
 .outfit h2:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
 .outfit .lead { font-family: var(--font-chrome); margin: 0 0 var(--s2); }
@@ -442,7 +463,7 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 .step-btn { min-width: var(--hit); min-height: var(--hit); background: var(--paper-shade); color: var(--brass-dark); font-weight: 700; font-size: var(--step-1); }
 .step-btn[aria-disabled="true"] { color: var(--ink-soft); opacity: .6; cursor: not-allowed; }
 .step-val { min-width: 6.5rem; padding: 0 var(--s2); text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
-.send-row { position: sticky; bottom: calc(var(--s3) * -1); margin: 0 calc(var(--s4) * -1) calc(var(--s3) * -1); padding: var(--s2) var(--s4) var(--s3); background: var(--paper);
+.send-row { flex: none; padding: var(--s2) var(--s4) var(--s3); background: var(--paper);
   border-top: 1px solid var(--paper-shade); }
 .send-row .reasons { font-family: var(--font-chrome); color: var(--madder); }
 .send-row .reasons p { margin: 0 0 var(--s1); }
@@ -450,11 +471,12 @@ dialog.outfit { width: min(46em, calc(100% - 2rem)); max-width: none; padding: v
 /* paper text on the hover brass is 3.11:1; night on brass clears 4.5 */
 .outfit .send:hover:not([aria-disabled="true"]) { color: var(--night); }
 @media (max-width: 700px) and (min-height: 501px) {
-  dialog.outfit { width: 100%; height: 100dvh; max-height: none; border-radius: 0; padding: var(--s3); }
+  dialog.outfit { width: 100%; height: 100dvh; max-height: none; border-radius: 0; padding: 0; }
+  .outfit-body { padding: var(--s3); }
   /* MER-124: the Send bar took 194 of 664 px (29 percent) of a phone: two buttons stacked at 56 px, an estimate in body type and the
      bar's own padding. Back and Send share one row, the estimate is in small type, and the bar is at most 18 percent of the frame
      (layout.mjs measures it at 390x844 and 360x740). The two buttons keep their 44 px targets; Send keeps the wide share. */
-  .send-row { margin: 0 calc(var(--s3) * -1) calc(var(--s3) * -1); padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom)); }
+  .send-row { padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom)); }
   .send-row .estimate { font-size: var(--step--1); line-height: 1.3; margin: 0 0 var(--s1); }
   .send-row .reasons { font-size: var(--step--1); line-height: 1.3; }
   dialog.outfit .send-row .panel-actions { margin-top: var(--s1); flex-direction: row; flex-wrap: nowrap; justify-content: stretch; }

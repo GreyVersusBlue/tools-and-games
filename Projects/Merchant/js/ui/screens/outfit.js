@@ -166,7 +166,8 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   const whyNone = () => (proposed?.plan.why && !cargoTotal() && !draft.purse && !draft.buy.length ? proposed.plan.why : null);
 
   const titleId = 'panel-outfit-title';
-  const dialog = h('dialog', { class: 'paper outfit', id: 'panel-outfit', 'aria-labelledby': titleId });
+  const scroller = h('div', { class: 'outfit-body' });
+  const dialog = h('dialog', { class: 'paper outfit', id: 'panel-outfit', 'aria-labelledby': titleId }, scroller);
   dialog.addEventListener('cancel', e => { e.preventDefault(); onCancel(); });
   dialog.addEventListener('keydown', e => {
     if (e.key !== 'Tab') return;
@@ -217,13 +218,15 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
   const kept = app.outfitKeep && app.outfitKeep.t === app.state.t && app.outfitKeep.stop !== stopId ? app.outfitKeep : null;
   app.outfitKeep = null;
   if (kept && draft.agent) {
-    const fit = {};
+    // MER-132: as many loads as the engine says the house can pay for (mostLoads), with the goods already kept counted in the plan
+    const fit = {}, was = draft.cargo;
     for (const [g, n] of Object.entries(kept.cargo)) {
       if (!(n > 0) || !carriable().includes(g)) continue;
-      const p = homePrice(g), most = stock(g) + (p ? Math.max(0, Math.floor(app.state.money / p)) : 0);
+      draft.cargo = { ...fit };
+      const most = engine.mostLoads(app.state, content, plan(), g);
       if (Math.min(n, most) > 0) fit[g] = Math.min(n, most);
     }
-    if (Object.keys(fit).length) draft.cargo = fit;
+    draft.cargo = Object.keys(fit).length ? fit : was;
   }
   // ---- sections
   const section = (id, title, ...body) => h('section', { class: 'step', id: `outfit-${id}`, 'aria-labelledby': `outfit-${id}-h` },
@@ -303,7 +306,9 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     }
     const rows = goods.map(g => {
       const have = stock(g), p = homePrice(g), n = draft.cargo[g] ?? 0;
-      const max = have + (p ? Math.max(0, Math.floor(app.state.money / p)) : 0);
+      // MER-132 (play a073): the engine counts the loads the house can pay for, each past the warehouse dearer than the last, with the
+      // purse and the other goods already set; money divided by today's price allowed 9 sugar at 396 with 395 in hand
+      const max = engine.mostLoads(app.state, content, plan(), g);
       const far = there[g], guess = expectedPrice(app.state, content, stopId, g);
       const farText = far?.p == null ? `No news of what ${goodName(content, g)} fetches in ${stop.name}.`
         : `${stop.name} paid ${num(far.p)} (${far.written}, ${far.ageWords}).`;
@@ -483,21 +488,20 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const none = whyNone();
     const lead = none ? h('p', { class: 'lead why', id: 'outfit-why' }, none)
       : h('p', { class: 'lead', id: 'outfit-lead' }, `Everything is filled in. Press Send, or change a line.`);
-    dialog.replaceChildren(
+    // MER-132 (play c008): the Send bar is outside the scrolling part, a flex child under it, so nothing scrolled in the sheet can lie under it and a tap on
+    // a stepper never lands on Send. It used to stick over the foot of the dialog's own scroll. The scrolling part is made once and kept in the
+    // page, so a render replaces what is in it and leaves its scroll position where it was.
+    scroller.replaceChildren(
       h('h2', { id: titleId, tabindex: '-1' }, `Outfit an expedition to ${stop.name}`),
-      ...[lead, whoSection(), whereSection(), carrySection(), backSection(), costSheet(quote()), first ? null : contractSection()].filter(Boolean),
-      h('div', { class: 'send-row' }, estimate, settled, reasons, h('div', { class: 'panel-actions' },
-        h('button', { class: 'button', type: 'button', id: 'outfit-cancel', onclick: () => onCancel() }, 'Back to the map'), send)));
-    // MER-117: the Send bar sticks over the foot of the scroll, and scrolling a link into view stops it at `scroll-padding-bottom`. The bar is
-    // taller than the stylesheet's fixed padding on a phone (a wrapped estimate and two refusals), so the padding is the bar's own height.
-    const bar = qs('.send-row', dialog), clear = () => { dialog.style.scrollPaddingBottom = `${bar.offsetHeight + 8}px`; };
-    clear();
-    if (typeof ResizeObserver === 'function') new ResizeObserver(clear).observe(bar);
+      ...[lead, whoSection(), whereSection(), carrySection(), backSection(), costSheet(quote()), first ? null : contractSection()].filter(Boolean));
+    qs('.send-row', dialog)?.remove();
+    dialog.append(h('div', { class: 'send-row' }, estimate, settled, reasons, h('div', { class: 'panel-actions' },
+      h('button', { class: 'button', type: 'button', id: 'outfit-cancel', onclick: () => onCancel() }, 'Back to the map'), send)));
     if (focusKey) {
       const el = document.getElementById(focusKey) ?? qs(`[data-key="${focusKey}"]`, dialog);
       if (el && before !== null) {
         el.focus({ preventScroll: true });
-        dialog.scrollTop += el.getBoundingClientRect().top - before;
+        scroller.scrollTop += el.getBoundingClientRect().top - before;
       } else el?.focus();
     }
   }

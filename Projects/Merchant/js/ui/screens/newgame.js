@@ -2,11 +2,16 @@
 //   How long?  Three acts (default) or every year. The second is shown, disabled, "Coming later".
 //   Which house?  Each house from houses.json, with its seal mark, name, blurb and a difficulty word.
 import { h } from '../dom.js';
+import { seal } from './paper.js';
 
 const DIFFICULTY = { 1: 'Easier', 2: 'Middle', 3: 'Harder' };
+/** Each house's own seal (MER-132). A16 drew eight seals, one for each agent (ART.md), and the three houses are not agents, so each takes
+    the seal of an agent who comes late in a game and is rarely on the same desk as the house's first season. A house row that carries a
+    `seal` of its own wins; a house with no entry here and no `seal` keeps the plain disc. */
+export const HOUSE_SEALS = { spice: 'seal-8', cloth: 'seal-6', newcomer: 'seal-7' };
 
 /** The body of the panel. onBegin({ length, house }) and onCancel() are called by the buttons. */
-export function newGameBody({ content, onBegin, onCancel }) {
+export function newGameBody({ content, art = new Map(), onBegin, onCancel }) {
   const houses = content.houses ?? [];
   let length = 'acts', house = houses[0]?.id;
   const radio = (name, value, checked, disabled, ...kids) => {
@@ -25,7 +30,7 @@ export function newGameBody({ content, onBegin, onCancel }) {
     h('fieldset', { class: 'which-house' },
       h('legend', null, 'Which house?'),
       houses.map((x, i) => radio('house', x.id, i === 0, false,
-        h('span', { class: 'seal seal-plain', 'aria-hidden': 'true' }),
+        seal({ art }, x.seal ?? HOUSE_SEALS[x.id]),
         h('span', { class: 'house-text' },
           h('strong', null, x.name), ' ', h('span', { class: 'difficulty' }, DIFFICULTY[x.difficulty] ?? ''),
           h('span', { class: 'blurb' }, x.blurb))))),
