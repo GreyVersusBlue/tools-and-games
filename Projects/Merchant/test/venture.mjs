@@ -707,7 +707,6 @@ test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an 
   // 12 dinars on four of the ten trips (seeds 1, 3 and 4, start 0), the estimate low each time; its cause was not
   // traced. The seeded road risk loses 4 of every 14 of these trips, which are left out.
   const { rows, lossy } = longRoadStates('cairo-samarkand', { seeds: [1, 2, 3, 4], ns: [0, 2], marks: [[1, 0]] });
-  if (process.env.DBG) console.log(JSON.stringify(rows));
   ok(rows.length >= 8, `${rows.length} trips compared, ${lossy} left out for a loss`);
   for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
   // MER-128 moved this band. The second season now holds a second card (the king of Mali, dealt in his one season), and the first
