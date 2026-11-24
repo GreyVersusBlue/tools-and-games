@@ -82,10 +82,30 @@ const clash = (a, b) => (boundTo(a) !== null && dismisses(b).has(boundTo(a))) ||
 /** A trip is live this season: an expedition is on the road, or a return or loss paper is on the desk. */
 const tripLive = s => s.expeditions.length > 0 || s.desk.some(p => p.kind === 'return' || p.kind === 'lost');
 
+/** The date leaves of a `when` (`year`, `season`) at season `idx`; every other leaf counts as true, so a card is never read as closed
+    because of the house's money or notebook. */
+function datesHold(when, idx, content) {
+  if (!when || typeof when !== 'object') return true;
+  if (when.all) return when.all.every(x => datesHold(x, idx, content));
+  if (when.any) return when.any.some(x => datesHold(x, idx, content));
+  if (when.year) { const y = year(content.calendar, idx); return y >= when.year[0] && y <= when.year[1]; }
+  if (when.season) return when.season.includes(seasonName(idx));
+  return true;
+}
+/** A card's dates end with this season: its dates hold now, name a year or a season, and hold in no later season of the game
+    (MER-128). A card dated to one season (a king passing through in summer 1324) is dealt in that season or never. */
+function datesClose(c, idx, s, content) {
+  const dated = JSON.stringify(c.when ?? {});
+  if (!/"(year|season)"/.test(dated) || !datesHold(c.when, idx, content)) return false;
+  const later = playedSeasons(content.calendar, s.length).filter(i => i > idx);
+  return later.length > 0 && !later.some(i => datesHold(c.when, i, content));
+}
+
 /** Draws the season's cards (DESIGN 2.1). The papers of the house's own trips are already on the desk (returns, losses,
     letters). From the pool: a card that tells of a trip (a `trip` leaf) is drawn before any other; at most POOL_WITH_TRIP pool
     cards while a trip is live; at most one `favour` card on the desk, a follow-up's included; no two pool cards of one
-    kind; no card beside one that it clashes with (above); and no card with no choice open now (`anyOpen`). A draw that no card fits is not spent: the desk holds fewer cards. */
+    kind; no card beside one that it clashes with (above); and no card with no choice open now (`anyOpen`). A draw that no card fits is not spent: the desk holds fewer cards.
+    One more slot is dealt first to a card whose dates end this season (`datesClose`, MER-128): it fits the same rules, and the season's own target is unchanged, so the card cannot lose its only season to the other cards. */
 function drawCards(s, content) {
   const idx = seasonIndex(s, content);
   const city = cityOf(content, 'drawing cards');
@@ -101,20 +121,29 @@ function drawCards(s, content) {
     for (const id of opening) { find(content.cards, id, 'card'); put(id); }
   }
   const live = tripLive(s), kindsDrawn = new Set();
-  let drawn = 0;
-  for (let want = cardTarget(s, content) - cardsOnDesk(s).length; want > 0; want--) {
-    if (live && drawn >= POOL_WITH_TRIP) break;
+  // the cards the draw could deal now under every rule of the head, from the desk as it stands
+  const poolNow = () => {
     const groups = new Set(cardsOnDesk(s).map(p => find(content.cards, p.ref, 'card').group));
     const favours = cardsOnDesk(s).filter(p => find(content.cards, p.ref, 'card').kind === 'favour').length;
     const recent = new Set(s.log.filter(e => e.kind === 'card' && idx - e.at < RECENT).map(e => e.ref));
     const onDesk = new Set(s.desk.map(p => p.ref));
     const beside = cardsOnDesk(s).map(p => find(content.cards, p.ref, 'card'));
-    const pool = (content.cards ?? []).filter(c =>
+    return (content.cards ?? []).filter(c =>
       c.group !== 'followups' && c.weight !== 0 &&
       !onDesk.has(c.id) && !groups.has(c.group) && !recent.has(c.id) &&
       !(c.repeat === false && s.seen[c.id]) &&
       !(c.kind === 'favour' && favours >= 1) && !(c.kind && kindsDrawn.has(c.kind)) && !beside.some(d => clash(c, d)) &&
       holds(c.when, s, content));
+  };
+  let drawn = 0, extra = 0;
+  if (!deskFull(s)) {
+    const closing = poolNow().filter(c => datesClose(c, idx, s, content));
+    const sure = closing.find(c => anyOpen(s, content, { kind: 'card' }, c.choices ?? []));
+    if (sure && put(sure.id)) { drawn++; extra = 1; if (sure.kind) kindsDrawn.add(sure.kind); }
+  }
+  for (let want = cardTarget(s, content) + extra - cardsOnDesk(s).length; want > 0; want--) {
+    if (live && drawn >= POOL_WITH_TRIP) break;
+    const pool = poolNow();
     if (!pool.length || deskFull(s)) break; // no draw is spent on a paper that has no room
     // A card with no choice open now is never dealt. The check runs on the card the draw lands on (it clones the state),
     // and a closed one leaves the pool and the draw goes again, so a pool with none closed draws exactly as it did.
