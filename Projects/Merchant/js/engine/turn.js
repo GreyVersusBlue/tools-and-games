@@ -252,7 +252,7 @@ export const LEAVE = { id: 'leave', label: 'Leave it' };
 
 /** The choices a paper offers from its own data: a return or a loss paper carries them in `data.choices` (routes.js,
     drawn from returns.json), a card or a letter's are in its definition. */
-const listOf = (content, p) => (p.kind === 'return' || p.kind === 'lost' ? p.data?.choices : p.kind in INFO ? [] : definition(content, p).choices) ?? [];
+const listOf = (content, p) => letters.gateBonus(p, (p.kind === 'return' || p.kind === 'lost' ? p.data?.choices : p.kind in INFO ? [] : definition(content, p).choices) ?? []);
 
 /** The effects of a choice as `choose` applies them. A letter's go through the road it was written on. */
 const nowOf = (s, p, choice) => (p.kind === 'letter' ? letters.reachable(s, p, choice.now) : choice.now);
@@ -323,7 +323,7 @@ export function choose(state, content, paperId, choiceId) {
       }
     } catch (e) { throw refuse(e); }
     applyAll(s, content, now, ctx);
-    if (paper.kind === 'return' && choiceId === 'bonus' && paper.agent) s.flags[`${paper.agent}-bonused`] = idx;   // one bonus for one trip (letters.js fitOffers)
+    if ((paper.kind === 'return' || paper.kind === 'letter') && choiceId === 'bonus' && paper.agent) s.flags[`${paper.agent}-bonused`] = idx;   // one bonus for one trip (letters.js fitOffers)
     if (paper.kind === 'letter') letters.stamp(s, paper, idx);
     for (const l of later) {
       s.queue.push({

@@ -1045,6 +1045,52 @@ test('(MER-134, 9 and 10) money a letter moves goes on an Accounts paper at once
   eq(two.desk.find(p => p.kind === 'accounts').items.length, 2, 'two lines on it');
 });
 
+test('(MER-135) one bonus for one trip holds across letters: a letter\'s bonus closes the return paper\'s and every other letter\'s, and it stays closed until the trip is answered', () => {
+  const { s: base, p: k } = homeState();
+  const ret = base.desk[k], agent = ret.agent;
+  const s = structuredClone(base), now = idx(s, CAIRO);
+  s.desk = [ret]; s.money = Math.max(s.money, 800);
+  s.log = s.log.filter(e => !(e.kind === 'return' && e.ref === ret.expedition));
+  const mail = (id, over = {}) => ({ id, kind: 'report', expedition: ret.expedition, agent, stop: 'damascus', standing: true, written: now - 1, lag: 1, arrive: now, ...over });
+  s.post = [mail('damascus-early-caravan'), mail('walata-early-sale', { stop: 'walata' })];
+  letters(s, CAIRO);
+  const open = (st, ref) => { const p = st.desk.find(q => q.ref === ref); return { p, bonus: paperChoices(st, CAIRO, p.id).find(c => c.id === 'bonus') }; };
+  const first = open(s, 'damascus-early-caravan'), other = open(s, 'walata-early-sale');
+  ok(holds(first.bonus.requires, s, CAIRO) && holds(other.bonus.requires, s, CAIRO), 'both letters\' bonuses are open before one is paid');
+  const paid = choose(s, CAIRO, first.p.id, 'bonus');
+  ok(`${agent}-bonused` in paid.flags, 'paying a letter\'s bonus sets the trip\'s flag');
+  ok(!holds(open(paid, 'walata-early-sale').bonus.requires, paid, CAIRO), 'and closes the other letter\'s bonus');
+  const entry = CAIRO.returns.find(e => e.id === 'return-bonus'), paper = paid.desk.find(q => q.kind === 'return');
+  paper.data.houseNet = 100; paper.data.choices = structuredClone(entry.choices); delete paper.data.fitted;
+  letters(paid, CAIRO);   // the next opening: the flag is read again, with the trip still on the books
+  ok(`${agent}-bonused` in paid.flags, 'the flag outlasts the opening while the trip is on the books');
+  ok(!holds(paper.data.choices.find(c => c.id === 'bonus').requires, paid, CAIRO), 'so the return paper\'s bonus is closed');
+  const done = structuredClone(paid); done.expeditions = done.expeditions.filter(x => x.id !== ret.expedition); done.desk = done.desk.filter(q => q.kind !== 'return'); letters(done, CAIRO);
+  ok(!(`${agent}-bonused` in done.flags), 'and is cleared once the trip is answered and gone');
+});
+
+test('(MER-135) a second letter in the same opening cannot take the place kept for the Accounts paper of the first one\'s money', () => {
+  const { s: base, p: k } = homeState();
+  const run = fillers => {
+    const s = structuredClone(base), ret = s.desk[k], now = idx(s, CAIRO);
+    s.desk = []; s.log = s.log.filter(e => !(e.kind === 'return' && e.ref === ret.expedition));
+    for (let i = 0; i < fillers; i++) addPaper(s, { kind: 'notice', ref: `fill${i}` });
+    const mk = (id, stop, expedition) => ({ id, kind: id === 'first-road-letter' ? 'question' : 'report', expedition, agent: ret.agent, stop, standing: true, written: now - 1, lag: 1, arrive: now });
+    s.post = [mk('damascus-early-caravan', 'damascus', 'gone1'), mk('first-road-letter', 'damascus', 'gone2')];
+    letters(s, CAIRO);
+    return s;
+  };
+  const s = run(3);
+  eq(s.desk.length, 5, 'three papers, the money letter and its Accounts paper fill the desk');
+  eq(s.desk.filter(p => p.kind === 'accounts').length, 1, 'the Accounts paper is on the desk');
+  ok(!s.log.some(e => e.kind === 'dropped' && e.ref === 'accounts'), 'and was not dropped for a full desk');
+  eq(s.post.map(p => p.id), ['first-road-letter'], 'the second letter waits a season');
+  ok(s.desk.every(p => p.ref !== 'first-road-letter'), 'it is not on the desk');
+  const roomy = run(2);
+  eq(roomy.desk.filter(p => p.ref === 'first-road-letter').length, 1, 'with a place to spare the second letter comes too');
+  ok(roomy.desk.some(p => p.kind === 'accounts'), 'and the Accounts paper stays');
+});
+
 test('(MER-134, 9) a letter that waited for room does not arrive with the agent who wrote it; one on time still comes ahead of the return paper', () => {
   const { s: base, p: k } = homeState();
   const run = (arrive, written) => {
