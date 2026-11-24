@@ -296,8 +296,11 @@ export function createMap(app, nav) {
     // ---- 1. captions
     const taken = [];            // every token piece and the caption chosen for it
     const pieces = tokens.map(t => qs('.token-piece', t).getBoundingClientRect());
-    // a piece's obstacle includes the count badge, which hangs off its top right corner
-    for (const r of pieces) taken.push({ left: r.left, right: r.right + 8, top: r.top - 8, bottom: r.bottom, piece: true });
+    // (the badge of a stack is its own obstacle, one a label may never cover: its number has to read)
+    pieces.forEach((r, i) => {
+      taken.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom, piece: true });
+      if (Number(tokens[i].dataset.count) > 1) taken.push({ left: r.right - 16, right: r.right + 10, top: r.top - 10, bottom: r.top + 16, piece: false });
+    });
     const placeCaptions = () => tokens.forEach((t, i) => {
       const cap = qs('.token-label', t);
       if (!cap.offsetWidth) return;                      // this frame shows no captions
@@ -315,7 +318,7 @@ export function createMap(app, nav) {
         at('left-top', pr.left - w - g, pr.top); at('left-bottom', pr.left - w - g, pr.bottom - hgt);
       }
       const box = s => ({ left: s.left, right: s.left + w, top: s.top, bottom: s.top + hgt });
-      const others = taken.filter(q => q.piece ? q.left !== pr.left || q.top !== pr.top - 8 : true);
+      const others = taken.filter(q => !(q.piece && q.left === pr.left && q.top === pr.top));
       let won = null;
       const fits = r => inside(r, clip) && !walls.some(q => hits(r, q));
       for (const [name, s] of Object.entries(sides)) {
