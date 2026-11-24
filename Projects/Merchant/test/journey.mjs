@@ -1072,7 +1072,7 @@ try {
     }
     if (how === 'keyboard') { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press('e'); } else await page.click('#btn-end');
   };
-  const tokens = page => page.$$eval('.token', ts => ts.map(t => ({ ids: t.dataset.expedition, count: t.dataset.count, left: parseFloat(t.style.left), top: parseFloat(t.style.top), label: t.querySelector('.token-label').textContent })));
+  const tokens = page => page.$$eval('.token', ts => ts.map(t => ({ ids: t.dataset.expedition, count: t.dataset.count, left: parseFloat(t.style.left), top: parseFloat(t.style.top), label: t.querySelector('.token-label').textContent, spoken: t.getAttribute('aria-label') })));
   const FRAME = FRAMES[0];
 
   // one expedition, sent from the map table and followed home, by pointer then by keyboard
@@ -1347,7 +1347,9 @@ try {
         ok(Math.abs(ts[0].left - want[0]) < 0.15 && Math.abs(ts[0].top - want[1]) < 0.15, `token at ${ts[0].left}, ${ts[0].top}, a quarter along is ${want}`);
         // MER-131: a stack names each agent with that agent's own season, from the engine's view (it said only the soonest, which hid the later one)
         const named = await page.evaluate(ids => ids.map(id => { const x = window.__merchant.state.expeditions.find(e => e.id === id); return `${window.__merchant.content.agents.find(a => a.id === x.agent).name}, home about ${window.__merchant.view.homeBy[id].season}`; }), ts[0].ids.split(' '));
-        eq(ts[0].label, `2 expeditions: ${named.join('; ')}`, 'a stack names each trip with its own season, from the engine\'s view');
+        // MER-137: the caption lists them one to a line; the token says the same in one sentence to a screen reader
+        eq(ts[0].spoken, `2 expeditions: ${named.join('; ')}`, 'a stack names each trip with its own season, from the engine\'s view');
+        for (const n of named) ok(ts[0].label.includes(n), `the caption "${ts[0].label}" lacks "${n}"`);
       });
     }
     await page.close();
@@ -3987,6 +3989,8 @@ try {
       // two trips on one leg at one place, due home in different seasons: one token, and its caption names each agent with that agent's own season
       merged: trips([['yusuf', 'cairo-qus', 0, 1], ['ali', 'cairo-quseir', 0, 1]]),
     };
+    // how many places the parties stand in: three has Yusuf and Samir on Cairo, crowd has both on Cairo
+    const PLACES = { three: 2, roads: 4, two: 2, crowd: 1, merged: 1 };
     const frames = [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3], FRAMES[5]];   // laptop, board, laptop-small, phone upright, phone on its side
     const put = async (page, st, hash) => {
       await page.goto(GAME, { waitUntil: 'load' });
@@ -4015,7 +4019,8 @@ try {
         for (const [name, st] of Object.entries(STATES)) {
           await put(page, st, '#map');
           const a = await reach(page);
-          eq(a.length, name === 'merged' ? 1 : st.expeditions.length, `${name}: one token for each place a party stands`);
+          // MER-137: parties standing on one stop are one token with a count, whatever road each is about to take
+          eq(a.length, PLACES[name], `${name}: one token for each place a party stands`);
           for (const t of a) ok(t.off <= 24, `${name}: the token for ${t.ids} on ${t.leg} stands ${t.off.toFixed(1)} px from its road`);
           // a second render of the same state: a resize redraws the map, and a press on another stop redraws it again
           await page.evaluate(() => dispatchEvent(new Event('resize')));
@@ -4073,6 +4078,48 @@ try {
         }
       });
       await test('MER-131: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // ---- MER-137 (play A, a013 and a016): a token's place is the trip's and the season's, and nothing else. The same trip in the same season was
+    // drawn 53 px apart depending on whether an agent was free, and a token that had just set out stood at the far end of its road. Here
+    // Yusuf's trip is read in three houses (nobody free, Ali free, Ali out on a trip of his own) and with every kind of stop selected in turn,
+    // at every frame: the piece's centre must be the same pixel each time, and on the day it leaves it is on its first stop, not its last.
+    const solo = trips([['yusuf', 'cairo-damascus', 0, 1]]);
+    const noOne = (() => { const g = structuredClone(solo); for (const [id, a] of Object.entries(g.agents)) if (id !== 'yusuf') a.hired = false; return g; })();
+    const withFree = (() => { const g = structuredClone(noOne); g.agents.ali.hired = true; g.agents.ali.where = nodeContent.city.home; return g; })();
+    const withBusy = trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-qus', 1, 1]]);
+    for (const frame of [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3]]) {
+      const { page, consoleErrors } = await open(frame);
+      const centre = id => page.evaluate(id => {
+        const t = [...document.querySelectorAll('.token')].find(e => e.dataset.expedition.split(' ').includes(id));
+        if (!t) return null;
+        const r = t.querySelector('.token-piece').getBoundingClientRect();
+        const d = s => { const q = document.querySelector(`.dot[data-stop="${s}"]`).getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; };
+        const c = [r.left + r.width / 2, r.top + r.height / 2];
+        return { c, toCairo: Math.hypot(c[0] - d('cairo')[0], c[1] - d('cairo')[1]), toDamascus: Math.hypot(c[0] - d('damascus')[0], c[1] - d('damascus')[1]) };
+      }, id);
+      await test(`MER-137 ${frame.name}: the same trip in the same season is drawn on the same pixel whoever is free and whatever stop is selected, and on the day it leaves it is at its start`, async () => {
+        let want = null;
+        for (const [name, st] of [['nobody free', noOne], ['Ali free', withFree], ['Ali on a trip', withBusy]]) {
+          await put(page, st, '#map');
+          const at = async how => {
+            await page.evaluate(() => new Promise(r => setTimeout(r, 400)));   // a token moves to its place over the token-move time
+            const got = await centre('x1');
+            if (!want) { want = got; return; }
+            ok(Math.abs(got.c[0] - want.c[0]) < 0.5 && Math.abs(got.c[1] - want.c[1]) < 0.5, `${name}, ${how}: Yusuf's token is at ${got.c.map(Math.round)}, it was at ${want.c.map(Math.round)}`);
+          };
+          await at('as opened');
+          for (const stop of ['damascus', 'qus', 'alexandria', 'cairo', 'aden']) {
+            await page.evaluate(id => document.querySelector(`#stop-${id}`).click(), stop);
+            await at(`${stop} selected`);
+          }
+        }
+        // the day it leaves: on Cairo's dot, and far from Damascus, whatever the road's length at this frame
+        ok(want.toCairo < 6, `the token that has just set out is ${want.toCairo.toFixed(1)} px from its first stop`);
+        ok(want.toDamascus > want.toCairo * 4 && want.toDamascus > 40, `it is ${want.toDamascus.toFixed(1)} px from the far end, the stop it leaves for`);
+      });
+      await test(`MER-137 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
   }
@@ -4171,8 +4218,8 @@ try {
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
         const probe = how => page.evaluate(how => {
-          const t = document.getElementById('map-toast'), board = document.getElementById('board');
-          if (how === 'foot') board.scrollTop = board.scrollHeight; else board.scrollTop = 0;
+          const t = document.getElementById('map-toast'), board = document.getElementById('board'), body = document.getElementById('board-body');   // MER-137: the body is the scroller, the buttons sit under it
+          if (how === 'foot') body.scrollTop = body.scrollHeight; else body.scrollTop = 0;
           const r = t.getBoundingClientRect(), b = board.getBoundingClientRect();
           const covered = [[r.left + 4, r.top + 3], [r.right - 4, r.top + 3], [r.left + 4, r.bottom - 3], [r.right - 4, r.bottom - 3], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]
             .map(([x, y]) => { const e = document.elementFromPoint(x, y); return e && !(t === e || t.contains(e)) ? (e.id || e.className || e.tagName) : null; }).filter(Boolean);

@@ -172,6 +172,22 @@ states.twoBack = (() => {
   for (const x of s.expeditions) { x.leg = 1; x.left = 1; }
   return s;
 })();
+// MER-137: trips laid on the roads by hand (a leg, and the seasons left on it) from the engine's own sent expedition, so a party can stand
+// on any stop. A party at the start of a leg stands on that stop; parties on one stop are one token with a count.
+const tripsOn = list => {
+  const g = structuredClone(states.two), model = structuredClone(g.expeditions[0]);
+  g.expeditions = list.map(([agent, route, leg, left], i) => ({ ...structuredClone(model), id: `x${i + 1}`, agent, route, leg, left, status: 'out' }));
+  return g;
+};
+// what each map screen must show: how many tokens, and the stops whose labels a trip stands on
+const MAP137 = {
+  'map-one': { state: tripsOn([['yusuf', 'cairo-damascus', 0, 1]]), tokens: 1 },
+  'map-three': { state: tripsOn([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1], ['samir', 'cairo-aydhab', 2, 1]]), tokens: 3 },
+  'map-stack': { state: tripsOn([['yusuf', 'cairo-quseir', 1, 1], ['ali', 'cairo-aydhab', 1, 1], ['samir', 'cairo-jeddah', 1, 1]]), tokens: 1, stack: 3 },
+  // Damascus, Aleppo, Famagusta, Qus, Quseir and Alexandria, the six stops the M4d play saw lose their names while a trip stood on them
+  'map-names': { state: tripsOn([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-aleppo', 2, 1], ['samir', 'cairo-famagusta', 2, 1], ['mariam', 'cairo-aydhab', 1, 1], ['yusuf', 'cairo-quseir', 2, 1], ['ali', 'cairo-alexandria', 1, 1]]),
+    tokens: 6, names: ['damascus', 'aleppo', 'famagusta', 'qus', 'quseir', 'alexandria'] },
+};
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
 states.report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
 const plain = s => JSON.parse(JSON.stringify(s));
@@ -345,9 +361,23 @@ const SCREENS = [
     go: async (p, f) => {
       await load(p, '#map', { state: states[st], large: f.large });
       await p.waitForSelector('#screen-map[data-ready]');
-      await p.waitForFunction(() => document.querySelectorAll('.token').length >= 2);
+      // MER-137: two parties leaving Cairo at once are one token with a count; on their second legs they are two
+      await p.waitForFunction(n => document.querySelectorAll('.token').length >= n, {}, name === 'map-two' ? 1 : 2);
       await p.waitForFunction(() => document.querySelector('.stop-label'));
     } })),
+  ...Object.entries(MAP137).map(([name, m]) => ({ name,
+    go: async (p, f) => {
+      await load(p, '#map', { state: m.state, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      await p.waitForFunction(n => document.querySelectorAll('.token').length >= n, {}, m.tokens);
+      await p.waitForFunction(() => document.querySelector('.stop-label'));
+    } })),
+  // MER-137: the board with nothing opened, where the buttons under it once lay over the prices
+  { name: 'map-board',
+    go: async (p, f) => {
+      await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+    } },
   { name: 'price-board-news',
     go: async (p, f) => {
       await load(p, '#map', { state: states.second, large: f.large });
@@ -958,6 +988,9 @@ try {
               for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
                 const a = items[i].r, b = items[j].r;
                 if (items[i].own && items[i].own === items[j].own) continue;   // a token's piece and its own caption
+                // MER-137: a token's place is the trip's, so a label beside a crowded stop may still brush the edge of a piece; it is drawn above it and
+                // its name reads. A label over a caption, or two tokens over each other, still fail.
+                if ((items[i].piece && !items[j].token) || (items[j].piece && !items[i].token)) continue;
                 if (items[i].home || items[j].home) continue;   // MER-131: Cairo's label is drawn over a token's edge when two parties leave it on roads too short to clear it
                 // two pieces on roads too short to part them may share edges (MER-131: a token never leaves its road), never their middles
                 const core = (r, p) => { const k = p ? (r.right - r.left) / 4 : 0; return { left: r.left + k, right: r.right - k, top: r.top + k, bottom: r.bottom - k }; };
@@ -970,10 +1003,104 @@ try {
               const homeLabel = [...document.querySelectorAll('.stop-label')].find(l => l.dataset.stop === 'cairo' || (l.dataset.cluster && /delta/i.test(l.dataset.cluster)));
               return { tokens: new Set(items.filter(x => x.token).map(x => x.own)).size, hits, out, home: !!homeLabel && !homeLabel.hidden, board: board.width > 0 };
             });
-            ok(got.tokens >= 2, `${got.tokens} tokens are drawn, the case needs two`);
+            ok(got.tokens >= (screen.name === 'map-two' ? 1 : 2), `${got.tokens} tokens are drawn, the case needs ${screen.name === 'map-two' ? 'one, with a count of two' : 'two'}`);
             ok(!got.hits.length, brief(got.hits));
             ok(!got.out.length, `a token is not whole inside the picture: ${got.out}`);
             ok(got.home, "Cairo's label (or the Delta cluster's) is hidden");
+          });
+        }
+        // ---- MER-137: the map tells who is where. Every expedition is told apart by name at the frames that show captions, no stop loses its
+        // name to a token, and on a phone Cairo has a label and each label sits by its own dot.
+        const m137 = MAP137[screen.name], captioned = ['board', 'laptop', 'laptop-small'].includes(frame.name), phone = frame.mobile;
+        if (m137 && captioned) {
+          await test(`${tag}: every token has its caption on screen, naming each agent and the season, clear of the board`, async () => {
+            await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
+            const got = await page.evaluate(() => {
+              const box = e => { const b = e.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; };
+              const fr = box(document.querySelector('.map-frame')), board = box(document.querySelector('#board'));
+              return [...document.querySelectorAll('.token')].map(t => {
+                const l = t.querySelector('.token-label'), r = box(l);
+                return { ids: t.dataset.expedition, count: Number(t.dataset.count), shown: l.checkVisibility(), text: l.textContent, spoken: t.getAttribute('aria-label'),
+                  whole: r.left >= fr.left - 0.5 && r.right <= fr.right + 0.5 && r.top >= fr.top - 0.5 && r.bottom <= fr.bottom + 0.5,
+                  onBoard: r.left < board.right && r.right > board.left && r.top < board.bottom && r.bottom > board.top };
+              });
+            });
+            eq(got.length, m137.tokens, 'one token for each place a party stands');
+            for (const t of got) {
+              ok(t.shown, `the caption of ${t.ids} is not shown: ${t.text}`);
+              ok(t.whole, `the caption of ${t.ids} is not whole inside the picture`);
+              ok(!t.onBoard, `the caption of ${t.ids} lies under the price board`);
+              const names = t.spoken.match(/[A-Z][a-z]+, home about [A-Z][a-z]+ \d+/g) ?? [];
+              eq(names.length, t.count, `${t.ids} is named once for each agent in "${t.spoken}"`);
+              for (const n of names) ok(t.text.includes(n), `the caption "${t.text}" lacks "${n}"`);
+            }
+            if (m137.stack) ok(got.some(t => t.count === m137.stack), `no token stacks ${m137.stack} parties`);
+          });
+        }
+        if (m137?.names && captioned) {
+          await test(`${tag}: no stop a trip stands on loses its name, and no token lies over it`, async () => {
+            await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
+            const got = await page.evaluate(names => {
+              // pointer events on, so elementFromPoint answers with what is drawn on top at a point
+              const st = document.createElement('style'); st.textContent = '.stop-label,.token,.token *{pointer-events:auto!important}'; document.head.append(st);
+              const out = names.map(id => {
+                const l = document.querySelector(`.stop-label[data-stop="${id}"]`);
+                if (!l || l.hidden || !l.checkVisibility()) return { id, hidden: true };
+                const r = l.getBoundingClientRect(), under = [];
+                for (const fx of [0.15, 0.5, 0.85]) for (const fy of [0.3, 0.7]) {
+                  const e = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+                  if (e && e !== l && !l.contains(e)) under.push(e.className || e.tagName);
+                }
+                return { id, hidden: false, under };
+              });
+              st.remove();
+              return out;
+            }, m137.names);
+            eq(got.filter(g => g.hidden).map(g => g.id), [], 'a stop with a trip on it has no label');
+            eq(got.filter(g => g.under?.length).map(g => `${g.id}: ${g.under}`), [], 'something is drawn over a stop label');
+          });
+        }
+        if (m137 && phone) {
+          await test(`${tag}: Cairo has a label, and every label stands by its own dot`, async () => {
+            const got = await page.evaluate(() => {
+              const visible = [...document.querySelectorAll('.stop-label')].filter(l => !l.hidden && l.checkVisibility());
+              const away = visible.map(l => {
+                const d = document.querySelector(l.dataset.stop ? `.dot[data-stop="${l.dataset.stop}"]` : `.dot[data-cluster="${l.dataset.cluster}"]`);
+                const a = l.getBoundingClientRect(), b = d.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+                return [l.textContent, Math.hypot(Math.max(a.left - cx, 0, cx - a.right), Math.max(a.top - cy, 0, cy - a.bottom))];
+              });
+              return { cairo: visible.some(l => /Cairo/.test(l.textContent)), far: away.filter(([, d]) => d > 44).map(([t, d]) => `${t} ${Math.round(d)} px`) };
+            });
+            ok(got.cairo, "no label says Cairo (on the house's own stop, or on the group that holds it)");
+            eq(got.far, [], 'a label stands more than 44 px from its dot');
+          });
+        }
+        if (screen.name === 'map-board') {
+          // b008 and c006b: "Every price in ..." on a laptop and "Prices and best trades" on a phone lay half under the buttons at the foot of the
+          // board, and a focus left the control's foot cut. The buttons are outside the scroll now: the control is clear of them at rest, and
+          // once focused it is whole inside the part of the board that scrolls.
+          await test(`${tag}: the price controls are never under the buttons at the foot of the board, at rest or focused`, async () => {
+            const got = await page.evaluate(() => {
+              const body = document.querySelector('#board-body'), bar = document.querySelector('.board-actions');
+              const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+              const read = id => {
+                const e = document.getElementById(id);
+                if (!e.checkVisibility()) return null;
+                const at = e.getBoundingClientRect(), v = body.getBoundingClientRect();
+                // what lies on top at the middle of the part of the control that shows (the scroll box clips the rest)
+                const seen = { left: at.left, right: at.right, top: Math.max(at.top, v.top), bottom: Math.min(at.bottom, v.bottom) };
+                const top = seen.bottom > seen.top ? document.elementFromPoint((seen.left + seen.right) / 2, (seen.top + seen.bottom) / 2) : null;
+                return { id, covered: !!top && !(top === e || e.contains(top)), scrolls: body.scrollHeight > body.clientHeight + 1, cut: at.bottom > v.bottom + 0.5 || at.top < v.top - 0.5 };
+              };
+              const ids = ['btn-prices', 'btn-all-prices'].filter(id => document.getElementById(id)?.checkVisibility());
+              const rest = ids.map(read);
+              const focused = ids.map(id => { document.getElementById(id).focus(); return read(id); });
+              return { ids, rest, focused, barBelow: bar.getBoundingClientRect().top >= body.getBoundingClientRect().bottom - 0.5 };
+            });
+            ok(got.ids.length, 'neither price control is on the board');
+            ok(got.barBelow, 'the buttons lie over the scrolling part of the board');
+            for (const r of got.rest) { ok(!r.covered, `${r.id} lies under the buttons at rest`); ok(!r.cut || r.scrolls, `${r.id} is cut at the foot of a board that does not scroll`); }
+            for (const r of got.focused) { ok(!r.covered, `${r.id} lies under the buttons once focused`); ok(!r.cut, `${r.id} is cut at the edge of the board once focused`); }
           });
         }
         if (screen.name === 'desk-return2' || screen.name === 'desk-return') {
