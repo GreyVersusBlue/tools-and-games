@@ -80,8 +80,11 @@ export function priceLine(app) {
   const { content, state } = app;
   const home = content.city.home, stopId = content.city.firstStop ?? 'damascus';
   const stop = (content.stops ?? []).find(x => x.id === stopId);
-  const plan = cardPlan(state, content, stopId);
-  const good = Object.keys(plan?.cargo ?? {})[0] ?? Object.keys(state.stock).find(g => stop?.sells?.[g]);
+  // The first expedition's card names its own good ("ten loads of linen") and the line under it prices that good, not the sheet's first
+  // cargo, which `proposePlan` orders by its own rule (MER-142). From the second expedition the sheet's proposal is what the card sends (MER-97).
+  const first = !state.log.some(e => e.kind === 'outfit');
+  const good = (first && engine.openingGood(state, content, stopId)) || Object.keys(cardPlan(state, content, stopId)?.cargo ?? {})[0]
+    || Object.keys(state.stock).find(g => stop?.sells?.[g]);
   if (!stop || !good) return null;
   const prices = app.view().prices, name = goodName(content, good);
   const here = prices[home]?.[good], there = prices[stopId]?.[good];
@@ -439,7 +442,10 @@ export function stuckHeight(box) {
   return tabs.getBoundingClientRect().height + (parseFloat(getComputedStyle(box).rowGap) || 0);
 }
 
-const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v));
+/** An account cell's words with each figure and its unit ("340 dinars", "4 loads") in one nowrap span, so a long sentence breaks between
+    words and never between a number and what it counts (MER-142: "340 / dinars" at the phone's width). The text is the same text. */
+const keepUnits = text => String(text ?? '').split(/(\d[\d,]* (?:loads?|dinars?)(?![a-z]))/).map((part, i) => (i % 2 ? h('span', { class: 'nb' }, part) : part));
+const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, keepUnits(v)));
 /** The words of an account row for a return. A sum row (an `amount`, no `detail`) shows its total in the last column, so the engine's
     closing ", 527 dinars in all" is dropped from the words (MER-132, play: "Back home / 527 dinars, 527 dinars in all / +527 dinars" said
     the figure three times). What is left is what came home; a row of money alone, whose words would be the figure again, says so in words. */
@@ -455,7 +461,7 @@ export function accountText(r) {
     engine's words carry none in front of a figure the column shows (a loss is U+2212, never a hyphen, and never twice). */
 const sumRow = r => {
   const sum = Number.isFinite(r.amount) && !r.detail;
-  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, accountText(r)),
+  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, keepUnits(accountText(r))),
     sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
 };
 

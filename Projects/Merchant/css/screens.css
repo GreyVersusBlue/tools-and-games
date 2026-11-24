@@ -176,6 +176,9 @@ html.large-text .title-what { display: none; }
 .accounts-table { width: 100%; border-collapse: collapse; margin-top: var(--s2); }
 .accounts-table th { text-align: left; font-weight: 400; }
 .accounts-table td { text-align: right; }
+/* MER-142: the money column and the labels are never wrapped (the minus is U+2212 now, a wider figure, and a long sentence in the same table gave the
+   column its narrowest width: "-2,398 / dinars", "Back home" on two lines). A figure and its unit in a sentence stay together too. */
+.accounts-table th, .accounts-table td.amount, .accounts-table .nb { white-space: nowrap; }
 .accounts-table th, .accounts-table td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); vertical-align: baseline; }
 /* MER-124: a phone stacks each row, the label over its value, both at the left. Side by side in three columns on 390 px the label and the
    value each wrapped ("Sent / out", "-690 / dinars", play c041); stacked, each has the whole width and only a long sentence ever wraps,
@@ -183,7 +186,7 @@ html.large-text .title-what { display: none; }
    still happened to "Back home" and "+527 dinars".) */
 @media (max-width: 480px) { .accounts-table, .accounts-table tbody { display: block; } .accounts-table tr { display: block; padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); }
   .accounts-table th, .accounts-table td { display: block; border: 0; padding: 0; text-align: left; }
-  .accounts-table th { font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); } }
+  .accounts-table th { font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); white-space: normal; } }
 
 /* a return's question and a loss's picture slot (DESIGN 2.1 rules 3 and 4) */
 .ask { margin-top: var(--s3); }

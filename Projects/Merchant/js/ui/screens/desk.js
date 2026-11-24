@@ -211,7 +211,8 @@ export function createDesk(app) {
     if (late !== null && box.scrollTop !== late) return;
     if (late === null) box.scrollTop = 0;
     const sheet = qs('.sheet', sheetBox);
-    if (!sheet || getComputedStyle(box).overflowY !== 'auto') return;
+    if (sheet && getComputedStyle(box).overflowY !== 'auto') { if (late === null) revealOnPage(sheet); return; }
+    if (!sheet) return;
     const target = qs('.choice, #btn-next', sheet);
     if (!target) return;
     const boxRect = box.getBoundingClientRect();
@@ -229,6 +230,30 @@ export function createDesk(app) {
     // the sheet rises into place for 220 ms, and a font may arrive: measure once more when it lies still
     sheet.addEventListener('animationend', () => revealChoice(at), { once: true });
     if (late === null && document.fonts?.status === 'loading') document.fonts.ready.then(() => { if (sheet.isConnected) revealChoice(at); });
+  }
+
+  /** The upright phone's counterpart of the above (MER-142): the page scrolls, not the stack, and End the season is a bar stuck to the foot of
+      the screen. A return or a loss that ends by asking has its last choice brought clear of that bar, by scrolling the page, as far as the
+      headline can go up and still stay under the top bar (the headline wins where both do not fit, MER-122). A paper that grew by a sentence
+      (the unsold goods, a second line of why) had its second choice under End at 360 x 740 with nothing to say so until the player scrolled. */
+  function revealOnPage(sheet) {
+    // measured only once the sheet lies still: it rises into place for 220 ms, and its boxes sit lower while it does (a first version measured
+    // then and scrolled 130 px, the headline under the top bar). A scroll the player makes while it settles is left alone.
+    const was = window.scrollY, moving = (sheet.getAnimations?.() ?? []).filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => null));
+    Promise.all(moving).then(() => {
+      if (!sheet.isConnected || window.scrollY !== was) return;
+      const endRow = qs('.end-row', el), bar = qs('.topbar');
+      if (!endRow || !bar || getComputedStyle(endRow).position !== 'sticky' || !endRow.checkVisibility()) return;
+      if (!/\bkind-(return|lost)\b/.test(sheet.className)) return;
+      const last = qsa('.choice', sheet).at(-1), title = qs('.sheet-title', sheet);
+      if (!last) return;
+      // where the page must be scrolled to, from the page's own top (as the stack's scrollTop is reset first): the last choice's foot clear of
+      // End, and no further than leaves the headline a hand under the top bar
+      const y = window.scrollY, endTop = window.innerHeight - endRow.offsetHeight;
+      const clear = last.getBoundingClientRect().bottom + y + 6 - endTop;
+      const most = title ? title.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 8) : clear;
+      window.scrollTo({ top: Math.max(0, Math.min(clear, most)), behavior: 'instant' });
+    });
   }
 
   // what the settled trips came to for the house, from the jump's own lines (`houseNet` of each)

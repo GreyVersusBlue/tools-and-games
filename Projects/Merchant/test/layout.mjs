@@ -763,7 +763,11 @@ try {
         // account folded and unfolded, at every frame. A box is measured by what a player can see of it: cut by every ancestor that clips or scrolls.
         if (/^desk-return2?(-open)?$/.test(screen.name)) {
           await test(`${tag}: no choice of the return is behind End the season, as it opens or when scrolled to`, async () => {
-            await page.evaluate(() => window.scrollTo(0, 0));
+            // "as it opens" is the page as the desk leaves it, not one forced back to its top: on the upright phone the desk scrolls the page until
+            // the last choice is clear of End (desk.js revealOnPage, MER-142), so the paper is raised again and left to settle
+            await screen.go(page, frame);
+            await settle(page);
+            await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
             const bad = await page.evaluate(() => {
               const saved = [document.scrollingElement, ...document.querySelectorAll('.stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
               const seen = e => { const q = e.getBoundingClientRect(); const v = { top: q.top, bottom: q.bottom, left: q.left, right: q.right };
