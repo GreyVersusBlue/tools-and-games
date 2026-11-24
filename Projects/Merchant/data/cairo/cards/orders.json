@@ -909,14 +909,14 @@
         ]
       }
     ],
-    "note": "The Persian merchant is invented. The records that were read say little about the road from Damascus to Aleppo. They say less about the road on to Tabriz, so the game's prices there are guesses.",
+    "note": "The Persian merchant is invented. We found no recorded prices for the road from Damascus to Aleppo, or on to Tabriz. So the game's prices there are guesses.",
     "unlocks": [
       "term-dinar"
     ],
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "estimate; the leg from Damascus to Aleppo and on to Tabriz is graded an estimate in the network notes"
+        "at": "estimate; no recorded prices for the road from Damascus to Aleppo and on to Tabriz were found; the Tabriz passage is vol. 2, pp. 339 to 341"
       }
     ],
     "when": {
@@ -1254,7 +1254,7 @@
         ]
       }
     ],
-    "note": "Venice sent its state galleys to Alexandria in convoys from 1301 to 1312. A convoy was a fleet that sailed together for safety.",
+    "note": "Venice sent its state galleys to Alexandria in yearly convoys from 1301. The service stopped after the galleys came home in 1312. A convoy is a group of ships that sail together.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1266,6 +1266,10 @@
       {
         "src": "jacoby-2018",
         "at": "p. 117; the galley convoys of 1301 to 1312"
+      },
+      {
+        "src": "jacoby-2018",
+        "at": "p. 137 and note 116; the galley service resumed in 1345"
       }
     ]
   },
