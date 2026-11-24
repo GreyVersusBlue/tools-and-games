@@ -1961,8 +1961,14 @@ test('a note of spaces only is an empty note on the page and on paper, and is ke
     await page.goto('about:blank');
     await goto(page, files.open.url + '#/me');
     // the field is drawn after the page says it is open, and filled as it is
-    // drawn: wait for the spaces to be in it, not for the field to exist
-    await page.waitForFunction(() => document.querySelector('[data-note="dsample00a:1"] input')?.value === '   ', { timeout: 10000 });
+    // drawn: wait for the spaces to be in it, not for the field to exist. The
+    // wait is polled on a timer (a frame is not what it waits for: a window
+    // that is not painting yet gives no frames), and a wait that runs out says
+    // what the page held, so the next failure names its own cause.
+    await page.waitForFunction(() => document.querySelector('[data-note="dsample00a:1"] input')?.value === '   ', { timeout: 20000, polling: 50 }).catch(async (error) => {
+      const held = await page.evaluate((at, me) => JSON.stringify({ view: document.querySelector('main')?.dataset.view, field: document.querySelector('[data-note="dsample00a:1"] input')?.value ?? null, notes: localStorage.getItem(at), me: localStorage.getItem(me) }), NOTES_AT, ME_AT);
+      throw new Error('the note field never held the spaces after the reload: ' + held + ' (' + error.message + ')');
+    });
     assert.equal(await empty(), 'true');
     assert.equal(await page.evaluate(() => document.querySelector('[data-note="dsample00a:1"] input').value), '   ');
     assert.deepEqual(await onPaper(), []);
