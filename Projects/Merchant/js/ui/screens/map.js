@@ -574,7 +574,9 @@ export function createMap(app, nav) {
   const onResize = () => { if (geo) drawMap(); };
   addEventListener('resize', onResize);
   draw();
-  loadGeo().then(g => {
+  // the stops are placed and the map marked ready only once the page's own fonts are in: labels measured on the fallback font were placed
+  // again when the font arrived and moved a token 6 px after the map said it was ready (CI, PR #617)
+  Promise.all([loadGeo(), document.fonts?.ready]).then(([g]) => {
     if (gone) return;
     geo = g;
     for (const s of g.stops) pos[s.id] = { x: s.x / g.w * 100, y: s.y / g.h * 100 };
