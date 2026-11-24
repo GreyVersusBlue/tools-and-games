@@ -259,6 +259,8 @@ export function createMap(app, nav) {
     const centre = d => { const r = d.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
     const tokens = qsa('.token', layer);
     for (const t of tokens) { t.style.removeProperty('--ox'); t.style.removeProperty('--oy'); t.classList.remove('bare'); }   // measured from where the data puts them
+    // a label hidden by the last placement measures 0 by 0, so a redraw would place everything around an empty label and move a token (CI, PR #617): show them all before measuring
+    for (const p of pairs) p.label.hidden = false;
     const marks = pairs.map(p => ({ p, at: centre(p.dot), w: p.label.offsetWidth, h: p.label.offsetHeight }));
     // a dot is a thing a label would rather not cover
     const dots = qsa('.dot', layer).map(n => ({ el: n, r: n.getBoundingClientRect() }));
@@ -572,7 +574,9 @@ export function createMap(app, nav) {
   const onResize = () => { if (geo) drawMap(); };
   addEventListener('resize', onResize);
   draw();
-  loadGeo().then(g => {
+  // the stops are placed and the map marked ready only once the page's own fonts are in: labels measured on the fallback font were placed
+  // again when the font arrived and moved a token 6 px after the map said it was ready (CI, PR #617)
+  Promise.all([loadGeo(), document.fonts?.ready]).then(([g]) => {
     if (gone) return;
     geo = g;
     for (const s of g.stops) pos[s.id] = { x: s.x / g.w * 100, y: s.y / g.h * 100 };
