@@ -87,7 +87,7 @@
       {
         "id": "hire",
         "label": "Hire Ali",
-        "hint": "The clerk's fee is 4 dinars. Your other agents hear that you hire people, and think better of you in three seasons. The next sheet shows what sending him costs.",
+        "hint": "The clerk's fee is 4 dinars. Your other agents hear that you hire people, and think better of you in three seasons. The Outfit button on the map shows what sending him costs.",
         "requires": {
           "money": {
             "gte": 4

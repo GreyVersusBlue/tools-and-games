@@ -815,19 +815,21 @@ test('(MER-123) a letter that says the agent sold is written only by an expediti
 
 test('(MER-123) a letter is not written when a card or letter with the same note reached the desk in the last two seasons', () => {
   const s = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
-  const sacks = CAIRO.letters.find(l => l.id === 'constantinople-sacks'), idx = seasonIndex(s, CAIRO);
-  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), false, 'nothing told yet');
+  // MER-128: the card and the letter tell different facts now, so the case gives the card the letter's note on a copy of the content
+  const content = structuredClone(CAIRO), sacks = content.letters.find(l => l.id === 'constantinople-sacks'), idx = seasonIndex(s, CAIRO);
+  content.cards.find(c => c.id === 'broker-linen-constantinople').note = sacks.note;
+  eq(repeatsRecent(s, content, sacks, idx, 1), false, 'nothing told yet');
   s.log.push({ at: idx, kind: 'card', ref: 'broker-linen-constantinople' });   // the card that shares its note and its source line
-  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), true, 'the card told it this season');
+  eq(repeatsRecent(s, content, sacks, idx, 1), true, 'the card told it this season');
   s.log.at(-1).at = idx - 1;
-  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), true, 'and last season');
+  eq(repeatsRecent(s, content, sacks, idx, 1), true, 'and last season');
   s.log.at(-1).at = idx - 2;
-  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), false, 'two seasons ago is far enough');
+  eq(repeatsRecent(s, content, sacks, idx, 1), false, 'two seasons ago is far enough');
   s.log.at(-1).ref = 'opening-letter';
   s.log.at(-1).at = idx;
-  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), false, 'a card with another note does not count');
+  eq(repeatsRecent(s, content, sacks, idx, 1), false, 'a card with another note does not count');
   s.post.push({ id: 'broker-linen-constantinople', arrive: idx + 1 });
-  eq(repeatsRecent(s, CAIRO, sacks, idx, 1), true, 'a letter in the post for the season it would arrive in counts');
+  eq(repeatsRecent(s, content, sacks, idx, 1), true, 'a letter in the post for the season it would arrive in counts');
 });
 
 /** A cairo state with a return paper on the desk, and the paper. Searched over seeds; fails if none has one. */
