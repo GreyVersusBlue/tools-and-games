@@ -1039,7 +1039,7 @@ export function estimate(state, content, plan, memo = null) {
   const tollsAll = route.legs.reduce((n, l) => n + l.toll, 0);
   // The upkeep of every season the party waits at a stop before it trades comes out of the purse too (`move`), so what it buys with
   // is the purse less the tolls and the waiting before the far end (or, for a party `jump` settles, the waiting seasons that had
-  // closed by then, `count.out`). MER-130: counting the tolls alone let a purse of 981 buy a fourth silk load that 962 could not.
+  // closed by then, `count.out`). MER-130: counting the tolls alone let a purse reach the far end with a load more than it could pay for.
   const upkeepBefore = UPKEEP * proj.legs.slice(0, (atQuote ? count.leg : far) + 1).reduce((n, l) => {
     const first = l.startK - l.waits, last = atQuote ? Math.min(l.startK - 1, count.out) : l.startK - 1;
     return n + Math.max(0, last - first + 1);
