@@ -10,6 +10,7 @@ import { freshState, addPaper } from '../js/engine/state.js';
 import { apply } from '../js/engine/effects.js';
 import { holds } from '../js/engine/conditions.js';
 import { steps } from '../js/engine/turn.js';
+import { playGame, BOTS } from '../tools/bots.mjs';
 import { newGame, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices } from '../js/engine/index.js';
 
 const content = await loadContent('testport', { fs });
@@ -394,7 +395,8 @@ test('turn: the desk is never over 5 papers however many follow-ups are due', ()
   s.queue = Array.from({ length: 8 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   s = endSeason(answer(s, c), c);
   eq(s.desk.length, 5);
-  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 3, 'the three that did not fit wait');
+  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 4, 'four follow-ups fit and the other four wait: the fifth place is kept for the Accounts paper of the money that moved (MER-134; it used to go to a fifth card and the paper was dropped)');
+  eq(s.desk.filter(p => p.kind === 'accounts').length, 1, 'and the Accounts paper is on the desk');
   const t = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
   t.queue = Array.from({ length: 3 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   eq(endSeason(answer(t, c), c).desk.filter(p => p.kind === 'card').length, 3, 'three follow-ups; the Accounts paper is a fourth paper, not a card');
@@ -952,6 +954,29 @@ test('turn: an Accounts line writes its minus as a true minus sign, not a hyphen
   ok(acc.items[0].changes[0].startsWith('\u22124 '), acc.items[0].changes[0]);
   ok(acc.items[0].changes[1].startsWith('+6 '), acc.items[0].changes[1]);
   ok(!/(^|[\s:])-\d/.test(acc.items[0].text), acc.items[0].text);
+});
+
+// ---- MER-135: the desk keeps its places for the papers that carry money
+
+test('turn: over 120 seeded bot games no return paper and no Accounts paper is dropped for want of room on the desk (MER-135)', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  // the bots play whole three-act games through endSeason; `steps.end` is the last step of every closing, so the log it sees holds every
+  // paper the game put or tried to put, and a drop is a log entry (routes.js `put`)
+  const saved = steps.end;
+  let dropped = [];
+  steps.end = (st, ...a) => { dropped = st.log.filter(e => e.kind === 'dropped' && e.reason === 'the desk was full' && (e.ref === 'return' || e.ref === 'accounts' || e.ref === 'lost')); return saved(st, ...a); };
+  const bad = [];
+  let games = 0;
+  try {
+    for (let seed = 1; seed <= 30; seed++) for (const bot of BOTS) {
+      dropped = [];
+      playGame(cairo, { bot, seed, house: cairo.houses[seed % cairo.houses.length].id });
+      games++;
+      if (dropped.length) bad.push(`${bot}/${seed}: ${dropped.map(e => e.ref).join(', ')}`);
+    }
+  } finally { steps.end = saved; }
+  eq(games, 120);
+  eq(bad, [], 'a paper dropped for a full desk means money or goods moved with no paper to say so');
 });
 
 await done();

@@ -188,12 +188,13 @@ function fireOne(s, content, q) {
 /** Papers the rest of this closing is bound to put on the desk, which a follow-up card must leave room for (MER-134, play problem 10:
     in two of 60 played games a return paper was "dropped, the desk was full" at the act jump while three follow-up cards sat on the
     desk, so the money and goods of that trip came home with no paper): one for each trip that comes home at the next opening, or,
-    when the act jump comes, for each trip it settles. The folded Accounts paper is not counted: keeping a place for it as well moves
-    test/routes.mjs's seeded game 15 (no agent at home for the plague), a file this unit does not own; see the report. */
-function reserve(s, content) {
+    when the act jump comes, for each trip it settles; and (MER-135) one for the folded Accounts paper when a due item with no card
+    has a line for it, so the paper that says where the money went is never the one dropped for a full desk. */
+function reserve(s, content, due) {
   const played = playedSeasons(content.calendar, s.length), here = seasonIndex(s, content), next = played[s.t + 1];
   const jump = next !== undefined && next - here > 1;
-  return jump ? s.expeditions.length : s.expeditions.filter(x => x.status === 'home').length;
+  const trips = jump ? s.expeditions.length : s.expeditions.filter(x => x.status === 'home').length;
+  return trips + (due.some(q => !slotsOf(q) && routes.accountItem(s, content, q)) ? 1 : 0);
 }
 
 /** Queue items due by the next played season fire in order of `at`. An item due in a gap
@@ -207,14 +208,14 @@ function fireDue(s, content) {
   const upTo = played[Math.min(s.t + 1, played.length - 1)];
   const due = s.queue.filter(q => q.at <= upTo).sort((a, b) => a.at - b.at);
   const held = [], accounts = [];
-  const room = reserve(s, content);
+  const room = reserve(s, content, due);
   for (const q of due) {
     if (slotsOf(q) && deskFull(s, slotsOf(q) + room)) { held.push(q); continue; }
     const trial = structuredClone(s);
     try {
       fireOne(trial, content, q);
       // a later effect with no follow-up card is recorded for the one folded Accounts paper
-      const item = slotsOf(q) ? null : letters.trueMinus(routes.accountItem(trial, content, q));
+      const item = slotsOf(q) ? null : routes.accountItem(trial, content, q);
       Object.assign(s, trial);
       if (item) accounts.push(item);
     } catch (e) {

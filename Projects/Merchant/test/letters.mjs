@@ -995,13 +995,6 @@ test('(MER-134, 15) a broker\'s paper is shown twice in a game, and the third ti
   eq(brokerPaper('return-sell-pepper', 1, { shown: 0 }).s.seen['shown:return-sell-pepper'], 1, 'and each showing is counted');
 });
 
-test('(MER-134, 15) the partners\' row never says a part of the money is more than the money', () => {
-  const row = text => { const { s: base, p: k } = homeState(); const s = structuredClone(base), p = s.desk[k]; p.data.account = [{ label: "The partners' share", text, amount: -1 }]; delete p.data.fitted; reopen(s, CAIRO); return p.data.account[0].text; };
-  eq(row('281 dinars of the 228 dinars they put in, with their part of the profit'), '281 dinars: the 228 dinars they put in, with their part of the profit', 'the play\'s line');
-  eq(row('228 dinars of the 228 dinars they put in, with their part of the profit'), '228 dinars: the 228 dinars they put in, with their part of the profit', 'all of it back is no part of it either');
-  eq(row('1,200 dinars of the 1,500 dinars they put in, with their part of the profit'), '1,200 dinars of the 1,500 dinars they put in, with their part of the profit', 'a part that is less stands');
-});
-
 test('(MER-134, 15) one bonus for one trip: the return paper\'s bonus closes a card\'s bonus, and the card\'s closes the paper\'s', () => {
   const { s: base, p: k } = homeState();
   const agent = base.desk[k].agent;

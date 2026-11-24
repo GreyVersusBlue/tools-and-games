@@ -172,19 +172,6 @@ function tripFacts(s, content) {
     if (sent !== null && Number.isFinite(given) && given >= sent) s.flags[`${p.agent}-widened-trip`] = 1;
   }
   for (const p of s.desk) if (p.kind === 'return' && p.data && !p.data.fitted) { limitBroker(s, p); fitOffers(p); fitBroker(s, content, p); }
-  for (const p of s.desk) if (p.kind === 'return' && p.data) fitPartnersRow(p);
-}
-
-/** The partners' row of a qirad's account says "281 dinars of the 228 dinars they put in" when the partners were paid more than they
-    put in (MER-134, play problem 15), a part larger than its whole. routes.js writes the row; here it is put right when that is so:
-    "281 dinars: the 228 dinars they put in, with their part of the profit". A row that pays back less keeps "of the". */
-const PARTNERS_ROW = /^(\d[\d,]*) (\S+) of the (\d[\d,]*) \2 they put in, with their part of the profit$/;
-const whole = text => Number(text.replace(/,/g, ''));
-function fitPartnersRow(p) {
-  for (const r of p.data.account ?? []) {
-    const m = r.label === "The partners' share" && typeof r.text === 'string' ? PARTNERS_ROW.exec(r.text) : null;
-    if (m && whole(m[1]) >= whole(m[3])) r.text = `${m[1]} ${m[2]}: the ${m[3]} ${m[2]} they put in, with their part of the profit`;
-  }
 }
 
 /** A broker's offer says how far under the usual price it is (MER-134, play problem 7: "about 17 in every hundred less" was printed
@@ -290,20 +277,11 @@ function deliver(s, content, idx) {
     const paper = s.desk.pop(), k = s.desk.findIndex(q => q.kind === 'return' && q.expedition === p.expedition);
     s.desk.splice(k < 0 ? s.desk.length : k, 0, paper);                   // ahead of its own trip's return paper
     s.log.push({ at: idx, kind: 'letter', ref: letter.id });
-    const item = moves ? trueMinus(accountItem(s, content, { do: letter.happened, from: letter.id, agent: p.agent, viaCard: letter.title })) : null;
+    const item = moves ? accountItem(s, content, { do: letter.happened, from: letter.id, agent: p.agent, viaCard: letter.title }) : null;
     if (item) items.push(item);
   }
   s.post = waiting;
   return items;
-}
-
-/** An Accounts line's minus sign is a true minus, "−4 dinars", not a hyphen (MER-134, play problem 15). routes.js writes the
-    sign into `changes` and `text`; a hyphen directly before a figure that stands alone (after a space, a colon or the start) is the sign. */
-export const MINUS = '\u2212';
-const signed = text => (typeof text === 'string' ? text.replace(/(^|[\s:])-(?=\d)/g, `$1${MINUS}`) : text);
-export function trueMinus(item) {
-  if (!item) return item;
-  return { ...item, changes: (item.changes ?? []).map(signed), text: signed(item.text) };
 }
 
 /** What letters moved this opening goes on the Accounts paper (MER-134, play problem 9 and 10: 30 dinars left the purse at the start of

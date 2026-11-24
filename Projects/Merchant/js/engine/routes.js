@@ -1697,6 +1697,15 @@ function whyLine(s, content, x, r) {
 }
 
 /** The return paper: the headline sentence first (DESIGN 4.6), then the account. */
+/** The partners' row of a qirad's account (MER-135). A share under the stake is part of the money put in; a share of at least the stake is
+    the money put in and the profit with it, never "281 dinars of the 228 dinars they put in", a part larger than its whole (MER-134, play problem 15). */
+export function partnersRow(content, share, stake) {
+  if (!share) return 'nothing';
+  if (share < stake) return `${coins(content, share)} of the ${coins(content, stake)} they put in, with their part of the profit`;
+  const num = n => coins(content, n).split(' ')[0];
+  return share === stake ? `${coins(content, share)}: all of what they put in, and no profit` : `${coins(content, share)}: the ${num(stake)} they put in and ${num(share - stake)} of the profit`;
+}
+
 function returnPaper(s, content, r) {
   const { x, route } = r;
   const agent = agentOf(content, x.agent), dest = stopName(content, x.book.turned ?? route.to), homeName = stopName(content, homeOf(content));
@@ -1721,7 +1730,7 @@ function returnPaper(s, content, r) {
     const word = { 1: 'one third', 2: 'two thirds' }[x.contract.agentShare] ?? `${x.contract.agentShare} of ${x.contract.of}`;
     if (x.staked.partners) rows.push({ label: 'The partners put in', text: coins(content, x.staked.partners), amount: x.staked.partners });
     rows.push({ label: `${agent.name}'s share`, text: `a qirad: ${agent.name} keeps ${x.contract.of === 3 ? word : `${x.contract.agentShare} in ${x.contract.of}`} of a profit and bears none of a loss, ${coins(content, r.shares.agent)} this time`, amount: -r.shares.agent });
-    rows.push({ label: "The partners' share", text: r.shares.partners ? `${coins(content, r.shares.partners)} of the ${coins(content, x.staked.partners)} they put in, with their part of the profit` : 'nothing', amount: -r.shares.partners });
+    rows.push({ label: "The partners' share", text: partnersRow(content, r.shares.partners, x.staked.partners), amount: -r.shares.partners });
   } else if (r.wage) {
     // the seasons the wage was paid for: what the trip was away (a prepaid wage was fixed at sending)
     const paid = agent.wage ? Math.round(r.wage / agent.wage) : x.out;
@@ -1945,7 +1954,9 @@ export function interludeOf(state, content) {
 // ---------------------------------------------------------------------------------------------
 // The accounts paper (DECISIONS 2026-11-17 on MER-35)
 
-const sign = n => (n > 0 ? `+${n}` : `${n}`);
+/** A change's sign in the Accounts paper: "+6", and a true minus (U+2212) for a loss, "\u22124", never a hyphen (MER-134, play problem 15; written here since MER-135). */
+const MINUS = '\u2212';
+const sign = n => (n > 0 ? `+${n}` : n < 0 ? `${MINUS}${-n}` : '0');
 
 /** What a fired later effect did that the player can see, as short phrases; [] if nothing. */
 const REP_SUBJECT = { partners: ['The partners', 'think'], agents: ['The agents', 'think'], court: ['The court', 'thinks'], foreign: ['Foreign merchants', 'think'] };
