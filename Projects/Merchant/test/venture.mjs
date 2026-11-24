@@ -111,8 +111,11 @@ test('proposePlan: where the stop buys nothing the house can send, the trip goes
   s.stock = {};
   const plan = proposePlan(s, c, 'mira', 'harbour-saltmarsh');
   eq([plan.cargo, plan.buy, plan.sell], [{}, ['salt'], []]);
-  ok(plan.purse > 0 && plan.purse <= s.money / 2, `${plan.purse} of ${s.money}`);
+  // MER-133: the sheet's plan stakes half the money and then more where a step pays (at least STRETCH_GAIN of the plan's estimate), keeping the wage
+  ok(plan.purse > s.money / 2 && plan.purse <= s.money - checkPlan(s, c, plan).cost.later.wage, `${plan.purse} of ${s.money}`);
   eq(checkPlan(s, c, plan).ok, true);
+  const half = proposePlan(s, c, 'mira', 'harbour-saltmarsh', { share: 0.5 });
+  ok(half.purse > 0 && half.purse <= s.money / 2, `a stake of half, as a bot asks for it: ${half.purse} of ${s.money}`);
 });
 
 test('proposePlan: an agent who will not go for a wage again is offered a qirad, and the plan is one the engine takes', () => {
@@ -582,7 +585,8 @@ test('MER-112 (3) proposePlan: the best trade the map knows for the road goes in
   const without = estimate(s, c, { ...plan, cargo: rest, sell: plan.sell.filter(g => g !== 'pepper') }).net;
   ok(estimate(s, c, plan).net > without + 100, `pepper adds ${estimate(s, c, plan).net - without}`);
   const cost = checkPlan(s, c, plan).cost.bought;
-  ok(cost <= s.money / 2, `bought ${cost}, inside the half of ${s.money} the sheet stakes`);
+  ok(cost <= s.money, `bought ${cost} of ${s.money} (the sheet stakes half and stretches past it where a step pays, MER-133)`);
+  ok(proposePlan(s, c, 'yusuf', 'cairo-damascus', { share: 0.5 }).cargo.pepper > 0, 'and inside the half a bot stakes, pepper is in the plan too');
   eq(checkPlan(s, c, plan).ok, true, 'and the engine takes it');
   // a pepper that does not raise the estimate stays out: nothing to gain at 125 against 120 at home once the loads sell lower
   const flat = structuredClone(s); know(flat, c, 'damascus', 'pepper', 125);
@@ -647,7 +651,7 @@ function longRoadStates(road, { seeds, ns, marks }) {
     for (let i = 0; i < n; i++) s = step(s, c);
     s.agents.ali.hired = true; s.agents.ali.where = 'cairo'; s.agents.yusuf.where = 'cairo';
     if (f !== 1) for (const m of Object.values(s.market.cairo)) { m.f = f; m.glut = glut; }
-    const plan = proposePlan(s, c, agent, road);
+    const plan = proposePlan(s, c, agent, road, { share: 0.5 });   // MER-133: the estimate bands below were fitted on plans that stake half the money; the sheet's default stretches past that, and a trip held by a letter then swings by whole loads
     if (!plan || plan.why) continue;
     const e = estimate(s, c, plan), seen = new Set(s.desk.map(p => p.id));
     let w = outfit(structuredClone(s), c, plan), paper;
@@ -1113,12 +1117,12 @@ test('MER-103 returnPaper: goodsBack and cargoValue say what came home unsold at
 // ---- one calculation for the map and the sheet (MER-121)
 
 /** The sheet's own pick for a road (outfit.js): the free agent who knows the stop first, then the rest, the first with a plan that pays. */
-function sheetFor(s, c, route) {
+function sheetFor(s, c, route, opts = {}) {
   const stop = c.routes.find(r => r.id === route).to;
   const free = c.agents.filter(a => s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id));
   const knows = a => a.traits?.includes(`knows-${stop}`);
   for (const a of [...free.filter(knows), ...free.filter(a => !knows(a))]) {
-    const plan = proposePlan(s, c, a.id, route);
+    const plan = proposePlan(s, c, a.id, route, opts);
     if (plan && !plan.why) return { agent: a.id, plan };
   }
   return null;
@@ -1187,7 +1191,7 @@ test('MER-121 (2) adding one load of a good the map or a price letter names for 
   played(C, (s, at) => {
     const idx = seasonIndex(s, C), budget = Math.floor(s.money * 0.5);
     for (const d of R.destinations(s, C)) {
-      const sheet = sheetFor(s, C, d.route);
+      const sheet = sheetFor(s, C, d.route, { share: 0.5 });   // MER-133: the half the sheet stakes before it stretches; the stretch has its own case below
       if (!sheet) continue;
       const { plan } = sheet, base = estimate(s, C, plan).net, dest = C.stops.find(x => x.id === d.stop);
       // the goods named for the road: the map's trades and the goods the latest letter from the stop (this season's or last) gives a price for
@@ -1213,7 +1217,7 @@ test('MER-121 (2) adding one load of a good the map or a price letter names for 
       }
     }
   });
-  ok(tried >= 60 && named.size >= 4, `${tried} trials over ${named.size} goods`);
+  ok(tried >= 40 && named.size >= 4, `${tried} trials over ${named.size} goods`);   // MER-133: 40, not 60: the desks are played with the stretching sheet now, whose plans leave fewer states with a free load to add inside half the money
 });
 
 test('MER-121 (3) the plan does not send a good back to the stop the last trip bought it at; bringHome writes where each good was bought', () => {
@@ -1249,6 +1253,39 @@ test('MER-121 (3) over played states no proposal sends a good in the warehouse b
     }
   });
   ok(checked >= 10, `${checked} goods in the warehouse from a trip, in plans`);
+});
+
+test('MER-133 (1) the sheet\'s plan leaves nothing on the table: no single plus (one more load of a good the far stop buys, or 50 more dinars to buy with, paid out of what the house has after the wage) raises the estimate by more than 10 percent of the plan\'s in more than 5 percent of states', () => {
+  // The M4d play beat the house's own plan by pressing + on most trips (A2 +28 against +102 with one silk, A4 +23 against +99 with 100
+  // dinars, A14 +66 against +158 with 150 dinars and 174 left unspent). The old plan stopped at half the money. It still starts there
+  // and then goes on, a step at a time, while a step adds STRETCH_GAIN (8 percent) of what the plan makes and at least STRETCH_MIN dinars;
+  // the line here is 10 percent, so a step the plan declined cannot be one the player would find worth the click. Over the desks of
+  // six seeded games, every other desk: 413 states. The old plan (stopping at half the money) failed the line in 242 of them, 58.6 percent;
+  // broken once by switching the stretch off, the case fails on its own line with that count.
+  let states = 0; const bad = [];
+  let n = 0;
+  played(C, (s, at) => {
+    if (n++ % 2) return;
+    for (const d of R.destinations(s, C)) {
+      const sheet = sheetFor(s, C, d.route);
+      if (!sheet) continue;
+      const { plan } = sheet, base = estimate(s, C, plan).net, dest = C.stops.find(x => x.id === d.stop), home = C.stops.find(x => x.id === 'cairo');
+      states++;
+      let best = null;
+      const trial = (label, p) => {
+        const c = checkPlan(s, C, p);
+        if (!c.ok || c.cost.total > s.money - (p.contract === 'qirad' ? 0 : c.cost.later.wage)) return;
+        const gain = estimate(s, C, p).net - base;
+        if (!best || gain > best.gain) best = { label, gain };
+      };
+      for (const g of Object.keys(dest.sells ?? {})) if (home.sells?.[g]) trial(`one more ${g}`, { ...plan, cargo: { ...plan.cargo, [g]: (plan.cargo[g] ?? 0) + 1 }, sell: [...new Set([...plan.sell, g])] });
+      if (plan.buy.length) trial('50 more dinars', { ...plan, purse: plan.purse + 50 });
+      else for (const g of Object.keys(dest.sells ?? {})) if (home.sells?.[g]) trial(`50 dinars to buy ${g}`, { ...plan, purse: plan.purse + 50, buy: [g] });
+      if (best && best.gain > 0.1 * base) bad.push(`${at} ${d.route}: ${best.label} takes ${Math.round(base)} to ${Math.round(base + best.gain)}`);
+    }
+  });
+  ok(states >= 100, `${states} states`);
+  ok(bad.length <= 0.05 * states, `${bad.length} of ${states} states (${(100 * bad.length / states).toFixed(1)} percent) have a plus that adds more than 10 percent: ${bad.slice(0, 6).join('; ')}`);
 });
 
 await done();

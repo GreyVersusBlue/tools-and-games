@@ -679,6 +679,9 @@ export function suggestPlan(state, content, stopId) {
 // ---------------------------------------------------------------------------------------------
 // Ventures (DESIGN 2.2): the default plan for a road, what it should fetch, and what the news says is worth doing
 
+export const STRETCH_GAIN = 0.08;   // the sheet's default plan spends past its share of the money only for a step that adds more than this much of what the plan makes
+export const EXTRA_FLOOR = 0.9;     // the stretch tries a good the news does not make dearer at the far end only if it is within this share of home's price there (the estimate carries both prices to arrival, and a near-par good can cross) (MER-133)
+export const STRETCH_MIN = 2;       // and at least this many dinars (MER-133)
 export const DEPTH_SHARE = 0.5;   // a default plan trades no more than this share of a market's depth in one good, which would move the price against it
 export const RISK_WORDS = [[0.10, 'safe'], [0.25, 'uncertain'], [0.45, 'risky'], [Infinity, 'dangerous']];   // by the chance of some loss on the whole road
 
@@ -727,14 +730,15 @@ function bringBack(s, content, dest, except = [], trades = []) {
     agent will not go for a wage again. `agent` and `route` are ids or records. A plan the engine takes, or null when none is;
     `check: false` skips that last check against the whole state (a caller that prices many roads and sends one checks the one);
     `share` is the part of the money on hand the plan spends (a half, as the sheet opens; a bot that wants a bigger stake says so). */
-export function proposePlan(state, content, agent, route, { check = true, share = 0.5 } = {}) {
+export function proposePlan(state, content, agent, route, { check = true, share = null } = {}) {
   const a = typeof agent === 'string' ? agentOf(content, agent) : agent;
   const r = typeof route === 'string' ? routeOf(content, route) : route;
   const dest = r ? stopOf(content, r.to) : null;
   if (!a || !r || !dest) return null;
   const home = homeOf(content);
   const homeStop = stopOf(content, home);
-  if (!project(state, content, r, a).ok) return null;
+  const proj = project(state, content, r, a);
+  if (!proj.ok) return null;
   const homeP = g => M.truePrice(state, content, home, g);
   // goods that sell better at the far end than at home, widest margin first
   // (a good the house has no news of is guessed at the stop's base price, and the estimate says so)
@@ -758,13 +762,19 @@ export function proposePlan(state, content, agent, route, { check = true, share 
     if (far && at !== null && far.p < at && !carried.includes(g) && !backs.some(b => b.good === g)) backs.push({ good: g, there: far.p, home: at, ratio: at / far.p, age: far.age, ageWords: far.ageWords, guess: false });
   }
   if (!backs.length) { const b = bringBack(state, content, dest, carried, known); if (b) backs.push(b); }
-  const budget = Math.floor(state.money * share);
+  // A share the caller names is the stake it wants (a bot's). With none the sheet's default plan fills half the money the way the old
+  // plan did, then stretches past it, a step at a time, wherever a step adds enough to be worth the money (MER-133, `stretch` below).
+  const budget = Math.floor(state.money * (share ?? 0.5));
   const cargo = {}, caps = {};
+  const capOf = g => caps[g] ??= Math.max(1, Math.ceil(Math.min(homeStop.sells?.[g]?.depth ?? Infinity, dest.sells[g].depth) * DEPTH_SHARE));
+  // goods the far stop buys that the house also trades at home but whose news does not make them dearer there today: the estimate
+  // carries both markets to the day the party arrives, so one of these can still pay, and the stretch tries them
+  const extras = Object.keys(dest.sells ?? {}).filter(g => !carried.includes(g) && homeStop.sells?.[g] && homeP(g) !== null && (farPrice(state, content, dest.id, g)?.p ?? Infinity) >= homeP(g) * EXTRA_FLOOR && !((state.stock[g] ?? 0) > 0 && boughtAt[g] === dest.id));
   // buying now at home moves the home price: price each load after the one before it
   const sim = { ...state, market: { [home]: thin(state.market[home]) } };
   let left = budget;
   for (const e of out) {
-    const cap = caps[e.g] = Math.max(1, Math.ceil(Math.min(homeStop.sells?.[e.g]?.depth ?? Infinity, dest.sells[e.g].depth) * DEPTH_SHARE));
+    const cap = capOf(e.g);
     const held = Math.min(state.stock[e.g] ?? 0, cap);
     let n = held;
     while (n < cap) {
@@ -795,7 +805,11 @@ export function proposePlan(state, content, agent, route, { check = true, share 
     return priced.get(key);
   };
   // a plan the house can pay for out of the share of its money the sheet stakes, goods bought now priced load by load as `build` does
-  const affordable = p => homeStake(state, content, p.cargo).buyCost + (p.purse ?? 0) - (p.partners ?? 0) <= budget;
+  const costOf = p => homeStake(state, content, p.cargo).buyCost + (p.purse ?? 0) - (p.partners ?? 0);
+  const affordable = p => costOf(p) <= budget;
+  // past the share the house keeps the trip's wage in hand (a wage plan pays it at the return, and the sheet's prepay needs it first)
+  const ceiling = state.money - (qirad ? 0 : tripWage(a, wageCount(state, content, r, a, proj)));
+  // the stretch: past the share, a move is taken only if it adds more than STRETCH_GAIN of what the plan makes (and STRETCH_MIN dinars) (MER-133)
   // DESIGN 2.2 rule 1 (MER-98): only a plan that pays. Each good goes out only if it adds to the estimate after tolls, in the
   // size that adds most (a bigger load sells lower and buys dearer, so the most loads is not always the most money), and the
   // bring-back good is kept only if it adds; otherwise the plan brings nothing back and sends no purse. The search runs over every
@@ -806,27 +820,31 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   /** The search for one good to bring back: { climb(at), levels, purseOnly } where `climb` takes any move that raises the estimate from
       `at` = { loads, fetch, money } until none does. The money sent to buy with goes in four steps of what the good's market takes
       (a quarter to all of it), or none. */
-  const searchFor = back => {
+  const searchFor = (back, over = false) => {
     const capBack = back ? Math.max(1, Math.ceil(dest.sells[back.good].depth * DEPTH_SHARE)) : 0;
-    const purseOnly = back ? Math.min(budget, Math.ceil(capBack * back.there * 1.15)) : 0;
+    const purseOnly = back ? (over ? Math.max(0, ceiling) : Math.min(budget, Math.ceil(capBack * back.there * 1.15))) : 0;   // the stretch ignores the depth share: the estimate prices the loads past it
     const levels = [...new Set([0, ...(back ? [0.25, 0.5, 0.75, 1].map(f => Math.floor(purseOnly * f)) : [])])];
     const climb = at => {
       let { loads, fetch, money } = at, top = worth(shape(back, loads, fetch, money));
+      let spent = costOf(shape(back, loads, fetch, money));   // what the plan now costs: past the share, only a move that costs more has to add a margin
       for (let pass = 0; pass < 10; pass++) {
         let moved = false;
         const take = (l, f, m, tieOk) => {
           const p = shape(back, l, f, m);
-          if (!affordable(p)) return;
+          const cost = costOf(p), inside = cost <= budget || cost <= spent;
+          if (!inside && !(over && cost <= ceiling)) return;
           const w = worth(p);
-          if (w > top || (w === top && tieOk)) { top = w; loads = l; fetch = f; money = m; moved = true; }
+          if (inside ? (w > top || (w === top && tieOk)) : w > top + Math.max(STRETCH_MIN, STRETCH_GAIN * Math.abs(top))) { top = w; loads = l; fetch = f; money = m; spent = cost; moved = true; }
         };
         if (back) take(loads, !fetch, money, fetch);   // the bring-back good stays only while it adds (a tie drops it: no purse, nothing to carry back)
         if (back && fetch) {   // another quarter of the good's market, or one load's price more or less
           for (const m of levels) if (m !== money) take(loads, true, m, false);
-          for (const m of [money - back.there, money + back.there]) if (m > 0 && m <= purseOnly && m !== money) take(loads, true, m, false);
+          // and the most the money allows (a step of one load's price can overshoot it by a few dinars and leave them unspent, MER-133)
+          const room = Math.floor((over ? ceiling : budget) - costOf(shape(back, loads, true, 0)));
+          for (const m of [money - back.there, money + back.there, ...(over ? [money - 50, money + 50] : []), Math.min(purseOnly, room)]) if (m > 0 && m <= purseOnly && m !== money) take(loads, true, m, false);
         }
-        for (const g of carried) {
-          for (const n of sizes(caps[g], loads[g] ?? 0)) {
+        for (const g of over ? [...carried, ...extras] : carried) {
+          for (const n of sizes(over ? (loads[g] ?? 0) + capOf(g) + 1 : capOf(g), loads[g] ?? 0)) {
             const trial = { ...loads, [g]: n };
             if (!n) delete trial[g];
             for (const f of back ? [true, false] : [false]) take(trial, f, f ? money : 0, n < (loads[g] ?? 0) && f === fetch);
@@ -865,6 +883,11 @@ export function proposePlan(state, content, agent, route, { check = true, share 
     }
     if (!better) break;
     best = better;
+  }
+  if (share === null && best.net > 0) {
+    const { climb } = searchFor(best.back, true);
+    const more = climb({ loads: best.loads, fetch: best.fetch, money: best.money });
+    if (more.net > best.net) best = more;
   }
   const back = best.back;
   const nothing = why => ({ ...shape(back, {}, false, 0), why });
