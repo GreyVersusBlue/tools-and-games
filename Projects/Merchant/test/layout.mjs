@@ -762,7 +762,7 @@ try {
             const got = await page.evaluate(() => {
               const tabs = [...document.querySelectorAll('.edge')], tag = document.querySelector('.stack-count'), box = document.querySelector('.stack-papers'), strip = document.querySelector('.edges');
               if (!tag || !/papers? left/.test(tag.textContent) || !tabs.length) return { missing: true };
-              if (getComputedStyle(strip).position !== 'sticky') return { flow: true };
+              if (getComputedStyle(box).overflowY !== 'auto') return { flow: true };   // the phones: the page or a column scrolls, and the tabs lie in its flow
               const bar = document.querySelector('.topbar').getBoundingClientRect(), b = box.getBoundingClientRect(), out = [];
               for (const t of tabs) {
                 const r = t.getBoundingClientRect(), name = `tab "${t.textContent.trim().slice(0, 20)}" at ${Math.round(r.top)} to ${Math.round(r.bottom)}`;
