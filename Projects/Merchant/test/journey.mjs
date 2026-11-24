@@ -52,6 +52,32 @@ const sheetPlan = (s, content, stop) => {
   return null;
 };
 
+/** The goods and loads a cargo line says, in the order it says them ("4 loads of pepper, 4 of incense and 2 of porcelain, and 750 dinars to
+    buy with."), as { good id: loads }. The sheet words its own cargo from the plan it opens on, so a case reads the line back and compares
+    it with the engine's plan or with what the engine's rule leaves, never with a list typed in. */
+const cargoOfLine = (line, content) => {
+  const out = [];
+  for (const g of content.goods) {
+    const m = new RegExp(`(?:^|[ ,])(\\d+)(?: [a-z]+)? of ${g.name.toLowerCase()}(?=[,.]| and |$)`, 'i').exec(line);
+    if (m) out.push([m.index, g.id, Number(m[1])]);
+  }
+  return Object.fromEntries(out.sort((a, b) => a[0] - b[0]).map(([, id, n]) => [id, n]));
+};
+
+/** The sheet opens on the engine's proposal, which buys loads in Cairo until the house has almost nothing left (MER-139: 1,468 of 1,500 dinars at
+    the first expedition), so a press on the purse has no money to move. A player who wants to try the purse takes the bought loads off the cargo
+    first: this presses Home on the stepper of each good the engine's own cost says is bought, and answers the plan the sheet then holds (the
+    proposal's, less those goods). The carry section is open. */
+const lightCargo = async (page, stop = 'damascus') => {
+  const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+  const proposal = sheetPlan(s0, nodeContent, stop);
+  const bought = eng.checkPlan(s0, nodeContent, proposal).cost.goods.filter(r => r.bought > 0).map(r => r.good);
+  ok(bought.length > 0, 'setup: the proposal buys loads in Cairo, so there is money to free');
+  for (const g of bought) { await page.focus(`#step-cargo-${g}`); await page.keyboard.press('Home'); }
+  await page.waitForFunction(gs => gs.every(g => document.getElementById(`step-cargo-${g}`)?.getAttribute('aria-valuenow') === '0'), {}, bought);
+  return { proposal, cargo: Object.fromEntries(Object.entries(proposal.cargo).filter(([g]) => !bought.includes(g))) };
+};
+
 const PORT = 8190;
 const BASE = `http://127.0.0.1:${PORT}`;
 const URL_ = `${BASE}/Projects/Merchant/`;
@@ -1179,7 +1205,7 @@ try {
       eq(await page.$eval('#panel-outfit', d => d.getAttribute('aria-labelledby')), 'panel-outfit-title');
       const plan = sheetPlan(model, nodeContent, 'damascus');
       eq(await page.$eval('#summary-who', e => e.textContent), 'Yusuf (careful, knows Damascus).');
-      ok((await page.$eval('#summary-carry', e => e.textContent)).startsWith(`${plan.cargo.linen} loads of linen`), 'cargo is the engine plan');
+      eq(cargoOfLine(await page.$eval('#summary-carry', e => e.textContent), nodeContent), Object.fromEntries(Object.entries(plan.cargo).filter(([, n]) => n > 0)), 'cargo is the engine plan, good for good');
       eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-back'], 'four sections, carry out and bring back among them: the contract is met at the second expedition');
       eq(await page.$eval('#outfit-send', b => [b.textContent, b.getAttribute('aria-disabled')]), ['Send Yusuf to Damascus', 'false']);
     });
@@ -1469,9 +1495,12 @@ try {
       await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
       await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
       eq(await page.$eval('#outfit-back-total', e => e.textContent.startsWith('Nothing')), true, 'no good named: the line says so');
+      // the proposal spends nearly all the money on goods bought in Cairo: free some, then send money
+      const { proposal, cargo } = await lightCargo(page);
       await page.click('#step-purse-plus');
       const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
-      const plan = { ...sheetPlan(s0, nodeContent, 'damascus'), purse: 50, buy: [] };
+      const { sell, ...rest } = proposal;   // the sheet's own plan carries no sell list (outfit.js plan())
+      const plan = { ...rest, cargo, purse: 50, buy: [] };
       const reasons = eng.checkPlan(s0, nodeContent, plan).reasons;
       ok(reasons.length === 1 && /needs a good to bring back/.test(reasons[0]), `the engine refuses it: ${reasons}`);
       await page.waitForFunction(() => /needs a good to bring back/.test(document.getElementById('outfit-reasons').textContent));
@@ -1524,6 +1553,7 @@ try {
     await test('MER-122: the bring-back button names the good the red line names, also when the cargo already carries the sheet\'s own pick', async () => {
       await openSheet();
       await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
+      await lightCargo(page);   // money to move: the proposal leaves the house about 30 dinars
       await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
       // the first good the sheet would offer (a059: it offered pepper while the engine, which leaves out what the trip carries, named porcelain)
       const first = await page.$eval('.back-pick', b => b.dataset.good);
@@ -1545,8 +1575,8 @@ try {
     await test('MER-122: the purse stepper says when one more press buys no more loads, and only then', async () => {
       await openSheet();
       await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
-      await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
-      await page.click('.back-pick');
+      await lightCargo(page);   // the proposal leaves the house about 30 dinars: free money first, so the purse has room to walk
+      await nameBack(page);
       const levels = [];
       const money = await page.evaluate(() => window.__merchant.state.money);
       for (let at = 0; at + 50 <= money && levels.length < 14; at += 50) {
@@ -1582,12 +1612,16 @@ try {
       await page.click('#stop-qus, .dot[data-stop="qus"]');
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      eq(await page.$eval('#summary-carry', e => e.textContent), `${cap(goods)}.`, 'Qus: the cargo set for Damascus is still on the sheet');
+      // what Qus still trades of the cargo set for Damascus stays, load for load; the rest (what only Damascus trades) is dropped
+      const kept = Object.fromEntries(Object.entries(cargoOfLine(goods, nodeContent)).filter(([g]) => trades('qus').includes(g)));
+      const keptLine = await page.$eval('#summary-carry', e => e.textContent);
+      ok(Object.keys(kept).includes('linen') && Object.keys(kept).length < Object.keys(cargoOfLine(goods, nodeContent)).length, `setup: Qus keeps some of the cargo and drops some: ${JSON.stringify(kept)}`);
+      eq(cargoOfLine(keptLine, nodeContent), kept, 'Qus: the cargo set for Damascus that Qus trades is still on the sheet');
       await closeSheet();
       // a draft is used once: the next sheet for Qus is the engine's own again
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      ok(await page.$eval('#summary-carry', (e, k) => e.textContent !== k, `${cap(goods)}.`), 'the kept cargo was used once; the next sheet for Qus is the engine\'s own');
+      ok(await page.$eval('#summary-carry', (e, k) => e.textContent !== k, keptLine), 'the kept cargo was used once; the next sheet for Qus is the engine\'s own');
       await closeSheet();
       // Samarkand trades no linen: the loads are dropped and the engine's own plain plan stands
       await openSheet();
@@ -1705,9 +1739,16 @@ try {
     });
 
     await test('MER-72: the sheet lists what makes the cost up, and the number it shows is the number Send takes', async () => {
+      // linen is to be bought past the warehouse's: the proposal's own loads left no money for that. A stepper shows what the money allows, which with
+      // the 99,999 the case before typed is nothing, and a press on Home at nothing moves nothing: so the purse goes to 0 first, then the cargo is
+      // lightened, then the purse is 100.
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('0'); await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.getElementById('step-purse')?.getAttribute('aria-valuenow') === '0');
+      await lightCargo(page);
       await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
       await page.keyboard.type('100'); await page.keyboard.press('Enter');
-      await page.waitForSelector('#step-purse');
+      await page.waitForFunction(() => document.getElementById('step-purse')?.getAttribute('aria-valuenow') === '100');
       // more linen than the warehouse holds, so some is bought in Cairo at a price that rises with each load
       await page.focus('#step-cargo-linen');
       for (let i = 0; i < 14; i++) await page.keyboard.press('ArrowUp');
@@ -2143,7 +2184,9 @@ try {
     // due is a fixed season (Autumn 1325), not t + 4, so the line the page says does not move with the turn the state is found at
     book.loans.push({ id: 'nell-1', from: 'nell', principal: 100, due: 6, rate: 0.1 });
     for (const [i, change] of [[0, -60], [1, 120], [2, -45], [3, 80], [4, 300]]) book.log.push({ at: i, kind: 'season', change });
-    book.agents.yusuf.trust = -1; book.rep.court = 3; book.rep.partners = -3; book.rep.agents = 1;
+    // who the engine sends is the engine's call: Yusuf leaves the house at the first act's jump, and the desk found here can be one he is gone from
+    const who = book.expeditions[0].agent, whoRec = nodeContent.agents.find(a => a.id === who), whoName = whoRec.name;
+    book.agents[who].trust = -1; book.rep.court = 3; book.rep.partners = -3; book.rep.agents = 1; book.rep.foreign = 0;   // all four set, so none is left to what the seed's play happened to do
     const view = eng.view(book, nodeContent);
     const total = nodeContent.notebook.length;
     const found = nodeContent.notebook.filter(e => book.notebook.includes(e.id));
@@ -2196,12 +2239,14 @@ try {
 
       await test(`${how}: the ledger's road and people sections name where each is, when due, the traits and trust in words, and the four reputations with numbers`, async () => {
         const trip = (await texts(page, '#ledger-trips li'))[0];
-        ok(trip.startsWith('Yusuf to Damascus Last heard of on the '), trip);
+        ok(trip.startsWith(`${whoName} to Damascus Last heard of on the `), trip);
         ok(trip.endsWith(`Due home about ${eng.view(book, nodeContent).homeBy[book.expeditions[0].id].season}.`), trip);
         eq(await page.$$eval('#ledger-trips li', es => es.length), book.expeditions.length);
-        const yusuf = await page.$eval('[data-agent="yusuf"]', e => e.textContent.replace(/\s+/g, ' ').trim());
-        eq(yusuf, 'Yusuf careful, knows Damascus Yusuf is uneasy with the house. On the road to Damascus.');
-        ok(await page.$eval('[data-agent="yusuf"] img.seal', i => i.complete && i.naturalWidth > 0), 'the seal shows');
+        const traits = whoRec.traits.map(t => (t.startsWith('knows-') ? `knows ${nodeContent.stops.find(x => x.id === t.slice(6)).name}` : t.startsWith('speaks-') ? `speaks ${cap(t.slice(7))}` : t)).join(', ');
+        const person = await page.$eval(`[data-agent="${who}"]`, e => e.textContent.replace(/\s+/g, ' ').trim());
+        eq(person, `${whoName} ${traits} ${whoName} ${view.trust[who].words}. On the road to Damascus.`);
+        eq(view.trust[who].words, 'is uneasy with the house', 'setup: the trust the case set reads as uneasy');
+        ok(await page.$eval(`[data-agent="${who}"] img.seal`, i => i.complete && i.naturalWidth > 0), 'the seal shows');
         eq(await texts(page, '#ledger-reps li'), ['Partners They will not deal with you −3', 'Agents They speak well of you +1',
           'The court They come to you first +3', 'Foreign merchants They deal with you as with anyone 0']);
       });
@@ -2715,9 +2760,10 @@ try {
         return eng.endSeason(st, nodeContent);
       };
       const freeOf = st => nodeContent.agents.filter(a => st.agents[a.id]?.hired && st.agents[a.id].where === 'cairo' && !st.expeditions.some(e => e.agent === a.id));
-      // the first season in which a second expedition can be outfitted: one went out before, a hired agent is at home
+      // the first season in which a second expedition can be outfitted: one went out before, a hired agent is at home, and the warehouse holds
+      // goods the cash does not count (the sheet's first proposals now sell all that is held, so a desk with an empty warehouse comes first)
       let later = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
-      for (let i = 0; i < 60 && !(later.phase === 'desk' && later.t >= 3 && later.log.some(e => e.kind === 'outfit') && freeOf(later).length >= 1 && sheetPlan(later, nodeContent, 'damascus')); i++) {
+      for (let i = 0; i < 60 && !(later.phase === 'desk' && later.t >= 3 && later.log.some(e => e.kind === 'outfit') && freeOf(later).length >= 1 && sheetPlan(later, nodeContent, 'damascus') && eng.netWealth(later, nodeContent).net > later.money); i++) {
         later = later.phase === 'interlude' ? eng.openSeason(later, nodeContent) : play99(later);
       }
       const planNow = sheetPlan(later, nodeContent, 'damascus');
@@ -3450,22 +3496,23 @@ try {
       ok(Math.abs(rows[0].label.left - rows[0].table.left) < 1 && Math.abs(rows[0].value.right - rows[0].table.right) < 1, 'the rows span the paper');
       ok(rows[1].tr.top >= rows[0].tr.bottom - 1, 'the second row is below the first');
     });
-    await test('MER-97: from the second expedition the card\'s price line names the good the sheet proposes, not the plain suggestion\'s', async () => {
+    await test('MER-97: from the second expedition the card\'s price line names the good the sheet proposes, not the opening card\'s', async () => {
       const card = content80.cards.find(c => c.choices.some(x => x.ui === 'outfit-first'));
       let st = eng.newGame(content80, { seed: SEED, length: 'acts', house: 'spice' }), found = null;
-      for (let i = 0; i < 40 && !found; i++) {
+      // the good the opening card names (`openingGood`, the first expedition's) is not the proposal's first cargo, which the engine orders by its own rule
+      for (let i = 0; i < 40 && !found && st.phase !== 'recall'; i++) {
         st = st.phase === 'interlude' ? eng.openSeason(st, content80) : play(st);
         if (st.phase !== 'desk' || !st.log.some(e => e.kind === 'outfit')) continue;
-        const plain = eng.suggestPlan(st, content80, 'damascus'), plan = sheetPlan(st, content80, 'damascus');
-        if (plain && plan && Object.keys(plain.cargo)[0] !== Object.keys(plan.cargo)[0]) found = { st: structuredClone(st), plain, plan };
+        const opening = eng.openingGood(st, content80, 'damascus'), plan = sheetPlan(st, content80, 'damascus');
+        if (opening && plan && opening !== Object.keys(plan.cargo)[0]) found = { st: structuredClone(st), opening, plan };
       }
-      ok(found, 'a season where the plain suggestion and the proposal name different goods');
+      ok(found, 'a season where the opening card\'s good and the proposal\'s first cargo differ');
       const name = id => content80.goods.find(g => g.id === id).name.toLowerCase();
       found.st.desk = [{ id: 'p97-0', state: 'open', kind: 'card', ref: card.id }];
       await load(found.st);
       const line = await page.$eval('.sheet .choice .prices', e => e.textContent);
       ok(line.includes(`a load of ${name(Object.keys(found.plan.cargo)[0])}.`), `${line} (the sheet proposes ${JSON.stringify(found.plan.cargo)})`);
-      ok(!line.includes(`a load of ${name(Object.keys(found.plain.cargo)[0])}.`), `${line} (the plain suggestion sends ${JSON.stringify(found.plain.cargo)})`);
+      ok(!line.includes(`a load of ${name(found.opening)}.`), `${line} (the opening card's good is ${found.opening})`);
     });
 
     await test('the Accounts paper groups each line under the card and the choice that caused it', async () => {
@@ -4264,6 +4311,7 @@ try {
         await page.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
         await pressChange(page, '#change-carry');
         await page.waitForSelector('#step-purse');
+        await lightCargo(page);   // the proposal spends nearly all the money, so a cargo stepper's plus is dead; free some so a tap has something to move
         const ids = await page.$$eval('#panel-outfit .stepper', s => s.map(e => e.id));
         ok(ids.length >= 2, `steppers on the sheet: ${ids}`);
         let atFoot = 0;
@@ -4298,7 +4346,7 @@ try {
     // 16 pepper at Qus and the engine's own check refuses 15; money is cut here until the flat count is exactly one load over.
     {
       const { page, consoleErrors } = await open(FRAMES[0]);
-      await test('MER-132: the cargo stepper stops at the engine\'s mostLoads, a load short of what money over today\'s price allows', async () => {
+      await test('MER-132: the cargo stepper stops at the engine\'s mostLoads, short of what money over today\'s price allows', async () => {
         const base = firstDone3(), home = nodeContent.city.home;
         const priceOf = (s, g) => eng.view(s, nodeContent).prices[home][g].p;
         let pick = null;
@@ -4307,9 +4355,9 @@ try {
           const plan = eng.suggestPlan(s, nodeContent, 'qus');
           if (!plan) continue;
           const flat = (s.stock.pepper ?? 0) + Math.floor(m / priceOf(s, 'pepper')), most = eng.mostLoads(s, nodeContent, plan, 'pepper');
-          if (flat - most === 1 && most >= 3) pick = { s, plan, flat, most };
+          if (flat > most && most >= 3) pick = { s, plan, flat, most };   // the proposal buys goods besides, so the flat count is more than a load over now
         }
-        ok(pick, 'no money in 400 to 1500 puts the flat count exactly one load over mostLoads');
+        ok(pick, 'no money in 400 to 1500 puts the flat count over mostLoads');
         const mk = n => ({ ...pick.plan, cargo: { ...pick.plan.cargo, pepper: n } });
         eq(eng.checkPlan(pick.s, nodeContent, mk(pick.most)).ok, true, 'the engine pays for mostLoads');
         eq(eng.checkPlan(pick.s, nodeContent, mk(pick.flat)).ok, false, 'and refuses the flat count');
