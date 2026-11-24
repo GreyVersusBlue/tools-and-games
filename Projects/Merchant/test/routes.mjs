@@ -618,7 +618,34 @@ test('a qirad end to end: the partners are paid their stake and share out of wha
   ok(agent > 0 && partners >= 100, `agent ${agent}, partners ${partners}`);
   eq(d.account.map(r => r.label).slice(-4), ["The partners put in", "Mira's share", "The partners' share", 'Profit']);
   ok(/keeps one third of a profit and bears none of a loss/.test(d.account.at(-3).text), d.account.at(-3).text);
+  eq(d.account.at(-2).text, `${partners} coins: the 100 they put in and ${partners - 100} of the profit`, 'a profit: the partners\' row is the money put in and the profit, never a part larger than its whole (MER-135)');
   void money0;
+});
+
+test('a qirad that comes home at a loss: the partners get part of their stake back and the row says part of it (MER-135)', () => {
+  const c = risk(variant(plainMira(T), y => {
+    y.city.contracts = { qirad: { agentShare: [1, 3] } };
+    for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 120;
+  }), 0);
+  let s = outfit(game(c, { house: 'plain' }), c, { ...SALTED, contract: 'qirad', partners: 100, purse: 100 });
+  s = play(s, c, 6);
+  const d = s.desk.find(p => p.kind === 'return').data;
+  ok(d.houseNet < 0, `a loss, ${d.houseNet}`);
+  ok(d.shares.partners > 0 && d.shares.partners < 100, `the partners got ${d.shares.partners} of 100 back`);
+  eq(d.account.at(-2).label, "The partners' share");
+  eq(d.account.at(-2).text, `${d.shares.partners} coins of the 100 coins they put in, with their part of the profit`);
+  ok(d.account.every(r => !/-\d/.test(r.text ?? '')), 'and no row has a hyphen for a minus');
+});
+
+test('the partners\' row: a share under the stake is a part of it, a share of the stake or more is the stake and the profit, and a loss paid nothing says nothing (MER-135)', () => {
+  const row = (share, stake) => R.partnersRow(T, share, stake);
+  eq(row(281, 228), '281 coins: the 228 they put in and 53 of the profit', 'the play\'s line (MER-134, problem 15)');
+  eq(row(1281, 1228), '1,281 coins: the 1,228 they put in and 53 of the profit', 'thousands keep their commas');
+  eq(row(229, 228), '229 coins: the 228 they put in and 1 of the profit');
+  eq(row(228, 228), '228 coins: all of what they put in, and no profit', 'the stake back and no more is no profit');
+  eq(row(120, 150), '120 coins of the 150 coins they put in, with their part of the profit', 'a loss that left part of the stake');
+  eq(row(0, 100), 'nothing');
+  for (const [share, stake] of [[281, 228], [228, 228], [229, 228], [120, 150], [1, 1], [2, 1]]) ok(!/^(\d[\d,]*) coins of the (\d[\d,]*) coins/.test(row(share, stake)) || share < stake, `${share} of ${stake}`);
 });
 
 test('a qirad that loses everything costs the partners their stake and the house its own, and the agent gets nothing', () => {
@@ -1217,7 +1244,7 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   // MER-88: seed 15 became 13 (the wage now counts the season an agent leaves in, which moves the money every later card is drawn against).
   // MER-79: seed 13 became 15 for the same reason: four new trade cards change the pool, so no agent was home to face the plague in seed 13's game.
   // MER-128: seed 13 became 15. A card whose dates end this season gets an extra slot, so the second season deals one more card and every later draw moves; no agent was home to face the plague in seed 13's game.
-  const plan = { seed: 15, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  const plan = { seed: 16, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
   const a = run(C, plan);
   const b = run(C, plan);
   ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');
