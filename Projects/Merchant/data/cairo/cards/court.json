@@ -58,7 +58,12 @@
             ],
             "card": "muhtasib-fine"
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        }
       }
     ],
     "note": "In 1341 the muhtasib of Cairo found 1,196 pigeons and 33,000 starlings, all spoiled, in a seller's storehouse. The man was punished in public, and the birds were destroyed.",
@@ -279,7 +284,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        }
       }
     ],
     "note": "One court record shows a quarrel over who paid for the road. The investor said the traveller should. The traveller said the partnership should.",

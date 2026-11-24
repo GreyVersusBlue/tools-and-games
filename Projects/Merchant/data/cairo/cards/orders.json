@@ -532,8 +532,8 @@
     "choices": [
       {
         "id": "his-fee",
-        "label": "Tell Rizq the fee is Yusuf's",
-        "hint": "You gain nothing. Yusuf will feel it.",
+        "label": "Pass the fee on to Yusuf",
+        "hint": "You gain nothing. Yusuf gets all of it and trusts you more.",
         "now": [
           {
             "trust": "yusuf",
@@ -579,6 +579,9 @@
         "hint": "You gain 7 dinars. Yusuf will know.",
         "now": [
           {
+            "money": 7
+          },
+          {
             "trust": "yusuf",
             "by": -1
           },
@@ -590,11 +593,6 @@
         "later": [
           {
             "in": 2,
-            "do": [
-              {
-                "money": 7
-              }
-            ],
             "card": "yusuf-asks-in-writing"
           }
         ]
@@ -790,13 +788,29 @@
       {
         "id": "more",
         "label": "Give him a bonus of 5 dinars first",
-        "hint": "It costs 5 dinars. He will be loyal.",
+        "hint": "It costs 5 dinars, and the trip must have made at least that much. He will be loyal.",
         "requires": {
-          "money": {
-            "gte": 5
-          }
+          "all": [
+            {
+              "money": {
+                "gte": 5
+              }
+            },
+            {
+              "flag": "samir-profit",
+              "gte": 5
+            },
+            {
+              "flag": "samir-bonused",
+              "not": true
+            }
+          ]
         },
         "now": [
+          {
+            "flag": "samir-bonused",
+            "set": "now"
+          },
           {
             "money": -5
           },
@@ -854,7 +868,7 @@
       "seal": "seal-1"
     },
     "title": "Yusuf is home with news",
-    "body": "Yusuf is home from {to}. You let him go further if the price was better. He says a merchant from Persia heard of your house on the road and wants to deal with it.",
+    "body": "Yusuf is home from {to}. You told him he could go further if the price was better. He says a merchant from Persia heard of your house on the road and wants to deal with it.",
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -901,14 +915,14 @@
         ]
       }
     ],
-    "note": "In 1326 Ibn Battuta went from Cairo to Damascus in about 22 days, by Gibb's count from his dates. He wrote that the khans in the sands of Sinai had a watering-place and a shop outside.",
+    "note": "The Persian merchant is invented. We found no recorded prices for the road from Damascus to Aleppo, or on to Tabriz. So the game's prices there are guesses.",
     "unlocks": [
       "term-dinar"
     ],
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 71 n. 1, pp. 71 to 72, and p. 118 n. 182; the stations in the sands of Sinai, and the days counted by Gibb from the dates"
+        "at": "estimate; no recorded prices for the road from Damascus to Aleppo and on to Tabriz were found; the Tabriz passage is vol. 2, pp. 339 to 341"
       }
     ],
     "when": {
@@ -920,7 +934,7 @@
           }
         },
         {
-          "flag": "yusuf-widened"
+          "flag": "yusuf-widened-trip"
         }
       ]
     }
@@ -1074,7 +1088,7 @@
       {
         "id": "keep",
         "label": "Keep the linen for a trip",
-        "hint": "Constantinople pays about 25 dinars more for three loads, but it is a long way off and damp can spoil a load.",
+        "hint": "Constantinople pays about 25 dinars more for three loads, but it is a long way off. Damp spoils one load before you can send them.",
         "now": [
           {
             "flag": "bishara-linen-kept",
@@ -1137,7 +1151,7 @@
         ]
       }
     ],
-    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria sold at Constantinople and Pera by weight, with 4 in every hundred taken off for the sack.",
+    "note": "Pegolotti wrote a handbook for merchants about 1340. It lists flax of Alexandria among the goods sold at Constantinople and Pera.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1147,7 +1161,7 @@
     "sources": [
       {
         "src": "pegolotti-1936",
-        "at": "the section on flax of Alexandria sold at Constantinople and Pera by weight, 4 percent off for the sack; 1766 printing pp. 16 to 17; the 1936 Evans page not confirmed"
+        "at": "the section on flax of Alexandria sold at Constantinople and Pera, which names the place and the good; 1766 printing pp. 16 to 17; the 1936 Evans page not confirmed"
       }
     ]
   },
@@ -1246,7 +1260,7 @@
         ]
       }
     ],
-    "note": "Venice's state galleys sailed to Alexandria again in 1345. A treaty with the sultan fixed the taxes on gold and silver at 2 in every hundred.",
+    "note": "Venice sent its state galleys to Alexandria in yearly convoys from 1301. The service stopped after the galleys came home in 1312. A convoy is a group of ships that sail together.",
     "unlocks": [
       "term-broker",
       "term-dinar",
@@ -1257,7 +1271,11 @@
     "sources": [
       {
         "src": "jacoby-2018",
-        "at": "pp. 136 to 137; the treaty of 1345 and the galley service resumed in 1345"
+        "at": "p. 117; the galley convoys of 1301 to 1312"
+      },
+      {
+        "src": "jacoby-2018",
+        "at": "p. 137 and note 116; the galley service resumed in 1345"
       }
     ]
   },

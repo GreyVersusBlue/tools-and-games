@@ -111,7 +111,17 @@ const hashOf = page => page.evaluate(() => location.hash);
 /** Every sheet opens as the summary (MER-99). Presses each Change link that opens a section in place (not Where, which goes back to the map)
     so the steppers, the agents and the contracts are on the page. Safe to call on a sheet that is already open. */
 const openAll = async page => {
-  for (const id of ['who', 'carry', 'back', 'contract']) if (await page.$(`#change-${id}`)) { await page.$eval(`#change-${id}`, e => e.scrollIntoView({ block: 'center' })); await page.click(`#change-${id}`); }
+  for (const id of ['who', 'carry', 'back', 'contract']) if (await page.$(`#change-${id}`)) { await page.$eval(`#change-${id}`, e => e.scrollIntoView({ block: 'center' })); await pressChange(page, `#change-${id}`); }
+};
+/** A press on a Change link of the outfit sheet (MER-124). The sheet's Send bar sticks over the foot of the scroll, and the browser's own scroll
+    before a click can leave a link inside the scroll box but under the bar, where the press lands on Send. That was the MER-113b flake (2 runs
+    in 5): a failing run ended with the focus on #outfit-send and no #back-nothing, because the click on #change-back had pressed Send, which the
+    engine refuses with a purse and no good to bring back. So the link is centred first and, if anything still lies on it, the case says what. */
+const pressChange = async (page, sel) => {
+  await page.$eval(sel, e => e.scrollIntoView({ block: 'center' }));
+  const top = await page.$eval(sel, b => { const r = b.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return t === b || b.contains(t) ? null : (t?.id || t?.className || t?.tagName); });
+  if (top) throw new Error(`${sel} is covered by ${top}`);
+  await page.click(sel);
 };
 /** The one-press paper (DESIGN 7): Next on a card whose choice said `outfit-first` lands on the map
     table with the outfitting sheet open on the first stop. Send it, then go back to the desk.
@@ -674,7 +684,7 @@ try {
       eq(await engineState(page), JSON.parse(JSON.stringify(model)));
       const n = model.desk.filter(p => p.state === 'open').length;
       await page.waitForFunction(() => document.getElementById('live').textContent !== '');
-      eq(await liveText(page), `Summer 1324. ${['No', 'One', 'Two', 'Three'][n]} ${n === 1 ? 'paper' : 'papers'} on your desk.`);
+      eq(await liveText(page), `Summer 1324. ${['No', 'One', 'Two', 'Three', 'Four', 'Five'][n]} ${n === 1 ? 'paper' : 'papers'} on your desk.`);
       eq(await page.evaluate(() => document.querySelectorAll('[aria-live], [role="status"]').length), 1, 'one polite live region');
       eq(await page.$eval('#live', e => e.getAttribute('aria-live')), 'polite');
       eq(await page.$eval('.sheet-title', e => e === document.activeElement), true);
@@ -1102,17 +1112,18 @@ try {
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
       });
     } else {
-      await test('keyboard: the stop list is a listbox, typeahead jumps and Enter selects', async () => {
+      await test('keyboard: the stop list is a listbox; typeahead and the arrows select the stop they land on, and Enter keeps it (MER-124)', async () => {
         await page.keyboard.press('Tab');
         eq(await page.evaluate(() => document.activeElement.id), 'stoplist');
         eq(await page.$eval('#stoplist', e => e.getAttribute('role')), 'listbox');
         for (const ch of 'alex') await page.keyboard.press(ch);
         eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-alexandria');
-        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus', 'moving the highlight selects nothing');
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Alexandria', 'the typeahead selects, and the heading follows');
         await page.keyboard.press('Enter');
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Alexandria');
         await page.keyboard.press('ArrowDown');
         eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-aydhab');
+        eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Aydhab', 'an arrow selects, and the heading follows');
         await page.waitForFunction(() => true); await new Promise(r => setTimeout(r, 1100)); // the typeahead buffer clears
         for (const ch of 'dam') await page.keyboard.press(ch);
         eq(await page.$eval('#stoplist', e => e.getAttribute('aria-activedescendant')), 'stop-damascus');
@@ -1126,7 +1137,7 @@ try {
       const best = await page.evaluate(() => window.__merchant.view.bestTrades);
       eq(best, [], 'no news yet, no best trades');
       eq(await page.$eval('#prices-head', e => e.textContent), 'Best known trades');
-      eq(await page.$eval('#best-trades', e => [e.tagName, e.textContent]), ['P', 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.']);
+      eq(await page.$eval('#best-trades', e => [e.tagName, e.textContent, e.dataset.why]), ['P', 'The house has no news yet of what goods sell for in other stops. Letters from far stops arrive late.', 'news'], 'MER-122: the line says why, and here the reason is no news');
       eq(await page.$('#prices'), null, 'the full table is not on the panel until it is asked for');
       eq(await page.$eval('#btn-all-prices', b => [b.getAttribute('aria-expanded'), b.textContent]), ['false', 'Every price in Damascus']);
       await page.click('#btn-all-prices');
@@ -1334,8 +1345,9 @@ try {
         });
         const want = [info.a[0] + (info.b[0] - info.a[0]) * 0.25, info.a[1] + (info.b[1] - info.a[1]) * 0.25];
         ok(Math.abs(ts[0].left - want[0]) < 0.15 && Math.abs(ts[0].top - want[1]) < 0.15, `token at ${ts[0].left}, ${ts[0].top}, a quarter along is ${want}`);
-        const soonest = await page.evaluate(() => Object.values(window.__merchant.view.homeBy).sort((p, q) => p.in - q.in)[0].season);
-        eq(ts[0].label, `2 expeditions, home about ${soonest}`, 'a stack says the soonest of its trips, from the engine\'s view');
+        // MER-131: a stack names each agent with that agent's own season, from the engine's view (it said only the soonest, which hid the later one)
+        const named = await page.evaluate(ids => ids.map(id => { const x = window.__merchant.state.expeditions.find(e => e.id === id); return `${window.__merchant.content.agents.find(a => a.id === x.agent).name}, home about ${window.__merchant.view.homeBy[id].season}`; }), ts[0].ids.split(' '));
+        eq(ts[0].label, `2 expeditions: ${named.join('; ')}`, 'a stack names each trip with its own season, from the engine\'s view');
       });
     }
     await page.close();
@@ -1398,7 +1410,7 @@ try {
     const numOf = t => Number(t.match(/[\d,]+(?= dinars?)/)[0].replace(/,/g, ''));
     // opens "What they bring back" on the one-press sheet and names the first good the stop offers, if none is named
     const nameBack = async page => {
-      if (await page.$('#change-back')) await page.click('#change-back');
+      if (await page.$('#change-back')) await pressChange(page, '#change-back');
       await page.waitForSelector('.back-pick');
       if (!(await page.$('.back-pick[aria-checked="true"]'))) await page.click('.back-pick');
       await page.waitForSelector('.back-pick[aria-checked="true"]');
@@ -1441,8 +1453,8 @@ try {
       await goMap(page);
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      await page.click('#change-carry'); await page.waitForSelector('#step-purse');
-      await page.click('#change-back'); await page.waitForSelector('.back-pick');
+      await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
+      await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
       eq(await page.$eval('#outfit-back-total', e => e.textContent.startsWith('Nothing')), true, 'no good named: the line says so');
       await page.click('#step-purse-plus');
       const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
@@ -1467,7 +1479,7 @@ try {
       await goMap(page);
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      await page.click('#change-back'); await page.waitForSelector('.back-pick');
+      await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
       const checked = () => page.$$eval('.back-pick[aria-checked="true"]', bs => bs.length);
       eq(await page.$eval('#back-nothing', b => [b.tagName, b.type, b.getAttribute('role'), b.getAttribute('aria-checked'), b.getAttribute('aria-pressed')]), ['BUTTON', 'button', null, null, 'true'], 'a plain button, pressed while no good is: no checkbox role, since it cannot be unchecked');
       eq(await page.$eval('#outfit-back-goods li:last-child #back-nothing', b => b.id), 'back-nothing', 'last in the list, so the first press on a good never lands on it');
@@ -1490,13 +1502,119 @@ try {
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
     });
 
+    const openSheet = async () => {
+      await goMap(page);
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+    };
+    const closeSheet = async () => { await page.click('#outfit-cancel'); await page.waitForFunction(() => !document.getElementById('panel-outfit')); };
+    await test('MER-122: the bring-back button names the good the red line names, also when the cargo already carries the sheet\'s own pick', async () => {
+      await openSheet();
+      await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
+      await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
+      // the first good the sheet would offer (a059: it offered pepper while the engine, which leaves out what the trip carries, named porcelain)
+      const first = await page.$eval('.back-pick', b => b.dataset.good);
+      await page.click(`#step-cargo-${first}-plus`);
+      ok(Number(await page.$eval(`#step-cargo-${first}`, e => e.getAttribute('aria-valuenow'))) > 0, `setup: the cargo carries ${first}`);
+      await page.click('#back-nothing');
+      await page.click('#step-purse-plus');
+      await page.waitForSelector('#outfit-back-default');
+      const reason = await page.$eval('#outfit-reasons', e => e.textContent);
+      const named = /none is named\. (.+?) is the best known one from/.exec(reason)?.[1];
+      ok(named, `the engine names a good: ${reason}`);
+      eq(await page.$eval('#outfit-back-default', b => b.textContent), `Bring back ${named.toLowerCase()}`, 'the button and the line name the same good');
+      ok(!new RegExp(`bring back ${first}$`, 'i').test(await page.$eval('#outfit-back-default', b => b.textContent)), `setup: the carried good (${first}) is not the one offered`);
+      await page.click('#outfit-back-default');
+      await page.waitForFunction(() => document.getElementById('outfit-reasons').textContent === '');
+      eq(await page.$eval('.back-pick[aria-checked="true"]', b => b.querySelector('strong').textContent), named, 'one press takes the good the line named');
+      await closeSheet();
+    });
+    await test('MER-122: the purse stepper says when one more press buys no more loads, and only then', async () => {
+      await openSheet();
+      await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
+      await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
+      await page.click('.back-pick');
+      const levels = [];
+      const money = await page.evaluate(() => window.__merchant.state.money);
+      for (let at = 0; at + 50 <= money && levels.length < 14; at += 50) {
+        if (at > 0) await page.click('#step-purse-plus');
+        const flat = await page.$('#outfit-purse-flat');
+        levels.push({ at, line: await page.$eval('#outfit-estimate', e => e.textContent), flat: !!flat, text: flat ? await page.$eval('#outfit-purse-flat', e => e.textContent) : null });
+      }
+      await page.click('#step-purse-plus');
+      const last = await page.$eval('#outfit-estimate', e => e.textContent);
+      ok(levels.length >= 6, `setup: ${levels.length} purse levels walked`);
+      ok(levels.some(l => l.flat) && levels.some(l => !l.flat), `setup: the walk meets both a flat step and a step that buys something: ${JSON.stringify(levels.map(l => [l.at, l.flat]))}`);
+      levels.forEach((l, i) => {
+        const next = i + 1 < levels.length ? levels[i + 1].line : last;
+        eq(l.flat, next === l.line, `the purse at ${l.at}: the sheet ${l.flat ? 'says one more press buys nothing' : 'says nothing'}, and one more press ${next === l.line ? 'leaves' : 'changes'} the estimate`);
+        if (l.flat) eq(l.text, 'More money buys no more loads until the next whole load.', 'one plain line');
+      });
+      await closeSheet();
+    });
+    await test('MER-122: Change on Where keeps the cargo the new stop still trades, and drops the rest', async () => {
+      const g = await engineState(page);
+      const view0 = await page.evaluate(() => window.__merchant.view);
+      const trades = id => Object.keys(nodeContent.stops.find(x => x.id === id).sells ?? {});
+      const roadOpen = id => { const r = eng.routeFor(g, nodeContent, id); return !!r && r.route.legs[0].opens.includes(view0.season); };
+      await openSheet();
+      await pressChange(page, '#change-carry'); await page.waitForSelector('#step-cargo-linen-plus');
+      await page.click('#step-cargo-linen-plus'); await page.click('#step-cargo-linen-plus');
+      const goods = await page.$eval('#outfit-total', e => e.textContent.replace(/^In all: /, '').replace(/ and [\d,]+ dinars?\.$/, '').replace(/\.$/, ''));
+      ok(/linen/.test(goods), `setup: linen is in the cargo: ${goods}`);
+      const [keeps, drops] = [['qus', trades('qus').includes('linen') && roadOpen('qus')], ['samarkand', !trades('samarkand').includes('linen') && roadOpen('samarkand')]];
+      ok(keeps[1] && drops[1], `setup: Qus trades linen and Samarkand does not, and both roads are open: ${keeps}, ${drops}`);
+      await pressChange(page, '#change-where');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      await page.click('#stop-qus, .dot[data-stop="qus"]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      eq(await page.$eval('#summary-carry', e => e.textContent), `${cap(goods)}.`, 'Qus: the cargo set for Damascus is still on the sheet');
+      await closeSheet();
+      // a draft is used once: the next sheet for Qus is the engine's own again
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      ok(await page.$eval('#summary-carry', (e, k) => e.textContent !== k, `${cap(goods)}.`), 'the kept cargo was used once; the next sheet for Qus is the engine\'s own');
+      await closeSheet();
+      // Samarkand trades no linen: the loads are dropped and the engine's own plain plan stands
+      await openSheet();
+      await pressChange(page, '#change-carry'); await page.waitForSelector('#step-cargo-linen-plus');
+      await page.click('#step-cargo-linen-plus');
+      await pressChange(page, '#change-where');
+      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      await page.click('#stop-samarkand, .dot[data-stop="samarkand"]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      ok(!/linen/.test(await page.$eval('#summary-carry', e => e.textContent)), `Samarkand: no linen goes: ${await page.$eval('#summary-carry', e => e.textContent)}`);
+      await closeSheet();
+      await page.click('#stop-damascus, .dot[data-stop="damascus"]');   // the map keeps the stop selected, and the cases after this one are about Damascus
+      eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
+    });
+    await test('MER-122: an empty Best known trades list says why, in the house\'s terms: nobody free, too little money, no news, nothing pays', async () => {
+      const got = await page.evaluate(async () => {
+        const { noTradesWhy } = await import('./js/ui/screens/map.js');
+        const { content, state, view } = window.__merchant;
+        const clone = x => JSON.parse(JSON.stringify(x));
+        const home = content.city.home, app = st => ({ content, state: st });
+        const away = clone(state); for (const a of Object.values(away.agents)) a.where = 'damascus';
+        const broke = clone(state); broke.stock = {};
+        const withNews = clone(view); const far = Object.keys(withNews.prices).find(k => k !== home);
+        withNews.prices[far] = { ...withNews.prices[far], pepper: { ...(withNews.prices[far]?.pepper ?? {}), p: 90 } };
+        const noNews = clone(view); for (const k of Object.keys(noNews.prices)) if (k !== home) noNews.prices[k] = {};
+        return { nobody: noTradesWhy(app(away), view), money: noTradesWhy(app(broke), { ...view, money: 1 }), news: noTradesWhy(app(state), noNews), pays: noTradesWhy(app(state), withNews) };
+      });
+      eq(Object.fromEntries(Object.entries(got).map(([k, v]) => [k, v.id])), { nobody: 'nobody', money: 'money', news: 'news', pays: 'pays' });
+      eq(new Set(Object.values(got).map(v => v.text)).size, 4, 'four different lines');
+      ok(/^Nobody is free/.test(got.nobody.text) && /too little money for even one load \(\d+ dinars?\)/.test(got.money.text) && /no news yet/.test(got.news.text) && /no trade pays/.test(got.pays.text), JSON.stringify(got));
+    });
+
     await test('MER-113b: Nothing does not promise money home when a purse is set; with no purse it says the goods come home as money', async () => {
       await goMap(page);
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
       // the stepper's arrow keys, not the typed box: both reach the same draft
       const setPurse = async to => {
-        if (await page.$('#change-carry')) await page.click('#change-carry');
+        if (await page.$('#change-carry')) await pressChange(page, '#change-carry');
         await page.waitForSelector('#step-purse');
         const val = () => page.$eval('#step-purse', e => Number(e.getAttribute('aria-valuenow')));
         for (let i = 0; i < 60 && (await val()) !== to; i++) {
@@ -1516,7 +1634,7 @@ try {
             await page.$eval('#change-back', b => b.scrollIntoView({ block: 'center' }));
             const top = await page.$eval('#change-back', b => { const r = b.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return t === b || b.contains(t) ? null : (t?.id || t?.className || t?.tagName); });
             if (top) throw new Error(`${tag}: #change-back is covered by ${top}`);
-            await page.click('#change-back');
+            await pressChange(page, '#change-back');
           }
           await page.waitForSelector('#back-nothing', { timeout: 1500 }).catch(() => {});
         }
@@ -1539,7 +1657,7 @@ try {
       await goMap(page);
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      await page.click('#change-carry');
+      await pressChange(page, '#change-carry');
       await page.waitForSelector('#step-purse');
       await nameBack(page);   // money sent to buy with needs a good to bring back (routes.js RULES)
       const val = () => page.$eval('#step-purse', e => e.getAttribute('aria-valuenow'));
@@ -1604,7 +1722,7 @@ try {
     await test('MER-72: with no news, a good says so plainly and offers no guess; after a letter, the last price, its date and the engine\'s guess', async () => {
       await q.page.click('#btn-outfit');
       await q.page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      await q.page.click('#change-carry');
+      await pressChange(q.page, '#change-carry');
       await q.page.waitForSelector('#step-cargo-linen');
       const far0 = await q.page.$eval('#step-cargo-linen', e => e.closest('li').querySelector('.far').textContent);
       ok(/^No news of what linen fetches in Damascus\.$/.test(far0), far0);
@@ -1617,7 +1735,7 @@ try {
       await goMap(q.page);
       await q.page.click('#btn-outfit');
       await q.page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      await q.page.click('#change-carry');
+      await pressChange(q.page, '#change-carry');
       await q.page.waitForSelector('#step-cargo-linen');
       const li = await q.page.$eval('#step-cargo-linen', e => ({ far: e.closest('li').querySelector('.far').textContent, might: e.closest('li').querySelector('.might')?.textContent }));
       const st = await engineState(q.page);
@@ -2074,7 +2192,7 @@ try {
       });
 
       await test(`${how}: the ledger says the years the engine's own jump skipped, on testport and cairo, and says nothing where seasons run on (MER-113b)`, async () => {
-        const { moneyTrail } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
+        const { moneyTrail, jumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
         const { writeSeason } = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
         const fsp = await import('node:fs/promises');
         const testportContent = eng.validateContent(await loadContent('testport', { fs: fsp }));
@@ -2109,10 +2227,11 @@ try {
           ok(j && Number.isInteger(j.years), `${name}: setup: the engine's own jump is in the log`);
           const trail = moneyTrail(c, st.log);
           eq(pageYears, j.years, `${name}: setup: the interlude page the engine showed reads ${j.years} years`);
-          eq(trail.map(t => t.gap).filter(g => g), [j.years], `${name}: the ledger prints the jump's years, the same number the interlude page does`);
+          eq(trail.filter(t => t.after).map(t => t.after.years), [j.years], `${name}: the ledger prints the jump's years, the same number the interlude page does`);
+          eq(trail.find(t => t.after)?.at, j.from, `${name}: the jump is on the season it came after`);
           eq(trail.length, 4, `${name}: four seasons`);
           const noJump = moneyTrail(c, st.log.filter(e => e.kind !== 'jump'));
-          eq(noJump.map(t => t.gap), [0, 0, 0, 0], `${name}: a gap in the season entries that is not the act jump prints no line`);
+          eq(noJump.map(t => t.after), [null, null, null, null], `${name}: a gap in the season entries that is not the act jump prints no line`);
           years[name].push(j.years);
           if (name === 'cairo') cairoJumped = st;
         }
@@ -2122,10 +2241,30 @@ try {
         await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
         await page.goto(GAME + '#ledger', { waitUntil: 'load' });
         await opened(page, 'ledger');
-        const first = trail.findIndex(t => t.gap);
-        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j.years)]);
-        eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], `${j.years === 1 ? 'A year' : `${j.years} years`} passed before ${writeSeason(nodeContent, trail[first].at)}.`, 'the line the page prints');
-        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), trail.map(t => String(t.change)), 'the four that closed last');
+        // MER-125: the row whose `at` is the jump's `from` carries `after`; the page prints one line for it, right after that season's own line
+        const first = trail.findIndex(t => t.after);
+        const checkJumpLine = async (st2, why) => {
+          const j2 = st2.log.find(e => e.kind === 'jump'), tr = moneyTrail(nodeContent, st2.log), at = tr.findIndex(t => t.after);
+          ok(at >= 0 && tr[at].at === j2.from, `${why}: setup: the jump is on the season it came after`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1, `${why}: exactly one jump line`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j2.years)], `${why}: data-gap is the years`);
+          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], jumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.previousElementSibling?.dataset.change)), [String(tr[at].change)], `${why}: it sits right after that season's line`);
+          eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), tr.map(t => String(t.change)), `${why}: the changes the page shows are the trail's`);
+        };
+        eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1);
+        ok(first >= 0, 'setup: the cairo trail has the jump');
+        await checkJumpLine(st, 'a season of the new act has closed');
+        // opened straight after the jump, before any new season closes
+        let fresh2 = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 80 && !fresh2.log.some(e => e.kind === 'jump'); i++) fresh2 = step(fresh2, nodeContent);
+        if (fresh2.phase === 'interlude') fresh2 = eng.openSeason(fresh2, nodeContent);
+        ok(fresh2.log.some(e => e.kind === 'jump') && !seasons(fresh2).some(e => e.at >= fresh2.log.find(x => x.kind === 'jump').to), 'setup: the jump is in the log and no season of the new act has closed');
+        await page.goto(GAME, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(fresh2)), SAVE_VERSION);
+        await page.goto(GAME + '#ledger', { waitUntil: 'load' });
+        await opened(page, 'ledger');
+        await checkJumpLine(fresh2, 'straight after the jump');
         // a book of at least four seasons that never jumped says nothing of years
         let run = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
         for (let i = 0; i < 40 && seasons(run).length < 5; i++) run = step(run, nodeContent);
@@ -2441,7 +2580,7 @@ try {
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
       await test('the outfit sheet shows the refusal in the reasons, beside a Send that is disabled, and the agents\' trust words are the engine\'s', async () => {
-        await page.click('#change-who');
+        await pressChange(page, '#change-who');
         await page.waitForSelector('#agent-yusuf');
         const trust = eng.view(s, nodeContent).trust;
         eq(await page.$eval('#agent-ali .trust', e => e.textContent), `Ali ${trust.ali.words}.`);
@@ -2585,11 +2724,11 @@ try {
         eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false');
       });
       await test('MER-99: Change opens that one section and leaves the others as lines', async () => {
-        await page.click('#change-carry');
+        await pressChange(page, '#change-carry');
         ok(await page.$('#step-purse'), 'the carry section is open: the purse stepper is on the page');
         eq(await page.$$eval('#panel-outfit .agent, #panel-outfit .back-pick, #panel-outfit .contract', es => es.length), 0, 'who, bring back and the contract are still one line each');
         eq(await page.$$eval('#panel-outfit .step .summary .change', cs => cs.map(c => c.id)), ['change-who', 'change-where', 'change-back', 'change-contract']);
-        await page.click('#change-contract');
+        await pressChange(page, '#change-contract');
         ok(await page.$('#contract-qirad'), 'the contract section opens on its own press');
         eq(await page.$eval('#outfit-estimate', e => e.textContent), eng.estimate(later, nodeContent, planNow).line, 'opening a section does not touch the plan');
         await page.click('#outfit-cancel');
@@ -2636,21 +2775,25 @@ try {
         await page.waitForSelector('#screen-map[data-ready]');
         await page.click('#btn-outfit');
         await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-        await page.click('#change-carry'); await page.waitForSelector('#step-purse');
+        await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
         const ids = await page.$$eval('[id^="step-cargo-"][role="spinbutton"]', es => es.map(e => e.id.replace('step-cargo-', '')));
         ok(ids.length >= 3, `setup: three goods to carry: ${ids}`);
         for (const g of ids) { await page.focus(`#step-cargo-${g}`); await page.keyboard.press('Home'); }
         const good = g => nodeContent.goods.find(x => x.id === g), unit = (g, n) => `${good(g).unit ?? 'load'}${n === 1 ? '' : 's'}`;
-        const want = cargo => {
-          const e = Object.entries(cargo), first = good(e[0][0]).unit ?? 'load';
+        const line = e => {
+          const first = good(e[0][0]).unit ?? 'load';
           const parts = e.map(([g, n], i) => (i && (good(g).unit ?? 'load') === first ? `${n} of ${good(g).name.toLowerCase()}` : `${n} ${unit(g, n)} of ${good(g).name.toLowerCase()}`));
           return parts.length < 2 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
         };
+        // the sheet lists goods in the order the engine's proposal and the presses put them in its draft (MER-121b changed that order), so any order of the goods will do
+        const orders = es => es.length < 2 ? [es] : es.flatMap((x, i) => orders([...es.slice(0, i), ...es.slice(i + 1)]).map(r => [x, ...r]));
+        const want = cargo => orders(Object.entries(cargo)).map(line);
         const cargo = {}, n = [4, 2, 3];
         for (let i = 0; i < 3; i++) {
           cargo[ids[i]] = n[i];
           await page.focus(`#step-cargo-${ids[i]}`); for (let k = 0; k < n[i]; k++) await page.keyboard.press('ArrowUp');
-          eq(await page.$eval('#outfit-total', e => e.textContent), `In all: ${want(cargo)}.`, `${i + 1} good(s)`);
+          const said = await page.$eval('#outfit-total', e => e.textContent);
+          ok(want(cargo).map(w => `In all: ${w}.`).includes(said), `${i + 1} good(s): ${said}`);
         }
         ok(!/ and .* and /.test(await page.$eval('#outfit-total', e => e.textContent)), 'three goods chain one and');
         await page.click('#outfit-cancel');
@@ -2669,7 +2812,7 @@ try {
         eq(await page.$eval('#outfit-why', e => e.textContent), poorWhy, 'the sentence is the engine\'s, whole');
         eq(await page.$('#outfit-lead'), null, 'it does not say everything is filled in');
         eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true', 'nothing to send');
-        await page.click('#change-carry');
+        await pressChange(page, '#change-carry');
         await page.focus('#step-cargo-linen'); await page.keyboard.press('ArrowUp');
         await page.waitForFunction(() => !document.getElementById('outfit-why'));
         eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'false', 'a plan the player built can be sent');
@@ -2805,8 +2948,9 @@ try {
         await page.waitForSelector('#outfit-send');
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
-        await test(`${frame.name}: the set-out toast takes no taps, so Outfit and Back to the desk are what a finger lands on`, async () => {
-          eq(await page.$eval('#map-toast', t => getComputedStyle(t).pointerEvents), 'none');
+        await test(`${frame.name}: the set-out toast lies in the board's flow, so Outfit and Back to the desk are what a finger lands on (MER-124)`, async () => {
+          // MER-132: sticky to the board's top is still the board's flow (it was static, under the buttons); fixed over the picture is what this forbids
+          eq(await page.$eval('#map-toast', t => [['static', 'sticky'].includes(getComputedStyle(t).position), !!t.closest('#board')]), [true, true]);
           for (const id of ['btn-outfit', 'map-desk', 'map-desk-top']) {
             const hit = await page.$eval(`#${id}`, b => { const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === b || b.contains(e); });
             ok(hit, `${id}: its centre is the button's own`);
@@ -2959,12 +3103,25 @@ try {
       const settledOnPage = lines.filter(l => l.settled !== null).map(l => l.text);
       eq(settledOnPage, entry.settled.map(x => x.text), 'each settled trip, in the jump\'s words');
       const net = entry.settled.reduce((n, x) => n + x.houseNet, 0);
-      eq(lines.find(l => l.id === 'interlude-trips').text, `Your people's trips brought ${net.toLocaleString('en-US')} ${net === 1 ? 'dinar' : 'dinars'}.`, 'the money line from the trips');
+      eq(lines.find(l => l.id === 'interlude-trips').text, (net < 0 ? `Your people's trips cost ${(-net).toLocaleString('en-US')} ${net === -1 ? 'dinar' : 'dinars'}.` : net === 0 ? `Your people's trips came out even.` : `Your people's trips brought ${net.toLocaleString('en-US')} ${net === 1 ? 'dinar' : 'dinars'}.`), 'the money line from the trips (desk.js words a loss as "cost", never a negative "brought")');
       const leftOnPage = lines.filter(l => l.left);
       eq(leftOnPage.map(l => l.left), entry.agents.map(a => (a.left === 'retired' ? 'retired' : 'house')), 'each agent who left, with the reason');
       eq(leftOnPage.map(l => l.text), entry.agents.map(a => `${nodeContent.agents.find(x => x.id === a.id).name} ${a.left === 'retired' ? 'has retired' : 'has gone to work for another house'}.`), 'the reason in words');
       const hist = lines.findIndex(l => !l.settled && !l.left && !l.id);
       ok(hist > lines.findIndex(l => l.left) && hist > lines.findIndex(l => l.id === 'interlude-trips') && lines.findIndex(l => l.id === 'interlude-trips') > lines.findIndex(l => l.settled !== null), `order: trips, money, who left, then history (${JSON.stringify(lines.map(l => l.id || l.settled || l.left || 'h'))})`);
+    });
+    // MER-125 (1): the page names what came back, beside what the trip carried out (a090: "It carried 3 loads of pepper" and no word of the silk)
+    await test('MER-124: each settled trip that came home names what it brought back and the seasons it was away, beside what it carried out', async () => {
+      const homes = entry.settled.filter(x => x.result === 'home' && x.back);
+      ok(homes.length > 0, 'the jump settles a trip that came home with its back and its seasons, or this case checks nothing');
+      for (const x of homes) {
+        const back = await page.$eval(`#back-${x.expedition}`, e => e.textContent.replace(/\s+/g, ' ')).catch(() => null);
+        ok(back, `no "what came back" line for ${x.expedition}`);
+        for (const [good, n] of Object.entries(x.back.goods ?? {})) if (n > 0) ok(back.includes(`${n} `) && back.toLowerCase().includes(nodeContent.goods.find(y => y.id === good).name.toLowerCase()), `${good} x ${n} is not named: ${back}`);
+        if (x.back.money > 0) ok(back.includes(String(x.back.money)), `${x.back.money} dinars is not named: ${back}`);
+        if (x.seasons > 0) ok(back.includes(`${x.seasons} season`), `${x.seasons} seasons is not named: ${back}`);
+        if (Object.values(x.cargo ?? {}).some(n => n > 0)) ok(await page.$(`#cargo-${x.expedition}`), `no "what it carried" line for ${x.expedition}`);
+      }
     });
     await test('the page between acts: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
     await page.close();
@@ -3039,11 +3196,16 @@ try {
       const label = await page.$eval('#outfit-send', b => b.textContent);
       eq(label, 'Send Ali to Alexandria', 'the agent and the stop are the card\'s');
       eq(await engineState(page), JSON.parse(JSON.stringify(eng.choose(st, content77, 'p9-0', 'go'))), 'nothing is sent, and nothing is paid, before Send');
-      // the engine has no plan for Ali on this road that pays (MER-98): the sheet says why and Send waits for a plan the player builds
-      ok(await page.$('#outfit-why'), 'the sheet says why it has no plan');
-      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), 'true');
-      await page.click('#change-carry');
-      await page.focus('#step-cargo-linen'); await page.keyboard.press('ArrowUp');
+      // where the engine has no plan for Ali on this road that pays (MER-98) the sheet says why and Send waits for a plan the player builds;
+      // where it has one (MER-121b's proposal searches more) the sheet opens on it and Send is open. Which it is, is the engine's answer, not a seed's.
+      const after = eng.choose(st, content77, 'p9-0', 'go'), proposal = eng.proposePlan(after, content77, 'ali', eng.routeFor(after, content77, 'alexandria').route.id);
+      const noPlan = !proposal || !!proposal.why;
+      eq(!!(await page.$('#outfit-why')), noPlan, 'the sheet says why it has no plan exactly when the engine has none');
+      eq(await page.$eval('#outfit-send', b => b.getAttribute('aria-disabled')), noPlan ? 'true' : 'false');
+      if (noPlan) {
+        await pressChange(page, '#change-carry');
+        await page.focus('#step-cargo-linen'); await page.keyboard.press('ArrowUp');
+      }
       await page.click('#outfit-send');
       await page.waitForSelector('#map-toast:not([hidden])');
       const sent = JSON.parse(await page.evaluate(() => localStorage.getItem('merchant-save')));
@@ -3070,7 +3232,7 @@ try {
       await page.click('#choice-p9-0-go'); await page.waitForSelector(BACK); await page.click('#btn-next');
       await page.waitForSelector('#change-who');
       for (const [key, section] of [['who', 'outfit-who'], ['carry', 'outfit-carry']]) {
-        await page.click(`#change-${key}`);
+        await pressChange(page, `#change-${key}`);
         const at = await page.evaluate(() => ({ tag: document.activeElement.tagName, section: document.activeElement.closest('section')?.id ?? null }));
         eq(at.section, section, `focus is inside the ${key} section after Change`);
         ok(at.tag !== 'BODY', 'focus is not on the body');
@@ -3168,6 +3330,30 @@ try {
       eq(await page.$('#btn-next'), null, 'the paper does not offer Next while it asks');
       const after = await page.$eval('.sheet', e => [...e.children].map(c => c.className).join(' '));
       ok(after.indexOf('account') < after.indexOf('ask'), after);
+    });
+    // MER-122 (play a062, b070): from the second return on the desk used to open the account and scroll the stack down to the bonus choice, so the
+    // focused headline sat above the top of the sheet (y=-292). The earlier return the desk counts is the same entry logged twice.
+    const secondReturn = () => { const st = askingReturn(); st.log.push(structuredClone(st.log.find(e => e.kind === 'return'))); return st; };
+    const headlineIn = () => page.evaluate(() => {
+      const t = document.querySelector('.sheet-title'), box = t.closest('.stack-papers'), r = t.getBoundingClientRect(), b = box.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), from: Math.round(Math.max(b.top, bar.bottom)), to: Math.round(Math.min(b.bottom, innerHeight)), focus: document.activeElement === t };
+    });
+    const settledPage = () => page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
+    await test('MER-122: a return after the first opens with its headline in view and focused, and its account folded: loaded by keyboard, raised by pointer', async () => {
+      const st = secondReturn(), r = st.desk[0];
+      await load(st);
+      await settledPage();
+      eq(await page.$eval('.sheet details.account', e => e.open), false, 'the account is folded, so the paper is short enough to read from its headline');
+      let m = await headlineIn();
+      ok(m.focus && m.top >= m.from && m.bottom <= m.to, `loaded: the focused headline spans ${m.top} to ${m.bottom} and ${m.from} to ${m.to} is on screen`);
+      // the pointer: a second return lies on top, and a press on the edge of this one raises it
+      const two = structuredClone(st); two.desk = [{ ...structuredClone(r), id: 'p122-top' }, r];
+      await load(two);
+      await page.click(`.edge[data-paper="${r.id}"]`);
+      await page.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, r.id);
+      await settledPage();
+      m = await headlineIn();
+      ok(m.focus && m.top >= m.from && m.bottom <= m.to, `raised: the focused headline spans ${m.top} to ${m.bottom} and ${m.from} to ${m.to} is on screen`);
     });
     await test('Enter on a return\'s heading does not answer it while it asks', async () => {
       await load(ret);
@@ -3322,21 +3508,36 @@ try {
       eq(got.said, 'The house is open.');
       eq(got.plain, 'Nothing changed at once.');
     });
-    await test('MER-99: a drop in a group\'s standing never runs into a bare good one: "Still, they speak well of you."', async () => {
+    await test('MER-99, MER-122: a drop in a group\'s standing never runs into a bare good one; the verb agrees with the group', async () => {
       const got = await page.evaluate(async () => {
         const { happened } = await import('./js/ui/screens/paper.js');
-        const c = { agents: [] }, at = words => ({ view: () => ({ rep: { partners: { words }, agents: { words } } }) });
+        const c = { agents: [] }, at = words => ({ view: () => ({ rep: { partners: { words }, agents: { words }, court: { words }, foreign: { words } } }) });
         return {
           well: happened(c, [{ rep: 'partners', by: -1 }], at('They speak well of you')),
           first: happened(c, [{ rep: 'partners', by: -1 }], at('They come to you first')),
           warily: happened(c, [{ rep: 'partners', by: -1 }], at('They deal with you warily')),
           up: happened(c, [{ rep: 'agents', by: 1 }], at('They speak well of you')),
+          court: happened(c, [{ rep: 'court', by: 1 }]),
+          courtDown: happened(c, [{ rep: 'court', by: -1 }], at('They speak well of you')),
+          foreign: happened(c, [{ rep: 'foreign', by: 1 }]),
         };
       });
-      eq(got.well, 'Your partners think less of the house. Still, they speak well of you.');
-      eq(got.first, 'Your partners think less of the house. Still, they come to you first.');
-      eq(got.warily, 'Your partners think less of the house. They deal with you warily.');
+      eq(got.well, 'Your partners think less of the house.', 'no "Still, they speak well of you" after "think less"');
+      eq(got.first, 'Your partners think less of the house.', 'nor "Still, they come to you first"');
+      eq(got.warily, 'Your partners think less of the house. They deal with you warily.', 'a drop to a worse standing still says where it stands');
       eq(got.up, 'Your agents think better of the house. They speak well of you.', 'a rise keeps the bare words');
+      eq(got.court, 'The court thinks better of the house.', 'one court, so "thinks"');
+      eq(got.courtDown, 'The court thinks less of the house.');
+      eq(got.foreign, 'Foreign merchants think better of the house.', 'merchants, so "think"');
+    });
+    await test('MER-122: an Accounts item\'s changes read as one line: facts run on with commas, each sentence follows whole after a full stop', async () => {
+      const got = await page.evaluate(async () => {
+        const { accountLine } = await import('./js/ui/screens/paper.js');
+        return [accountLine(['+40 coins', 'The court thinks better of the house.']), accountLine(['+60 dinars', "Hasan's trust +1"]),
+          accountLine(['The court thinks better of the house.', 'Your agents think less of the house.']), accountLine(['+5 dinars'])];
+      });
+      eq(got, ['+40 coins. The court thinks better of the house.', "+60 dinars, Hasan's trust +1", 'The court thinks better of the house. Your agents think less of the house.', '+5 dinars'],
+        'never "+40 coins, The court thinks better of the house."');
     });
     await test('MER-99: a return whose goods came home unsold says so in its headline, in one sentence, with the price at home', async () => {
       const st = askingReturn(), r = st.desk[0];
@@ -3416,7 +3617,8 @@ try {
     let st = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
     for (let i = 0; i < 60 && !(st.phase === 'desk' && st.t === 23); i++) st = st.phase === 'interlude' ? eng.openSeason(st, nodeContent) : eng.endSeason(answerAll(st), nodeContent);
     st = answerAll(st);
-    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = sheetPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
+    // the sheet's answer, else the engine's plain suggestion: since MER-133 the sheet offers nothing for a road where no step pays, and this case needs four on the road, not the sheet
+    for (const stop of ['damascus', 'aydhab', 'alexandria', 'damascus']) { const plan = sheetPlan(st, nodeContent, stop) ?? eng.suggestPlan(st, nodeContent, stop); if (plan) st = eng.outfit(st, nodeContent, plan); }
     const road = eng.endSeason(st, nodeContent);
     const clone = x => JSON.parse(JSON.stringify(x));
     const DECIDED = Object.fromEntries(road.expeditions.map((x, i) => [x.id, i % 2 === 0 ? 'recall' : 'stay']));
@@ -3506,11 +3708,18 @@ try {
         eq(Math.round(d.cash) + Math.round(d.stock.value) - Math.round(d.loans), Math.round(d.net), 'whole dinars add up too');
         if (d.stock.loads) ok(rows[1].note.startsWith(`${d.stock.loads} load`), rows[1].note);
       });
-      await test('MER-90: the ending\'s placeholder still is cropped like the desk\'s, so its file name never shows', async () => {
+      // The ending's still is harbour-empty. While the manifest says it is a placeholder (final: false) the page crops its top 8% so the
+      // file name never shows; once the picture is final it is never cropped (desk.js and ending.js read `final` the same way). The case
+      // follows the manifest's own word, so it holds on either side of the art arriving.
+      await test('MER-90: the ending\'s still is cropped like the desk\'s while it is a placeholder, and whole once it is final', async () => {
+        const manifest = JSON.parse(fs.readFileSync(path.join(MER, '..', 'assets', 'art', 'manifest.json'), 'utf8'));
+        const entry = manifest.assets.find(a => a.id === 'harbour-empty');
+        ok(entry, 'harbour-empty is not in the art manifest');
         await go(ended, '#ending/score', '#score-total');
         const r = await page.$eval('.ending-stills .desk-still', e => ({ cls: e.className, clip: getComputedStyle(e).clipPath }));
-        ok(r.cls.split(' ').includes('placeholder'), r.cls);
-        ok(/inset\(8%/.test(r.clip), r.clip);
+        const marked = r.cls.split(' ').includes('placeholder'), cropped = /inset\(8%/.test(r.clip);
+        if (entry.final === false) { ok(marked, `harbour-empty is a placeholder in the manifest and the page's class is ${r.cls}`); ok(cropped, r.clip); }
+        else { ok(!marked, `harbour-empty is final in the manifest and the page still marks it a placeholder: ${r.cls}`); ok(!cropped, `harbour-empty is final and the page still crops it: ${r.clip}`); }
       });
       await test('MER-90: Play again says what it replaces, and the title after a finished game shows the last score and rank', async () => {
         await go(ended, '#ending/after', '#again-note');
@@ -3632,6 +3841,509 @@ try {
       await page.close();
     }
   }
+
+  // ---- MER-124: the phone and the keyboard. The Send bar, the account table, the season bar, the set-out toast, the map's labels,
+  // the stop list, focus. Layout.mjs measures the boxes at every frame; these cases press and type: the toast and the first press, the
+  // tab order and the refused End, the arrow keys on the stop list, a stepper that keeps its place, and the pages MER-125 changed.
+  {
+    const fresh2 = () => eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    const FIRST2 = { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' };
+    const firstDone2 = () => { let g = fresh2(); for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, FIRST2[p.ref]); return g; };
+    const put = async (page, st, hash) => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+    };
+    const frames = [FRAMES[0], FRAMES[3], FRAMES[5]];   // laptop, phone upright, phone on its side
+
+    // (5) the set-out toast
+    for (const frame of frames) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-124 ${frame.name}: the set-out toast covers no stop, label or token, and the first press on the map dismisses it`, async () => {
+        await put(page, firstDone2(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.waitForSelector('#outfit-send');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        const got = await page.evaluate(() => {
+          const t = document.getElementById('map-toast').getBoundingClientRect(), fr = document.querySelector('.map-frame').getBoundingClientRect();
+          const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+          const under = [...document.querySelectorAll('.stop-label:not([hidden]), .token, .dot')].filter(e => e.checkVisibility() && hit(t, e.getBoundingClientRect())).map(e => e.className.split(' ')[0] + ' ' + (e.textContent.trim().slice(0, 20) || e.dataset.stop || ''));
+          return { onPicture: hit(t, fr), under, text: document.getElementById('map-toast').textContent };
+        });
+        ok(/set out for Damascus/.test(got.text), got.text);
+        ok(!got.onPicture, 'the toast lies over the picture');
+        eq(got.under, [], 'the toast covers nothing on the map');
+        // the first press anywhere on the table takes it away: a press on the picture, as a thumb would
+        const at = await page.$eval('.map-frame', e => { const b = e.getBoundingClientRect(); return { x: b.left + 6, y: b.top + 6 }; });
+        await page.mouse.click(at.x, at.y);
+        await page.waitForSelector('#map-toast[hidden]', { timeout: 1500 });
+      });
+      await test(`MER-124 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (8) the keyboard, at the laptop
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-124 keyboard: End the season is not in the tab order while papers are left, says why when pressed, and the focus goes to the first unanswered choice', async () => {
+        await put(page, fresh2(), '#desk');
+        await page.waitForSelector('#screen-desk .choice');
+        eq(await page.$eval('#btn-end', b => [b.getAttribute('aria-disabled'), b.tabIndex]), ['true', -1], 'disabled and out of the tab order');
+        await page.evaluate(() => document.activeElement.blur());
+        const seen = [];
+        for (let i = 0; i < 40; i++) { await page.keyboard.press('Tab'); seen.push(await page.evaluate(() => document.activeElement.id || document.activeElement.className)); }
+        ok(!seen.includes('btn-end'), `Tab reached the disabled End the season: ${seen.join(' ')}`);
+        ok(seen.some(x => /^choice-/.test(x)), `Tab never reached a choice: ${seen.join(' ')}`);
+        // pressed by a pointer, the button says why and the focus moves on to what is unanswered
+        await page.evaluate(() => document.activeElement.blur());
+        await page.click('#btn-end');
+        eq(await page.evaluate(() => document.activeElement.classList.contains('choice') && !!document.activeElement.closest('.sheet')), true, 'a press on End moves the focus to a choice');
+        await page.evaluate(() => document.activeElement.blur());
+        await page.keyboard.press('e');
+        eq(await page.evaluate(() => document.activeElement.classList.contains('choice')), true, 'the E key does the same');
+        // answered: End the season is live and one Tab from the papers
+        await put(page, firstDone2(), '#desk');
+        await page.waitForSelector('#btn-end');
+        eq(await page.$eval('#btn-end', b => [b.getAttribute('aria-disabled'), b.tabIndex]), ['false', 0], 'live again once every paper is answered');
+      });
+
+      await test('MER-124 keyboard: ArrowDown and ArrowUp on the stop list select the stop, and the heading and Outfit follow it with the heading in view at 768 tall', async () => {
+        await put(page, firstDone2(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.focus('#stoplist');
+        const snap = () => page.evaluate(() => {
+          const sel = document.querySelector('#stoplist [aria-selected="true"]'), head = document.getElementById('board-title'), b = document.getElementById('board').getBoundingClientRect(), r = head.getBoundingClientRect();
+          return { id: sel?.dataset.stop, name: sel?.querySelector('.name')?.textContent, head: head.textContent, outfit: document.getElementById('btn-outfit').textContent,
+            inView: r.top >= Math.max(0, b.top) - 0.5 && r.bottom <= Math.min(innerHeight, b.bottom) + 0.5, focus: document.activeElement.id, lit: document.querySelector('#stoplist .lit')?.dataset.stop };
+        });
+        const names = [];
+        for (const key of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowUp']) {
+          await page.keyboard.press(key);
+          const x = await snap();
+          eq(x.id, x.lit, `${key}: the selected stop is the highlighted one`);
+          eq(x.head, `Prices in ${x.name}`, `${key}: the heading follows the stop`);
+          ok(x.outfit.includes(x.name) || /Outfit/.test(x.outfit), `${key}: the Outfit button: ${x.outfit}`);
+          ok(x.inView, `${key}: the "Prices in ${x.name}" heading is out of view`);
+          eq(x.focus, 'stoplist', `${key}: the focus stays on the list`);
+          names.push(x.name);
+        }
+        ok(new Set(names).size >= 4, `the arrows moved through stops: ${names}`);
+      });
+
+      await test('MER-124 keyboard: the purse and cargo steppers keep their place on screen when their value changes', async () => {
+        await put(page, firstDone2(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
+        await pressChange(page, '#change-carry');
+        await page.waitForSelector('#step-purse');
+        const ids = await page.$$eval('#panel-outfit .stepper', s => s.map(e => e.id));
+        ok(ids.includes('step-purse') && ids.length >= 2, `steppers on the sheet: ${ids}`);
+        const top = id => page.$eval(`#${id}`, e => e.getBoundingClientRect().top);
+        for (const id of ids) {
+          await page.$eval(`#${id}`, e => e.scrollIntoView({ block: 'center' }));
+          await page.focus(`#${id}`);
+          for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown']) {
+            const was = await top(id), val = await page.$eval(`#${id}`, e => e.getAttribute('aria-valuenow'));
+            await page.keyboard.press(key);
+            await page.waitForFunction((i, v) => document.getElementById(i)?.getAttribute('aria-valuenow') !== v, { timeout: 2000 }, id, val).catch(() => {});
+            const now = await top(id);
+            ok(Math.abs(now - was) <= 1.5, `${id} ${key}: the stepper moved from y=${Math.round(was)} to y=${Math.round(now)}`);
+            eq(await page.evaluate(() => document.activeElement.id), id, `${id} keeps the focus`);
+          }
+        }
+        await page.click('#outfit-cancel');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+      });
+      await test('MER-124 keyboard: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
+
+  // ---- MER-131: each map token on its own road, a merged caption that names everyone, the first press on a low stop, no caption over a dot.
+  // The M4d play saw a Damascus caravan by Aden, a Nile boat to Qus above Constantinople and a Quseir trip by Tuat: MER-124 let a token
+  // slide up to 420 px to clear a label. The states below are the engine's own game with trips laid on the roads by hand (a leg, and the
+  // seasons left on it), so every road a token can stand on is tried: Damascus, Qus, Quseir, Aydhab, Jeddah to Aden, Aleppo to Tabriz.
+  {
+    const first = () => { let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' }); for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' }[p.ref]); return g; };
+    const trips = list => {
+      let g = eng.outfit(first(), nodeContent, eng.suggestPlan(first(), nodeContent, 'damascus'));
+      const model = structuredClone(g.expeditions[0]);
+      g = structuredClone(g);
+      g.expeditions = list.map(([agent, route, leg, left], i) => ({ ...structuredClone(model), id: `x${i + 1}`, agent, route, leg, left, status: 'out' }));
+      return g;
+    };
+    const STATES = {
+      three: trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1], ['samir', 'cairo-qus', 0, 1]]),
+      roads: trips([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-aydhab', 1, 1], ['samir', 'cairo-aden', 3, 1], ['mariam', 'cairo-tabriz', 2, 1]]),
+      two: trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1]]),
+      // two parties leaving Cairo at once, the Tuat caravan on a 2-season leg: with no rule against it, the Tuat caption slid onto the Qus and Quseir dots at 1280 x 800
+      crowd: trips([['yusuf', 'cairo-alexandria', 0, 1], ['ali', 'cairo-tuat', 0, 2]]),
+      // two trips on one leg at one place, due home in different seasons: one token, and its caption names each agent with that agent's own season
+      merged: trips([['yusuf', 'cairo-qus', 0, 1], ['ali', 'cairo-quseir', 0, 1]]),
+    };
+    const frames = [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3], FRAMES[5]];   // laptop, board, laptop-small, phone upright, phone on its side
+    const put = async (page, st, hash) => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.evaluate(() => new Promise(r => setTimeout(r, 400)));   // a token moves to its place over the token-move time
+    };
+    /** Each token's piece centre, and how far it is from the straight segment its leg's two stops are drawn on (px on screen). */
+    const reach = page => page.evaluate(() => {
+      const road = document.querySelector('.map-roads'), rr = road.getBoundingClientRect();
+      const out = [];
+      for (const t of document.querySelectorAll('.token')) {
+        const line = [...road.querySelectorAll('line')].find(l => (l.dataset.from === t.dataset.from && l.dataset.to === t.dataset.to) || (l.dataset.from === t.dataset.to && l.dataset.to === t.dataset.from));
+        const px = v => rr.left + v / 1920 * rr.width, py = v => rr.top + v / 1080 * rr.height;
+        const [x1, y1, x2, y2] = [px(line.getAttribute('x1')), py(line.getAttribute('y1')), px(line.getAttribute('x2')), py(line.getAttribute('y2'))];
+        const r = t.querySelector('.token-piece').getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const dx = x2 - x1, dy = y2 - y1, k = Math.max(0, Math.min(1, ((cx - x1) * dx + (cy - y1) * dy) / (dx * dx + dy * dy || 1)));
+        out.push({ ids: t.dataset.expedition, leg: `${t.dataset.from}>${t.dataset.to}`, cx: Math.round(cx * 10) / 10, cy: Math.round(cy * 10) / 10, off: Math.hypot(cx - (x1 + dx * k), cy - (y1 + dy * k)) });
+      }
+      return out;
+    });
+    for (const frame of frames) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-131 ${frame.name}: every token's centre is within 24 px of the segment its leg is drawn on, and a redraw puts it where it was`, async () => {
+        for (const [name, st] of Object.entries(STATES)) {
+          await put(page, st, '#map');
+          const a = await reach(page);
+          eq(a.length, name === 'merged' ? 1 : st.expeditions.length, `${name}: one token for each place a party stands`);
+          for (const t of a) ok(t.off <= 24, `${name}: the token for ${t.ids} on ${t.leg} stands ${t.off.toFixed(1)} px from its road`);
+          // a second render of the same state: a resize redraws the map, and a press on another stop redraws it again
+          await page.evaluate(() => dispatchEvent(new Event('resize')));
+          await page.evaluate(() => new Promise(r => setTimeout(r, 400)));
+          eq((await reach(page)).map(t => [t.ids, t.cx, t.cy]), a.map(t => [t.ids, t.cx, t.cy]), `${name}: a redraw moved a token`);
+          await put(page, st, '#map');
+          eq((await reach(page)).map(t => [t.ids, t.cx, t.cy]), a.map(t => [t.ids, t.cx, t.cy]), `${name}: a reload moved a token`);
+        }
+      });
+      await test(`MER-131 ${frame.name}: no trip caption covers a stop's dot`, async () => {
+        for (const [name, st] of Object.entries(STATES)) {
+          await put(page, st, '#map');
+          const bad = await page.evaluate(() => {
+            const dots = [...document.querySelectorAll('.dot')].map(d => [d.dataset.stop ?? d.dataset.cluster, d.getBoundingClientRect()]);
+            const out = [];
+            for (const l of document.querySelectorAll('.token-label')) {
+              if (!l.checkVisibility()) continue;
+              const r = l.getBoundingClientRect();
+              for (const [id, d] of dots) if (r.left < d.right && r.right > d.left && r.top < d.bottom && r.bottom > d.top) out.push(`"${l.textContent.slice(0, 20)}" covers ${id}`);
+            }
+            return out;
+          });
+          eq(bad, [], `${name}: ${bad}`);
+        }
+      });
+      await test(`MER-131 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-131: a merged caption names each agent and the season that agent is due home', async () => {
+        await put(page, STATES.merged, '#map');
+        const got = await page.$eval('.token', t => ({ count: t.dataset.count, text: t.querySelector('.token-label').textContent }));
+        eq(got.count, '2');
+        const by = eng.view(STATES.merged, nodeContent).homeBy, name = id => nodeContent.agents.find(a => a.id === id).name;
+        const seasons = ['x1', 'x2'].map(id => by[id].season);
+        ok(seasons[0] !== seasons[1], `the case needs two seasons, and both are ${seasons[0]}`);
+        const want = ['x1', 'x2'].map((id, i) => `${name(STATES.merged.expeditions[i].agent)}, home about ${by[id].season}`);
+        for (const w of want) ok(got.text.includes(w), `the caption "${got.text}" lacks "${w}"`);
+      });
+      await test('MER-131: the first press on a low row of the stop list selects it, with the list scrolled and nothing in it focused', async () => {
+        const low = nodeContent.stops.slice().sort((a, b) => (a.id === nodeContent.city.home ? -1 : b.id === nodeContent.city.home ? 1 : a.name.localeCompare(b.name))).slice(-3).map(s => s.id);
+        for (const id of low) {
+          await put(page, STATES.two, '#map');
+          const row = await page.evaluate(sid => {
+            const l = document.querySelector('#stoplist');
+            document.activeElement.blur(); l.scrollTop = l.scrollHeight;
+            const r = document.querySelector(`#stop-${sid}`).getBoundingClientRect(), lr = l.getBoundingClientRect();
+            return { scrollable: l.scrollHeight > l.clientHeight + 1, top: l.scrollTop, x: r.left + r.width / 2, y: r.top + r.height / 2, inView: r.top >= lr.top && r.bottom <= lr.bottom };
+          }, id);
+          ok(row.scrollable && row.top > 0, 'the list holds more stops than it shows, so the case is meaningful');
+          ok(row.inView, `${id} is in view at the end of the list`);
+          await page.mouse.click(row.x, row.y);
+          eq(await page.$eval('#board-title', e => e.textContent), `Prices in ${nodeContent.stops.find(s => s.id === id).name}`, `one press on ${id} selected it`);
+        }
+      });
+      await test('MER-131: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
+
+
+  // ---- MER-132: the phone desk picture, the title picture, the Send bar under a tap, the stepper's limit, the houses' seals, the return account's figures.
+  {
+    const put = async (page, st, hash) => {
+      await page.goto(GAME, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(GAME + hash, { waitUntil: 'load' });
+    };
+    const firstDone3 = () => { let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' }); for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, FIRST[p.ref]); return g; };
+
+    // (1) problem 2: the desk picture on a phone, eight seasons through a winter. The band is display:none while the night placeholder is in it, a
+    // hidden picture never runs its fade, and each season left one more still behind it; by season 7 four lay at opacity 0 and 0 x 0 (c016, c017).
+    {
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await start(page, 'pointer');
+      await answerFirst(page, 'pointer');
+      const look = () => page.evaluate(() => {
+        const imgs = [...document.querySelectorAll('.desk-stills .desk-still')], last = imgs.at(-1), r = last?.getBoundingClientRect();
+        return { n: imgs.length, files: imgs.map(i => i.getAttribute('src').replace(/^.*\//, '')), placeholder: !!last?.classList.contains('placeholder'),
+          opacity: last ? getComputedStyle(last).opacity : null, w: Math.round(r?.width ?? 0), h: Math.round(r?.height ?? 0), shown: !!last?.checkVisibility(),
+          season: document.documentElement.dataset.season, date: document.getElementById('bar-date')?.textContent };
+      });
+      await test('MER-132 phone-upright: through eight seasons and a winter the band holds one still, and a final picture is shown at full opacity, the winter after too', async () => {
+        const log = [];
+        for (let season = 1; season <= 8; season++) {
+          if (season > 1) {
+            const was = await page.$eval('#bar-date', e => e.textContent);
+            await uiSeason(page, 'pointer');
+            await page.waitForFunction(d => document.getElementById('bar-date')?.textContent !== d, { timeout: 10000 }, was);
+            const now = await look();
+            ok(now.n <= 2, `season ${season}, as it opens: ${now.n} stills in the band (${now.files}), two at most while one fades`);
+          }
+          // the fade ends: one still, and a final one at full opacity
+          await page.waitForFunction(() => document.querySelectorAll('.desk-stills .desk-still').length === 1 && (document.querySelector('.desk-stills .desk-still.placeholder') || getComputedStyle(document.querySelector('.desk-stills .desk-still')).opacity === '1'), { timeout: 3000 }).catch(() => {});
+          const got = await look();
+          log.push(`${got.date}: ${got.files}`);
+          if ([1, 4, 5, 8].includes(season)) await page.screenshot({ path: path.join(SHOTS, `MER-132-phone-desk-season-${season}.png`) });
+          eq(got.n, 1, `season ${season} (${got.date}): ${got.n} stills in the band: ${got.files}`);
+          if (!got.placeholder) {
+            eq(got.opacity, '1', `season ${season} (${got.date}): ${got.files} is at opacity ${got.opacity}`);
+            ok(got.shown && got.w > 300 && got.h > 100, `season ${season} (${got.date}): the final picture ${got.files} is ${got.w} x ${got.h}, shown ${got.shown}`);
+          }
+        }
+        ok(log.some(l => /night/.test(l)), `a winter placeholder was passed: ${log.join(' | ')}`);
+        ok(/day/.test(log[4]), `the spring after the winter shows the day desk: ${log[4]}`);
+      });
+      await test('MER-132 phone-upright: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (2) the title screen: A18 behind the panel, and the gradient only when the file will not load
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-132: the title screen shows title.webp (not title-wide) behind its panel, and the gradient stands in only for a file that fails to load', async () => {
+        const got = await page.evaluate(async () => {
+          const img = document.querySelector('#screen-title .title-still');
+          if (!img) return { missing: true };
+          await img.decode().catch(() => {});
+          return { src: img.getAttribute('src'), loaded: img.complete && img.naturalWidth > 0, z: getComputedStyle(img).zIndex, first: document.getElementById('screen-title').firstElementChild === img };
+        });
+        ok(!got.missing, 'the title screen has no .title-still');
+        ok(/assets\/art\/title\.webp$/.test(got.src), `the picture is ${got.src}`);
+        ok(got.loaded, 'the picture did not load');
+        eq(got.z, '-1', 'it lies behind the panel');
+        const failed = await page.evaluate(async () => {
+          const { renderTitle } = await import('./js/ui/screens/title.js');
+          const el = renderTitle({ city: { title: 'T', tagline: 't' }, art: { file: 'no-such-picture.webp' }, save: null, onNew() {}, onContinue() {}, onAbout() {}, onSettings() {} });
+          el.id = 'title-probe'; document.body.append(el);
+          await new Promise(r => setTimeout(r, 600));
+          const left = el.querySelector('.title-still'), bg = getComputedStyle(el).backgroundImage;
+          el.remove();
+          return { left: !!left, gradient: /linear-gradient/.test(bg) };
+        });
+        eq(failed, { left: false, gradient: true }, 'a picture that fails to load takes itself off, and the gradient is what shows');
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (4) problem c010: the set-out message is whole on a phone, upright with Large text and on its side. Under the buttons it lay beneath the board's sticky
+    // bar once the board scrolled, and "Watch the" was all of it that showed
+    for (const [frame, large] of [[FRAMES[3], false], [FRAMES[3], true], [FRAMES[4], true], [FRAMES[5], false]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-132 ${frame.name}${large ? ' with Large text' : ''}: the set-out message is whole on screen, with nothing over it, wherever the board is scrolled`, async () => {
+        await put(page, firstDone3(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        if (large) await setLarge(page, true);
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.waitForSelector('#outfit-send');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        const probe = how => page.evaluate(how => {
+          const t = document.getElementById('map-toast'), board = document.getElementById('board');
+          if (how === 'foot') board.scrollTop = board.scrollHeight; else board.scrollTop = 0;
+          const r = t.getBoundingClientRect(), b = board.getBoundingClientRect();
+          const covered = [[r.left + 4, r.top + 3], [r.right - 4, r.top + 3], [r.left + 4, r.bottom - 3], [r.right - 4, r.bottom - 3], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]
+            .map(([x, y]) => { const e = document.elementFromPoint(x, y); return e && !(t === e || t.contains(e)) ? (e.id || e.className || e.tagName) : null; }).filter(Boolean);
+          return { how, top: Math.round(r.top), bottom: Math.round(r.bottom), board: [Math.round(b.top), Math.round(b.bottom)], covered, whole: r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5, clipped: t.scrollHeight > t.clientHeight + 1 };
+        }, how);
+        for (const how of ['foot', 'top']) {
+          const got = await probe(how);
+          eq(got.covered, [], `board scrolled to its ${how}: the toast at ${got.top} to ${got.bottom} is covered`);
+          ok(got.whole, `board scrolled to its ${how}: the toast at ${got.top} to ${got.bottom} is out of the board (${got.board})`);
+          ok(!got.clipped, 'the toast clips its own text');
+        }
+      });
+      await test(`MER-132 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (5) the Send bar is outside the scrolling content: a tap on a stepper scrolled to the foot of the sheet is a tap on the stepper
+    {
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await test('MER-132 phone-upright: a tap on a stepper at the foot of the scrolling sheet moves the stepper and never sends the trip', async () => {
+        await put(page, firstDone3(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
+        await pressChange(page, '#change-carry');
+        await page.waitForSelector('#step-purse');
+        const ids = await page.$$eval('#panel-outfit .stepper', s => s.map(e => e.id));
+        ok(ids.length >= 2, `steppers on the sheet: ${ids}`);
+        let atFoot = 0;
+        for (const id of ids) {
+          // the sheet's scrolling part, wherever it is (the nearest ancestor that scrolls), moved until the stepper's plus button lies at the very foot of what scrolls
+          const where = await page.evaluate(sel => {
+            const btn = document.querySelector(sel); let sc = btn.parentElement;
+            while (sc && !(['auto', 'scroll'].includes(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight + 1)) sc = sc.parentElement;
+            if (!sc) return { noScroller: true };
+            const port = sc.getBoundingClientRect().bottom, r = btn.getBoundingClientRect();
+            sc.scrollTop += (r.top + r.height / 2) - (port - 2);
+            const r2 = btn.getBoundingClientRect();
+            return { y: Math.round(r2.top + r2.height / 2), foot: Math.abs(r2.top + r2.height / 2 - (port - 2)) < 3, port: Math.round(port), bar: Math.round(document.querySelector('#panel-outfit .send-row').getBoundingClientRect().top) };
+          }, `#${id}-plus`);
+          ok(!where.noScroller, 'the sheet has nothing that scrolls');
+          if (where.foot) atFoot++;
+          const before = await page.$eval(`#${id}`, e => e.getAttribute('aria-valuenow'));
+          await page.tap(`#${id}-plus`);
+          const after = await page.waitForFunction((i, v) => document.getElementById(i)?.getAttribute('aria-valuenow') !== v, { timeout: 2000 }, id, before).then(() => true, () => false);
+          const sent = await page.evaluate(() => ({ trips: window.__merchant.state.expeditions.length, open: !!document.getElementById('panel-outfit')?.open, hash: location.hash }));
+          eq(sent, { trips: 0, open: true, hash: '#outfit' }, `a tap at y=${where.y} on ${id}'s plus (the scrolling part ends at ${where.port}, the Send bar at ${where.bar}) sent the trip`);
+          ok(after, `${id}: a tap at y=${where.y} did not move the stepper from ${before}`);
+        }
+        ok(atFoot >= 2, `only ${atFoot} of ${ids.length} steppers could be put at the foot of what scrolls: the case proves nothing`);
+        await page.click('#outfit-cancel');
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (6) problem 11: the stepper's limit is the engine's mostLoads, not money over today's price. With 1,500 dinars the flat division allowed
+    // 16 pepper at Qus and the engine's own check refuses 15; money is cut here until the flat count is exactly one load over.
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-132: the cargo stepper stops at the engine\'s mostLoads, a load short of what money over today\'s price allows', async () => {
+        const base = firstDone3(), home = nodeContent.city.home;
+        const priceOf = (s, g) => eng.view(s, nodeContent).prices[home][g].p;
+        let pick = null;
+        for (let m = 1500; m >= 400 && !pick; m--) {
+          const s = structuredClone(base); s.money = m;
+          const plan = eng.suggestPlan(s, nodeContent, 'qus');
+          if (!plan) continue;
+          const flat = (s.stock.pepper ?? 0) + Math.floor(m / priceOf(s, 'pepper')), most = eng.mostLoads(s, nodeContent, plan, 'pepper');
+          if (flat - most === 1 && most >= 3) pick = { s, plan, flat, most };
+        }
+        ok(pick, 'no money in 400 to 1500 puts the flat count exactly one load over mostLoads');
+        const mk = n => ({ ...pick.plan, cargo: { ...pick.plan.cargo, pepper: n } });
+        eq(eng.checkPlan(pick.s, nodeContent, mk(pick.most)).ok, true, 'the engine pays for mostLoads');
+        eq(eng.checkPlan(pick.s, nodeContent, mk(pick.flat)).ok, false, 'and refuses the flat count');
+        await put(page, pick.s, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#stop-qus');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
+        await pressChange(page, '#change-carry');
+        await page.waitForSelector('#step-cargo-pepper');
+        eq(await page.$eval('#step-cargo-pepper', e => e.getAttribute('aria-valuemax')), String(pick.most), `the pepper stepper's limit (flat count ${pick.flat})`);
+        await page.focus('#step-cargo-pepper');
+        await page.keyboard.press('End');
+        await page.waitForFunction(m => document.getElementById('step-cargo-pepper')?.getAttribute('aria-valuenow') === m, { timeout: 2000 }, String(pick.most));
+        eq(await page.$eval('#step-cargo-pepper-plus', e => e.getAttribute('aria-disabled')), 'true', 'the plus is dead at the limit');
+        eq(await page.$eval('#outfit-send', e => e.getAttribute('aria-disabled')), 'false', 'the sheet can send the full load: the engine pays for it');
+        await page.click('#outfit-cancel');
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (7) the new-game screen: each house's own seal
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-132: the new-game screen shows each house\'s seal picture, a different one for each, and no plain disc', async () => {
+        await page.click('#btn-new');
+        await page.waitForFunction(() => document.getElementById('panel-newgame')?.open);
+        const got = await page.evaluate(async () => {
+          const rows = [...document.querySelectorAll('#panel-newgame .which-house .option')];
+          await Promise.all(rows.map(r => r.querySelector('img.seal')?.decode().catch(() => {})));
+          return rows.map(r => ({ house: r.querySelector('input').value, src: r.querySelector('img.seal')?.getAttribute('src') ?? null, plain: !!r.querySelector('.seal-plain'), ok: !!r.querySelector('img.seal')?.naturalWidth }));
+        });
+        eq(got.map(x => x.house), nodeContent.houses.map(x => x.id), 'one row for each house');
+        for (const x of got) { ok(x.src && x.ok && !x.plain, `${x.house}: seal ${x.src}, loaded ${x.ok}, plain disc ${x.plain}`); ok(/assets\/art\/seal-[1-8]\.webp$/.test(x.src), `${x.house}: ${x.src}`); }
+        eq(new Set(got.map(x => x.src)).size, got.length, 'each house has its own seal');
+        // the manifest says each seal is final: a placeholder seal is not worn by a house
+        const manifest = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'assets', 'art', 'manifest.json'), 'utf8'));
+        for (const x of got) eq(manifest.assets.find(a => `assets/art/${a.file}` === x.src)?.final, true, `${x.house}'s seal is a final picture`);
+        // a paper from someone with no seal keeps the disc
+        const plain = await page.evaluate(async () => { const { seal } = await import('./js/ui/screens/paper.js'); return seal({ art: new Map() }, null).className; });
+        ok(/seal-plain/.test(plain), `a sender with no seal: ${plain}`);
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (8) and (8b): the return account says each figure once, and each sign is one true minus
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      const returnSave = () => {
+        let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (let i = 0; i < 60; i++) {
+          g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
+          const p = g.desk?.find(x => x.kind === 'return' && x.state === 'open');
+          if (p) { g.desk = [p]; return g; }
+        }
+        throw new Error('MER-132: no return in the first sixty seasons');
+      };
+      await test('MER-132: the return account says what came home once, and a loss line carries one true minus, never a hyphen or two signs', async () => {
+        const gain = returnSave(), loss = structuredClone(gain), r = loss.desk[0];
+        // the same paper written as a loss: the headline, the sums and the closing row, the way routes.js writes a loss with the true minus
+        r.data.houseNet = -31; r.data.outcome = 'loss'; r.data.headline = r.data.headline.replace(/The house made [\d,]+ dinars?\./, 'The house lost 31 dinars.');
+        const rows = r.data.account, last = rows[rows.length - 1];
+        last.label = 'Loss'; last.text = 'about 31 dinars'; last.amount = -31;
+        const back = rows.find(x => x.label === 'Back home'); back.text = '31 dinars, 31 dinars in all'; back.amount = 31;
+        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent, cells: [...t.querySelectorAll('td')].map(c => c.textContent) }))); };
+        for (const [name, st] of [['a profit', gain], ['a loss', loss]]) {
+          const got = await read(st), all = got.flatMap(x => x.cells).join(' | ');
+          const home = got.find(x => x.label === 'Back home');
+          ok(!/ in all/.test(home.cells.join(' ')), `${name}: "Back home" still says "in all": ${home.cells}`);
+          const figures = home.cells.join(' ').match(/\d[\d,]*\s+dinars?/g) ?? [];
+          ok(new Set(figures).size === figures.length, `${name}: "Back home" says a figure twice: ${home.cells}`);
+          ok(!/[-‐‑–]\s?\d/.test(all), `${name}: a hyphen or dash before a figure in ${all}`);
+          ok(!/[+−-]\s?[+−-]\s?\d/.test(all), `${name}: two signs in a row in ${all}`);
+          for (const x of got) for (const c of x.cells) if (/^[+−]/.test(c)) ok(/^[+−]\d/.test(c), `${name}: ${x.label}: "${c}"`);
+        }
+        const got = await read(loss), sums = got.filter(x => x.cells.length === 2);
+        const lossRow = got.find(x => x.label === 'Loss'), sent = got.find(x => x.label === 'Sent out');
+        eq(lossRow.cells.at(-1), '−31 dinars', 'the Loss row: one U+2212 and the figure');
+        ok(/^−\d/.test(sent.cells.at(-1)), `Sent out is money out: ${sent.cells}`);
+        ok(sums.every(x => !/dinars? in all/.test(x.cells.join(' '))), 'no sum row repeats its total in words');
+        eq(await page.$eval('.sheet-title', e => e.textContent).then(t => /lost 31 dinars\./.test(t) && !/[−-]31/.test(t)), true, 'the headline says "lost 31 dinars" with no sign of its own');
+      });
+      await test('MER-132: accountText drops only the closing total, and says a row of money alone in words', async () => {
+        const got = await page.evaluate(async () => {
+          const { accountText } = await import('./js/ui/screens/paper.js');
+          return [accountText({ text: '527 dinars, 527 dinars in all', amount: 527 }), accountText({ text: '3 loads of silk (worth 450 dinars in Cairo now) and 12 dinars, 462 dinars in all', amount: 462 }),
+            accountText({ text: '3 loads of silk in Damascus, for 90 dinars', amount: 90, detail: true }), accountText({ text: 'nothing', amount: 0 }), accountText({ text: 'a, 5 dinars in all' })];
+        });
+        eq(got, ['All of it in money', '3 loads of silk (worth 450 dinars in Cairo now) and 12 dinars', '3 loads of silk in Damascus, for 90 dinars', 'nothing', 'a, 5 dinars in all']);
+      });
+      await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
 
 } finally {
   await browser.close();

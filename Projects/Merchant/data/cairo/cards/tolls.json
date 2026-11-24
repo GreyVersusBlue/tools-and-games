@@ -57,7 +57,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        }
       }
     ],
     "note": "Ibn Battuta saw Aydhab in 1326. One third of the town was the sultan's, and two thirds was the Beja king's. A writer of about 1400 says some merchants preferred Quseir, because it was nearer Qus.",
@@ -139,7 +144,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        }
       }
     ],
     "note": "A merchant's handbook from about 1340 says goods coming into Alexandria paid 20 in every hundred. Goods going out paid nothing.",
@@ -191,7 +201,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        }
       },
       {
         "id": "refuse",
@@ -231,8 +246,18 @@
     "title": "Papers for the road",
     "body": "Nabil belongs to the Karimi, a loose group of merchants who trade spices. One writer says a spice office gave them papers for the road. It took 2.5 in every hundred of their goods. He says he could carry two loads for your house under his papers.",
     "when": {
-      "rep": "partners",
-      "gte": 1
+      "all": [
+        {
+          "trip": {
+            "agent": "yusuf",
+            "is": "ready"
+          }
+        },
+        {
+          "rep": "partners",
+          "gte": 1
+        }
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -281,7 +306,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        }
       }
     ],
     "note": "One modern writer says the Karimi office gave its members papers. He says it took 2.5 in every hundred of their goods. The Karimi were a loose group, and historians do not agree on how tightly they were organised.",

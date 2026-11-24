@@ -18,17 +18,30 @@ const GROUPS = { partners: 'Partners', agents: 'Agents', court: 'The court', for
 const signed = n => (n > 0 ? `+${num(n)}` : n < 0 ? `${MINUS}${num(-n)}` : '0');
 
 /** The changes in the house's money over the last four seasons that closed, newest last, from the
-    log's `season` entries ({ kind: 'season', at, change }). [] when the log has none. `gap` is the
-    years the act jump skipped, read from the log's own `jump` entry (its `years`, the number the
-    interlude page prints) when that jump sits between this season and the one before it; a gap in the
-    season entries with no jump entry in it says nothing (MER-113b). */
+    log's `season` entries ({ kind: 'season', at, change }). [] when the log has none. A season that ran the act jump
+    carries the jump as `after`, so the years are one line of their own and not folded into that season: { years, change,
+    trips, net }, read from the log's own `jump` entry (its `years`, the number the interlude page prints) and its `net` (what the trips made for the house, as the page says) and `trips` (the cash they moved), with `change` (all the jump did to the money) taken out of the season's own figure
+    (MER-125). A jump entry from before they were written gives its years alone. */
 export function moneyTrail(content, log) {
   const jumps = (log ?? []).filter(e => e.kind === 'jump' && Number.isInteger(e.years));
   const four = (log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4);
-  return four.map((e, i) => {
-    const j = i ? jumps.find(x => x.from >= four[i - 1].at && x.to <= e.at) : null;
-    return { at: e.at, season: writeSeason(content, e.at), change: e.change, gap: j ? j.years : 0 };
+  return four.map(e => {
+    const j = jumps.find(x => x.from === e.at);
+    const known = j && Number.isInteger(j.change) && Number.isInteger(j.trips) && Number.isInteger(j.net);
+    return { at: e.at, season: writeSeason(content, e.at), change: known ? e.change - j.change : e.change,
+      after: j ? { years: j.years, ...(known ? { change: j.change, trips: j.trips, net: j.net } : {}) } : null };
   });
+}
+
+/** The line for the years of a jump: "10 years passed. The trips made 235 dinars for the house." The money's own figure follows when
+    goods that came home make it differ, so the books and the page between the acts say the same thing. */
+export function jumpWords(a) {
+  const n = a.years === 1 ? 'A year passed.' : `${a.years} years passed.`;
+  if (!Number.isInteger(a.net)) return n;
+  const made = a.net > 0 ? `The trips made ${dinars(a.net)} for the house.` : a.net < 0 ? `The trips cost the house ${dinars(-a.net)}.` : 'The trips came out even.';
+  const cash = a.trips === a.net ? '' : ` In the money it shows as ${signed(a.trips)}, the rest being goods in the warehouse.`;
+  const other = a.change - a.trips;
+  return `${n} ${made}${cash}${other ? ` Loans and other news moved the money by ${signed(other)}.` : ''}`;
 }
 
 function whereIsExpedition(app, x) {
@@ -73,9 +86,9 @@ function money(app) {
     h('h4', null, 'The last four seasons'),
     trail.length
       ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, trail.flatMap(t => [
-        ...(t.gap ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.gap) } }, `${t.gap === 1 ? 'A year' : `${t.gap} years`} passed before ${t.season}.`)] : []),
         h('li', { dataset: { change: String(t.change) } },
-          h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`))]))
+          h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`)),
+        ...(t.after ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.after.years) } }, jumpWords(t.after))] : [])]))
       : h('p', { class: 'ledger-line', id: 'ledger-trail' }, 'No season has been closed in the books yet.'));
 }
 

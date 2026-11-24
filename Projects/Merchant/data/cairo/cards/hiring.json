@@ -54,15 +54,15 @@
         ]
       }
     ],
-    "note": "Merchants had long sent agents to buy and sell in other towns, and kept in touch with them by letter.",
+    "note": "Traders in the Geniza papers spread their risk. They took part in many small partnerships instead of one large one.",
     "unlocks": [
       "term-load",
       "term-dinar"
     ],
     "sources": [
       {
-        "src": "goitein-1973",
-        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+        "src": "goitein-friedman-2008",
+        "at": "introduction, pp. 22 to 23; spreading risk by many small partnerships"
       }
     ]
   },
@@ -76,7 +76,7 @@
       "seal": "seal-2"
     },
     "title": "Ali asks for work",
-    "body": "Ali is bold and quick. He has travelled before and knows the south. He has no house of his own, and he asks you to take him on. A second agent means two sets of goods out at once. It also means a second wage.",
+    "body": "Ali is bold and quick. He has travelled before and knows the south. He has no house of his own, and he asks you to take him on. Another agent means another set of goods out at once. It also means another wage.",
     "when": {
       "agent": "ali",
       "hired": false
@@ -87,7 +87,7 @@
       {
         "id": "hire",
         "label": "Hire Ali",
-        "hint": "The clerk's fee is 4 dinars. Your other agents hear that you hire people, and think better of you in three seasons. The next sheet shows what sending him costs.",
+        "hint": "The clerk's fee is 4 dinars. Your other agents hear that you hire people, and think better of you in three seasons. The Outfit button on the map shows what sending him costs.",
         "requires": {
           "money": {
             "gte": 4
@@ -120,7 +120,7 @@
       {
         "id": "not-yet",
         "label": "Not yet",
-        "hint": "You save the fee, and you keep one agent out at a time. Partners like a house that waits, and say so in two seasons.",
+        "hint": "You save the fee. Partners like a house that waits, and say so in two seasons.",
         "now": [],
         "later": [
           {
@@ -289,7 +289,7 @@
       {
         "id": "widen",
         "label": "Let him go further if the price is better",
-        "hint": "He may do better. A longer road costs 4 dinars more, later, and you carry the risk.",
+        "hint": "He may do better. A longer road costs 4 dinars now, and you carry the risk. He trusts you more in three seasons.",
         "now": [
           {
             "trust": "yusuf",
@@ -298,6 +298,9 @@
           {
             "flag": "yusuf-widened",
             "set": "now"
+          },
+          {
+            "money": -4
           }
         ],
         "later": [
@@ -305,11 +308,17 @@
             "in": 3,
             "do": [
               {
-                "money": -4
+                "trust": "yusuf",
+                "by": 1
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        }
       },
       {
         "id": "keep",
@@ -396,7 +405,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        }
       },
       {
         "id": "wage",
@@ -442,7 +456,7 @@
         ]
       }
     ],
-    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "note": "In the usual Geniza contract a traveller who was paid a share of the profit did not share in any loss. A few contracts did make him share it.",
     "unlocks": [
       "term-qirad",
       "term-dinar",
@@ -451,7 +465,7 @@
     "sources": [
       {
         "src": "goitein-1964",
-        "at": "p. 317; the worker's share, normally one third, and no loss for him"
+        "at": "pp. 317 and 325; the worker's share, normally one third, and no loss for him; the rarer contract that made the manager share the loss"
       }
     ]
   },

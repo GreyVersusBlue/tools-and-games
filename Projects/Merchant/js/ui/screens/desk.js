@@ -5,7 +5,7 @@
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { leftHow } from '../../engine/agents.js';
-import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, RECORD_KINDS } from './paper.js';
+import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, stuckHeight, RECORD_KINDS } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
@@ -49,9 +49,10 @@ export function createDesk(app) {
   const edges = h('div', { class: 'edges' });
   const endReason = h('p', { class: 'end-reason', id: 'end-reason' });
   const endBtn = h('button', { class: 'end-season', type: 'button', id: 'btn-end', 'aria-describedby': 'end-reason', onclick: () => endSeason() }, 'End the season');
+  const endRow = h('div', { class: 'end-row' }, endReason, endBtn);
   const stack = h('section', { class: 'stack', 'aria-label': 'Your desk' },
     counter, h('div', { class: 'stack-papers' }, sheetBox, edges),
-    h('div', { class: 'end-row' }, endReason, endBtn));
+    endRow);
   const el = h('main', { class: 'desk-screen', id: 'screen-desk' }, still, bar, note, stack);
 
   // ---- the still and the safe box
@@ -65,13 +66,21 @@ export function createDesk(app) {
     if (!asset || id === stillId) return;
     const first = stillId === null;
     stillId = id;
+    // MER-132 (play c016, c017): a fade that was still under way is finished first, so the band holds the picture in view and the new one
+    // and no more. On a phone the band is display:none while a night placeholder is in it (screens.css), a hidden image never runs its
+    // animation, and `animationend` never came: each season left one more still behind it, four by season seven, all at opacity 0.
+    for (const o of [...still.children].slice(0, -1)) o.remove();
     const img = h('img', { class: `desk-still${asset.final === false ? ' placeholder' : ''}`, src: `assets/art/${asset.file}`, alt: asset.alt ?? '', decoding: 'async', fetchpriority: 'high' });
     const old = [...still.children];
     still.append(img);
     const drop = () => old.forEach(o => o.remove());
-    if (first || !cssMs('--season-fade-time')) { drop(); return; }
+    const fade = cssMs('--season-fade-time');
+    // a fade is skipped when there is nothing to fade (the first picture, no fade time set) or nothing to see it in (the band is hidden)
+    if (first || !fade || still.checkVisibility?.() === false) { drop(); return; }
     img.classList.add('fading');
     img.addEventListener('animationend', drop, { once: true });
+    // and a fade always ends: a tab in the background, or an animation the browser drops, leaves no picture waiting behind the new one
+    setTimeout(drop, fade + 200);
   }
   function layout() {
     const asset = app.art.get(stillId);
@@ -85,6 +94,15 @@ export function createDesk(app) {
     el.style.setProperty('--safe-h', `${Math.round(sh * asset.h * sc)}px`);
   }
   addEventListener('resize', layout);
+  // MER-124: the heights of the two bars that lie over the page, measured, so the stylesheet never guesses them (the top bar is two rows or
+  // three, and a taller Large-text bar is taller still): the papers start `--bar-h` down on a placeholder still, and a control scrolled into
+  // view stops `--end-h` above the foot instead of under End the season.
+  const root = document.documentElement;
+  const sizes = () => {
+    root.style.setProperty('--bar-h', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+    root.style.setProperty('--end-h', `${Math.ceil(endRow.checkVisibility?.() === false ? 0 : endRow.getBoundingClientRect().height)}px`);
+  };
+  const sizeWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(sizes) : null;
 
   // ---- the top bar
   function barNote(text) { note.textContent = text; app.say(text); }
@@ -197,12 +215,14 @@ export function createDesk(app) {
     const target = qs('.choice, #btn-next', sheet);
     if (!target) return;
     const boxRect = box.getBoundingClientRect();
+    // MER-132: the tabs of the other papers stay stuck over the top of the box, so what lies under them is not in view
+    const top = boxRect.top + stuckHeight(box);
     let need = target.getBoundingClientRect().bottom + 6 - boxRect.bottom;
     // a return's or loss's paper ends by asking, often two choices: the last one is brought clear of the End the season bar
     // too, as far as the first still stays in view (MER-99)
     if (/\bkind-(return|lost)\b/.test(sheet.className)) {
       const last = qsa('.choice', sheet).at(-1);
-      if (last && last !== target) need = Math.max(need, Math.min(last.getBoundingClientRect().bottom + 6 - boxRect.bottom, target.getBoundingClientRect().top - boxRect.top));
+      if (last && last !== target) need = Math.max(need, Math.min(last.getBoundingClientRect().bottom + 6 - boxRect.bottom, target.getBoundingClientRect().top - top));
     }
     if (need > 0) box.scrollTop += need;   // the head may scroll off: the choice is the part a player cannot do without
     const at = box.scrollTop;
@@ -226,6 +246,19 @@ export function createDesk(app) {
     return parts.length ? `It carried ${parts.join(', ')}.` : '';
   };
 
+  /** "It was away four seasons and brought back 3 loads of silk and 12 dinars." for a trip that came home: what came back, goods
+      and money, and the seasons the return paper's account counts, or "" for a line from before they were written (MER-125). */
+  const backLine = x => {
+    if (x.result !== 'home' || !x.back) return '';
+    const things = Object.entries(x.back.goods ?? {}).filter(([, n]) => n > 0).map(([g, n]) => {
+      const good = content.goods.find(y => y.id === g), unit = good?.unit ?? 'load';
+      return `${n} ${n === 1 ? unit : `${unit}s`} of ${(good?.name ?? g).toLowerCase()}`;
+    });
+    if (x.back.money > 0) things.push(dinars(x.back.money));
+    const away = x.seasons > 0 ? `It was away ${x.seasons} ${x.seasons === 1 ? 'season' : 'seasons'} and brought back` : 'It brought back';
+    return `${away} ${things.length ? things.join(' and ') : 'nothing'}.`;
+  };
+
   function phasePage(phase) {
     const v = app.view();
     const wrap = (title, ...rest) => h('article', { class: 'paper sheet front kind-phase', dataset: { phase, face: 'front' }, 'aria-labelledby': 'phase-title' },
@@ -237,6 +270,7 @@ export function createDesk(app) {
         ...(gap?.settled ?? []).flatMap(x => [
           h('p', { class: 'sheet-body', dataset: { settled: x.expedition, result: x.result } }, x.text),
           ...(cargoLine(x.cargo) ? [h('p', { class: 'sheet-body', id: `cargo-${x.expedition}` }, cargoLine(x.cargo))] : []),
+          ...(backLine(x) ? [h('p', { class: 'sheet-body', id: `back-${x.expedition}` }, backLine(x))] : []),
           // what the sheet hoped and the one reason for the gap, as the return paper will say it (MER-119)
           ...(x.why ? [h('p', { class: 'sheet-body', id: `hoped-${x.expedition}` }, returnLead(content, { kind: 'return', data: { hoped: x.hoped, why: x.why } }))] : []),
         ]),
@@ -246,7 +280,7 @@ export function createDesk(app) {
           return h('p', { class: 'sheet-body', dataset: { left: leftHow(app.state, g.id) ?? '' } }, `${name} ${leftHow(app.state, g.id) === 'retired' ? 'has retired' : 'has gone to work for another house'}.`);
         }),
         ...(gap?.paragraphs ?? []).map(p => h('p', { class: 'sheet-body' }, p.text)),
-        h('p', { class: 'sheet-body' }, `The house carries ${dinars(app.state.money)} into the next years.`),
+        h('p', { class: 'sheet-body' }, `The house carries ${dinars(gap?.money ?? app.state.money)} into the next years.`),
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
           `Open the house in ${cap(v.season)} ${v.year}`));
     }
@@ -318,7 +352,13 @@ export function createDesk(app) {
   function endSeason() {
     if (busy) return;
     const can = endState();
-    if (!can.ok) { app.say(can.reason); return; }
+    if (!can.ok) {
+      app.say(can.reason);
+      // MER-124: a pointer or the E key on a button that is not ready says why, and the focus goes to what is still unanswered, the Next
+      // button of a back being read or else the raised paper's first choice (focus used to stay on the dead button, eight Tabs from it)
+      if (app.state.phase === 'desk') (qs('#btn-next', sheetBox) ?? qs('.choices .choice', sheetBox) ?? qs('button, [href]', sheetBox))?.focus();
+      return;
+    }
     app.act(s => engine.endSeason(s, content));
     raised = null; backOf = null;
     // the last season was played: the game is the ending now (DESIGN 4.12), and its first page takes the screen
@@ -338,6 +378,7 @@ export function createDesk(app) {
     drawStack(opts);
     const can = endState();
     endBtn.setAttribute('aria-disabled', can.ok ? 'false' : 'true');
+    endBtn.tabIndex = can.ok ? 0 : -1;   // MER-124: out of the tab order while papers are left; the first choice was 8 Tabs past it
     endBtn.hidden = app.state.phase !== 'desk';
     endReason.textContent = can.ok ? '' : can.reason;
     endReason.hidden = can.ok;
@@ -397,5 +438,6 @@ export function createDesk(app) {
     return false;
   }
 
-  return { el, key, draw, destroy() { removeEventListener('resize', layout); } };
+  sizeWatch?.observe(bar); sizeWatch?.observe(endRow);
+  return { el, key, draw, destroy() { removeEventListener('resize', layout); sizeWatch?.disconnect(); root.style.removeProperty('--bar-h'); root.style.removeProperty('--end-h'); } };
 }

@@ -40,6 +40,8 @@ const SIDES = {
   'above-left': { dx: -8, dy: -8, ax: -1, ay: -1 }, 'below-left': { dx: -8, dy: 8, ax: -1, ay: 0 },
 };
 const ANCHOR_AX = { start: 0, middle: -0.5, end: -1 };
+const CORRIDOR = 16;             // MER-131: how far across its road a token may be moved to clear a label; under the 24 px the suites allow
+const SLIDE = 160;               // how far along its road, in px, never past either stop
 const GAP = 3;                   // px kept clear around a label, so two never touch
 const hits = (a, b) => a.left < b.right + GAP && b.left < a.right + GAP && a.top < b.bottom + GAP && b.top < a.bottom + GAP;
 const inside = (a, f) => a.left >= f.left && a.right <= f.right && a.top >= f.top && a.bottom <= f.bottom;
@@ -53,6 +55,21 @@ function homeBy(app, list) {
 
 /** app: the page's app object. nav: { toDesk(), openOutfit() }. Returns { el, key, draw, hasDraft,
     showOutfit, hideOutfit, destroy }. */
+/** MER-122: why the list of best trades is empty, in the house's terms; the engine's list is empty for four reasons (MER-121) and the
+    line used to say only the third. In the order a player can mend them: nobody free, too little money, no news, nothing pays.
+    `app` needs `content` and `state`; `v` is its view(). { id, text } */
+export function noTradesWhy(app, v) {
+  const home = app.content.city.home;
+  if (!freeAgents(app).length) return { id: 'nobody', text: 'Nobody is free to go, so no trade is listed. Agents ask for work at the start of a season.' };
+  const homePrices = Object.entries(v.prices[home] ?? {}).map(([g, p]) => [g, p?.p]).filter(([, p]) => p != null);
+  const loadCost = Math.min(...homePrices.map(([, p]) => p));
+  const stocked = homePrices.some(([g]) => (app.state.stock[g] ?? 0) > 0);
+  if (!stocked && Number.isFinite(loadCost) && v.money < loadCost) return { id: 'money', text: `The house has too little money for even one load (${dinars(loadCost)}), so no trade is listed.` };
+  const news = Object.entries(v.prices).some(([stopId, goods]) => stopId !== home && Object.values(goods ?? {}).some(p => p?.p != null));
+  if (!news) return { id: 'news', text: 'The house has no news yet of what goods sell for in other stops. Letters from far stops arrive late.' };
+  return { id: 'pays', text: 'The house knows the prices in other stops, and no trade pays after the road and the wage. Check again when a letter brings new prices.' };
+}
+
 export function createMap(app, nav) {
   const { content } = app;
   const home = content.city.home;
@@ -65,6 +82,7 @@ export function createMap(app, nav) {
   let outfit = null;               // { stopId, view } while the sheet is open
   let opener = null;
   let typed = '', typedAt = 0;
+  let pressing = false;            // a pointer is down on the stop list
   const pos = {};                  // stop id -> { x, y } in percent of the picture
   let gone = false;                // destroy() ran, so an answer that arrives late draws nothing
   /** What the map calls a group of close stops: city.json's `clusters`, else the id read as words. */
@@ -90,16 +108,23 @@ export function createMap(app, nav) {
 
   const boardTitle = h('h2', { class: 'board-title', id: 'board-title', tabindex: '-1' });
   const list = h('div', { class: 'stoplist', id: 'stoplist', role: 'listbox', tabindex: '0', 'aria-label': 'Stops',
-    onkeydown: e => listKey(e), onfocus: () => { lit = selected; markLit(); } });
+    onkeydown: e => listKey(e),
+    // MER-131: a press focuses the list, and the focus handler used to scroll the lit row to the top, which moved the row from under the
+    // pointer before the click landed (a low row took two presses). A pointer focus leaves the scroll alone; a key's focus still scrolls.
+    onpointerdown: () => { pressing = true; setTimeout(() => { pressing = false; }, 500); },
+    onfocus: () => { lit = selected; markLit(!pressing); } });
   const pricesBtn = h('button', { class: 'button prices-open', type: 'button', id: 'btn-prices', 'aria-haspopup': 'dialog', onclick: () => openPrices() });
   const pricesBox = h('div', { class: 'prices-box', id: 'prices-box' });
   const reason = h('p', { class: 'reason', id: 'outfit-open-reason' });
   const outfitBtn = h('button', { class: 'button primary', type: 'button', id: 'btn-outfit', 'aria-describedby': 'outfit-open-reason', onclick: () => pressOutfit() });
   const board = h('aside', { class: 'board', id: 'board', 'aria-label': 'Prices and stops' },
-    boardTitle, list, pricesBtn, pricesBox,
+    boardTitle, list, pricesBtn, pricesBox, toast,
     h('div', { class: 'board-actions' }, reason, outfitBtn,
       h('button', { class: 'button', type: 'button', id: 'map-desk', onclick: () => nav.toDesk() }, 'Back to the desk')));
-  const el = h('main', { class: 'map-screen', id: 'screen-map' }, bar, stage, board, toast);
+  const el = h('main', { class: 'map-screen', id: 'screen-map' }, bar, stage, board);
+  // MER-124: the set-out toast lives in the board, in the flow above its buttons, where it covers no stop, label or token at any frame
+  // (it was fixed over the picture and sat on the labels on a phone). The first press anywhere on the table dismisses it.
+  el.addEventListener('pointerdown', () => hideToast(), true);
 
   // ---- what the player can do with a stop
   function outfitState(stopId) {
@@ -162,6 +187,7 @@ export function createMap(app, nav) {
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       line.setAttribute('x1', a.x * 19.2); line.setAttribute('y1', a.y * 10.8); line.setAttribute('x2', b.x * 19.2); line.setAttribute('y2', b.y * 10.8);
       line.setAttribute('class', `road ${l.open ? 'open' : 'closed'}`);
+      line.dataset.from = l.from; line.dataset.to = l.to;
       line.setAttribute('vector-effect', 'non-scaling-stroke');
       return line;
     });
@@ -177,14 +203,14 @@ export function createMap(app, nav) {
         drawn.add(s.cluster);
         const ms = members(s.cluster), x = ms.reduce((n, m) => n + pos[m.id].x, 0) / ms.length, y = ms.reduce((n, m) => n + pos[m.id].y, 0) / ms.length;
         const dot = h('span', { class: 'dot cluster', role: 'img', 'aria-label': `${clusterName(s.cluster)}, ${ms.length} stops`, style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } });
-        const label = h('span', { class: 'stop-label cluster-label', 'aria-hidden': 'true', style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } }, `${clusterName(s.cluster)}: ${ms.length} stops`);
+        const label = h('span', { class: 'stop-label cluster-label', 'aria-hidden': 'true', style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster, ...(ms.some(m => m.id === home) ? { keep: '1' } : {}) } }, `${clusterName(s.cluster)}: ${ms.length} stops`);
         out.push(dot, label); pairs.push({ dot, label, side: null, rank: 1 });
         continue;
       }
       // The dot names the stop to a screen reader even when its label is hidden for want of room
       const p = pos[s.id], lab = s.label ?? { dx: 12, dy: 0, anchor: 'start' };
       const dot = h('span', { class: `dot${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, role: 'img', 'aria-label': s.name, tabindex: '-1', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id } });
-      const label = h('span', { class: `stop-label${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, 'aria-hidden': 'true', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id } }, s.name);
+      const label = h('span', { class: `stop-label${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, 'aria-hidden': 'true', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id, ...(s.id === home ? { keep: '1' } : {}) } }, s.name);
       out.push(dot, label);
       pairs.push({ dot, label, side: { dx: lab.dx, dy: lab.dy, ax: ANCHOR_AX[lab.anchor] ?? 0, ay: -0.5 }, rank: s.id === home ? 0 : s.id === selected ? 1 : 2 });
     }
@@ -206,9 +232,10 @@ export function createMap(app, nav) {
       const first = g.list[0], agent = content.agents.find(ag => ag.id === first.agent), n = g.list.length;
       const tok = app.art.get(`token-${g.leg.by}`) ?? app.art.get('token-caravan');
       const seal = agent && app.art.get(agent.seal);
-      const text = n === 1 ? `${agent?.name ?? 'An agent'}, home about ${homeBy(app, [first])}`
-        : `${n} expeditions, home about ${homeBy(app, g.list)}`;
-      out.push(h('div', { class: 'token', style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n) } },
+      // MER-131: a merged caption names each agent and the season that agent is due home (it said only the soonest, which hid Ali, due a year later)
+      const who = x => `${content.agents.find(ag => ag.id === x.agent)?.name ?? 'An agent'}, home about ${homeBy(app, [x])}`;
+      const text = n === 1 ? who(first) : `${n} expeditions: ${g.list.map(who).join('; ')}`;
+      out.push(h('div', { class: 'token', style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n), from: g.leg.from, to: g.leg.to } },
         h('div', { class: 'token-piece' }, h('img', { src: `assets/art/${tok.file}`, alt: '', width: 64, height: 64 }), n > 1 ? h('span', { class: 'token-count' }, String(n)) : null),
         h('p', { class: 'token-label' }, seal ? h('img', { class: 'token-seal', src: `assets/art/${seal.file}`, alt: '', width: 20, height: 20 }) : null, text)));
     }
@@ -216,19 +243,31 @@ export function createMap(app, nav) {
     placeLabels(pairs);
   }
 
-  /** Put each label on a side of its dot where it overlaps no other label, no dot, no token, and
-      stays whole inside the picture and clear of the price panel (DESIGN 4.7). The stop's own
-      `label` side goes first, then the other sides; a label that fits nowhere is hidden and its dot
-      stays, with the stop's name as its accessible name. Cairo and the selected stop choose first. */
+  /** Put each label on a side of its dot where it overlaps no other label, no dot, and stays whole inside the picture and clear of
+      the price panel (DESIGN 4.7). The stop's own `label` side goes first, then the other sides; a label that fits nowhere is hidden
+      and its dot stays, with the stop's name as its accessible name. Cairo and the selected stop choose first.
+      Then the tokens (MER-124): a party that has just set out sits on its own stop, and its caption is wider than the stop's label, so
+      the token used to lie across the label (Ali behind "Cairo") and two parties leaving the same stop lay on each other. The labels are
+      placed first, as the map's furniture; each token then keeps its own spot if nothing is there, and else moves to the nearest spot on its
+      own road (along it, and across it by at most CORRIDOR px) clear of every label and every other token. A label a token still cannot avoid
+      is hidden, and the token never leaves its road (MER-131). */
   function placeLabels(pairs) {
     const fr = frame.getBoundingClientRect();
     if (!fr.width || !fr.height) return;
     const clip = { left: fr.left, right: fr.right, top: fr.top, bottom: fr.bottom };
     const walls = [board, unzoom].filter(b => b && !b.hidden).map(b => b.getBoundingClientRect()).filter(r => r.width && r.height);
     const centre = d => { const r = d.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const tokens = qsa('.token', layer);
+    for (const t of tokens) { t.style.removeProperty('--ox'); t.style.removeProperty('--oy'); t.classList.remove('bare'); }   // measured from where the data puts them
+    // a label hidden by the last placement measures 0 by 0, so a redraw would place everything around an empty label and move a token (CI, PR #617): show them all before measuring
+    for (const p of pairs) p.label.hidden = false;
     const marks = pairs.map(p => ({ p, at: centre(p.dot), w: p.label.offsetWidth, h: p.label.offsetHeight }));
-    // a dot, or a token with its caption, is a thing a label must not cover
-    const solid = [...qsa('.dot', layer), ...qsa('.token', layer)].map(n => ({ el: n, r: n.getBoundingClientRect() }));
+    // a dot is a thing a label would rather not cover
+    const dots = qsa('.dot', layer).map(n => ({ el: n, r: n.getBoundingClientRect() }));
+    // MER-131: a token stays on its road, so it cannot always step off a label the way it could when it was free to roam. The labels,
+    // placed first, keep off the tokens' own spots (piece and caption, as the data puts them) where a side is free, so Cairo's label
+    // moves to another side of its dot rather than being hidden under a caravan that has to stay put.
+    const spots0 = tokens.flatMap(t => [qs('.token-piece', t), qs('.token-label', t)]).filter(n => n && n.offsetWidth).map(n => n.getBoundingClientRect());
     const placed = [];
     for (const m of marks.slice().sort((a, b) => a.p.rank - b.p.rank)) {
       // its own side, then every side close in, then every side one step further out (a crowd of
@@ -236,14 +275,15 @@ export function createMap(app, nav) {
       const out2 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 2.2, dy: t.dy * 2.2 }));
       const tries = [m.p.side, ...Object.values(SIDES), ...out2].filter(Boolean);
       let won = null;
-      // first a place that covers no other dot or token; failing that, one that covers a dot (the
-      // press still goes to the nearest stop, and the list names every stop) but never another label
-      for (const clear of [true, false]) {
+      // first a place that covers no other dot and no token; failing that, one that covers a dot (the press still goes to the nearest
+      // stop, and the list names every stop), then one that covers a token (which the token then hides), but never another label
+      for (const [clear, free] of [[true, true], [false, true], [true, false], [false, false]]) {
         for (const t of tries) {
           const left = m.at.x + t.dx + t.ax * m.w, top = m.at.y + t.dy + t.ay * m.h;
           const r = { left, top, right: left + m.w, bottom: top + m.h };
           if (!inside(r, clip) || walls.some(w => hits(r, w)) || placed.some(q => hits(r, q))) continue;
-          if (clear && solid.some(o => o.el !== m.p.dot && hits(r, o.r))) continue;
+          if (clear && dots.some(o => o.el !== m.p.dot && hits(r, o.r))) continue;
+          if (free && spots0.some(q => hits(r, q))) continue;
           won = { t, r };
           break;
         }
@@ -252,10 +292,65 @@ export function createMap(app, nav) {
       const el = m.p.label;
       el.hidden = !won;
       if (won) {
-        placed.push(won.r);
+        placed.push({ ...won.r, el });
         el.style.setProperty('--dx', String(won.t.dx)); el.style.setProperty('--dy', String(won.t.dy));
         el.style.setProperty('--ax', `${won.t.ax * 100}%`); el.style.setProperty('--ay', `${won.t.ay * 100}%`);
       }
+    }
+    // tokens (MER-131). A token stands on its leg, between the leg's two stops, at the fraction done: that is where the data puts it and
+    // where it stays unless something is in the way. MER-124 let it slide up to 420 px in every direction to find a clear spot, and a
+    // Damascus caravan ended beside Aden and above Constantinople. Now it may move only along its own road (never past either stop) and
+    // across it by at most CORRIDOR px, so its centre is always within 24 px of the segment the road is drawn on. Where no clear spot
+    // exists in that corridor the token keeps its place on the road, drops its caption, and the labels it covers give way.
+    // The caption never lies on a stop's dot (play B, Yusuf over Aden). A piece's anchor is its own centre (css), so a caption's width
+    // no longer moves the spot the token is measured at.
+    const lay = layer.getBoundingClientRect();   // the layer as shown, zoom included
+    const where = id => ({ x: lay.left + pos[id].x / 100 * lay.width, y: lay.top + pos[id].y / 100 * lay.height });
+    const rel = (r, c) => ({ left: r.left - c.x, right: r.right - c.x, top: r.top - c.y, bottom: r.bottom - c.y });
+    const moved = (r, x, y) => ({ left: r.left + x, right: r.right + x, top: r.top + y, bottom: r.bottom + y });
+    const spots = [];            // (along, across) in px, nearest to the data's own place first; a fixed order, so a redraw picks the same spot
+    for (let s = -SLIDE; s <= SLIDE; s += 6) for (const c of [0, 8, -8, CORRIDOR, -CORRIDOR]) spots.push({ s, c, d: Math.hypot(s, c) });
+    spots.sort((p, q) => p.d - q.d || q.s - p.s || q.c - p.c);
+    const taken = [];            // every placed token's piece and caption
+    const sorted = tokens.map(el => {
+      const pr = qs('.token-piece', el).getBoundingClientRect(), c = { x: pr.left + pr.width / 2, y: pr.top + pr.height / 2 };
+      const cap = qs('.token-label', el), cr = cap.offsetWidth ? cap.getBoundingClientRect() : null;
+      return { el, c, piece: rel(pr, c), cap: cr && rel(cr, c), n: Number(el.dataset.count) || 1 };
+    }).sort((a, b) => b.n - a.n || a.c.y - b.c.y || a.c.x - b.c.x);
+    for (const t of sorted) {
+      const A = where(t.el.dataset.from), B = where(t.el.dataset.to), len = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+      const u = { x: (B.x - A.x) / len, y: (B.y - A.y) / len }, t0 = Math.max(0, Math.min(len, (t.c.x - A.x) * u.x + (t.c.y - A.y) * u.y));
+      const boxes = (o, bare) => [moved(t.piece, t.c.x + o.x, t.c.y + o.y), ...(t.cap && !bare ? [moved(t.cap, t.c.x + o.x, t.c.y + o.y)] : [])];
+      // soft: two pieces may share their edges (a party and the one beside it on the same stop, on roads too short for two 64 px tokens) but
+      // never their middles, so both stay in view; captions are never allowed to touch another token
+      const core = r => { const k = (r.right - r.left) / 4; return { left: r.left + k, right: r.right - k, top: r.top + k, bottom: r.bottom - k }; };
+      const ok = (o, bare, strict, soft) => {
+        const bx = boxes(o, bare), cp = bx[1];
+        if (bx.some(r => !inside(r, clip) || walls.some(w => hits(r, w)))) return false;
+        if (soft ? bx.some((r, i) => taken.some(q => (i || q.cap) ? hits(r, q.r) : hits(core(r), core(q.r)))) : bx.some(r => taken.some(q => hits(r, q.r)))) return false;
+        if (cp && dots.some(d => hits(cp, d.r))) return false;
+        // strict: no label at all under it; 'home': none but the others may give way, the house's own label (data-keep, or the cluster label that holds it) never does
+        return !strict || !bx.some(r => placed.some(q => !q.el.hidden && (strict === true || q.el.dataset.keep) && hits(r, q)));
+      };
+      let won = null;
+      for (const [strict, bare, soft] of [[true, false], [true, true], ['home', true], [false, true], [false, true, true]]) {
+        if (!bare && !t.cap) continue;   // no caption to try (a phone): the bare attempts are the only ones
+        for (const sp of spots) {
+          if (t0 + sp.s < 0 || t0 + sp.s > len) continue;
+          const o = { x: u.x * sp.s - u.y * sp.c, y: u.y * sp.s + u.x * sp.c };
+          if (ok(o, bare, strict, soft)) { won = { o, bare }; break; }
+        }
+        if (won) break;
+      }
+      // nothing clear within the corridor: the token stays where the data put it, without its caption, and what it covers gives way
+      if (!won) won = { o: { x: 0, y: 0 }, bare: true };
+      if (t.cap) t.el.classList.toggle('bare', won.bare);
+      if (won.o.x || won.o.y) { t.el.style.setProperty('--ox', `${Math.round(won.o.x)}px`); t.el.style.setProperty('--oy', `${Math.round(won.o.y)}px`); }
+      const bx = boxes(won.o, won.bare);
+      // a label never lies under a token, except the house's own: with two parties out of Cairo on roads too short to clear it, Cairo's
+      // label stays, drawn over the token's edge, rather than the map losing the name of the place it is about (play B and A, DESIGN 4.7)
+      for (const r of bx) for (const q of placed) if (!q.el.hidden && !q.el.dataset.keep && hits(r, q)) q.el.hidden = true;
+      taken.push(...bx.map((r, i) => ({ r, cap: i === 1 })));
     }
   }
 
@@ -305,16 +400,16 @@ export function createMap(app, nav) {
     list.replaceChildren(...order().map(s => {
       const st = stopStatus(s);
       return h('div', { class: 'option', role: 'option', id: `stop-${s.id}`, 'aria-selected': s.id === selected ? 'true' : 'false', dataset: { stop: s.id },
-        onclick: () => { select(s.id); list.focus(); } },
+        onclick: () => { select(s.id); list.focus({ preventScroll: true }); } },
       h('span', { class: 'name' }, s.name), st ? h('span', { class: 'status' }, st) : null);
     }));
     markLit();
   }
-  function markLit() {
+  function markLit(scroll = true) {
     list.setAttribute('aria-activedescendant', `stop-${lit}`);
     for (const o of qsa('[role="option"]', list)) o.classList.toggle('lit', o.dataset.stop === lit);
     const o = qs(`#stop-${lit}`, list);
-    if (!o) return;
+    if (!o || !scroll) return;
     const top = o.offsetTop, bottom = top + o.offsetHeight;
     if (top < list.scrollTop) list.scrollTop = top;
     else if (bottom > list.scrollTop + list.clientHeight) {
@@ -325,7 +420,9 @@ export function createMap(app, nav) {
   }
   function listKey(e) {
     const ids = order().map(s => s.id), i = ids.indexOf(lit);
-    const go = j => { e.preventDefault(); lit = ids[(j + ids.length) % ids.length]; markLit(); };
+    // MER-124: an arrow selects the stop it lands on, so the heading, the prices and Outfit follow it (a keyboard player had to press Enter
+    // on every stop and the heading kept naming the old one); `select` redraws the options, and the list keeps its focus
+    const go = j => { e.preventDefault(); lit = ids[(j + ids.length) % ids.length]; select(lit, { keepFocus: true }); list.focus({ preventScroll: true }); markLit(); };   // markLit again: the board redraw can change the list's height
     if (e.key === 'ArrowDown') go(i + 1);
     else if (e.key === 'ArrowUp') go(i - 1);
     else if (e.key === 'Home') go(0);
@@ -337,7 +434,7 @@ export function createMap(app, nav) {
       typed = t - typedAt > 1000 ? e.key.toLowerCase() : typed + e.key.toLowerCase();
       typedAt = t;
       const hit = order().find(s => s.name.toLowerCase().startsWith(typed));
-      if (hit) { e.preventDefault(); lit = hit.id; markLit(); }
+      if (hit) { e.preventDefault(); select(hit.id, { keepFocus: true }); list.focus({ preventScroll: true }); markLit(); }
     }
   }
 
@@ -361,7 +458,7 @@ export function createMap(app, nav) {
       ? h('ol', { class: 'trades', id: 'best-trades' }, trades.map(t => h('li', { class: 'trade', dataset: { stop: t.stop, good: t.good } },
         h('strong', null, t.text), ' ',
         h('span', { class: 'when' }, `${t.road}, about ${t.seasons} ${t.seasons === 1 ? 'season' : 'seasons'}. News ${t.ageWords === 'this season' ? 'from this season' : t.ageWords}; the road is ${t.riskWord}.`))))
-      : h('p', { class: 'none', id: 'best-trades' }, 'The house has no news yet of a good that sells for more somewhere else. Letters from far stops arrive late.');
+      : h('p', { class: 'none', id: 'best-trades', dataset: { why: noTradesWhy(app, v).id } }, noTradesWhy(app, v).text);
     const table = h('table', { class: 'prices', id: 'prices' },
       h('caption', { class: 'visually-hidden' }, `Prices for each good ${s.name} trades, with the season the news was written and how old it is`),
       h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Good'), h('th', { scope: 'col' }, s.name), isHome ? null : h('th', { scope: 'col' }, homeLabel()))),
@@ -420,10 +517,11 @@ export function createMap(app, nav) {
   // The toast takes no taps (css) and goes after TOAST_MS, so on a phone it never stands between a
   // finger and Outfit or Back to the desk (MER-71, finding 10). A screen reader has it from the live region.
   let toastTimer = 0;
+  function hideToast() { clearTimeout(toastTimer); toast.hidden = true; }
   function showToast(text) {
     toast.textContent = text; toast.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toast.hidden = true; }, TOAST_MS);
+    toastTimer = setTimeout(hideToast, TOAST_MS);
     app.say(text);
   }
 

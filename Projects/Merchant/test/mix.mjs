@@ -13,6 +13,9 @@
 // no ramp to climb. The share printed over 1,000 games is in the MER-82 report. HOLD is FLOOR, so the check that fails is the
 // design's own floor; TARGET is printed each run with the gap and the table by route. A question still cannot be written on
 // a road with no decision point left, and every letter is once a game, so a few trips bring none.
+// From 2026-11-20 to 2026-11-24 it read 22 to 26 percent while the engine gave about 72 (MER-136). MER-118 put a letter ahead of
+// its own trip's return paper (letters.js `deliver`), and this file looked for new letters at the end of the desk, where the paper
+// had taken their place. It compares the papers now, and test/letters.mjs plays 36 games with the same count, so CI sees the share fall.
 // Plain Node, no browser, no clock. bots.mjs reads process.argv when it is imported, so the one argument is `--games N`.
 import fs from 'node:fs/promises';
 import { loadContent } from '../js/data.js';
@@ -38,9 +41,10 @@ steps.returns = (s, c, ...a) => {
   for (const p of s.desk.slice(before)) if (p.kind === 'return' && p.data?.trip) game.returned.push({ expedition: p.expedition, seasons: p.data.trip.seasons, route: p.data.trip.route });
 };
 steps.letters = (s, c, ...a) => {
-  const before = s.desk.length;
+  // a letter is put ahead of its own trip's return paper (letters.js `deliver`, MER-118), so it is not at the end of the desk: compare the papers, not the length
+  const was = new Set(s.desk);
   letters(s, c, ...a);
-  for (const p of s.desk.slice(before)) if (p.kind === 'letter') game.lettered.add(p.expedition);
+  for (const p of s.desk) if (!was.has(p) && p.kind === 'letter') game.lettered.add(p.expedition);
 };
 steps.drawCards = (s, c, ...a) => {
   const before = s.desk.length, live = s.expeditions.length > 0 || s.desk.some(p => p.kind === 'return' || p.kind === 'lost');

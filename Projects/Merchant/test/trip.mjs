@@ -8,7 +8,8 @@ import { validateContent } from '../js/engine/content.js';
 import { holds, tripOf, tripLeaf } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { lintContent, tripFailures } from '../tools/lint-content.mjs';
-import { destinations } from '../js/engine/routes.js';
+import { destinations, risk, accountItem, repSentence } from '../js/engine/routes.js';
+import { moneyTrail, jumpWords } from '../js/ui/screens/ledger.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view } from '../js/engine/index.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import { cityOf } from '../js/engine/state.js';
@@ -355,10 +356,16 @@ const withActEnd = (c, end) => variant(c, x => { x.calendar.lengths.acts.acts = 
 const SALT_BACK = { ...SALTED };
 /** Plays SALT_BACK from the first season to the page between acts and opens the house: { line, paper, s } for the first calendar and
     seed `want` accepts, or null. */
-function jumpedTrip(want, { seeds = [7, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12] } = {}) {
+function jumpedTrip(want, { seeds = [7, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12], hopedHigh = false, plan = SALT_BACK } = {}) {
   for (const end of [1, 2, 3, 4, 5, 6, 7, 8]) for (const seed of seeds) {
     const c = withActEnd(salty, end);
-    let s = outfit(game(c, { length: 'acts', seed }), c, SALT_BACK);
+    let s = outfit(game(c, { length: 'acts', seed }), c, plan);
+    // `hopedHigh`: the sheet hoped for a home price 40 percent over the one the estimate carries (a hope written when home's price
+    // stood higher). Since MER-121b the estimate and `jump` read the same price, so a jump return's home price is no longer a gap
+    // cause of its own and its why never names one; the sentences below are about the cases where the hope was off.
+    if (hopedHigh) for (const x of s.expeditions) {
+      x.hope.home.salt = Math.round(x.hope.home.salt * 1.4);
+    }
     let before = s;
     for (let i = 0; i < 20 && s.phase !== 'interlude' && s.phase !== 'recall'; i++) { before = s; s = step(s, c); }
     if (s.phase !== 'interlude') continue;
@@ -383,7 +390,7 @@ test('MER-119 (2) a party home before the years passed: its why names the price 
     if (l.quoted) return false;
     const home = cityOf(c, 'market').home;
     return M.truePrice(before, c, home, 'salt') !== M.truePrice(s, c, home, 'salt') && / at home in /.test(l.why ?? '');
-  });
+  }, { hopedHigh: true });
   ok(j, 'no seed had a home price that moved across the jump with a home price in its why');
   const from = j.s.log.findLast(e => e.kind === 'jump').from, home = cityOf(j.c, 'market').home;
   // the price of the closing season, read from the state before that closing; the market is reset to the next act's by the jump
@@ -393,8 +400,31 @@ test('MER-119 (2) a party home before the years passed: its why names the price 
   ok(new RegExp(`^Salt fetched ${then} at home in ${writeSeason(j.c, from)}, when Mira was back, `).test(d.why), `${d.why} (it was ${then} then and ${after} after the jump)`);
   ok(!/by the time/.test(d.why), d.why);
 });
+test('MER-121b a return the jump settles is worth home\'s price after the jump\'s market reset, the price the ledger shows that season, quoted or not', () => {
+  // `jump` settles a party before it resets the markets (step 4), so a return valued at the market as it stood read the price of the
+  // closing before: 33 of 33 jump returns were off from the ledger, 29 of 29 ordinary ones right (MER-121b). The paper's "worth" and
+  // its cargo value are the goods at the price the new act opens with, which is the price the ledger writes for that season.
+  let compared = 0;
+  for (const quoted of [true, false]) for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+    const j = jumpedTrip(l => l.quoted === quoted, { seeds: [seed] });
+    if (!j || !Object.keys(j.paper.data.goodsBack).length) continue;
+    const home = cityOf(j.c, 'market').home, to = j.s.log.findLast(e => e.kind === 'jump').to;
+    // the season the act opens in: play it to its close and read the price the ledger wrote for it
+    const worth = j.paper.data.cargoValue;
+    const after = step(openSeason(j.s, j.c), j.c);
+    let ledger = 0;
+    for (const [g, n] of Object.entries(j.paper.data.goodsBack)) {
+      const p = M.priceAt(after, home, g, to);
+      ok(Number.isFinite(p), `${g} has no ledger price for season ${to}`);
+      ledger += n * p;
+    }
+    eq(worth, ledger, `seed ${seed}, calendar ending ${j.end}, quoted ${quoted}: the paper says worth ${worth}, the ledger's price that season makes ${ledger}`);
+    compared++;
+  }
+  ok(compared >= 3, `${compared} jump returns with goods were compared`);
+});
 test('MER-119 (2) a trip settled by quotes says so, and does not say the party was back when the price was read', () => {
-  const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''));
+  const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''), { hopedHigh: true });
   ok(j, 'no calendar had a quoted trip whose why names a home price');
   const d = j.paper.data;
   ok(/^The years passed before Mira was home, so salt was counted at \d+ at home, (not|more than|less than) the \d+ we hoped for\.$/.test(d.why), d.why);
@@ -417,6 +447,104 @@ test('MER-119 (3) the paper does not say the agent wants to rest, because nothin
   // and the page between acts does not say it either
   const j = jumpedTrip(l => !!l.why);
   ok(j && !REST.test(JSON.stringify(view(j.s, j.c).interlude)) && !REST.test(JSON.stringify(engineWords(j.paper.data))));
+});
+
+// ---- MER-125: years pass names what came back; the opening cost; the ledger across the jump; the lost galley's loss; plain good-name words
+const COUNT_WORD = ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+test('MER-125 (1) a settled line names what came back, goods and money, the seasons the account counts, for a trip settled by quotes and one home before the years passed', () => {
+  // the salt plan brings goods home and the wool plan sells for money, so both halves of "what came back" are read
+  for (const [quoted, plan] of [[true, SALT_BACK], [false, SALT_BACK], [true, WOOL], [false, WOOL]]) {
+    const j = jumpedTrip(l => l.quoted === quoted, { plan });
+    ok(j, `no calendar settled a trip with quoted ${quoted}`);
+    const { line, paper } = j;
+    // the goods that came back are the paper's own goods, and the money is the "Back home" row's money part
+    ok(plan === SALT_BACK ? Object.keys(line.back.goods).length > 0 : line.back.money > 0, `quoted ${quoted}: the plan brought something home`);
+    eq(line.back.goods, paper.data.goodsBack, `quoted ${quoted}: the goods on the line are the goods on the paper`);
+    const row = paper.data.account.find(r => r.label === 'Back home');
+    const goodsWorth = paper.data.cargoValue;
+    eq(line.back.money, row.amount - goodsWorth, `quoted ${quoted}: the money on the line is what the paper's Back home row holds beyond the goods`);
+    // the seasons the line counts are the seasons the paper's account counts
+    ok(paper.data.route.includes(`${COUNT_WORD[line.seasons]} seasons`), `quoted ${quoted}: the line says ${line.seasons}, the paper says "${paper.data.route}"`);
+  }
+  // a trip home before the years passed came back in the season it names: sent in season 0, away `seasons`, back by the closing of `from`
+  const j = jumpedTrip(l => l.quoted === false);
+  eq(0 + j.line.seasons, j.s.log.findLast(e => e.kind === 'jump').from, 'the season the line counts to is the one the why sentence names');
+});
+
+test('MER-125 (3) the money the house carries into the next years is the money on the first desk after the jump, over every calendar and seed that settles a trip', () => {
+  let seen = 0;
+  for (const end of [1, 2, 3, 4, 5, 6, 7, 8]) for (const seed of [7, 1, 2, 3, 4, 5, 6, 8]) {
+    const c = withActEnd(salty, end);
+    let s = outfit(game(c, { length: 'acts', seed }), c, SALT_BACK);
+    for (let i = 0; i < 20 && s.phase !== 'interlude' && s.phase !== 'recall'; i++) s = step(s, c);
+    if (s.phase !== 'interlude') continue;
+    const carried = view(s, c).interlude.money;
+    eq(carried, s.money, `end ${end} seed ${seed}: the page's figure is the state's`);
+    eq(openSeason(s, c).money, carried, `end ${end} seed ${seed}: opening the house changed the money with no paper to say why`);
+    seen++;
+  }
+  ok(seen >= 6, `${seen} jumps were compared`);
+});
+
+test('MER-125 (4) the ledger shows the jump as one line after the season it followed, with its years and the cash the trips brought in, and the season keeps its own figure', () => {
+  const j = jumpedTrip(l => l.result === 'home');
+  ok(j, 'no jump with a trip home');
+  const jump = j.s.log.findLast(e => e.kind === 'jump'), at = j.s.log.findLast(e => e.kind === 'season');
+  const trail = moneyTrail(j.c, j.s.log), last = trail.at(-1);
+  eq([last.at, last.after.years, last.after.net, last.after.trips, last.after.change], [jump.from, jump.years, jump.net, jump.trips, jump.change], 'right after the jump the last row carries it');
+  eq(jump.net, jump.settled.reduce((n, l) => n + l.houseNet, 0), 'the figure is what the page between the acts adds up');
+  eq(last.change + last.after.change, at.change, 'the season and the jump add up to what the book wrote');
+  ok(jump.net > 0 && last.change === at.change - jump.change, 'the trips made money for the house and the jump\'s change is out of the season');
+  ok(jumpWords(last.after).startsWith(`${jump.years === 1 ? 'A year' : `${jump.years} years`} passed. The trips made ${jump.net} dinars for the house.`), jumpWords(last.after));
+  // the new act's seasons arrive as they close, and the jump line stays between the old season and the new
+  const next = step(step(j.s, j.c), j.c);
+  const t2 = moneyTrail(j.c, next.log);
+  eq(t2.length, Math.min(4, next.log.filter(e => e.kind === 'season').length));
+  const k = t2.findIndex(r => r.after);
+  ok(k >= 0 && k < t2.length - 1 && t2[k].at === jump.from && t2.at(-1).at >= jump.to, `the new season closes after the jump line: ${JSON.stringify(t2.map(r => [r.at, !!r.after]))}`);
+  eq(t2.reduce((n, r) => n + r.change + (r.after?.change ?? 0), 0), next.log.filter(e => e.kind === 'season').slice(-4).reduce((n, e) => n + e.change, 0), 'no coin is counted twice or lost across the jump');
+});
+
+test('MER-125 (5) a lost paper says in one sentence what the house lost in coins, goods at home\'s price and the money aboard, against what it hoped', () => {
+  const c = variant(calm, x => { for (const r of x.routes) for (const l of r.legs) l.risk = 0.95; });
+  const home = cityOf(c, 'market').home;
+  const base = outfit(game(c), c, { ...WOOL, purse: 30 });
+  let whole = 0, part = 0;
+  for (let seed = 1; seed <= 60 && (whole < 2 || part < 2); seed++) {
+    const s = structuredClone(base); s.rng = seed;
+    s.expeditions[0].rode = { leg: 0, start: 1 };
+    risk(s, c);
+    const paper = s.desk.at(-1);
+    if (paper.kind !== 'lost') continue;
+    const d = paper.data, x = s.expeditions[0] ?? base.expeditions[0];
+    paper.data.whole ? whole++ : part++;
+    // the figure, from the goods the road took at home's price now and the money that was aboard
+    const lostGoods = d.whole ? { wool: 10 } : s.expeditions[0].book.lost;
+    const expected = Object.entries(lostGoods).reduce((v, [g, n]) => v + n * M.truePrice(s, c, home, g), d.whole ? 30 : 0);
+    eq(d.worth, expected, `seed ${seed}: the figure`);
+    ok(expected > 0 && d.lossLine.includes(`about ${expected} coins`), `seed ${seed}: the sentence says ${expected}: ${d.lossLine}`);
+    const hoped = base.expeditions[0].hoped;
+    ok(Number.isFinite(hoped) && d.lossLine.includes(`${Math.abs(hoped)} coins`), `seed ${seed}: the sentence says what was hoped (${hoped}): ${d.lossLine}`);
+    ok(hoped > 0 ? /hoped to make/.test(d.lossLine) : /lose about/.test(d.lossLine), `seed ${seed}: the sentence says which way: ${d.lossLine}`);
+    ok(d.lines.some(l => l.text === d.lossLine), 'the sentence is on the paper\'s lines');
+  }
+  ok(whole >= 2 && part >= 2, `${whole} whole and ${part} partial losses were read`);
+});
+
+test('MER-125 (6) good name is said as a sentence a child reads, one per group with the verb agreeing, moves of one group added up', () => {
+  const says = (...by) => accountItem(game(), calm, { do: by.map(([rep, n]) => ({ rep, by: n })), from: 'x/y' })?.changes ?? null;
+  eq(says(['foreign', 1]), ['Foreign merchants think better of the house.']);
+  eq(says(['court', 1]), ['The court thinks better of the house.'], 'the court is one body: thinks');
+  eq(says(['partners', -1]), ['The partners think less of the house.']);
+  eq(says(['agents', 1]), ['The agents think better of the house.']);
+  eq(says(['court', 1], ['court', 1]), ['The court thinks much better of the house.'], 'two moves of one group are one sentence');
+  eq(says(['court', 1], ['partners', -1], ['court', -1]), ['The partners think less of the house.'], 'a group that nets to nothing says nothing');
+  eq(says(['court', 1], ['foreign', 1]).length, 2, 'one sentence per group');
+  eq(says(['court', 1], ['court', -1]), null, 'a net of nothing is no item at all');
+  eq(repSentence('court', 0), null);
+  const item = accountItem(game(), calm, { do: [{ money: 40 }, { rep: 'court', by: 1 }], from: 'x/y' });
+  eq(item.text, 'From x/y: +40 coins. The court thinks better of the house.', 'the money runs on, the sentence follows whole');
 });
 
 await done();

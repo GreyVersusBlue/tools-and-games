@@ -306,7 +306,7 @@
           "stock": "gold",
           "gte": 2
         },
-        "hint": "Jamil pays 164 dinars, a little under what Cairo pays today. The gold leaves your warehouse, and your partners think well of you in two seasons.",
+        "hint": "Jamil pays 164 dinars for the two chests, 82 for each. Before the Malians came, a chest sold for 100. The gold leaves your warehouse, and your partners think well of you in two seasons.",
         "now": [
           {
             "money": 164
@@ -712,14 +712,14 @@
         ]
       }
     ],
-    "note": "Partnerships on paper were usually short. Friendships between merchants could last a lifetime.",
+    "note": "Merchants did not rely on friendship alone. When a quarrel over money would not end, they took it to the courts.",
     "unlocks": [
       "term-dinar"
     ],
     "sources": [
       {
-        "src": "goitein-1967",
-        "at": "pp. 169 to 170, as quoted by Edwards and Ogilvie (2008), p. 11"
+        "src": "edwards-ogilvie-2008",
+        "at": "pp. 11 and 13 to 14; friendship beside formal partnerships, and the courts"
       }
     ]
   },
@@ -807,7 +807,7 @@
         "hint": "It costs 8 dinars now and 2 more later. Your agents will be glad.",
         "requires": {
           "money": {
-            "gte": 8
+            "gte": 10
           }
         },
         "now": [
@@ -852,7 +852,7 @@
         ]
       }
     ],
-    "note": "The Karimi brought spices from Aden to Cairo, Alexandria and Damascus.",
+    "note": "The Karimi were a loose group of merchants. They were not one company.",
     "unlocks": [
       "term-caravanserai",
       "term-dinar"
@@ -860,7 +860,7 @@
     "sources": [
       {
         "src": "sato-2006",
-        "at": "p. 149; the Karimi brought spices from Aden to Cairo, Alexandria and Damascus"
+        "at": "p. 150; a loose confederation"
       }
     ]
   },
@@ -910,7 +910,7 @@
       {
         "id": "no",
         "label": "Sell where you like",
-        "hint": "You gain 3 dinars by choosing the best market. Zubayda will think you cold.",
+        "hint": "You gain 3 dinars in two seasons, by choosing the best market. Zubayda will think you cold.",
         "now": [
           {
             "rep": "partners",
@@ -1259,7 +1259,7 @@
         ]
       }
     ],
-    "note": "In the Geniza contracts the traveller's share was normally one third. He did not share in any loss.",
+    "note": "In the Geniza contracts the traveller's share was normally one third.",
     "sources": [
       {
         "src": "goitein-1964",
@@ -1304,7 +1304,12 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        }
       },
       {
         "id": "fee",

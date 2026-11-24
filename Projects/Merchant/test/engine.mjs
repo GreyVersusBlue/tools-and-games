@@ -10,6 +10,7 @@ import { freshState, addPaper } from '../js/engine/state.js';
 import { apply } from '../js/engine/effects.js';
 import { holds } from '../js/engine/conditions.js';
 import { steps } from '../js/engine/turn.js';
+import { playGame, BOTS } from '../tools/bots.mjs';
 import { newGame, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices } from '../js/engine/index.js';
 
 const content = await loadContent('testport', { fs });
@@ -342,6 +343,31 @@ test('turn: endSeason advances t and opens the next season with cards drawn by w
   eq(s.desk.filter(p => p.kind === 'card').map(p => p.ref), ['lamp-order'], 'the second season holds the one card secondSeason asks for, drawn by weight');
   eq(s.desk.filter(p => p.kind !== 'card').map(p => p.kind), ['accounts'], 'and one folded Accounts paper for the opening cards\' later effects (MER-41)');
 });
+// MER-128: gold-price-falls was drawn in 0.8 percent of games because "Mali's king is in Cairo" is dated to the one season, the
+// second, whose one slot a trip card or another card took. A card whose dates end this season gets one more slot, dealt first.
+const dated = (id, when) => ({ id, group: `dated-${id}`, kind: 'world', from: { name: 'A traveller', role: 'Port' }, title: id, body: 'A test card.', when, weight: 1, repeat: false,
+  choices: [{ id: 'ok', label: 'Fine', now: [] }], note: id, sources: [{ src: 'test-src', at: id }] });
+const withCard = card => variant(c => { c.cards.push(card); });
+const secondSeason = (c, seed) => endSeason(answer(newGame(c, { seed, length: 'acts', house: 'plain' }), c), c);
+const refsOf = s => s.desk.filter(p => p.kind === 'card').map(p => p.ref);
+test('(MER-128) a card dated to the second season alone is on the desk of every game, beside the one card secondSeason asks for', () => {
+  const once = withCard(dated('once-in-summer', { all: [{ year: [1200, 1200] }, { season: ['summer'] }] }));
+  for (let seed = 1; seed <= 40; seed++) {
+    const refs = refsOf(secondSeason(once, seed));
+    ok(refs.includes('once-in-summer'), `seed ${seed}: dealt in its only season: ${refs}`);
+    eq(refs.length, 2, `seed ${seed}: and the season's own card is still dealt`);
+  }
+});
+test('(MER-128) a card whose dates come round again, or that has none, gets no extra slot', () => {
+  // summer returns at season 9 of a three-act game; "year 1200 to 1300" holds in every season after
+  const again = withCard(dated('every-summer', { season: ['summer'] })), long = withCard(dated('this-century', { year: [1200, 1300] }));
+  eq(Math.max(...[1, 2, 3, 4, 5, 6, 7, 8].map(seed => refsOf(secondSeason(again, seed)).length)), 1, 'the second season keeps its one card');
+  eq(Math.max(...[1, 2, 3, 4, 5, 6, 7, 8].map(seed => refsOf(secondSeason(long, seed)).length)), 1, 'a long span is not closing');
+});
+test('(MER-128) the extra slot obeys the pool rules: a card with no choice open is not dealt', () => {
+  const shut = withCard({ ...dated('shut', { all: [{ year: [1200, 1200] }, { season: ['summer'] }] }), choices: [{ id: 'pay', label: 'Pay', requires: { money: { gte: 99999 } }, now: [] }] });
+  for (let seed = 1; seed <= 12; seed++) ok(!refsOf(secondSeason(shut, seed)).includes('shut'), `seed ${seed}: a card nobody can answer is not reserved a slot`);
+});
 test('turn: a later effect fires on its season and not before', () => {
   let s = choose(game(), content, 'p0-1', 'buy');   // wool-due at season 2
   s = answer(choose(s, content, 'p0-0', 'later'), content); // 'later' costs 5 now, returns 5 at season 1
@@ -369,7 +395,8 @@ test('turn: the desk is never over 5 papers however many follow-ups are due', ()
   s.queue = Array.from({ length: 8 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   s = endSeason(answer(s, c), c);
   eq(s.desk.length, 5);
-  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 3, 'the three that did not fit wait');
+  eq(s.queue.filter(q => q.card?.startsWith('f')).length, 4, 'four follow-ups fit and the other four wait: the fifth place is kept for the Accounts paper of the money that moved (MER-134; it used to go to a fifth card and the paper was dropped)');
+  eq(s.desk.filter(p => p.kind === 'accounts').length, 1, 'and the Accounts paper is on the desk');
   const t = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
   t.queue = Array.from({ length: 3 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
   eq(endSeason(answer(t, c), c).desk.filter(p => p.kind === 'card').length, 3, 'three follow-ups; the Accounts paper is a fourth paper, not a card');
@@ -891,6 +918,65 @@ test('leave it: bots seed 1061 (random, cloth): a dealt card whose choices all c
   eq(canEndSeason(t).ok, true, 'the season can end');
   eq(t.log.at(-1), { at: 0, kind: 'card', ref: 'trap', choice: 'leave' });
   throws(() => choose(s, c, 'p0-0', 'go'), /is refused/);
+});
+
+// ---- MER-134: no money or goods without a paper
+
+const followUps = n => Array.from({ length: n }, (_, i) => ({ id: `g${i}`, group: 'followups', title: 't', body: 'b', choices: [{ id: 'ok', label: 'ok', now: [{ money: 1 }], later: [{ in: 1, do: [{ money: 1 }] }] }] }));
+const due = (s, n) => { s.queue = Array.from({ length: n }, (_, i) => ({ at: s.t + 1, do: [], card: `g${i}`, from: 'x/y' })); };
+test('turn: follow-up cards leave a place for the return paper of every trip that is home at the next opening (MER-134)', () => {
+  const c = variant(x => { x.cards.push(...followUps(8)); });
+  const open = homes => { const s = newGame(c, { seed: 7, length: 'acts', house: 'plain' }); s.desk = []; s.expeditions = Array.from({ length: homes }, (_, i) => ({ id: `x${i}`, status: 'home' })); due(s, 8); steps.fireDue(s, c); return s; };
+  eq(open(0).desk.filter(p => p.kind === 'card').length, 5, 'no trip home: the cards take the desk');
+  const two = open(2);
+  eq([two.desk.filter(p => p.kind === 'card').length, two.queue.length], [3, 5], 'two trips home: two places kept, five cards wait');
+  eq(open(2).expeditions.length, 2);
+});
+test('turn: and a place for every trip the act jump settles, whatever state it is in (MER-134)', () => {
+  const c = variant(x => { x.cards.push(...followUps(8)); });
+  const played = cal.playedSeasons(c.calendar, 'acts'), last = played.findIndex((n, i) => played[i + 1] - n > 1);
+  ok(last >= 0, 'the calendar has a jump');
+  const s = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  s.t = last; s.desk = []; s.expeditions = Array.from({ length: 3 }, (_, i) => ({ id: `x${i}`, status: 'out' })); due(s, 8);
+  steps.fireDue(s, c);
+  eq(s.desk.filter(p => p.kind === 'card').length, 2, 'three trips are settled at the jump: two places left for cards');
+  const mid = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  mid.t = 0; mid.desk = []; mid.expeditions = Array.from({ length: 3 }, (_, i) => ({ id: `x${i}`, status: 'out' })); due(mid, 8);
+  steps.fireDue(mid, c);
+  eq(mid.desk.filter(p => p.kind === 'card').length, 5, 'in mid-act a trip still on the road needs no place');
+});
+test('turn: an Accounts line writes its minus as a true minus sign, not a hyphen (MER-134)', () => {
+  const s = newGame(content, { seed: 7, length: 'acts', house: 'plain' });
+  s.desk = []; s.queue = [{ at: s.t + 1, do: [{ money: -4 }, { money: 6 }], from: 'x/y' }];
+  steps.fireDue(s, content);
+  const acc = s.desk.find(p => p.kind === 'accounts');
+  eq(acc.items[0].changes.length, 2);
+  ok(acc.items[0].changes[0].startsWith('\u22124 '), acc.items[0].changes[0]);
+  ok(acc.items[0].changes[1].startsWith('+6 '), acc.items[0].changes[1]);
+  ok(!/(^|[\s:])-\d/.test(acc.items[0].text), acc.items[0].text);
+});
+
+// ---- MER-135: the desk keeps its places for the papers that carry money
+
+test('turn: over 120 seeded bot games no return paper and no Accounts paper is dropped for want of room on the desk (MER-135)', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  // the bots play whole three-act games through endSeason; `steps.end` is the last step of every closing, so the log it sees holds every
+  // paper the game put or tried to put, and a drop is a log entry (routes.js `put`)
+  const saved = steps.end;
+  let dropped = [];
+  steps.end = (st, ...a) => { dropped = st.log.filter(e => e.kind === 'dropped' && e.reason === 'the desk was full' && (e.ref === 'return' || e.ref === 'accounts' || e.ref === 'lost')); return saved(st, ...a); };
+  const bad = [];
+  let games = 0;
+  try {
+    for (let seed = 1; seed <= 30; seed++) for (const bot of BOTS) {
+      dropped = [];
+      playGame(cairo, { bot, seed, house: cairo.houses[seed % cairo.houses.length].id });
+      games++;
+      if (dropped.length) bad.push(`${bot}/${seed}: ${dropped.map(e => e.ref).join(', ')}`);
+    }
+  } finally { steps.end = saved; }
+  eq(games, 120);
+  eq(bad, [], 'a paper dropped for a full desk means money or goods moved with no paper to say so');
 });
 
 await done();

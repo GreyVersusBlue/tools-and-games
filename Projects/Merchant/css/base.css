@@ -182,3 +182,7 @@ dialog.paper.confirm { width: min(28em, calc(100% - 2rem)); }
 .house-text .blurb { display: block; font-size: var(--step-0); }
 .seal { width: 2.4rem; height: 2.4rem; flex: none; border-radius: 50%; }
 .seal-plain { background: var(--madder); box-shadow: inset 0 0 0 .25rem var(--paper-shade), inset 0 0 0 .4rem var(--madder); }
+
+/* The page between the acts: its one button is last and stays at the foot of the paper while the page scrolls under it, but it
+   fills the line and rings itself in paper, so no history text shows beside it and the text scrolls clear of it (MER-125). */
+.paper.kind-phase #btn-open-house { display: block; width: 100%; box-sizing: border-box; margin-top: var(--s3); }

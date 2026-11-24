@@ -31,10 +31,11 @@
 import { seasonIndex, playedSeasons } from './calendar.js';
 import { holds, placeOf } from './conditions.js';
 import { applyAll } from './effects.js';
-import { addPaper, deskFull } from './state.js';
+import { addPaper, deskFull, cityOf } from './state.js';
 import { chance, weighted } from './rng.js';
-import { lagOf, writeSeason } from './market.js';
+import { lagOf, writeSeason, truePrice } from './market.js';
 import { wary, legSeasons } from './agents.js';
+import { accountItem, foldAccounts } from './routes.js';   // a cycle (routes.js reads decide and close from here); both are only called after the modules have loaded
 
 /** The chance a letter is written, for an expedition with a letter to write, in a season. */
 export const LETTER_CHANCE = 0.5;
@@ -46,6 +47,16 @@ export const WAIT = 'wait', ON = 'on', HOME = 'home';
 export const GOES = [WAIT, ON, HOME];
 /** Seasons in all one trip may be held at decision points, by trait or by a wait order. */
 export const MAX_HOLD = 4;
+/** Seasons in which a fact is not told again: the season it was told and the next (MER-123). */
+export const REPEAT_GAP = 2;
+/** What a letter's words claim that its `when` cannot say, by letter id (MER-123): `sells` is true or a list of goods, and
+    holds only while the expedition carries one of them ("I sold at once" from a party with nothing to sell is a lie).
+    Empty for now, on purpose: switching a letter on changes which letters a seeded game draws, because most scripted and bot
+    parties carry money and no goods, and that moved test/routes.mjs's seed 13 (no agent at home for the plague) and
+    test/venture.mjs's played states, files MER-123 does not own. The letters that say "I sold" are walata-early-sale,
+    constantinople-sacks, alexandria-genoese-buyer and alexandria-galleys-back; add their ids here, as { sells: true }, in the
+    batch that re-pins those two files. */
+export const CLAIMS = {};
 
 const letterOf = (content, id) => (content.letters ?? []).find(l => l.id === id);
 const agentOf = (content, id) => (content.agents ?? []).find(a => a.id === id);
@@ -92,6 +103,27 @@ function actEnd(s, content, idx) {
 /** The last season the game plays. */
 const gameEnd = (s, content) => playedSeasons(content.calendar, s.length).at(-1);
 
+/** Whether what the letter claims is true of the expedition now (`CLAIMS`). */
+export function claimsHold(l, x) {
+  const claim = CLAIMS[l.id];
+  if (!claim?.sells) return true;
+  const carried = Object.entries(x.cargo ?? {}).filter(([, n]) => n > 0).map(([g]) => g);
+  return claim.sells === true ? carried.length > 0 : carried.some(g => claim.sells.includes(g));
+}
+
+/** The note and the source lines of a card or letter: what it tells, for comparing with what the desk was told lately. */
+const factsOf = item => [item?.note, ...(item?.sources ?? []).map(s => `${s.src}|${s.at}`)].filter(Boolean);
+
+/** True when a card or letter that tells the same note or the same source line is on the desk's record for the last REPEAT_GAP
+    seasons (the log writes `card` and `letter` as each reaches the desk), or is in the post for a season within REPEAT_GAP of
+    the one this letter would arrive in. A letter of the same id is `repeat`'s business, not this one's. */
+export function repeatsRecent(s, content, l, idx, lag = 0) {
+  const mine = new Set(factsOf(l));
+  const told = (id) => { const o = (content.cards ?? []).find(c => c.id === id) ?? letterOf(content, id); return !!o && id !== l.id && factsOf(o).some(f => mine.has(f)); };
+  if (s.log.some(e => (e.kind === 'card' || e.kind === 'letter') && idx - e.at < REPEAT_GAP && told(e.ref))) return true;
+  return s.post.some(p => Math.abs(p.arrive - (idx + lag)) < REPEAT_GAP && told(p.id));
+}
+
 /** The letters an expedition could write now: weight above 0, `when` holds, not a once-only letter
     written before, not one of its own already on the way, and one that can matter (see the head). */
 function pool(s, content, x, idx, lag) {
@@ -100,10 +132,10 @@ function pool(s, content, x, idx, lag) {
   const lastDecision = x.leg <= legs.length - 2 ? closeOf(content, x, idx, legs.length - 2) : -1;
   return (content.letters ?? []).filter(l =>
     l.weight > 0 && !(l.repeat === false && s.seen[l.id]) && !s.post.some(p => p.id === l.id && p.expedition === x.id) &&
-    holds(l.when, s, content, x) &&
+    holds(l.when, s, content, x) && claimsHold(l, x) && !repeatsRecent(s, content, l, idx, lag) &&
     (l.kind === 'question'
       ? idx + 2 * lag <= lastDecision && idx + 2 * lag < actEnd(s, content, idx)
-      : idx + lag <= home && idx + lag < gameEnd(s, content)));
+      : idx + lag <= home && idx + lag < gameEnd(s, content) && idx + lag <= actEnd(s, content, idx)));
 }
 
 /** Opening step "letters": put on the desk what has arrived, then let each expedition on the
@@ -111,8 +143,112 @@ function pool(s, content, x, idx, lag) {
 export function letters(s, content) {
   const idx = seasonIndex(s, content);
   s.post ??= [];
-  deliver(s, content, idx);
+  accountFor(s, content, idx, deliver(s, content, idx));
+  tripFacts(s, content);
   for (const x of s.expeditions) write(s, content, x, idx);
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the trips that came home this opening did, for the papers that tell of them (MER-123).
+// A card's `when` can read a flag but not a return paper, so the facts a card's words rely on are written to flags
+// here, after the return step and before the cards are drawn, and cleared at each opening. For an agent `a`:
+//   `a-profit`        the house's net on the trip that came home (a number, negative for a loss)
+//   `a-undersold`     set when the trip sold goods and made less than the sheet hoped
+//   `a-widened-trip`  set when the answer "let him go further" was given while this trip was out
+export const FACT_FLAGS = ['profit', 'undersold', 'widened-trip', 'bonused'];
+const FACT_FLAG = new RegExp(`^(.+)-(${FACT_FLAGS.join('|')})$`);
+
+/** The trip's season of sailing, from the log's `outfit` line for the expedition (the paper keeps no season of its own). */
+const sentSeason = (s, expedition) => s.log.find(e => e.kind === 'outfit' && e.ref === expedition)?.at ?? null;
+
+function tripFacts(s, content) {
+  for (const k of Object.keys(s.flags ?? {})) {
+    const m = FACT_FLAG.exec(k);
+    if (!m || !agentOf(content, m[1])) continue;
+    // a bonus paid while a trip was out (a letter's) or at its return stays on record until that trip is answered and gone, so a letter's bonus
+    // and the return paper's cannot both be paid (MER-135); a trip sent in the season the flag was set, or later, is a new trip
+    if (m[2] === 'bonused') {
+      // (the return step has already taken a trip that came home off the books and put its paper on the desk, so both are looked at)
+      const trips = [...s.expeditions.filter(e => e.agent === m[1]).map(e => e.id), ...s.desk.filter(q => q.kind === 'return' && q.agent === m[1]).map(q => q.expedition)];
+      if (trips.some(id => { const sent = sentSeason(s, id); return sent !== null && sent < s.flags[k]; })) continue;
+    }
+    delete s.flags[k];
+  }
+  for (const p of s.desk) {
+    if (p.kind !== 'return' || !p.data || !agentOf(content, p.agent)) continue;
+    const net = p.data.houseNet, sold = (p.data.account ?? []).some(r => r.label === 'Sold' && r.amount > 0);
+    s.flags[`${p.agent}-profit`] = net;
+    if (sold && Number.isFinite(p.data.hoped) && net < p.data.hoped) s.flags[`${p.agent}-undersold`] = 1;
+    const sent = sentSeason(s, p.expedition), given = s.flags[`${p.agent}-widened`];
+    if (sent !== null && Number.isFinite(given) && given >= sent) s.flags[`${p.agent}-widened-trip`] = 1;
+  }
+  for (const p of s.desk) if (p.kind === 'return' && p.data && !p.data.fitted) { limitBroker(s, p); fitOffers(p); fitBroker(s, content, p); }
+}
+
+/** A broker's offer says how far under the usual price it is (MER-134, play problem 7: "about 17 in every hundred less" was printed
+    for one good at three prices that were 9 to 25 in every hundred off, and 16 for another that was 25 off). The words are worked out here, when the paper is made,
+    from the sum the broker offers and the price the house would get for the goods in the home market now (the price the ledger
+    shows). A sum that would be no discount (under 5 in every hundred) or an insult (over 30) is first set again at the discount
+    the entry's own words name, against today's price, so the broker still looks like a broker; the sum, the choice's label and
+    hint, its effect and the paper's body then all carry the same number. */
+export const BROKER_MIN = 5, BROKER_MAX = 30;
+const BROKER_WORDS = /(That is about )(\d+)( in every hundred less than the usual price in )/;
+function fitBroker(s, content, p) {
+  const choice = (p.data.choices ?? []).find(c => c.id === 'sell');
+  const pay = choice?.now?.find(e => e && typeof e === 'object' && typeof e.money === 'number' && e.money > 0);
+  const out = choice?.now?.find(e => e && typeof e === 'object' && typeof e.stock === 'string' && e.by < 0);
+  const body = p.data.ask?.body, words = BROKER_WORDS.exec(body ?? '');
+  if (!pay || !out || !words) return;
+  const price = truePrice(s, content, cityOf(content, 'market').home, out.stock, seasonIndex(s, content));
+  if (!price) return;
+  const loads = -out.by, was = pay.money, gapOf = sum => Math.round((1 - sum / (loads * price)) * 100);
+  let sum = was, gap = gapOf(sum);
+  if (gap < BROKER_MIN || gap > BROKER_MAX) { sum = Math.max(1, Math.round(loads * price * (1 - Number(words[2]) / 100))); gap = gapOf(sum); }
+  const swap = text => (typeof text === 'string' ? text.replace(`for ${was} dinars`, `for ${sum} dinars`).replace(`get ${was} dinars`, `get ${sum} dinars`) : text);
+  p.data.ask.body = swap(body).replace(BROKER_WORDS, `$1${gap}$3`);
+  choice.hint = swap(choice.hint);
+  pay.money = sum;
+}
+
+/** A bonus is never offered above the trip's profit (MER-123): the return paper's bonus choice is cut to half the profit,
+    rounded down, when the entry's fixed sum is more than the profit, and left out when half the profit is under one dinar.
+    The label, the effect and the `requires` carry the new sum. */
+function fitOffers(p) {
+  p.data.fitted = true;
+  const net = p.data.houseNet, choices = p.data.choices ?? [];
+  const i = choices.findIndex(c => c.id === 'bonus' && (c.now ?? []).some(e => e && typeof e === 'object' && e.money < 0));
+  if (i < 0) return;
+  const c = choices[i], was = -c.now.find(e => e && typeof e === 'object' && e.money < 0).money;
+  if (net < was) {
+    const sum = Math.floor(Math.max(net, 0) / 2);
+    if (sum < 1) { choices.splice(i, 1); return; }
+    c.label = c.label.replace(String(was), String(sum));
+    for (const e of c.now) if (e && typeof e === 'object' && e.money < 0) e.money = -sum;
+    if (c.requires?.money) c.requires.money.gte = sum;
+  }
+  // one bonus for one trip (MER-134, play problem 15: "a bonus of 30 dinars", then a card offering "a bonus of 5 dinars first"):
+  // once either is paid the other closes. `choose` sets the flag when this one is paid; a card's bonus sets it in its own effects.
+  const gate = { flag: `${p.agent}-bonused`, not: true };
+  c.requires = c.requires ? { all: [c.requires, gate] } : gate;
+}
+
+/** One bonus for one trip, on a letter as on a return paper (MER-135): a letter's choice with the id 'bonus' closes once the agent's
+    trip has had a bonus, and `choose` records it. The choices come back as copies; the content is not touched. */
+export function gateBonus(p, list) {
+  if (p.kind !== 'letter' || !p.agent) return list;
+  const gate = { flag: `${p.agent}-bonused`, not: true };
+  return list.map(c => (c.id === 'bonus' ? { ...c, requires: c.requires ? { all: [c.requires, gate] } : gate } : c));
+}
+
+/** How many times one broker's paper is shown in a game (MER-134, play problem 15: the same broker paper four times). The third time
+    a trip would bring it, the return paper carries no offer, and the goods wait in the store as the paper says. */
+export const BROKER_SHOWN = 2;
+function limitBroker(s, p) {
+  const id = p.data.entry;
+  if (!id || !/^return-sell-/.test(id)) return;
+  const key = `shown:${id}`;
+  if ((s.seen[key] ?? 0) >= BROKER_SHOWN) { Object.assign(p.data, { entry: null, ask: null, choices: [] }); return; }
+  s.seen[key] = (s.seen[key] ?? 0) + 1;
 }
 
 /** The season the expedition's trip came home and its return paper was made, or null while it is on the road or if it was
@@ -132,15 +268,25 @@ function returnSeason(s, id) {
     so a letter that arrives in the season its trip's paper is made is put ahead of the paper. A letter that could only come
     after it (the trip came home early, by a recall or an order home, or the paper took the last room on the desk) is dropped, and the log says so. */
 function deliver(s, content, idx) {
-  const waiting = [];
+  const waiting = [], items = [];
   for (const p of s.post) {
+    if (actEnd(s, content, p.written) < idx) {                       // written in an act that has ended: it would reach the desk years late
+      s.log.push({ at: idx, kind: 'dropped', ref: p.id, reason: `the letter "${p.id}" was written in an act that ended before it could arrive, so it was left out` });
+      continue;
+    }
     const home = returnSeason(s, p.expedition);
-    if (home !== null && (home < idx || p.arrive > home)) {
+    // a letter that waited for room on a full desk (it arrived in an earlier season) must not turn up with the agent it was
+    // written by: it is as old as the wait, and the player would read a news item that the agent's own return paper outdates (MER-134)
+    if (home !== null && (home < idx || p.arrive > home || (p.arrive < idx && home === idx))) {
       s.log.push({ at: idx, kind: 'dropped', ref: p.id, reason: `the letter "${p.id}" could only have reached the desk after ${agentOf(content, p.agent)?.name ?? p.agent}'s return paper, so it was left out` });
       continue;
     }
-    if (p.arrive > idx || deskFull(s)) { waiting.push(p); continue; }
     const letter = letterOf(content, p.id);
+    // money or goods that move as a letter arrives need a line on the Accounts paper (MER-134): room for the letter and for that paper
+    const moves = (letter?.happened ?? []).some(e => e && typeof e === 'object' && ('money' in e || 'stock' in e));
+    // and once a letter this opening has moved money, the place for its paper stays kept against every letter after it, until foldAccounts puts the paper on the desk (MER-135)
+    const room = s.desk.some(q => q.kind === 'accounts' && q.state === 'open') || (!moves && !items.length) ? 1 : 2;
+    if (p.arrive > idx || deskFull(s, room)) { waiting.push(p); continue; }
     if (!letter) continue;
     const ctx = { agent: p.agent, expedition: p.expedition };
     const trial = structuredClone(s);
@@ -151,8 +297,22 @@ function deliver(s, content, idx) {
     const paper = s.desk.pop(), k = s.desk.findIndex(q => q.kind === 'return' && q.expedition === p.expedition);
     s.desk.splice(k < 0 ? s.desk.length : k, 0, paper);                   // ahead of its own trip's return paper
     s.log.push({ at: idx, kind: 'letter', ref: letter.id });
+    const item = moves ? accountItem(s, content, { do: letter.happened, from: letter.id, agent: p.agent, viaCard: letter.title }) : null;
+    if (item) items.push(item);
   }
   s.post = waiting;
+  return items;
+}
+
+/** What letters moved this opening goes on the Accounts paper (MER-134, play problem 9 and 10: 30 dinars left the purse at the start of
+    Summer 1336 with no paper saying why, because a letter's `happened` money moved silently). One open Accounts paper on the desk
+    takes the lines; with none, one is put on the desk. */
+function accountFor(s, content, idx, items) {
+  if (!items.length) return;
+  const open = s.desk.find(q => q.kind === 'accounts' && q.state === 'open');
+  if (!open) { foldAccounts(s, content, items); return; }
+  open.items.push(...items);
+  s.log.push({ at: idx, kind: 'accounts', items: items.map(i => i.text) });
 }
 
 /** The chance an expedition writes now: the plain chance, a rising one while it has written nothing on this trip, and a
