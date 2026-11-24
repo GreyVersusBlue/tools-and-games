@@ -111,10 +111,13 @@ export function createMap(app, nav) {
   const reason = h('p', { class: 'reason', id: 'outfit-open-reason' });
   const outfitBtn = h('button', { class: 'button primary', type: 'button', id: 'btn-outfit', 'aria-describedby': 'outfit-open-reason', onclick: () => pressOutfit() });
   const board = h('aside', { class: 'board', id: 'board', 'aria-label': 'Prices and stops' },
-    boardTitle, list, pricesBtn, pricesBox,
+    boardTitle, list, pricesBtn, pricesBox, toast,
     h('div', { class: 'board-actions' }, reason, outfitBtn,
       h('button', { class: 'button', type: 'button', id: 'map-desk', onclick: () => nav.toDesk() }, 'Back to the desk')));
-  const el = h('main', { class: 'map-screen', id: 'screen-map' }, bar, stage, board, toast);
+  const el = h('main', { class: 'map-screen', id: 'screen-map' }, bar, stage, board);
+  // MER-124: the set-out toast lives in the board, in the flow above its buttons, where it covers no stop, label or token at any frame
+  // (it was fixed over the picture and sat on the labels on a phone). The first press anywhere on the table dismisses it.
+  el.addEventListener('pointerdown', () => hideToast(), true);
 
   // ---- what the player can do with a stop
   function outfitState(stopId) {
@@ -223,7 +226,7 @@ export function createMap(app, nav) {
       const seal = agent && app.art.get(agent.seal);
       const text = n === 1 ? `${agent?.name ?? 'An agent'}, home about ${homeBy(app, [first])}`
         : `${n} expeditions, home about ${homeBy(app, g.list)}`;
-      out.push(h('div', { class: 'token', style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n) } },
+      out.push(h('div', { class: 'token', style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n), toward: `${b.x - a.x},${b.y - a.y}` } },
         h('div', { class: 'token-piece' }, h('img', { src: `assets/art/${tok.file}`, alt: '', width: 64, height: 64 }), n > 1 ? h('span', { class: 'token-count' }, String(n)) : null),
         h('p', { class: 'token-label' }, seal ? h('img', { class: 'token-seal', src: `assets/art/${seal.file}`, alt: '', width: 20, height: 20 }) : null, text)));
     }
@@ -231,19 +234,24 @@ export function createMap(app, nav) {
     placeLabels(pairs);
   }
 
-  /** Put each label on a side of its dot where it overlaps no other label, no dot, no token, and
-      stays whole inside the picture and clear of the price panel (DESIGN 4.7). The stop's own
-      `label` side goes first, then the other sides; a label that fits nowhere is hidden and its dot
-      stays, with the stop's name as its accessible name. Cairo and the selected stop choose first. */
+  /** Put each label on a side of its dot where it overlaps no other label, no dot, and stays whole inside the picture and clear of
+      the price panel (DESIGN 4.7). The stop's own `label` side goes first, then the other sides; a label that fits nowhere is hidden
+      and its dot stays, with the stop's name as its accessible name. Cairo and the selected stop choose first.
+      Then the tokens (MER-124): a party that has just set out sits on its own stop, and its caption is wider than the stop's label, so
+      the token used to lie across the label (Ali behind "Cairo") and two parties leaving the same stop lay on each other. The labels are
+      placed first, as the map's furniture; each token then keeps its own spot if nothing is there, and else slides along its road, then
+      across it, to the nearest spot clear of every label and every other token. A label a token still cannot avoid is hidden. */
   function placeLabels(pairs) {
     const fr = frame.getBoundingClientRect();
     if (!fr.width || !fr.height) return;
     const clip = { left: fr.left, right: fr.right, top: fr.top, bottom: fr.bottom };
     const walls = [board, unzoom].filter(b => b && !b.hidden).map(b => b.getBoundingClientRect()).filter(r => r.width && r.height);
     const centre = d => { const r = d.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const tokens = qsa('.token', layer);
+    for (const t of tokens) { t.style.removeProperty('--ox'); t.style.removeProperty('--oy'); t.classList.remove('bare'); }   // measured from where the data puts them
     const marks = pairs.map(p => ({ p, at: centre(p.dot), w: p.label.offsetWidth, h: p.label.offsetHeight }));
-    // a dot, or a token with its caption, is a thing a label must not cover
-    const solid = [...qsa('.dot', layer), ...qsa('.token', layer)].map(n => ({ el: n, r: n.getBoundingClientRect() }));
+    // a dot is a thing a label would rather not cover
+    const dots = qsa('.dot', layer).map(n => ({ el: n, r: n.getBoundingClientRect() }));
     const placed = [];
     for (const m of marks.slice().sort((a, b) => a.p.rank - b.p.rank)) {
       // its own side, then every side close in, then every side one step further out (a crowd of
@@ -251,14 +259,14 @@ export function createMap(app, nav) {
       const out2 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 2.2, dy: t.dy * 2.2 }));
       const tries = [m.p.side, ...Object.values(SIDES), ...out2].filter(Boolean);
       let won = null;
-      // first a place that covers no other dot or token; failing that, one that covers a dot (the
+      // first a place that covers no other dot; failing that, one that covers a dot (the
       // press still goes to the nearest stop, and the list names every stop) but never another label
       for (const clear of [true, false]) {
         for (const t of tries) {
           const left = m.at.x + t.dx + t.ax * m.w, top = m.at.y + t.dy + t.ay * m.h;
           const r = { left, top, right: left + m.w, bottom: top + m.h };
           if (!inside(r, clip) || walls.some(w => hits(r, w)) || placed.some(q => hits(r, q))) continue;
-          if (clear && solid.some(o => o.el !== m.p.dot && hits(r, o.r))) continue;
+          if (clear && dots.some(o => o.el !== m.p.dot && hits(r, o.r))) continue;
           won = { t, r };
           break;
         }
@@ -267,10 +275,40 @@ export function createMap(app, nav) {
       const el = m.p.label;
       el.hidden = !won;
       if (won) {
-        placed.push(won.r);
+        placed.push({ ...won.r, el });
         el.style.setProperty('--dx', String(won.t.dx)); el.style.setProperty('--dy', String(won.t.dy));
         el.style.setProperty('--ax', `${won.t.ax * 100}%`); el.style.setProperty('--ay', `${won.t.ay * 100}%`);
       }
+    }
+    // tokens: the bigger party first, then by place, so a redraw puts each where it was
+    const placedTokens = [];
+    const sorted = tokens.map(el => ({ el, r: el.getBoundingClientRect(), n: Number(el.dataset.count) || 1 }))
+      .sort((a, b) => b.n - a.n || a.r.top - b.r.top || a.r.left - b.r.left);
+    for (const t of sorted) {
+      const [tx, ty] = (t.el.dataset.toward ?? '1,0').split(',').map(Number);
+      // the leg's direction on the screen, not in the picture's percentages
+      const dx = tx / 100 * fr.width, dy = ty / 100 * fr.height, len = Math.hypot(dx, dy) || 1, u = [dx / len, dy / len];
+      const dirs = [u, [-u[1], u[0]], [u[1], -u[0]], [-u[0], -u[1]], [1, 0], [0, 1], [-1, 0], [0, -1]];
+      const room = r => inside(r, clip) && !walls.some(w => hits(r, w)) && !placedTokens.some(q => hits(r, q));
+      // first a spot clear of every label and every token; else one clear of the tokens that only covers labels, which then give way
+      let won = null;
+      // a crowded picture has no clear spot for the caption's width: the token then goes without its caption (class `bare`), which is
+      // narrower by far, before any label is asked to give way
+      const attempts = [[true, false], [true, true], [false, true]];
+      for (const [strict, bare] of attempts) {
+        if (bare && !t.el.classList.contains('bare')) { t.el.classList.add('bare'); t.r = t.el.getBoundingClientRect(); }
+        for (let d = 0; d <= 420 && !won; d += d < 48 ? 6 : 12) {
+          for (const [ux, uy] of (d === 0 ? [[0, 0]] : dirs)) {
+            const r = { left: t.r.left + ux * d, right: t.r.right + ux * d, top: t.r.top + uy * d, bottom: t.r.bottom + uy * d };
+            if (room(r) && (!strict || !placed.some(q => !q.el.hidden && hits(r, q)))) { won = { ox: ux * d, oy: uy * d, r }; break; }
+          }
+        }
+        if (won) break;
+      }
+      if (!won) won = { ox: 0, oy: 0, r: t.r };   // nowhere on the whole picture: it stays, and its neighbours give way below
+      if (won.ox || won.oy) { t.el.style.setProperty('--ox', `${Math.round(won.ox)}px`); t.el.style.setProperty('--oy', `${Math.round(won.oy)}px`); }
+      for (const q of placed) if (!q.el.hidden && hits(won.r, q)) q.el.hidden = true;   // a label never lies under a token
+      placedTokens.push(won.r);
     }
   }
 
@@ -340,7 +378,9 @@ export function createMap(app, nav) {
   }
   function listKey(e) {
     const ids = order().map(s => s.id), i = ids.indexOf(lit);
-    const go = j => { e.preventDefault(); lit = ids[(j + ids.length) % ids.length]; markLit(); };
+    // MER-124: an arrow selects the stop it lands on, so the heading, the prices and Outfit follow it (a keyboard player had to press Enter
+    // on every stop and the heading kept naming the old one); `select` redraws the options, and the list keeps its focus
+    const go = j => { e.preventDefault(); lit = ids[(j + ids.length) % ids.length]; select(lit, { keepFocus: true }); list.focus({ preventScroll: true }); };
     if (e.key === 'ArrowDown') go(i + 1);
     else if (e.key === 'ArrowUp') go(i - 1);
     else if (e.key === 'Home') go(0);
@@ -352,7 +392,7 @@ export function createMap(app, nav) {
       typed = t - typedAt > 1000 ? e.key.toLowerCase() : typed + e.key.toLowerCase();
       typedAt = t;
       const hit = order().find(s => s.name.toLowerCase().startsWith(typed));
-      if (hit) { e.preventDefault(); lit = hit.id; markLit(); }
+      if (hit) { e.preventDefault(); select(hit.id, { keepFocus: true }); list.focus({ preventScroll: true }); }
     }
   }
 
@@ -435,10 +475,11 @@ export function createMap(app, nav) {
   // The toast takes no taps (css) and goes after TOAST_MS, so on a phone it never stands between a
   // finger and Outfit or Back to the desk (MER-71, finding 10). A screen reader has it from the live region.
   let toastTimer = 0;
+  function hideToast() { clearTimeout(toastTimer); toast.hidden = true; }
   function showToast(text) {
     toast.textContent = text; toast.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toast.hidden = true; }, TOAST_MS);
+    toastTimer = setTimeout(hideToast, TOAST_MS);
     app.say(text);
   }
 

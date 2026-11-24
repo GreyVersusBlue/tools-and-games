@@ -147,12 +147,27 @@ const withLetter = (id, kind, stop, lag, standing) => {
 // years, long enough that its one button is below any frame's fold. The jump entry is the engine's; the lines are added to it.
 states.interludeLong = (() => {
   const s = structuredClone(states.interlude), jump = [...s.log].reverse().find(e => e.kind === 'jump');
-  const line = (id, text) => ({ expedition: id, result: 'return', text, cargo: { linen: 3 }, houseNet: -13 });
+  // the engine's own shape for a trip that came home (routes.js settle): what it carried out, what came back and the seasons it was away (MER-125)
+  const line = (id, text) => ({ expedition: id, result: 'home', text, cargo: { linen: 3 }, back: { goods: { silk: 2 }, money: 40 }, seasons: 3, houseNet: -13 });
   jump.settled = [line('x91', 'Yusuf came home from Damascus. The house lost 13 dinars.'), line('x92', 'Samir came home from Damascus. The house lost 8 dinars.')];
   const para = t => ({ id: 'p' + t.length, interlude: t });
   jump.events = ['In April 1326 a young scholar from Tangier landed at Alexandria and went on to Cairo. His name was Ibn Battuta. He would travel for about thirty years, and long afterward he told the story of what he saw.',
     'In the summer of 1326 Ibn Battuta crossed the desert toward Aydhab on the Red Sea. He found the crossing shut. The king of the Beja was at war with the sultan\'s soldiers and had sunk the ships. Ibn Battuta turned back to the Nile.',
     'In the summer of 1332 the sultan, al-Nasir Muhammad, set out for Mecca on the pilgrimage. He took his wife and his son Anuk with him. Every Muslim who can make the journey is asked to go once.'].map(para);
+  return s;
+})();
+// MER-124: two parties out of Cairo on the engine's own plans, both on the first leg of their roads (a token on its stop's dot, where its
+// caption lay across the stop's label), and the same two on their second legs (a token on Damascus and one on Qus). Played in Node.
+states.two = (() => {
+  const s = structuredClone(states.second);
+  let g = s;
+  for (const stop of ['damascus', 'aydhab', 'alexandria', 'qus']) { if (g.expeditions.length >= 2) break; const plan = eng.suggestPlan(g, content, stop); if (plan) { try { g = eng.outfit(g, content, plan); } catch { /* not this one */ } } }
+  if (g.expeditions.length < 2) throw new Error('layout.mjs: two parties could not be sent on the engine\'s plans');
+  return g;
+})();
+states.twoBack = (() => {
+  const s = structuredClone(states.two);
+  for (const x of s.expeditions) { x.leg = 1; x.left = 1; }
   return s;
 })();
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
@@ -166,7 +181,9 @@ const plain = s => JSON.parse(JSON.stringify(s));
   const entry = content.returns.find(e => e.id === 'loss-sea-gone'), fill = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Damascus');
   states.loss = { ...base, desk: [{ id: 'p80-0', state: 'open', kind: 'lost', ref: 'lost', agent: 'ali', expedition: r.expedition, data: {
     headline: 'Ali\'s galley was lost on the way from Cairo to Damascus. Ali did not come back.', route: 'cairo-damascus', whole: true, survived: false,
-    lines: [{ label: 'Lost', text: 'The ship and what it carried.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
+    lines: [{ label: 'Lost', text: 'The ship and what it carried.' },
+      // routes.js lossLine, as the engine words it (MER-125): what the loss came to in dinars, then what the sheet had hoped
+      { label: 'In dinars', text: 'The house lost about 200 dinars: the goods at Cairo\'s price and the money that was aboard. It had hoped to make 120 dinars.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
     ask: { title: fill(entry.title), body: fill(entry.body) },
     choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
   states.accounts = { ...base, desk: [{ id: 'p80-1', state: 'open', kind: 'accounts', ref: 'accounts', items: [
@@ -309,6 +326,14 @@ const SCREENS = [
       await p.waitForSelector('#step-purse');
       await p.waitForSelector('#change-back');
     } },
+  // MER-124: two parties on the map at once, at the start of their first legs and of their second
+  ...[['map-two', 'two'], ['map-two-back', 'twoBack']].map(([name, st]) => ({ name,
+    go: async (p, f) => {
+      await load(p, '#map', { state: states[st], large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+      await p.waitForFunction(() => document.querySelectorAll('.token').length >= 2);
+      await p.waitForFunction(() => document.querySelector('.stop-label'));
+    } })),
   { name: 'price-board-news',
     go: async (p, f) => {
       await load(p, '#map', { state: states.second, large: f.large });
@@ -677,6 +702,162 @@ try {
             await page.evaluate(() => { document.querySelector('dialog[open]').scrollTop = 0; });
             await page.click('#change-back');
             await page.waitForSelector('#back-nothing', { timeout: 3000 });
+          });
+        }
+        // MER-124 (play c014, c041, c003, c005): what the phone's bars did to the controls under them
+        if (screen.name === 'outfit-second-open') {
+          // every control on the sheet, scrolled into view the two ways a player gets there (a scroll to it, a Tab or a tap that focuses it),
+          // is clear of the sticky Send bar: it sat on a stepper at y=560 and a tap there landed on Send (c014)
+          await test(`${tag}: no stepper, button or link sits under the Send bar once scrolled into view`, async () => {
+            const bad = await page.evaluate(() => {
+              const dlg = document.querySelector('dialog[open]'), bar = dlg.querySelector('.send-row');
+              const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+              const out = [];
+              const els = [...dlg.querySelectorAll('.stepper, .step-btn, button, input, summary, a[href], [role=checkbox], [role=radio]')].filter(e => !bar.contains(e) && e.checkVisibility());
+              for (const el of els) {
+                for (const how of ['scrollIntoView', 'focus']) {
+                  dlg.scrollTop = how === 'focus' ? dlg.scrollHeight : 0;
+                  if (how === 'scrollIntoView') el.scrollIntoView({ block: 'nearest' }); else el.focus();
+                  const r = el.getBoundingClientRect(), b = bar.getBoundingClientRect();
+                  if (r.height < dlg.clientHeight - b.height && hit(r, b)) out.push(`${how} leaves ${el.id || el.className || el.tagName} at ${Math.round(r.top)} to ${Math.round(r.bottom)} under the bar at ${Math.round(b.top)}`);
+                }
+              }
+              dlg.scrollTop = 0;
+              return out;
+            });
+            ok(!bad.length, brief(bad));
+          });
+          // the upright phones: the bar is at most 18 percent of the frame (it was 23 and 29, play c014 saw 29)
+          if (frame.mobile && frame.height > frame.width && !frame.large) {
+            await test(`${tag}: the Send bar is at most 18 percent of the frame`, async () => {
+              const got = await page.evaluate(() => ({ bar: Math.round(document.querySelector('dialog[open] .send-row').getBoundingClientRect().height), ih: innerHeight }));
+              ok(got.bar <= got.ih * 0.18, `the Send bar is ${got.bar} px of ${got.ih}: ${Math.round(got.bar / got.ih * 1000) / 10} percent`);
+            });
+          }
+        }
+        // an account table never breaks a number or a two-word label across two lines at a phone's width, and a sentence only between words
+        if (screen.name === 'desk-return2' || screen.name === 'desk-loss') {
+          await test(`${tag}: no account cell wraps a number, its unit or a short label onto two lines`, async () => {
+            const bad = await page.evaluate(async () => {
+              const out = [];
+              // a return's account is folded (MER-122: the desk never opens it by itself); the player opens it, and so does this case
+              const folds = [...document.querySelectorAll('details')].filter(d => !d.open);
+              for (const d of folds) d.open = true;
+              await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+              const cells = [...document.querySelectorAll('.accounts-table th, .accounts-table td')].filter(c => c.checkVisibility());
+              if (!cells.length) return [`no account table is visible on the paper (${document.querySelectorAll('.accounts-table').length} in the page; details open: ${[...document.querySelectorAll('details')].map(d => d.open)})`];
+              for (const c of cells) {
+                const text = c.textContent.trim().replace(/\s+/g, ' '), words = text.split(' ');
+                // the line each word lies on: a Range over the word, read by its top
+                const tn = [...c.childNodes].flatMap(n => (n.nodeType === 3 ? [n] : [...n.childNodes].filter(x => x.nodeType === 3)));
+                const tops = [];
+                for (const n of tn) for (const m of n.textContent.matchAll(/\S+/g)) { const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length); const b = r.getClientRects()[0]; if (b) tops.push({ w: m[0], top: Math.round(b.top) }); }
+                const lines = new Set(tops.map(t => t.top)).size;
+                const short = c.matches('th') ? words.length <= 2 : /^[+−-]?\d[\d,]*( \S+)?$/.test(text);
+                if (short && lines > 1) out.push(`"${text.slice(0, 30)}" is on ${lines} lines`);
+                // a unit never starts a line: "dinars" under its number
+                for (let i = 1; i < tops.length; i++) if (/^(dinars?|loads?)[.,]?$/.test(tops[i].w) && /\d/.test(tops[i - 1].w) && tops[i].top !== tops[i - 1].top) out.push(`"${tops[i - 1].w} ${tops[i].w}" is split over two lines`);
+              }
+              for (const d of folds) d.open = false;
+              return out;
+            });
+            ok(!bad.length, brief(bad));
+          });
+        }
+        if (screen.name === 'desk-loss') {
+          // MER-125: the lost paper's own line in dinars, under its label, in the engine's words
+          await test(`${tag}: the lost paper has its 'In dinars' row`, async () => {
+            const row = await page.evaluate(() => { const th = [...document.querySelectorAll('.accounts-table th')].find(t => t.textContent.trim() === 'In dinars'); return th ? th.nextElementSibling?.textContent.replace(/\s+/g, ' ').trim() ?? '' : null; });
+            ok(row !== null && /^The house lost about \d+ dinars/.test(row), `the 'In dinars' row says: ${row}`);
+          });
+        }
+        if (screen.name === 'desk-papers' || screen.name === 'desk-return') {
+          // End the season never covers the last choice, nor the second stacked paper's tab, once either is scrolled into view (c003, c005)
+          await test(`${tag}: the last choice and the second paper's tab clear End the season once scrolled into view`, async () => {
+            const bad = await page.evaluate(() => {
+              const row = document.querySelector('.end-row');
+              if (!row || !row.checkVisibility()) return ['End the season is not on the desk'];
+              const out = [];
+              const saved = [...document.querySelectorAll('.stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
+              const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+              const targets = { 'the last choice': document.querySelector('.sheet .choices .choice:last-of-type'), "the second paper's tab": document.querySelectorAll('.edges .edge')[1] };
+              for (const [name, el] of Object.entries(targets)) {
+                if (!el) { out.push(`${name} is not on the desk`); continue; }
+                el.scrollIntoView({ block: 'nearest' });
+                const r = el.getBoundingClientRect(), b = row.getBoundingClientRect();
+                if (hit(r, b)) out.push(`${name} lies at ${Math.round(r.top)} to ${Math.round(r.bottom)} under End the season at ${Math.round(b.top)} to ${Math.round(b.bottom)}`);
+              }
+              for (const [e, t] of saved) e.scrollTop = t;
+              scrollTo(0, 0);
+              return out;
+            });
+            ok(!bad.length, brief(bad));
+          });
+        }
+        // MER-124 (play c003): no ~100 px of bare ground between the money line and "papers left" on the upright phones. A placeholder
+        // still hides its band, so the stack starts at the measured bar; a final picture shows its band, which is used, not empty. The
+        // class is put on the still here, so the case holds whichever pictures the manifest calls final.
+        if ((screen.name === 'desk-letter' || screen.name === 'desk-papers') && frame.mobile && frame.height > frame.width && !frame.large) {
+          await test(`${tag}: nothing but a few pixels lies between the top bar and "papers left" with a placeholder still`, async () => {
+            const got = await page.evaluate(async () => {
+              const still = document.querySelector('.desk-still');
+              const had = still.classList.contains('placeholder');
+              still.classList.add('placeholder');
+              await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+              const bar = document.querySelector('.topbar').getBoundingClientRect(), count = document.querySelector('.stack-count').getBoundingClientRect();
+              const gap = Math.round(count.top - bar.bottom);
+              if (!had) still.classList.remove('placeholder');
+              return { gap, bar: Math.round(bar.bottom), count: Math.round(count.top) };
+            });
+            ok(got.gap >= 0 && got.gap <= 24, `the bar ends at ${got.bar} and "papers left" starts at ${got.count}: ${got.gap} px between`);
+          });
+        }
+        // MER-125: the page between the acts; its one button sticks at the foot of the paper, and scrolled to the end no line of the
+        // history lies under it (it sat over the text, a090)
+        if (screen.name === 'between-acts-long') {
+          await test(`${tag}: scrolled to the end, no line of the history lies under Open the house`, async () => {
+            const bad = await page.evaluate(async () => {
+              const btn = document.querySelector('#btn-open-house'), out = [], saved = [];
+              // every box that scrolls round the button, then the page, each to its end
+              for (let a = btn.parentElement; a && a !== document.body; a = a.parentElement) if (['auto', 'scroll'].includes(getComputedStyle(a).overflowY) && a.scrollHeight > a.clientHeight + 1) { saved.push([a, a.scrollTop]); a.scrollTop = a.scrollHeight; }
+              scrollTo(0, document.documentElement.scrollHeight);
+              await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+              const b = btn.getBoundingClientRect();
+              for (const el of document.querySelectorAll('.kind-phase p, .kind-phase li, .kind-phase h2, .kind-phase h3')) {
+                if (btn.contains(el) || el.contains(btn) || !el.checkVisibility()) continue;
+                const r = el.getBoundingClientRect();
+                if (r.height > 0 && r.left < b.right && r.right > b.left && r.top < b.bottom - 0.5 && r.bottom > b.top + 0.5) out.push(`"${el.textContent.trim().slice(0, 30)}" at ${Math.round(r.top)} to ${Math.round(r.bottom)} against the button at ${Math.round(b.top)} to ${Math.round(b.bottom)}`);
+              }
+              for (const [a, t] of saved) a.scrollTop = t;
+              scrollTo(0, 0);
+              return out;
+            });
+            ok(!bad.length, brief(bad));
+          });
+        }
+        // MER-124 (play A and B, 15): on the map table no two tokens, and no token and a stop's label, ever overlap; every token is
+        // whole inside the picture; Cairo's label (or the cluster label that holds it) is still on the map
+        if (screen.name === 'map-two' || screen.name === 'map-two-back') {
+          await test(`${tag}: two tokens and the stop labels never overlap, and every token is whole inside the picture`, async () => {
+            await page.evaluate(() => new Promise(r => setTimeout(r, 300)));   // a token slides to its place over the token-move time
+            const got = await page.evaluate(() => {
+              const box = e => { const b = e.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; };
+              const named = e => (e.classList.contains('token') ? 'token ' : 'label ') + (e.textContent.trim().slice(0, 26) || e.className);
+              const items = [...document.querySelectorAll('.stop-label:not([hidden]), .token')].filter(e => e.checkVisibility()).map(e => ({ n: named(e), r: box(e), token: e.classList.contains('token') }));
+              const hits = [];
+              for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+                const a = items[i].r, b = items[j].r;
+                if ((items[i].token || items[j].token) && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5) hits.push(`${items[i].n} over ${items[j].n}`);
+              }
+              const fr = box(document.querySelector('.map-frame')), board = document.querySelector('#board').getBoundingClientRect();
+              const out = items.filter(x => x.token && (x.r.left < fr.left - 0.5 || x.r.right > fr.right + 0.5 || x.r.top < fr.top - 0.5 || x.r.bottom > fr.bottom + 0.5)).map(x => x.n);
+              const homeLabel = [...document.querySelectorAll('.stop-label')].find(l => l.dataset.stop === 'cairo' || (l.dataset.cluster && /delta/i.test(l.dataset.cluster)));
+              return { tokens: items.filter(x => x.token).length, hits, out, home: !!homeLabel && !homeLabel.hidden, board: board.width > 0 };
+            });
+            ok(got.tokens >= 2, `${got.tokens} tokens are drawn, the case needs two`);
+            ok(!got.hits.length, brief(got.hits));
+            ok(!got.out.length, `a token is not whole inside the picture: ${got.out}`);
+            ok(got.home, "Cairo's label (or the Delta cluster's) is hidden");
           });
         }
         if (screen.name === 'desk-return2' || screen.name === 'desk-return') {

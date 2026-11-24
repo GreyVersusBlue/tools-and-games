@@ -453,6 +453,11 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
 
   // ---- drawing
   function render(focusKey) {
+    // MER-124: the control the player is on keeps its place on the screen. A press on a stepper re-lays the whole sheet (the cost and
+    // the estimate change), and the focused stepper jumped from y=566 to y=292 (play b045); the sheet is scrolled back by however far
+    // the control moved, and the control takes the focus without scrolling the dialog a second time.
+    const anchorTop = () => { const e = focusKey && (document.getElementById(focusKey) ?? qs(`[data-key="${focusKey}"]`, dialog)); return e?.isConnected ? e.getBoundingClientRect().top : null; };
+    const before = anchorTop();
     memo = null;
     if (draft.contract === 'prepay' && !prepayOffered()) draft.contract = 'own';
     // the partners' share is settled before the plan is checked, so the reasons and the estimate answer the plan that is shown
@@ -490,7 +495,10 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     if (typeof ResizeObserver === 'function') new ResizeObserver(clear).observe(bar);
     if (focusKey) {
       const el = document.getElementById(focusKey) ?? qs(`[data-key="${focusKey}"]`, dialog);
-      el?.focus();
+      if (el && before !== null) {
+        el.focus({ preventScroll: true });
+        dialog.scrollTop += el.getBoundingClientRect().top - before;
+      } else el?.focus();
     }
   }
 

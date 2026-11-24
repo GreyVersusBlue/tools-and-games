@@ -8,6 +8,7 @@
   --ink-soft: #5b4d3c;
   --brass: #a8792c;
   --brass-dark: #7a561b;
+  --brass-bright: #d4a24e;   /* brass for small text on the dark bars: 5.9:1 on --night at .85 over a picture (MER-124); --brass is 3.5:1 there */
   --lapis: #284c78;
   --nile: #4f6b3a;
   --madder: #9b2f22;

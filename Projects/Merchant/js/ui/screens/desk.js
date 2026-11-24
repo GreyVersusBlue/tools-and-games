@@ -49,9 +49,10 @@ export function createDesk(app) {
   const edges = h('div', { class: 'edges' });
   const endReason = h('p', { class: 'end-reason', id: 'end-reason' });
   const endBtn = h('button', { class: 'end-season', type: 'button', id: 'btn-end', 'aria-describedby': 'end-reason', onclick: () => endSeason() }, 'End the season');
+  const endRow = h('div', { class: 'end-row' }, endReason, endBtn);
   const stack = h('section', { class: 'stack', 'aria-label': 'Your desk' },
     counter, h('div', { class: 'stack-papers' }, sheetBox, edges),
-    h('div', { class: 'end-row' }, endReason, endBtn));
+    endRow);
   const el = h('main', { class: 'desk-screen', id: 'screen-desk' }, still, bar, note, stack);
 
   // ---- the still and the safe box
@@ -85,6 +86,15 @@ export function createDesk(app) {
     el.style.setProperty('--safe-h', `${Math.round(sh * asset.h * sc)}px`);
   }
   addEventListener('resize', layout);
+  // MER-124: the heights of the two bars that lie over the page, measured, so the stylesheet never guesses them (the top bar is two rows or
+  // three, and a taller Large-text bar is taller still): the papers start `--bar-h` down on a placeholder still, and a control scrolled into
+  // view stops `--end-h` above the foot instead of under End the season.
+  const root = document.documentElement;
+  const sizes = () => {
+    root.style.setProperty('--bar-h', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+    root.style.setProperty('--end-h', `${Math.ceil(endRow.checkVisibility?.() === false ? 0 : endRow.getBoundingClientRect().height)}px`);
+  };
+  const sizeWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(sizes) : null;
 
   // ---- the top bar
   function barNote(text) { note.textContent = text; app.say(text); }
@@ -332,7 +342,13 @@ export function createDesk(app) {
   function endSeason() {
     if (busy) return;
     const can = endState();
-    if (!can.ok) { app.say(can.reason); return; }
+    if (!can.ok) {
+      app.say(can.reason);
+      // MER-124: a pointer or the E key on a button that is not ready says why, and the focus goes to what is still unanswered, the Next
+      // button of a back being read or else the raised paper's first choice (focus used to stay on the dead button, eight Tabs from it)
+      if (app.state.phase === 'desk') (qs('#btn-next', sheetBox) ?? qs('.choices .choice', sheetBox) ?? qs('button, [href]', sheetBox))?.focus();
+      return;
+    }
     app.act(s => engine.endSeason(s, content));
     raised = null; backOf = null;
     // the last season was played: the game is the ending now (DESIGN 4.12), and its first page takes the screen
@@ -352,6 +368,7 @@ export function createDesk(app) {
     drawStack(opts);
     const can = endState();
     endBtn.setAttribute('aria-disabled', can.ok ? 'false' : 'true');
+    endBtn.tabIndex = can.ok ? 0 : -1;   // MER-124: out of the tab order while papers are left; the first choice was 8 Tabs past it
     endBtn.hidden = app.state.phase !== 'desk';
     endReason.textContent = can.ok ? '' : can.reason;
     endReason.hidden = can.ok;
@@ -411,5 +428,6 @@ export function createDesk(app) {
     return false;
   }
 
-  return { el, key, draw, destroy() { removeEventListener('resize', layout); } };
+  sizeWatch?.observe(bar); sizeWatch?.observe(endRow);
+  return { el, key, draw, destroy() { removeEventListener('resize', layout); sizeWatch?.disconnect(); root.style.removeProperty('--bar-h'); root.style.removeProperty('--end-h'); } };
 }
