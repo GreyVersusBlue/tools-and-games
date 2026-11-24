@@ -48,6 +48,12 @@
 //   room-no-teacher:<room>
 //   duty-clash:d:p:<teacher>:<duty>    (d is the first day type it holds on)
 //   duty-nobody:<duty>
+//   teacher-away:d:p:<teacher>         (a warning: the teacher is not in school
+//                                      in period p on day type d)
+//   teacher-away:d:<entry key>:<teacher>
+//                                      (a note, for an away entry that names
+//                                      weekdays only: one note an entry, the key
+//                                      being its weekdays, periods and day types)
 //
 // Walk results. The two walk-time checks do no routing and no timing of their
 // own: they are handed the figures, so this module and checks.js never need
