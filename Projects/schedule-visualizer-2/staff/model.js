@@ -109,7 +109,7 @@ export function openSchool(data) {
       return awayEntries(findById(data.teachers, teacherId), dayTypeId, { project: data }).map((read) => ({ words: awayWords(data.settings, read.entry, data.dayTypes), sometimes: read.sometimes, periods: read.periods }));
     },
     // The part-time line under a teacher's name: "Part-time: not in school on
-    // Fridays, and in Periods 7 to 8 when it is B Day", each entry worded by
+    // Fridays, and in Periods 7 to 8 on B Day", each entry worded by
     // the engine's awayWords; '' for a teacher with none. An entry that holds
     // nowhere is not in it.
     awayLine(teacherId) {

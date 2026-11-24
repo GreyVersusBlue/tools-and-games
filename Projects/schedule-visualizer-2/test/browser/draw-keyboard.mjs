@@ -424,6 +424,34 @@ test('the Menu key and Shift+F10 ask for the menu of the cell the cursor is on',
   });
 });
 
+test('SV2-142: Shift+F10 and the Menu key still ask for the menu after the last pointer was a touch (a tablet with a keyboard)', async () => {
+  await page.focus('#plan');
+  await wholeFloor(page);
+  await walk(page, 6, 8);
+  await page.evaluate(() => {
+    globalThis.asked = [];
+    document.querySelector('.bld').editor.menu = (ev) => globalThis.asked.push([ev.x, ev.y, ev.source]);
+    // one tap of a finger on the plan, as a touch screen sends it, then nothing
+    const canvas = document.getElementById('plan');
+    const box = canvas.getBoundingClientRect();
+    const at = { pointerType: 'touch', pointerId: 41, isPrimary: true, bubbles: true, clientX: box.left + 5, clientY: box.top + 5 };
+    canvas.dispatchEvent(new PointerEvent('pointerdown', at));
+    canvas.dispatchEvent(new PointerEvent('pointerup', at));
+  });
+  await page.focus('#plan');
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('F10');
+  await page.keyboard.up('Shift');
+  const asked = await page.evaluate(() => globalThis.asked);
+  assert.equal(asked.length, 1, 'Shift+F10 after a touch asked for ' + asked.length + ' menus');
+  assert.equal(asked[0][2], 'keyboard');
+  await page.keyboard.press('ContextMenu');
+  assert.equal((await page.evaluate(() => globalThis.asked)).length, 2, 'the Menu key after a touch');
+  await page.evaluate(() => {
+    document.querySelector('.bld').editor.menu = null;
+  });
+});
+
 test('the plan\'s keys are listed for Help to show, one for every tool', async () => {
   const rows = await page.evaluate(async () => (await import('./ui/building/index.js')).PLAN_KEYS.map((row) => row.shown + ' ' + row.does));
   for (const wanted of ['V The Select tool', 'C The Corridor tool', 'R The Room tool', 'E The Eraser tool', 'H The Pan tool', 'L The Line tool', 'S The Stairs tool', 'O The Other space tool', 'Arrows Move the cursor one cell', 'Shift+Arrows Drag: let go of Shift to finish', 'Space+Arrows Move the map', '0 Fit the plan to the window']) {

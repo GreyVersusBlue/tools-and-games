@@ -1997,9 +1997,19 @@ export const acceptFinding = action(
   },
 );
 
+// A teacher-away note accepted through the records of its classes (SV2-142b,
+// checks.js followAcceptedNotes) lists them in `accepted.from`: they go too,
+// or the note would be accepted again at once.
 export const unacceptFinding = action(
   { label: 'Stop accepting a finding', bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'checks' }) },
-  (project, payload) => withKey(project, 'accepted', filterShared(project.accepted, (accepted) => accepted.findingId !== payload.findingId)),
+  (project, payload) => {
+    const drop = new Set([payload.findingId]);
+    if (String(payload.findingId).startsWith('teacher-away:')) {
+      const held = checkSchedule(project, null).accepted.find((finding) => finding.id === payload.findingId);
+      if (held && Array.isArray(held.accepted.from)) for (const id of held.accepted.from) drop.add(id);
+    }
+    return withKey(project, 'accepted', filterShared(project.accepted, (accepted) => !drop.has(accepted.findingId)));
+  },
 );
 
 // ---------------------------------------------------------------- the whole project

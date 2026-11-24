@@ -217,7 +217,7 @@ test('the fixture is a valid project with a three-stop stairwell, and the publis
 test('the model says the part-time line in the engine\'s words', () => {
   const school = openSchool(publishedModel(fixture(), { clock: () => new Date('2026-08-25T12:00:00Z') }));
   assert.equal(school.awayLine('tsample001'), 'Part-time: not in school on Fridays');
-  assert.equal(school.awayLine('tsample002'), 'Part-time: not in school in Lessons 7 to 8 when it is B Day');
+  assert.equal(school.awayLine('tsample002'), 'Part-time: not in school in Lessons 7 to 8 on B Day');
   assert.equal(school.awayLine('tsample003'), '');
 });
 
@@ -399,7 +399,7 @@ for (const size of SIZES) {
     try {
       const { page } = session;
       await goto(page, files.w7, '#/teacher/tsample002');
-      assert.equal(await one(page, '[data-part="part-time"]'), 'Part-time: not in school in Lessons 7 to 8 when it is B Day');
+      assert.equal(await one(page, '[data-part="part-time"]'), 'Part-time: not in school in Lessons 7 to 8 on B Day');
       assert.equal(await page.evaluate(() => document.querySelector('h1.page__title').nextElementSibling?.dataset.part), 'part-time', 'the line is directly under the name, before the summary');
       await goto(page, files.w7, '#/teacher/tsample001');
       assert.equal(await one(page, '[data-part="part-time"]'), 'Part-time: not in school on Fridays');
@@ -408,7 +408,7 @@ for (const size of SIZES) {
       assert.ok((await texts(page, '[data-also="away"]')).every((words) => words === 'Not in school on Fridays'));
       // Ms. Oyelaran is not in school in the fifth period on A Day: that row says so
       await goto(page, files.w7, '#/teacher/tsample005');
-      assert.equal(await one(page, '[data-part="part-time"]'), 'Part-time: not in school in Lessons 2 to 3 and Lesson 5 when it is A Day');
+      assert.equal(await one(page, '[data-part="part-time"]'), 'Part-time: not in school in Lessons 2 to 3 and Lesson 5 on A Day');
       const rows = await texts(page, '.day[data-today="true"] .row');
       assert.match(rows[4], /Not in school/, 'the fifth period: ' + rows[4]);
       assert.doesNotMatch(rows[3], /Not in school/);

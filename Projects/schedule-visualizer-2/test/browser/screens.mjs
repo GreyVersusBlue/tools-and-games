@@ -658,6 +658,10 @@ const SV2_32G1 = [
       await planReady(page);
       await page.evaluate(() => document.querySelector('.bld').editor.connect.start({ floorId: 'fsample002', cell: 332 }));
       await page.waitForSelector('#connect-banner:not([hidden])');
+      // the plan starts under the docked banner and is panned by its height
+      // only when it is measured again (SV2-142b): a point read before then is
+      // a banner's height below the stairs (SV2-144)
+      await still(page);
       const at = await page.evaluate(() => {
         const editor = document.querySelector('.bld').editor;
         const box = editor.canvas.getBoundingClientRect();

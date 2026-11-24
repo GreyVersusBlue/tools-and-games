@@ -263,10 +263,26 @@ test('5. the list dialog: rows, moves, rename and its refusal, delete with and w
   const sink = await idOf('Sink');
   await page.click(key('delete:' + sink));
   await shows(() => !(globalThis.sv2.store.project.building.features || []).some((feature) => feature.name === 'Sink'));
+  await page.waitForSelector('#features-dialog .toast:popover-open');
   assert.equal(await toastWords(), 'Deleted Sink');
   assert.equal(await text('#features-undo'), 'Deleted Sink · Undo');
-  // heard once: the toast is the live one; neither the announcer nor the dialog's line says it again
-  assert.equal(await page.$eval('#toasts', (el) => el.getAttribute('role')), 'status');
+  // SV2-142: a message raised over the dialog is above its backdrop in the free space beside it
+  // and never covers the dialog; where there is no such space it stays behind the dialog
+  const lie = await page.evaluate(() => {
+    const toast = document.querySelector('.toast');
+    const dialog = document.getElementById('features-dialog').getBoundingClientRect();
+    const box = toast.getBoundingClientRect();
+    const lifted = toast.matches(':popover-open');
+    const apart = box.bottom <= dialog.top + 5 || box.top >= dialog.bottom - 5 || box.right <= dialog.left || box.left >= dialog.right;
+    return { lifted, apart, inside: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight };
+  });
+  assert.equal(lie.lifted && lie.inside, true, 'the message is behind the dialog or off the window: ' + JSON.stringify(lie));
+  const room = await page.evaluate(() => { const d = document.getElementById('features-dialog').getBoundingClientRect(); return d.top >= 60 || d.bottom <= innerHeight - 60; });
+  assert.equal(room ? lie.apart : true, true, 'a message with room above or below the dialog lies on it: ' + JSON.stringify(lie));
+  // heard once: the toast is the live one, inside the dialog (SV2-142b); neither the
+  // announcer, the page's region nor the dialog's line says it again
+  assert.equal(await page.$eval('#features-dialog .toasts-over', (el) => el.getAttribute('role') + ':' + el.textContent.includes('Deleted Sink')), 'status:true');
+  assert.equal(await page.$eval('#toasts', (el) => el.getAttribute('role') + ':' + el.textContent), 'status:');
   assert.doesNotMatch(await text('#announcer'), /Deleted/, 'the announcer does not repeat the toast');
   assert.equal(await page.$eval('#features-undo', (el) => el.closest('[role="status"], [role="alert"], [aria-live]')), null, 'the way back in the dialog is not a live region');
   assert.match(await activeKey(), /^name:/, 'the focus goes to a name');
@@ -482,7 +498,7 @@ test('8. the room list print and the batch pages list features after Shared spac
   assert.deepEqual(made.names, ['A Day', 'B Day', 'Assembly Day'], 'the sample\u2019s day types');
   assert.deepEqual(Object.keys(made.partTime.none), ['A Day', 'B Day and Assembly Day'], 'with no away entry, B Day and Assembly Day are one table');
   assert.deepEqual(Object.keys(made.partTime.assemblyOnly), ['A Day', 'B Day', 'Assembly Day'], 'a sometimes entry on Assembly Day alone makes it a table of its own');
-  assert.match(made.partTime.assemblyOnly['Assembly Day']['Period 4'], /Not in school in Period 4 on Fridays when it is Assembly Day/);
+  assert.match(made.partTime.assemblyOnly['Assembly Day']['Period 4'], /Not in school in Period 4 on Fridays \(Assembly Day\)/);
   assert.doesNotMatch(made.partTime.assemblyOnly['B Day']['Period 4'], /Not in school/);
   // out all A Day: a free period reads Not in school, and a period already out has no "sometimes" note on top
   const aDay = made.partTime.sometimes['A Day'];
@@ -656,6 +672,106 @@ test('10. at 390 by 844 with touch the rows wrap, every target is 44 px and noth
   assert.ok(pinned.top >= 0 && pinned.bottom <= pinned.window, 'the Done button is on screen at 844 by 390: ' + JSON.stringify(pinned));
   await p.keyboard.press('Escape');
   await assertTouch(p, 'the phone');
+});
+
+test('SV2-142, SV2-142b: on the phone a message raised over any modal dialog is inside it, heard once, its Undo the next Tab stop; it lies beside the dialog, follows the window and the dialog as they change, goes to the dialog under a nested one, and is back in its place when the last closes', async () => {
+  const p = phone.page;
+  const state = () => p.evaluate(() => {
+    const toast = document.querySelector('.toast');
+    const dialogs = Array.from(document.querySelectorAll('dialog[open]'));
+    const dialog = dialogs.length > 0 ? dialogs[dialogs.length - 1] : null;
+    if (!toast) return null;
+    const box = toast.getBoundingClientRect();
+    const d = dialog ? dialog.getBoundingClientRect() : null;
+    const region = toast.closest('[role="status"]');
+    return {
+      lifted: toast.matches(':popover-open'),
+      apart: d === null || box.bottom <= d.top || box.top >= d.bottom || box.right <= d.left || box.left >= d.right,
+      inside: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+      inline: toast.style.top === '' && toast.style.left === '' && !toast.hasAttribute('popover') && !toast.classList.contains('toast--over'),
+      inDialog: dialog !== null && dialog.contains(toast),
+      dialogId: (toast.closest('dialog') || {}).id || null,
+      region: region ? (region.id || region.className) : null,
+      inert: toast.closest('[inert]') !== null,
+      pageHolds: document.getElementById('toasts').textContent,
+    };
+  });
+  // two frames: the resize observers have run and the message is set
+  const frames = () => p.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  // how many times the accessibility tree has the words: once, and not in the inert page
+  const heard = async (words) => {
+    const tree = await p.accessibility.snapshot({ interestingOnly: false });
+    let count = 0;
+    const walk = (node) => {
+      if (!node) return;
+      if (node.role === 'StaticText' && node.name === words) count += 1;
+      for (const child of node.children || []) walk(child);
+    };
+    walk(tree);
+    return count;
+  };
+  await p.evaluate(() => {
+    globalThis.sv2.ctx.openDialog({ id: 'small-question', title: 'A small question', body: 'Nothing here.', buttons: [{ label: 'Close', value: null }] });
+  });
+  await p.waitForSelector('dialog[open]');
+  await p.evaluate(() => globalThis.sv2.ctx.toast({ text: 'Said over the dialog', action: { label: 'Undo', run: () => { globalThis.undoneOver = true; } } }));
+  await p.waitForSelector('dialog[open] .toast:popover-open');
+  const over = await state();
+  assert.equal(over.lifted, true, 'the message is behind the dialog, not lifted');
+  assert.equal(over.inDialog, true, 'the message is not inside the dialog');
+  assert.equal(over.region, 'toasts-over', 'the message is in the dialog\'s own status region');
+  assert.equal(over.inert, false);
+  assert.equal(over.pageHolds, '', 'the page\'s region holds nothing (it would be said twice, or not at all)');
+  assert.equal(over.apart, true, 'the message covers the dialog');
+  assert.equal(over.inside, true, 'the message runs off the window');
+  assert.equal(await heard('Said over the dialog'), 1, 'the message is in the accessibility tree once');
+  // its Undo is reached by Tab from the dialog's own button
+  assert.equal(await p.evaluate(() => document.activeElement.textContent), 'Close');
+  await p.keyboard.press('Tab');
+  assert.equal(await p.evaluate(() => document.activeElement.className + ':' + document.activeElement.textContent), 'toast__action:Undo');
+  await p.keyboard.down('Shift');
+  await p.keyboard.press('Tab');
+  await p.keyboard.up('Shift');
+  assert.equal(await p.evaluate(() => document.activeElement.textContent), 'Close');
+  // the window turns: the message is set again beside the dialog, inside the window
+  await p.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await p.waitForFunction(() => innerWidth === 844);
+  await frames();
+  const turned = await state();
+  assert.equal(turned.inside, true, 'after a turn the message runs off the window: ' + JSON.stringify(turned));
+  await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await p.waitForFunction(() => innerWidth === 390);
+  await frames();
+  const upright = await state();
+  assert.deepEqual([upright.apart, upright.inside], [true, true], 'back upright the message is beside the dialog again: ' + JSON.stringify(upright));
+  // the dialog grows: the message moves with it, never onto it
+  await p.evaluate(() => {
+    const body = document.querySelector('#small-question .dialog__body');
+    for (let n = 0; n < 4; n += 1) body.append(Object.assign(document.createElement('p'), { textContent: 'A longer body, line ' + (n + 1) + '.' }));
+  });
+  await frames();
+  const grown = await state();
+  assert.deepEqual([grown.apart, grown.inside], [true, true], 'the dialog grew under the message: ' + JSON.stringify(grown));
+  // a dialog over the dialog: a message then is in the top one; when it closes, in the one under it
+  await p.evaluate(() => {
+    globalThis.sv2.ctx.openDialog({ id: 'inner-question', title: 'Another question', body: 'Still nothing.', buttons: [{ label: 'Close', value: null }] });
+  });
+  await p.waitForSelector('#inner-question[open]');
+  await p.evaluate(() => globalThis.sv2.ctx.toast({ text: 'Said over both' }));
+  await p.waitForSelector('#inner-question .toast:popover-open');
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.getElementById('inner-question') && document.querySelector('#small-question .toast:popover-open'));
+  const outer = await state();
+  assert.deepEqual([outer.dialogId, outer.lifted, outer.apart, outer.inside], ['small-question', true, true, true], 'the message went to the dialog under the one that closed: ' + JSON.stringify(outer));
+  assert.equal(await heard('Said over both'), 1);
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.querySelector('dialog[open]') && document.querySelector('#toasts .toast'));
+  const back = await state();
+  assert.equal(back.lifted, false, 'the message is still lifted after the dialog went');
+  assert.equal(back.inline, true, 'the message kept the dialog\'s place after it went');
+  // and with no dialog open it is the plain message
+  await p.evaluate(() => globalThis.sv2.ctx.toast({ text: 'Plain' }));
+  assert.equal((await state()).inline, true);
 });
 
 test('11. no page errors, and nothing asked for outside the tool', async () => {

@@ -892,7 +892,11 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
         how = 'fullscreen';
         root.dataset.present = 'fullscreen';
       } else {
-        // granted after the mode was left (Escape before the browser answered)
+        // granted after the mode was left (Escape before the browser answered):
+        // given back, and the map put back once it is over, as after a full
+        // screen that outlasts the leave. The look for the window's size can
+        // have run out while the section was the screen's (SV2-143)
+        armLate();
         exitFull();
       }
       return;
