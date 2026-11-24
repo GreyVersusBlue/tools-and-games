@@ -1088,7 +1088,7 @@
       {
         "id": "keep",
         "label": "Keep the linen for a trip",
-        "hint": "Constantinople pays about 25 dinars more for three loads, but it is a long way off and damp can spoil a load.",
+        "hint": "Constantinople pays about 25 dinars more for three loads, but it is a long way off. Damp spoils one load before you can send them.",
         "now": [
           {
             "flag": "bishara-linen-kept",
