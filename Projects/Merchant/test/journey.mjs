@@ -4114,6 +4114,7 @@ try {
           await page.waitForFunction(() => document.querySelectorAll('.desk-stills .desk-still').length === 1 && (document.querySelector('.desk-stills .desk-still.placeholder') || getComputedStyle(document.querySelector('.desk-stills .desk-still')).opacity === '1'), { timeout: 3000 }).catch(() => {});
           const got = await look();
           log.push(`${got.date}: ${got.files}`);
+          if ([1, 4, 5, 8].includes(season)) await page.screenshot({ path: path.join(SHOTS, `MER-132-phone-desk-season-${season}.png`) });
           eq(got.n, 1, `season ${season} (${got.date}): ${got.n} stills in the band: ${got.files}`);
           if (!got.placeholder) {
             eq(got.opacity, '1', `season ${season} (${got.date}): ${got.files} is at opacity ${got.opacity}`);
