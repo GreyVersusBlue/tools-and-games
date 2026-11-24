@@ -1037,9 +1037,17 @@ export function estimate(state, content, plan, memo = null) {
   // at the far end: sell, then buy with the purse and the proceeds, less the tolls that came first
   const tollsBefore = route.legs.slice(0, atQuote ? count.leg : far).reduce((n, l) => n + l.toll, 0);
   const tollsAll = route.legs.reduce((n, l) => n + l.toll, 0);
+  // The upkeep of every season the party waits at a stop before it trades comes out of the purse too (`move`), so what it buys with
+  // is the purse less the tolls and the waiting before the far end (or, for a party `jump` settles, the waiting seasons that had
+  // closed by then, `count.out`). MER-130: counting the tolls alone let a purse of 981 buy a fourth silk load that 962 could not.
+  const upkeepBefore = UPKEEP * proj.legs.slice(0, (atQuote ? count.leg : far) + 1).reduce((n, l) => {
+    const first = l.startK - l.waits, last = atQuote ? Math.min(l.startK - 1, count.out) : l.startK - 1;
+    return n + Math.max(0, last - first + 1);
+  }, 0);
+  const costsBefore = tollsBefore + upkeepBefore;
   const pricesSell = {}, pricesBuy = {}, pricesHome = {};
   const impact = {};   // dinars each good's price moved against the house's own loads there (what a flat price would have paid, less what the loads fetched)
-  let money = purse - Math.min(purse, tollsBefore);
+  let money = purse - Math.min(purse, costsBefore);
   const goodsBack = { ...cargo };
   // the far market as the party will find it, from the news and the house's own mark on it then, carried to the season of arrival
   // by market.js (`farMarket`); sales first, then purchases, as `tradeAt` does them
@@ -1109,7 +1117,7 @@ export function estimate(state, content, plan, memo = null) {
   }
   const upkeep = proj.waits * UPKEEP;
   // what the tolls took before the far end came out of the purse (money already net of it) or the cargo; the rest comes out of what is left
-  const gross = money + goodsValue - (tollsAll - tollsBefore) - Math.max(0, tollsBefore - purse) - upkeep;
+  const gross = money + goodsValue - (tollsAll - tollsBefore) - Math.max(0, costsBefore - purse) - (upkeep - upkeepBefore);
   const share = cityOf(content, 'expeditions').contracts?.qirad?.agentShare ?? [0, 1];
   const shares = split({ kind, agentShare: share[0], of: share[1] }, { house: stakedHouse, partners }, gross);
   const wage = kind === 'own' ? tripWage(agent, count) : 0;

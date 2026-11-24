@@ -710,13 +710,18 @@ test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an 
   ok(rows.length >= 8, `${rows.length} trips compared, ${lossy} left out for a loss`);
   for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
   // MER-128 moved this band. The second season now holds a second card (the king of Mali, dealt in his one season), and the first
-  // answer to it ('share') leaves the house 4 dinars richer at the start-2 states: purse 981 where it was 977. 981 is the purse at
-  // which the estimate counts a fourth load of silk (4 x 240) that the party cannot pay for once the road's 62 of tolls are taken, so
-  // on those six trips (seeds 1 to 4, start 2) the estimate reads one load's net too high, 210 dinars, where it read 0 off. That is a
-  // routes.js estimate defect the 4 dinars exposed, not this test's to fix; a later unit that owns routes.js should deduct the tolls
-  // before counting loads. The six are counted and bounded apart (an overstatement of at most one load, never an understatement), and
-  // the four start-0 trips, which carry the 12 dinars the head names, keep the bound that fails when MER-115 or MER-116 is reverted
-  // (their reading was 74.4 mean, 92 worst). The old mean of 4.8 was these four averaged with six exact trips.
+  // answer to it ('share') leaves the house 4 dinars richer at the start-2 states: purse 981 where it was 977. MER-128 read the
+  // fourth silk load (4 x 240 = 960) the estimate counts at 981 as a toll the estimate had not deducted. MER-130 traced it and the tolls
+  // were not it: the estimate already takes the tolls before the far end out of the purse. What it did not take was the upkeep of the
+  // seasons the party waits before it trades (4 dinars each, `move`), which it now does (`upkeepBefore`), and that is exact on the start-0
+  // trips (purse 750, 21 of tolls and 8 of upkeep, 721 at the jump, three loads). The start-2 trips of Yusuf still read 210 high:
+  // the first-road-letter reaches him at Damascus, the harness answers it 'wait', and a careful agent holds three seasons at Aleppo
+  // (958 in the purse when `jump` settles it, three loads) where the estimate's road has no wait at all (981 less 21 is 960, four
+  // loads). A hold depends on a letter that may or may not be dealt and an answer the player gives; no estimate can know it, so it is
+  // not one to fix in routes.js. The old band (mean 5 over all ten) cannot come back while those four trips are in the sample. The
+  // four are counted and bounded apart (an overstatement of at most one load, never an understatement), and the six that are left,
+  // which carry the 12 dinars the head names, keep the bound that fails when MER-115 or MER-116 is reverted (their reading was 74.4
+  // mean, 92 worst).
   const over = rows.filter(r => r.est - r.made > 150), rest = rows.filter(r => !over.includes(r));
   ok(over.length <= 6 && over.every(r => r.est - r.made <= 215), `${over.length} trips where the estimate counts a load the purse cannot pay for: ${over.map(r => `${r.at} ${r.est - r.made}`).join(', ')}`);
   ok(rest.length >= 4, `${rest.length} trips left for the band`);
@@ -724,6 +729,32 @@ test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an 
   ok(mean <= 12, `mean ${mean.toFixed(1)} dinars over ${rest.length} trips`);
   ok(worst <= 12, `worst ${worst} dinars`);
   ok(rel <= 0.025, `${(rel * 100).toFixed(1)} percent of the stake`);
+});
+
+test('MER-130 estimate on Samarkand: a purse just above the four-load line before the party has paid its way to the far end and below it after counts three loads of silk, as the trip buys', () => {
+  // Start 0, Yusuf, noise off: the party pays 21 dinars of tolls on the first three legs and waits two seasons at 4 each, so a purse of
+  // P reaches the far end with P - 29. Four silk loads cost 960 there. A purse of 981 to 988 clears 960 before those costs and not after,
+  // which is the line MER-128 found the estimate on the wrong side of; 989 is the first purse that buys four. The trip's loads are
+  // read from what it made (a load is worth about 210 and the estimate's known error 12), as the trip pays part of its later tolls in silk.
+  const c = variant(C, x => { for (const g of x.goods) g.sigma = 0; });
+  const run = purse => {
+    const s = newGame(c, { seed: 1, length: 'acts', house: c.houses[0].id });
+    s.agents.yusuf.where = 'cairo';
+    const plan = { ...proposePlan(s, c, 'yusuf', 'cairo-samarkand'), purse };
+    const counted = estimate(s, c, plan).back.silk;
+    const seen = new Set(s.desk.map(p => p.id));
+    let w = outfit(structuredClone(s), c, plan), paper;
+    for (let i = 0; i < 30 && !paper && w.phase !== 'recall' && w.phase !== 'ended'; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
+    return { counted, net: estimate(s, c, plan).net, made: paper.data.houseNet };
+  };
+  for (const purse of [981, 985, 988]) {
+    const { counted, net, made } = run(purse);
+    eq(counted, 3, `purse ${purse}: the estimate counts ${counted} loads of silk`);
+    ok(Math.abs(net - made) <= 12, `purse ${purse}: estimated ${net}, the trip made ${made} (a load is worth about 210 here)`);
+  }
+  const four = run(989);
+  eq(four.counted, 4, 'a purse of 989 pays for four loads after the road');
+  ok(Math.abs(four.net - four.made) <= 12, `purse 989: estimated ${four.net}, the trip made ${four.made}`);
 });
 
 /** The wage the sheet charged and the wage the return paper shows, for every proposal on `road` from seeded states, own or prepaid
