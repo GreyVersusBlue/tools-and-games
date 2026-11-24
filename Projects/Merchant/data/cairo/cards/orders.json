@@ -579,6 +579,9 @@
         "hint": "You gain 7 dinars. Yusuf will know.",
         "now": [
           {
+            "money": 7
+          },
+          {
             "trust": "yusuf",
             "by": -1
           },
@@ -590,11 +593,6 @@
         "later": [
           {
             "in": 2,
-            "do": [
-              {
-                "money": 7
-              }
-            ],
             "card": "yusuf-asks-in-writing"
           }
         ]
@@ -801,10 +799,18 @@
             {
               "flag": "samir-profit",
               "gte": 5
+            },
+            {
+              "flag": "samir-bonused",
+              "not": true
             }
           ]
         },
         "now": [
+          {
+            "flag": "samir-bonused",
+            "set": "now"
+          },
           {
             "money": -5
           },
