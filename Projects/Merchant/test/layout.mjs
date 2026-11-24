@@ -763,11 +763,19 @@ try {
         // account folded and unfolded, at every frame. A box is measured by what a player can see of it: cut by every ancestor that clips or scrolls.
         if (/^desk-return2?(-open)?$/.test(screen.name)) {
           await test(`${tag}: no choice of the return is behind End the season, as it opens or when scrolled to`, async () => {
-            // "as it opens" is the page as the desk leaves it, not one forced back to its top: on the upright phone the desk scrolls the page until
-            // the last choice is clear of End (desk.js revealOnPage, MER-142), so the paper is raised again and left to settle
-            await screen.go(page, frame);
-            await settle(page);
-            await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+            // "as it opens" is the page as the desk leaves it when the return is the paper raised on arrival: on the upright phone the desk scrolls the
+            // page until the last choice is clear of End (desk.js revealOnPage, MER-142). The harness raised it by pressing its tab after scrolling to
+            // it, which puts the headline under the bar by another rule, so the two plain screens are loaded again with the return first on the desk
+            // (the account-open screens keep the page they have, taken to its top as before).
+            const own = { 'desk-return': states.ret, 'desk-return2': states.ret2 }[screen.name];
+            if (own) {
+              const lead = own.desk.find(x => x.kind === 'return' && x.state === 'open'), first = structuredClone(own);
+              first.desk = [lead, ...own.desk.filter(x => x.id !== lead.id)].map(x => structuredClone(x));
+              await load(page, '#desk', { state: first, large: frame.large });
+              await page.waitForSelector('#screen-desk .sheet-title');
+              await settle(page);
+              eq(await page.$eval('.sheet', e => e.dataset.paper), lead.id, 'setup: the return is the paper raised on arrival');
+            } else await page.evaluate(() => window.scrollTo(0, 0));
             const bad = await page.evaluate(() => {
               const saved = [document.scrollingElement, ...document.querySelectorAll('.stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
               const seen = e => { const q = e.getBoundingClientRect(); const v = { top: q.top, bottom: q.bottom, left: q.left, right: q.right };
