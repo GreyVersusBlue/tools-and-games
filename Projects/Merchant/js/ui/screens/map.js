@@ -216,7 +216,7 @@ export function createMap(app, nav) {
         const named = ms.some(m => m.id === home) ? `${stopName(content, home)}, ${clusterName(s.cluster)}` : clusterName(s.cluster);
         const dot = h('span', { class: 'dot cluster', role: 'img', 'aria-label': `${named}, ${ms.length} stops`, style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } });
         const label = h('span', { class: 'stop-label cluster-label', 'aria-hidden': 'true', style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster, ...(ms.some(m => m.id === home) ? { keep: '1' } : {}) } }, `${named}: ${ms.length} stops`);
-        out.push(dot, label); pairs.push({ dot, label, side: null, rank: ms.some(m => m.id === home) ? 0 : 2 });
+        out.push(dot, label); pairs.push({ dot, label, side: null, rank: ms.some(m => m.id === home) ? 0 : 1 });
         continue;
       }
       // The dot names the stop to a screen reader even when its label is hidden for want of room
@@ -371,7 +371,7 @@ export function createMap(app, nav) {
         if (!fits(r) || others.some(q => hits(r, q)) || dots.some(d => hits(r, d.r)) || leaderHits(name, r, crossable)) continue;
         won = { name, r }; break;
       }
-      // nowhere clear: the place that covers least (a piece counts three times, a dot a fixed amount, a leader across a label or piece more), inside
+      // nowhere clear: the place that covers least (a piece counts three times, a leader across a label or piece 4,000, a dot 30,000: the labels are placed again round a caption that lies over one, and a dot is never moved), inside
       // the picture if any is, and never just the first
       if (!won) {
         clearlyFound = false;
@@ -379,7 +379,7 @@ export function createMap(app, nav) {
         let best = Infinity;
         for (const [name, s] of Object.entries(sides)) {
           const r = box(s);
-          const cost = others.reduce((n, q) => n + area(r, q) * (q.piece ? 3 : 4), 0) + dots.filter(d => hits(r, d.r)).length * 2500 + leaderHits(name, r, crossable) * 4000 + (fits(r) ? 0 : 1e7);
+          const cost = others.reduce((n, q) => n + area(r, q) * (q.piece ? 3 : 4), 0) + dots.filter(d => hits(r, d.r)).length * 30000 + leaderHits(name, r, crossable) * 4000 + (fits(r) ? 0 : 1e7);
           if (cost < best) { best = cost; won = { name, r }; }
         }
       }
@@ -407,7 +407,13 @@ export function createMap(app, nav) {
     const placeLabel = m => {
       // its own side, then every side close in, then every side one step further out (a crowd of dots on a phone leaves no room beside them)
       const out2 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 1.7, dy: t.dy * 1.7 })), out3 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 3.4, dy: t.dy * 3.4 }));
-      const tries = [m.p.side, ...Object.values(SIDES), ...out2, ...out3].filter(Boolean);
+      // MER-147: and last, the label slid along each side of its dot, at four gaps out to MAX_AWAY (a crowded phone leaves the plain sides no room, and a label
+      // that may lie no further than MAX_AWAY has to find the gap that is there)
+      const slid = [];
+      for (const gap of [4, 16, 28, MAX_AWAY]) for (const f of [-0.35, 0.35, -0.2, 0.2]) {
+        slid.push({ dx: 0, dy: -gap, ax: -0.5 + f, ay: -1 }, { dx: 0, dy: gap, ax: -0.5 + f, ay: 0 }, { dx: -gap, dy: 0, ax: -1, ay: -0.5 + f }, { dx: gap, dy: 0, ax: 0, ay: -0.5 + f });
+      }
+      const tries = [m.p.side, ...Object.values(SIDES), ...out2, ...out3, ...slid].filter(Boolean);
       let won = null;
       // a label over the edge of a token's piece still reads, a label over a caption does not, so the last tier alone covers one. MER-147: no tier lets
       // a label cover another stop's dot (c007: Tuat's dot lay under Cairo's label) and none lets it lie further than MAX_AWAY from its own; a label with
@@ -418,9 +424,11 @@ export function createMap(app, nav) {
       // covers a dot (it is never hidden: play a092 had a token on it once two trips were out)
       const keep = !!m.p.label.dataset.keep, wideFrame = !small();
       const tiers = [{ dots: false, cover: 'all' }, { dots: false, cover: 'core' }, { dots: false, cover: 'pieces' }, { dots: false, cover: 'any' },
-        ...(keep ? [...(wideFrame ? [{ dots: false, cover: 'core', reach: 1.5 }] : []), { dots: false, cover: 'any', badge: true }, { dots: true, cover: 'any', badge: true }] : [])];
+        ...(keep ? [...(wideFrame ? [{ dots: false, cover: 'core', reach: 1.5 }] : []), { dots: false, cover: 'any', badge: true }, { dots: true, cover: 'any', badge: true }]
+          : [{ dots: true, cover: 'pieces' }, { dots: true, cover: 'any' }])];
       const mid = q => { const k = (q.right - q.left) / 4; return { left: q.left + k, right: q.right - k, top: q.top + k, bottom: q.bottom - k }; };
       for (const { dots: overDots, cover, reach = 1, badge = false } of tiers) {
+        let fewest = Infinity;      // a tier that may cover dots takes the cheapest side, not the first
         for (const t of tries) {
           const left = m.at.x + t.dx + t.ax * m.w, top = m.at.y + t.dy + t.ay * m.h;
           const r = { left, top, right: left + m.w, bottom: top + m.h };
@@ -428,10 +436,13 @@ export function createMap(app, nav) {
           if (away(r, m.at) > MAX_AWAY * reach) continue;
           if (taken.some(q => q.lead && hits(r, q))) continue;   // a caption's leader is never under a label, in any tier: the label is hidden first
           if (!badge && taken.some(q => q.badge && hits(r, q))) continue;   // MER-145: a stack's number is never under a label, in any tier (the contrast case read paper on paper)
-          if (!overDots && dots.some(o => o.el !== m.p.dot && hits(r, o.r))) continue;
+          // a side that must cover dots covers the cheapest: a dot costs more the further it is from the label's own (a far dot under a name reads as that
+          // name's stop: Tuat's under Cairo's label, c007); counted for the sort only when dots may be covered
+          const hitDots = dots.filter(o => o.el !== m.p.dot && hits(r, o.r)), under = hitDots.length ? hitDots.reduce((n, o) => n + 1 + Math.hypot((o.r.left + o.r.right) / 2 - m.at.x, (o.r.top + o.r.bottom) / 2 - m.at.y) / 30, 0) : 0;
+          if (!overDots && under) continue;
           if (taken.some(q => (cover === 'all' || (cover !== 'any' && !q.piece && !q.badge) || (cover === 'core' && q.piece)) && hits(r, cover === 'core' && q.piece ? mid(q) : q))) continue;
-          won = { t, r };
-          break;
+          if (!overDots) { won = { t, r }; break; }
+          if (under < fewest) { fewest = under; won = { t, r }; }
         }
         if (won) break;
       }

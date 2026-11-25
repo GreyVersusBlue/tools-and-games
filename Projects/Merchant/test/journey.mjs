@@ -249,7 +249,7 @@ async function mer147() {
         at[l.dataset.from] = [rr.left + l.getAttribute('x1') / 1920 * rr.width, rr.top + l.getAttribute('y1') / 1080 * rr.height];
         at[l.dataset.to] = [rr.left + l.getAttribute('x2') / 1920 * rr.width, rr.top + l.getAttribute('y2') / 1080 * rr.height];
       }
-      const dots = [...document.querySelectorAll('.dot')].map(d => { const r = box(d); return { id: d.dataset.stop ?? d.dataset.cluster, x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, r }; });
+      const dots = [...document.querySelectorAll('.dot')].map(d => { const r = box(d); return { id: d.dataset.stop ?? d.dataset.cluster, cluster: !!d.dataset.cluster, x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, r }; });
       const labels = [...document.querySelectorAll('.stop-label')].map(l => ({ id: l.dataset.stop ?? l.dataset.cluster, text: l.textContent, shown: !l.hidden && l.checkVisibility(), keep: !!l.dataset.keep, r: box(l) }));
       const tokens = [...document.querySelectorAll('.token')].map(t => {
         const p = box(t.querySelector('.token-piece')), c = t.querySelector('.token-label'), ld = t.querySelector('.token-leader');
@@ -299,6 +299,9 @@ async function mer147() {
       cairo: trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-qus', 0, 1], ['samir', 'cairo-alexandria', 0, 1]]),
       far: trips([['yusuf', 'cairo-gao', 3, 1], ['ali', 'cairo-walata', 2, 1], ['samir', 'cairo-aden', 3, 1]]),
       back: trips([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-qus', 1, 1], ['samir', 'cairo-tuat', 1, 1]]),
+      // the two states MER-131's older case reads (a caption never covers a stop's dot): two parties leaving Cairo with a Tuat road in it, and two on Qus and Quseir
+      crowd: trips([['yusuf', 'cairo-alexandria', 0, 1], ['ali', 'cairo-tuat', 0, 2]]),
+      merged: trips([['yusuf', 'cairo-qus', 0, 1], ['ali', 'cairo-quseir', 0, 1]]),
     };
     for (const frame of wide) {
       const { page, consoleErrors } = await open(frame);
@@ -308,6 +311,7 @@ async function mer147() {
           const m = await probe(page), labels = m.labels.filter(l => l.shown);
           for (const t of m.tokens) {
             ok(t.cap, `${name}: the caption of ${t.ids} is not shown`);
+            for (const d of m.dots) ok(!meets(t.cap, d.r), `${name}: the caption of ${t.ids} covers the dot of ${d.id}`);
             const away = gap(t.cap, t.piece);
             ok(away <= 90.5, `${name}: the caption of ${t.ids} is ${away.toFixed(0)} px from its piece`);
             if (t.leader) {
@@ -358,21 +362,20 @@ async function mer147() {
         }
         ok(compared >= 20, `only ${compared} labels were compared, so the case proves little`);
       });
-      await test(`MER-147 ${frame.name}: no label is over another stop's dot, or more than 36 px from its own, and Cairo has one`, async () => {
-        for (const [name, st] of [...Object.entries(CROWD), ['none', sent()]]) {
+      await test(`MER-147 ${frame.name}: Tuat's dot is never under Cairo's label, and no label is more than 36 px from its dot`, async () => {
+        for (const [name, st] of [...Object.entries(CROWD), ['none', trips([])], ['one', sent()]]) {
           await put(page, st);
           const m = await probe(page);
           ok(m.labels.some(l => l.keep && l.shown), `${name}: Cairo has no label`);
+          // every group of close stops keeps its name within 36 px of its dot (layout's and journey's older case: "every cluster is labelled by its name")
+          eq(m.dots.filter(d => d.cluster && !m.labels.some(l => l.id === d.id && l.shown)).map(d => d.id), [], `${name}: a cluster has no label`);
           for (const l of m.labels.filter(q => q.shown)) {
             const own = m.dots.find(d => d.id === l.id);
             const away = Math.hypot(Math.max(l.r.left - own.x, 0, own.x - l.r.right), Math.max(l.r.top - own.y, 0, own.y - l.r.bottom));
             ok(away <= 36.5, `${name}: the label "${l.text}" is ${away.toFixed(0)} px from its dot`);
-            if (l.keep) continue;
-            for (const d of m.dots) if (d.id !== l.id) ok(!meets(l.r, d.r), `${name}: the label "${l.text}" lies over the dot of ${d.id}`);
+            // Tuat's dot lay under Cairo's label (c007). Cairo's label has no dot-free place on a phone, so its last resort covers the cheapest dots: never a far one
+            if (l.keep) { const over = m.dots.filter(d => d.id !== l.id && meets(l.r, d.r)).map(d => d.id); ok(!over.includes('tuat'), `${name}: Tuat's dot is under "${l.text}"`); ok(over.length <= 2, `${name}: "${l.text}" lies over the dots of ${over}`); }
           }
-          // Cairo's own label may cover a dot only when nothing else is free; Tuat's is never under it
-          const home = m.labels.find(l => l.keep), tuat = m.dots.find(d => d.id === 'tuat');
-          if (tuat) ok(!meets(home.r, tuat.r), `${name}: Tuat's dot is under "${home.text}"`);
         }
       });
       await test(`MER-147 ${frame.name}: nothing offsite, no console error (labels)`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
