@@ -190,6 +190,7 @@ row names a file it does not run.
 | `test/engine/places.test.mjs` | Stretches of corridor, their names, the hotspot ranking |
 | `test/engine/crowd.test.mjs` | The crowd model, rule by rule |
 | `test/engine/crowd-routes.test.mjs` | Crowd-aware routes (SV2-149): the crowd result's `slotDelay` summing to `cellDelay` per node and charged to the lane the jam was in; every crowd figure and every teacher walk byte-identical after `teacherRoute` was pulled out (digests, with walks really there); on the two-halls fixture the rule moves groups and waiting falls, each transition re-simulated to the kept routes; a plan with no spare corridor moves nothing (the main lane's objects, by identity); a detour over the limit refused, at the limit taken; a step-free group stays step-free; reversed groups the same answer; a follower day type uses its base's run; a bells run and a period that does not meet; a transition with nobody waiting 10 s the main lane's own object; the sample finding nothing; a round kept only when the total falls |
+| `test/engine/teacher-trail.test.mjs` | A teacher's day for Movement (SV2-151): stops by period, the walk between two periods in a row with its figures copied from the run's `walks.teachers` (matched by teacher, period, rooms and passing time; none when unmatched), the walk across a free period (timed, never late, not across a period that is not free), a period in two rooms and a room not in the building noted with no walk, a bell schedule's off periods left out, every teacher of the grown fixture in every run |
 | `test/engine/import-groups.test.mjs` | Groups from CSV: the column guess, the preview, a name clash |
 | `test/engine/exports.test.mjs` | Every CSV and JSON export, and the file names |
 | `test/engine/project-file.test.mjs` | The project, building and schedule files, written and read back |
@@ -246,6 +247,7 @@ row names a file it does not run.
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
 | `test/ui/movement.test.mjs` | The movement view's plain functions: lanes, the choice, the legend |
 | `test/ui/movement-across.test.mjs` | A walk across periods that do not meet ("Period 2 to Period 4") in the strip, tables, CSV files, load and prints; a bell schedule with no period meeting; the prints' bells and followers; the lab's transition names |
+| `test/ui/movement-filters.test.mjs` | Movement's destination-room and subject filters and its teacher and room addresses (SV2-151): which walks a filter keeps (a room, a subject, none, both, a room not in the building, a period with no room), the loads of a filtered result equal to those of the matching routes alone, the filters in words, `#movement/teacher/…` and `#movement/to/…` read, written and read again |
 | `test/ui/walk-across.test.mjs` | A late walk across a period that does not meet in the checks (groups and teachers, both periods named, stable ids), the cell card's walk name, and the Travel tab and print when one period meets; a project with no middle off period gives byte-identical findings |
 | `test/ui/playback.test.mjs` | Playback's plain functions: what the device keeps, where a marker is |
 | `test/ui/room-picker.test.mjs` | The room picker's rules and the Groups tab's addresses, with no browser |
@@ -361,7 +363,7 @@ row names a file it does not run.
 | `test/timing/crowd.mjs` | The crowd model under its budget |
 | `test/timing/crowd-routes.mjs` | Crowd-aware routes on the twelve runs of the grown fixture and a step-free group: 300 ms a run, failing at 600, searches printed |
 | `test/timing/pipeline.mjs` | The derived pipeline end to end under its budget |
-| `test/timing/movement.mjs` | The movement view's main-thread work under its budget |
+| `test/timing/movement.mjs` | The movement view's main-thread work under its budget, and (SV2-151) a teacher's trail on the grown fixture: 20 ms for the busiest teacher and at the median, failing at 40 |
 | `test/timing/playback.mjs` | One frame of playback under its budget |
 | `test/timing/evacuation.mjs` | Every room's way out and door card under its budget; a blocked-trial question (exit and stairs) with the plain pass cached |
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |

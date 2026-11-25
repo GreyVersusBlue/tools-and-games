@@ -75,6 +75,7 @@ export const GROUPS = {
     'engine/places.test.mjs', // SV2-15
     'engine/crowd.test.mjs', // SV2-15
     'engine/crowd-routes.test.mjs', // SV2-149
+    'engine/teacher-trail.test.mjs', // SV2-151
     'engine/import-groups.test.mjs', // SV2-10
     'engine/exports.test.mjs', // SV2-10
     'engine/project-file.test.mjs', // SV2-10
@@ -131,6 +132,7 @@ export const GROUPS = {
     'ui/building-inspector.test.mjs', // SV2-07
     'ui/movement.test.mjs', // SV2-17
     'ui/movement-across.test.mjs', // SV2-79b
+    'ui/movement-filters.test.mjs', // SV2-151
     'ui/walk-across.test.mjs', // SV2-79c
     'ui/playback.test.mjs', // SV2-44
     'ui/room-picker.test.mjs', // SV2-48

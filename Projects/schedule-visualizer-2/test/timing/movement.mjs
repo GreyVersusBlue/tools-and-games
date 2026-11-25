@@ -7,6 +7,12 @@
 //   (pictureOf, which calls buildLanes): budget 300 ms, cold
 //   the card of one corridor cell under the pointer (cellCard): budget 5 ms
 //   a card, as a pointer moving along the corridors gets them
+//   a teacher's own day (teacherTrail, engine/teacher-trail.js): budget 20 ms
+//   for the busiest teacher's trail (the best of three, which leaves out a pause
+//   of the collector or the machine) and for the median of all 150, each with a
+//   route cache of its own that nothing has filled; the slowest is printed, and
+//   is not held to a budget, since one pause in a hundred and fifty is the
+//   runner's and not the trail's (SV2-151)
 //   one tick of the hotspot pulse (createPulse's frame, drawn by
 //   pulseFrame): budget 16 ms, a frame of the screen (SV2-47)
 //
@@ -40,6 +46,9 @@ import { buildGraph } from '../../engine/graph.js';
 import { routesForSchedule, routingGraph } from '../../engine/routing.js';
 import { simulateSchedule, walkResults } from '../../engine/crowd.js';
 import { loads } from '../../engine/load.js';
+import { createRouteCache } from '../../engine/routing.js';
+import { runResults } from '../../engine/worker.js';
+import { teacherTrail } from '../../engine/teacher-trail.js';
 import { places } from '../../engine/places.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { buildLanes } from '../../ui/surface/overlays/lanes.js';
@@ -48,6 +57,7 @@ import { hotspotRows, createPulse, pulseFrame, PULSE_TOP, PULSE_MS, PULSE_TIMES 
 import { bigProject, BIG } from '../fixtures/big.mjs';
 
 const PICTURE_BUDGET = 300;
+const TRAIL_BUDGET = 20;
 const CARD_BUDGET = 5;
 const TICK_BUDGET = 16;
 const SLACK = 2;
@@ -191,4 +201,46 @@ test('one tick of the hotspot pulse on the big fixture: under 16 ms, and it draw
   assert.ok(asked.every((count) => count === rings.length * 3), 'a tick asks for one arc a ring and nothing more: ' + asked[0] + ' calls for ' + rings.length + ' rings');
   assert.ok(median < TICK_BUDGET * SLACK, 'a tick takes ' + median.toFixed(3) + ' ms at the median, over ' + TICK_BUDGET * SLACK);
   assert.ok(worst < TICK_BUDGET * SLACK, 'the slowest tick took ' + worst.toFixed(3) + ' ms, over ' + TICK_BUDGET * SLACK);
+});
+
+// The fixture's teachers have one room each and so no walks at all; every
+// second teacher here takes a second room, as test/engine/crowd-routes.test.mjs
+// gives them, so there are walks to route (about 160) and free periods to walk
+// across.
+function withTeacherWalks(project) {
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room'));
+  project.teachers.forEach((teacher, i) => {
+    if (i % 2) return;
+    const other = rooms[(i * 7 + 3) % rooms.length];
+    if (!other || teacher.roomIds.includes(other.id)) return;
+    teacher.roomIds.push(other.id);
+    other.teacherIds = [...(other.teacherIds || []), teacher.id];
+  });
+  return project;
+}
+
+test('a teacher\'s trail on the big fixture: under 20 ms cold, for the busiest teacher and at the median of all of them', () => {
+  const project = withTeacherWalks(bigProject({ seed: 1 }));
+  const { graph, results } = answered(project);
+  const dayTypeId = project.dayTypes[0].id;
+  const walks = runResults(results, dayTypeId).walks.teachers;
+  const trailOf = (teacher) => teacherTrail(project, graph, { teacherId: teacher.id, dayTypeId, walks, cache: createRouteCache(16) });
+  const all = project.teachers.map((teacher) => ({ teacher, ...timed(() => trailOf(teacher)) }));
+  const busiest = all.reduce((best, each) => (each.value.walks.length > best.value.walks.length ? each : best));
+  const repeats = [busiest.ms, ...[1, 2].map(() => timed(() => trailOf(busiest.teacher)).ms)];
+  const best = Math.min(...repeats);
+  const median = all.map((each) => each.ms).sort((a, b) => a - b)[Math.floor(all.length / 2)];
+  console.log('# teacher trails, slowest five ms: ' + all.map((each) => each.ms).sort((a, b) => b - a).slice(0, 5).map((ms) => ms.toFixed(1)).join(', '));
+  const slowest = all.reduce((worst, each) => (each.ms > worst.ms ? each : worst));
+  const across = all.reduce((n, each) => n + each.value.walks.filter((walk) => walk.across.length > 0).length, 0);
+  const total = all.reduce((n, each) => n + each.value.walks.length, 0);
+  console.log('# teacher trail, cold cache: the busiest teacher (' + busiest.value.walks.length + ' walks) ' + best.toFixed(2) + ' ms at best of three, the first of them ' + busiest.ms.toFixed(2) + ' ms (budget ' + TRAIL_BUDGET + ', fails at ' + TRAIL_BUDGET * SLACK + '); the median of ' + all.length + ' ' + median.toFixed(2) + ' ms, the slowest ' + slowest.ms.toFixed(2) + ' ms; ' + total + ' walks in all, ' + across + ' of them across a free period');
+
+  assert.equal(all.length, BIG.teachers);
+  assert.ok(busiest.value.walks.length >= 2, 'the busiest teacher really walks: ' + busiest.value.walks.length);
+  assert.ok(across > 0, 'and some walk across a free period');
+  assert.ok(walks.length > 30, 'the run has walks to match: ' + walks.length);
+  assert.ok(busiest.value.walks.every((walk) => walk.across.length > 0 || walk.walking !== null), 'the figures are matched');
+  assert.ok(best < TRAIL_BUDGET * SLACK, 'the busiest trail took ' + best.toFixed(2) + ' ms at best of three, over ' + TRAIL_BUDGET * SLACK);
+  assert.ok(median < TRAIL_BUDGET * SLACK, 'the median trail took ' + median.toFixed(2) + ' ms, over ' + TRAIL_BUDGET * SLACK);
 });
