@@ -4798,6 +4798,114 @@ try {
       await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
+
+    // ---- MER-145: what the M4e play found on screen
+    {
+      const { page, consoleErrors } = await open(FRAMES[1]);
+      await test('MER-145 board: a sale that sells a good out leaves the focus on the section heading, never on the next good\'s Sell, and a second Enter sells nothing', async () => {
+        const st = stocked(); st.stock = { copper: 3, linen: 4 };
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+        await page.focus('#sell-copper');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => !document.getElementById('sell-copper'));
+        const after = await page.evaluate(() => ({ active: document.activeElement.id, stock: window.__merchant.state.stock }));
+        eq(after.stock, { linen: 4 }, 'the three loads of copper were sold, nothing else');
+        ok(after.active !== 'sell-linen', 'the focus went to the next good\'s Sell button');
+        eq(after.active, 'ledger-warehouse-h');
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => window.__merchant.state.stock), { linen: 4 }, 'a second Enter sold a good');
+      });
+      await test('MER-145 board: the price line is the quote for the loads now chosen, after a step and after a sale', async () => {
+        const st = stocked();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+        const line = () => page.$eval('#ledger-stock li[data-good="copper"] > span', e => e.textContent);
+        const n0 = await page.$eval('#step-sell-copper', e => Number(e.getAttribute('aria-valuenow')));
+        const q0 = eng.sellHomeQuote(st, nodeContent, 'copper', n0);
+        ok((await line()).includes(`${withCommas(q0.first)} dinars a load`) && (await line()).includes(`${withCommas(q0.last)} dinars by the last`), `the line for ${n0}: ${await line()} against ${JSON.stringify(q0)}`);
+        await page.click('#step-sell-copper-minus'); await page.click('#step-sell-copper-minus');
+        const q1 = eng.sellHomeQuote(st, nodeContent, 'copper', n0 - 2);
+        ok((await line()).includes(`${withCommas(q1.last)} dinars by the last`) || q1.first === q1.last, `after two steps: ${await line()} against ${JSON.stringify(q1)}`);
+        await page.click('#sell-copper');
+        const sold = eng.sellHome(st, nodeContent, 'copper', n0 - 2);
+        const q2 = eng.sellHomeQuote(sold, nodeContent, 'copper', n0 - 2);
+        ok((await line()).includes(`${withCommas(q2.first)} dinars a load`), `after the sale: ${await line()} against ${JSON.stringify(q2)}`);
+        ok(q2.first !== q0.first, 'setup: the sale moved the price, so the old line would be wrong');
+      });
+      await test('MER-145 board: the set-out note covers neither the heading nor the stop list on a second send', async () => {
+        let g = firstDone3(); g.money = 3000;
+        await putState(page, g, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        for (let i = 0; i < 2; i++) {
+          await page.click('#btn-outfit'); await page.waitForSelector('#outfit-send'); await page.click('#outfit-send');
+          await page.waitForSelector('#map-toast:not([hidden])');
+          await page.evaluate(() => new Promise(r => setTimeout(r, 400)));
+          const got = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(); const t = r('#map-toast');
+            return { toast: t.bottom, title: r('#board-title').top, list: r('#stoplist').top }; });
+          ok(got.title >= got.toast - 0.5 && got.list >= got.toast - 0.5, `send ${i + 1}: the note ends at ${got.toast}, the heading begins at ${got.title}, the list at ${got.list}`);
+          if (i === 0) { await page.click('#stop-qus'); }
+        }
+      });
+      await test('MER-145 board: "Every price" is whole above the buttons at the foot of the board, opened and focused (1366 is the frame it was cut at)', async () => {
+        await page.setViewport({ width: 1366, height: 768, deviceScaleFactor: 1 });
+        await putState(page, firstDone3(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.focus('#btn-all-prices');
+        const got = await page.evaluate(() => { const b = document.getElementById('btn-all-prices').getBoundingClientRect(), a = document.querySelector('.board-actions').getBoundingClientRect(), v = document.getElementById('board-body').getBoundingClientRect(); return { bottom: b.bottom, actions: a.top, body: v.bottom }; });
+        ok(got.bottom <= got.actions + 0.5 && got.bottom <= got.body + 0.5, `Every price ends at ${got.bottom}, the buttons begin at ${got.actions}`);
+        await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+      });
+      await test('MER-145 board: hiring Ali on a wage opens the outfit sheet for him, as the qirad does for Samir', async () => {
+        const g = firstDone3(); g.agents.ali.hired = false; g.agents.ali.where = 'cairo';
+        for (const p of g.desk) if (p.state === 'open') p.state = 'done';
+        g.desk.push({ id: 'p0-9', state: 'open', kind: 'card', ref: 'ali-asks-for-work' });
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await page.click('.sheet .choice:first-child');
+        await page.waitForSelector('#btn-next:not([disabled])');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
+        await page.click('#btn-next');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        const got = await page.evaluate(() => document.getElementById('outfit-send')?.textContent ?? '');
+        ok(/Ali/.test(got), `the sheet is not Ali's: "${got}"`);
+        eq(await page.evaluate(() => window.__merchant.state.agents.ali.hired), true);
+      });
+      await test('MER-145 board: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    {
+      // account rows never run a figure into the words, and the wage row and the bonus reason name what they mean
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await test('MER-145 phone: a return\'s account has a space between its cells, the wage row says which seasons, and the paper opens with its seal below the top bar', async () => {
+        let g = fresh3();
+        for (let i = 0; i < 60 && !g.desk.some(p => p.kind === 'return' && p.state === 'open'); i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
+        ok(g.desk.some(p => p.kind === 'return' && p.state === 'open'), 'setup: the model game reaches a return');
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        const id = g.desk.find(p => p.kind === 'return' && p.state === 'open').id;
+        if (await page.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await page.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await page.click(`.edge[data-paper="${id}"]`); }
+        await page.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
+        await page.evaluate(() => new Promise(r => setTimeout(r, 600)));
+        // the paper opened with the page scrolled by the tap on its edge: its seal is under the bar or below it, never behind it
+        const seal = await page.evaluate(() => { const s = document.querySelector('.sheet .sheet-head').getBoundingClientRect(), b = document.querySelector('.topbar').getBoundingClientRect(); return { top: s.top, bar: b.bottom }; });
+        ok(seal.top >= seal.bar - 0.5, `the seal row begins at ${seal.top}, the top bar ends at ${seal.bar}`);
+        await page.click('.account summary');
+        const rows = await page.$$eval('.accounts-table tr', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+        ok(rows.length > 2, 'the account has rows');
+        const run = rows.filter(t => /[A-Za-z)][+−-]\d|[a-z]\d/.test(t));
+        eq(run, [], 'a row runs a figure into the words');
+        for (const t of rows.filter(t => /wage/.test(t))) ok(/after \w+ set out/.test(t), `the wage row does not say which seasons: ${t}`);
+      });
+      await test('MER-145 phone: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
   }
 
 
