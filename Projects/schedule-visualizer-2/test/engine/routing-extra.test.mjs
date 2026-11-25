@@ -252,6 +252,16 @@ test('a failure is explained as it is without extras', () => {
   const withExtra = route(graph, roomId('1A'), roomId('1B'), { avoidStairs: true, extraSeconds: jam });
   assert.deepEqual(withExtra, blocked);
   assert.equal(withExtra.stepBlocked, true);
+  // the re-run is the plain step-free search, so it is cached: the second
+  // failure with extras costs one search (its own), not two. This is the only
+  // place the re-run's lack of extras can be seen, since a failure's words never
+  // depend on them.
+  const cache = createRouteCache();
+  const opts = { avoidStairs: true, extraSeconds: jam, cache, geometryVersion: 1 };
+  route(graph, roomId('1A'), roomId('1B'), opts);
+  const first = cache.searches;
+  route(graph, roomId('1A'), roomId('1B'), opts);
+  assert.equal(cache.searches - first, 1, 'the explanation came from the cache');
 });
 
 test('extras of the wrong kind or size are refused in words', () => {
