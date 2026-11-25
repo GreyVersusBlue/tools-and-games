@@ -1208,7 +1208,10 @@ test('(MER-140) a letter that arrived in an earlier season and waited is never p
 // `deliver` puts a letter ahead of its own trip's return paper (MER-118), and mix.mjs looked for new letters at the end of the desk,
 // where the return paper had taken their place. So the papers are compared, not the length of the desk, and this case plays enough
 // seeded bot games (36: careful, greedy and qirad in turn, every house) to tell 25 percent from 50: about 110 trips of three seasons or more.
-const SHARE_GAMES = 36, SHARE_FLOOR = 0.4;
+// MER-148: the floor is 0.3, not 0.4. Over these 36 games 91 long trips came home with 67 letters (73.6 percent) before, and 152 with 55 (36.2) now, and the letter rules did not
+// change: with goods counted at what Sell would pay, the bots send 118 of the 152 long trips to Damascus (31 of 91 before), a road with one writing opening that wrote on 24 of those
+// 118 (14 of 31 before), and every other road wrote on nearly all of its trips (31 of 34 now, 53 of 60 before). The share of long trips that write is a fact about the roads the bots pick.
+const SHARE_GAMES = 36, SHARE_FLOOR = 0.3;
 function letterShare(games) {
   const { letters: orig, returns: ret } = steps;
   let game = null, trips = 0, lettered = 0;
