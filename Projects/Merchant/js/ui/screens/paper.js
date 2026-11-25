@@ -460,7 +460,9 @@ export function stuckHeight(box) {
 /** An account cell's words with each figure and its unit ("340 dinars", "4 loads") in one nowrap span, so a long sentence breaks between
     words and never between a number and what it counts (MER-142: "340 / dinars" at the phone's width). The text is the same text. */
 const keepUnits = text => String(text ?? '').split(/(\d[\d,]* (?:loads?|dinars?)(?![a-z]))/).map((part, i) => (i % 2 ? h('span', { class: 'nb' }, part) : part));
-const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, keepUnits(v)));
+/** MER-145 (M4e play a063, a031, b025: "spend-646 dinars", "now)+877 dinars"): a row's cells are read one after another by a screen reader and by textContent, so a
+    space ends every cell but the last and a figure never runs into the words before it. It collapses on screen. */
+const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k, ' '), h('td', null, keepUnits(v)));
 /** The words of an account row for a return. A sum row (an `amount`, no `detail`) shows its total in the last column, so the engine's
     closing ", 527 dinars in all" is dropped from the words (MER-132, play: "Back home / 527 dinars, 527 dinars in all / +527 dinars" said
     the figure three times). What is left is what came home; a row of money alone, whose words would be the figure again, says so in words. */
@@ -476,7 +478,7 @@ export function accountText(r) {
     engine's words carry none in front of a figure the column shows (a loss is U+2212, never a hyphen, and never twice). */
 const sumRow = r => {
   const sum = Number.isFinite(r.amount) && !r.detail;
-  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, keepUnits(accountText(r))),
+  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label, ' '), h('td', { colspan: sum ? null : 2 }, keepUnits(accountText(r)), sum ? ' ' : null),
     sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
 };
 

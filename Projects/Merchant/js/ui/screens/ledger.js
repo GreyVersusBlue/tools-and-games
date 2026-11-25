@@ -135,12 +135,15 @@ function warehouse(app, ui) {
     const good = content.goods.find(g => g.id === id);
     const p = prices[id];
     const unit = good?.unit ?? 'load';
-    const price = p?.p == null ? 'no news of the price'
-      : `${stopName(content, home)} price ${dinars(p.p)} a ${unit}, ${p.written}, ${p.ageWords}`;
     const n = Math.max(1, Math.min(q, ui.loads[id] ?? Math.min(q, 10)));
     ui.loads[id] = n;
     const quote = engine.sellHomeQuote(state, content, id, n);
     const name = good?.name?.toLowerCase() ?? id;
+    // MER-145 (M4e play problem 14, a099): the price line is the quote for the loads now chosen, drawn again after every sale and every step. The news
+    // price it replaced stayed at "71 dinars a load" while the next two loads fetched 55 each.
+    const price = quote.ok
+      ? `${stopName(content, home)} pays ${dinars(quote.first)} a ${unit} now${quote.first === quote.last ? '' : `, falling to ${dinars(quote.last)} by the last`}, after the broker's cut`
+      : p?.p == null ? 'no news of the price' : `${stopName(content, home)} price ${dinars(p.p)} a ${unit}, ${p.written}, ${p.ageWords}`;
     const note = quoteWords(app, quote);
     return h('li', { dataset: { good: id } },
       h('strong', null, `${num(q)} ${q === 1 ? unit : `${unit}s`} of ${name}`), ' ', h('span', null, price),
@@ -210,10 +213,10 @@ export function ledgerBody(app) {
       }
       app.say(`Sold ${loads} ${loads === 1 ? 'load' : 'loads'}. The house has ${dinars(app.state.money)}.`);
       app.refreshDesk?.();
-      // the good may be gone from the warehouse: focus goes to what is left, else to the section's heading
+      // the focus stays on the button just pressed. A good sold out has no button left: the focus goes to the section's heading and never to the next
+      // good's Sell, where a second Enter would sell that too (MER-145, play b032).
       ui.redraw();
-      const left = document.getElementById(`sell-${good}`) ?? scroll.querySelector('.sell-btn') ?? document.getElementById('ledger-warehouse-h');
-      left?.focus({ preventScroll: true });
+      (document.getElementById(`sell-${good}`) ?? document.getElementById('ledger-warehouse-h'))?.focus({ preventScroll: true });
     } };
   ui.redraw();
   return [scroll];
