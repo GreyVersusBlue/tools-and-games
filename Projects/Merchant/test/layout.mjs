@@ -224,6 +224,8 @@ const plain = s => JSON.parse(JSON.stringify(s));
       { label: 'In dinars', text: 'The house lost about 200 dinars: the goods at Cairo\'s price and the money that was aboard. It had hoped to make 120 dinars.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
     ask: { title: fill(entry.title), body: fill(entry.body) },
     choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
+  states.lossStorm = structuredClone(states.loss);   // MER-145 (MER-146's data.picture and data.eventWords): the same paper with a storm's picture and the words under it
+  states.lossStorm.desk[0].data.picture = 'storm-sea'; states.lossStorm.desk[0].data.eventWords = 'A storm at sea';
   states.accounts = { ...base, desk: [{ id: 'p80-1', state: 'open', kind: 'accounts', ref: 'accounts', items: [
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ['+60 dinars'], text: 'a' },
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'b' },
@@ -335,6 +337,8 @@ const SCREENS = [
     } })),
   { name: 'desk-loss',
     go: async (p, f) => { await load(p, '#desk', { state: states.loss, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
+  { name: 'desk-loss-storm',
+    go: async (p, f) => { await load(p, '#desk', { state: states.lossStorm, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
   { name: 'desk-accounts',
     go: async (p, f) => { await load(p, '#desk', { state: states.accounts, large: f.large }); await p.waitForSelector('#screen-desk .account-group'); } },
   { name: 'outfit', modal: 'dialog[open]',
@@ -1273,6 +1277,15 @@ try {
           });
         }
         // ---- MER-145
+        if (screen.name === 'desk-loss-storm' || screen.name === 'desk-loss') {
+          await test(`${tag}: the lost paper shows the picture the engine names, with its words under it, and the fixed still when it names none`, async () => {
+            const got = await page.evaluate(() => { const f = document.querySelector('.picture-slot'); return { named: f.dataset.picture ?? null, src: f.querySelector('img')?.getAttribute('src') ?? null, words: f.querySelector('figcaption')?.textContent ?? null, hidden: f.querySelector('.picture-frame')?.getAttribute('aria-hidden') }; });
+            if (screen.name === 'desk-loss-storm') {
+              eq(got.named, 'storm-sea'); ok(/storm-sea\.webp$/.test(got.src ?? ''), `the picture is ${got.src}`); eq(got.words, 'A storm at sea');
+            } else { eq(got.named, null, 'a paper with no picture named keeps the fixed still'); eq(got.words, null); }
+            eq(got.hidden, 'true', 'the picture is not read aloud');
+          });
+        }
         const m145 = MAP145[screen.name], tokenScreen = m137 || m145;
         if (tokenScreen && !frame.large) {
           await test(`${tag}: no two token pieces are closer than a piece is wide, and a caption is within about 90 px of its own piece (120 where a nearer place would lie over a label)`, async () => {

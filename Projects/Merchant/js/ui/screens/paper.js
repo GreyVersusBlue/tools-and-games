@@ -443,12 +443,16 @@ function causeLine(i, content) {
   return 'After an earlier choice:';
 }
 
-/** A loss paper's picture slot (DESIGN 2.1 rule 4): the still `lost` from the manifest when it has one, else the
-    bare frame the picture will fill, so the sheet does not change shape when the art comes. Never read aloud. */
-function pictureSlot(app) {
-  const asset = app.art.get('lost');
-  return h('figure', { class: 'picture-slot', dataset: { slot: 'lost' }, 'aria-hidden': 'true' },
-    asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null);
+/** A loss paper's picture slot (DESIGN 2.1 rule 4): the picture the engine names in `data.picture` (a manifest id: storm-sea, sandstorm; null for
+    the causes that have none yet), else the still `lost`, else the bare frame the picture will fill, so the sheet does not change shape when the art
+    comes. The picture is never read aloud; its caption is the engine's `data.eventWords` ("A storm at sea"), which is words and is read (MER-145, MER-146). */
+function pictureSlot(app, paper) {
+  const named = paper?.data?.picture ? app.art.get(paper.data.picture) : null;
+  const asset = named ?? app.art.get('lost');
+  const words = named && paper?.data?.eventWords ? paper.data.eventWords : null;
+  return h('figure', { class: 'picture-slot', dataset: { slot: 'lost', ...(named ? { picture: paper.data.picture } : {}) } },
+    h('div', { class: 'picture-frame', 'aria-hidden': 'true' }, asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null),
+    words ? h('figcaption', { class: 'picture-words' }, words) : null);
 }
 
 /** The box a raised paper scrolls in: the paper's own box on a laptop or the board (MER-138), else the stack, which is visible, and the page scrolls. */
@@ -493,14 +497,8 @@ export function accountText(r) {
 
 /** An account row for a return: label, words, and the signed dinars when the row is one of the sums. The one sign is this file's: the
     engine's words carry none in front of a figure the column shows (a loss is U+2212, never a hyphen, and never twice). */
-/** MER-145 (MER-143): the engine's wage row says "8 dinars a season for two seasons"; the account says which seasons they were, those after the agent set
-    out, so the row never reads as disagreeing with a trip headed "three seasons". A row that already says it (the engine's own words, once they do) is left as it is. */
-export function wageRowText(label, text) {
-  const who = /^(.+)'s wage$/.exec(label)?.[1];
-  return who ? String(text).replace(/ a season for (one|a|\d+|[a-z]+) (season|seasons)(?! after)/, (m, n, w) => ` a season for the ${n === 'one' || n === 'a' || n === '1' ? 'season' : `${n} ${w}`} after ${who} set out`) : text;
-}
+/** The engine's own words are printed as they are, the wage row's included: MER-146's wageWords is the one string for a wage (sheet, return paper, Years pass). */
 const sumRow = r => {
-  r = { ...r, text: wageRowText(r.label, r.text) };
   const sum = Number.isFinite(r.amount) && !r.detail;
   return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label, ' '), h('td', { colspan: sum ? null : 2 }, keepUnits(accountText(r)), sum ? ' ' : null),
     sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
@@ -561,7 +559,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
     e.preventDefault();
     onDone();
   };
-  const slot = paper.kind === 'lost' ? pictureSlot(app) : null;
+  const slot = paper.kind === 'lost' ? pictureSlot(app, paper) : null;
   const sheet = h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId, onkeydown: onKey },
     head(app, senderOf(content, paper)),
     slot,

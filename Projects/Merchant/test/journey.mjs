@@ -1766,7 +1766,7 @@ try {
       const money0 = await moneyOf(page);
       ok(shown > 100, `the bought linen is in the number: ${shown}`);
       const later = await page.$$eval('#outfit-costs .cost-later', ps => ps.map(p => p.textContent));
-      ok(later.some(t => /wage is paid when the trip comes home: [\d,]+ dinars a season for the (\d+ seasons|season) after \w+ sets out, about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
+      ok(later.some(t => /wage, [\d,]+ dinars a season for \w+ seasons?[^,]*, is paid when the trip comes home: about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
       await page.click('#outfit-send');
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
       eq(money0 - await moneyOf(page), shown, 'the number shown is the number taken, to the dinar');
@@ -2263,7 +2263,7 @@ try {
       });
 
       await test(`${how}: the ledger says the years the engine's own jump skipped, on testport and cairo, and says nothing where seasons run on (MER-113b)`, async () => {
-        const { moneyTrail, jumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
+        const { moneyTrail, trailJumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);   // MER-145: the page reads view().trail and prints trailJumpWords; moneyTrail is still the log's own reading
         const { writeSeason } = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
         const fsp = await import('node:fs/promises');
         const testportContent = eng.validateContent(await loadContent('testport', { fs: fsp }));
@@ -2307,7 +2307,7 @@ try {
           if (name === 'cairo') cairoJumped = st;
         }
         // cairo in the page: the same log, the same line, the same figures
-        const st = cairoJumped, j = st.log.find(e => e.kind === 'jump'), trail = moneyTrail(nodeContent, st.log);
+        const st = cairoJumped, j = st.log.find(e => e.kind === 'jump'), trail = eng.view(st, nodeContent).trail;
         await page.goto(GAME, { waitUntil: 'load' });
         await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
         await page.goto(GAME + '#ledger', { waitUntil: 'load' });
@@ -2315,12 +2315,12 @@ try {
         // MER-125: the row whose `at` is the jump's `from` carries `after`; the page prints one line for it, right after that season's own line
         const first = trail.findIndex(t => t.after);
         const checkJumpLine = async (st2, why) => {
-          const j2 = st2.log.find(e => e.kind === 'jump'), tr = moneyTrail(nodeContent, st2.log), at = tr.findIndex(t => t.after);
+          const j2 = st2.log.find(e => e.kind === 'jump'), tr = eng.view(st2, nodeContent).trail, at = tr.findIndex(t => t.after);
           ok(at >= 0 && tr[at].at === j2.from, `${why}: setup: the jump is on the season it came after`);
           eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1, `${why}: exactly one jump line`);
           eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j2.years)], `${why}: data-gap is the years`);
-          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], jumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
-          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.previousElementSibling?.dataset.change)), [String(tr[at].change)], `${why}: it sits right after that season's line`);
+          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], trailJumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => { let p = e.previousElementSibling; while (p && /ledger-(sale|worth)/.test(p.className)) p = p.previousElementSibling; return p?.dataset.change; })), [String(tr[at].change)], `${why}: it sits right after that season's line`);
           eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), tr.map(t => String(t.change)), `${why}: the changes the page shows are the trail's`);
         };
         eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1);
@@ -4889,13 +4889,32 @@ try {
         ok(/Ali/.test(got), `the sheet is not Ali's: "${got}"`);
         eq(await page.evaluate(() => window.__merchant.state.agents.ali.hired), true);
       });
+      await test('MER-145 board: the ledger prints worth lines under their season and each season\'s change in worth, from the engine\'s trail', async () => {
+        const st = stocked();
+        const seasons = st.log.filter(e => e.kind === 'season');
+        const last = seasons.at(-1);
+        // the season with a 309 return: the money moved +1, the worth +309 (the play's problem 8)
+        last.change = 1; last.worthChange = 309; last.worth = (last.worth ?? 0) + 309;
+        st.log.push({ at: last.at, kind: 'worth', cause: 'prices', change: 81, text: 'The goods in the warehouse rose in price: +81.' });
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        const trail = eng.view(st, nodeContent).trail;
+        eq(trail.at(-1).change, 309, 'setup: the engine\'s trail reads the worth');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), trail.map(t => String(t.change)), 'the seasons show the trail\'s changes');
+        const row = await page.$$eval('#ledger-trail li', ls => ls.map(l => [l.className, l.textContent]));
+        const at = row.findIndex(([, t]) => /\+309 dinars/.test(t));
+        ok(at >= 0 && /\+1 in the money/.test(row[at][1]), `the season with the 309 return shows its worth and its money: ${JSON.stringify(row)}`);
+        eq(row[at + 1], ['ledger-worth', 'The goods in the warehouse rose in price: +81.'], 'the worth line sits under its season');
+      });
       await test('MER-145 board: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
     {
       // account rows never run a figure into the words, and the wage row and the bonus reason name what they mean
       const { page, consoleErrors } = await open(FRAMES[3]);
-      await test('MER-145 phone: a return\'s account has a space between its cells, the wage row says which seasons, and the paper opens with its seal below the top bar', async () => {
+      await test('MER-145 phone: a return\'s account has a space between its cells, the wage row prints the engine words, and the paper opens with its seal below the top bar', async () => {
         let g = fresh3();
         for (let i = 0; i < 60 && !g.desk.some(p => p.kind === 'return' && p.state === 'open'); i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
         ok(g.desk.some(p => p.kind === 'return' && p.state === 'open'), 'setup: the model game reaches a return');
@@ -4913,7 +4932,9 @@ try {
         ok(rows.length > 2, 'the account has rows');
         const run = rows.filter(t => /[A-Za-z)][+−-]\d|[a-z]\d/.test(t));
         eq(run, [], 'a row runs a figure into the words');
-        for (const t of rows.filter(t => /wage/.test(t))) ok(/after \w+ set out/.test(t), `the wage row does not say which seasons: ${t}`);
+        // MER-146's wageWords is the one string for a wage: the row prints the engine's words as given
+        const wageRow = g.desk.find(p => p.id === id).data.account.find(r => /'s wage$/.test(r.label));
+        if (wageRow) ok(rows.some(t => t.includes(wageRow.text)), `the wage row does not print the engine's words "${wageRow.text}": ${rows.join(' | ')}`);
       });
       await test('MER-145 phone: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
