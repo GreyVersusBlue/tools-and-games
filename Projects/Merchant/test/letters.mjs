@@ -1121,6 +1121,22 @@ test('(MER-134, 9) a letter that waited for room does not arrive with the agent 
 });
 
 
+test('(MER-140) a letter that arrived in an earlier season and waited is never put on the desk with its agent\'s return paper, whatever its lag and whenever it was written; one that arrives on the return day still comes ahead', () => {
+  const { s: base, p: k } = homeState();
+  let dropped = 0, kept = 0;
+  for (const lag of [1, 2, 3]) for (const late of [0, 1, 2, 3]) for (const room of [1, 3]) {
+    const s = structuredClone(base), ret = s.desk[k], now = idx(s, CAIRO);
+    s.desk = [ret];
+    while (s.desk.length < MAX_PAPERS - room) s.desk.push({ id: `pad${s.desk.length}`, kind: 'notice', ref: 'pad', state: 'open' });   // `room` places left for the letter and its Accounts paper
+    s.post = [{ id: 'damascus-early-caravan', kind: 'report', expedition: ret.expedition, agent: ret.agent, stop: 'damascus', standing: true, written: now - late - lag, lag, arrive: now - late }];
+    letters(s, CAIRO);
+    const names = s.desk.map(p => p.ref ?? p.kind), where = `lag ${lag}, ${late} seasons late, ${room} places`;
+    if (late > 0) { ok(!names.includes('damascus-early-caravan'), `${where}: a letter that waited came with its agent: ${names}`); dropped++; }
+    else if (room > 1) { ok(names.indexOf('damascus-early-caravan') >= 0 && names.indexOf('damascus-early-caravan') < names.indexOf('return'), `${where}: ${names}`); kept++; }
+  }
+  ok(dropped === 18 && kept === 3, `${dropped} late and ${kept} on-time cases were read`);
+});
+
 // ---- MER-136: the share of long trips that bring a letter holds its floor, in a check CI runs
 // test/mix.mjs measures the same share over 1,000 games and is run by hand. For a week it read 22 percent while the engine gave about 72:
 // `deliver` puts a letter ahead of its own trip's return paper (MER-118), and mix.mjs looked for new letters at the end of the desk,
