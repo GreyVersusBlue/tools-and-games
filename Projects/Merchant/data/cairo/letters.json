@@ -362,6 +362,175 @@
     ]
   },
   {
+    "id": "damascus-spice-dealers",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "Damascus"
+    },
+    "title": "The dealers who know Aden",
+    "body": "I am at Damascus. The spice dealers here know the road to Aden well, because their pepper comes by it. One offered to teach me the weights next month, for nothing. I did not wait. I paid another 15 dinars today, from your purse.",
+    "when": {
+      "at": "damascus"
+    },
+    "happened": [
+      {
+        "money": -15
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Send a thank-you gift",
+        "hint": "It costs 10. Your agent will not forget it.",
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "$agent",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The Karimi merchants brought spices from Aden to Cairo, Alexandria and Damascus. Historians do not agree on how tightly they were organised.",
+    "unlocks": [
+      "person-karimi",
+      "good-pepper",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 149; the Karimi brought spices from Aden to Cairo, Alexandria and Damascus, and pp. 147 and 150 for how loosely they were organised"
+      }
+    ]
+  },
+  {
+    "id": "damascus-money-changer",
+    "kind": "report",
+    "from": {
+      "name": "Your agent",
+      "role": "Damascus"
+    },
+    "title": "The money-changer's rate",
+    "body": "I am at Damascus. A money-changer here paid 23 dirhams for each dinar, though the account books count 20. I did not wait for a better rate. The gain on your money was 10 dinars, and I send them to you.",
+    "when": {
+      "at": "damascus"
+    },
+    "happened": [
+      {
+        "money": 10
+      }
+    ],
+    "weight": 1,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Your agent will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "waited",
+        "label": "You should have waited",
+        "hint": "Your agent may remember it.",
+        "now": [
+          {
+            "memory": "$agent",
+            "kind": "blamed"
+          },
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "bonus",
+        "label": "Send a bonus",
+        "hint": "It costs 8. Your agent will not forget it.",
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "$agent",
+                "by": 2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The dirham was a silver coin, only about two thirds to three quarters of it silver. In the account books 20 dirhams made a dinar. In the market in the 1320s and 1330s, 22 to 25 dirhams bought a dinar of gold.",
+    "unlocks": [
+      "term-dirham",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 121 to 123"
+      },
+      {
+        "src": "pegolotti-1936",
+        "at": "print p. 72; 23 to 25 dirhams to the bezant"
+      },
+      {
+        "src": "levtzion-hopkins-1981",
+        "at": "pp. 269 to 273; 25 and 22 dirhams to the mithqal"
+      }
+    ]
+  },
+  {
     "id": "toll-at-aydhab",
     "kind": "report",
     "from": {

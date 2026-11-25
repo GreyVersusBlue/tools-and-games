@@ -722,7 +722,7 @@
   },
   "sells": {
    "pepper": {
-    "base": 144,
+    "base": 132,
     "depth": 30
    },
    "silk": {
@@ -734,31 +734,31 @@
     "depth": 12
    },
    "porcelain": {
-    "base": 112,
+    "base": 99,
     "depth": 20
    },
    "glass": {
-    "base": 47,
+    "base": 44,
     "depth": 30
    },
    "linen": {
-    "base": 57,
+    "base": 50,
     "depth": 40
    },
    "sugar": {
-    "base": 57,
+    "base": 50,
     "depth": 40
    },
    "incense": {
-    "base": 76,
+    "base": 66,
     "depth": 30
    },
    "copper": {
-    "base": 36,
+    "base": 33,
     "depth": 30
    },
    "wool": {
-    "base": 89,
+    "base": 77,
     "depth": 30
    }
   },
