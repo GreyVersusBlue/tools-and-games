@@ -82,6 +82,9 @@
      Tools/board-check/check-tavern-clicks.mjs). */
   #page { position: relative; z-index: 2; pointer-events: none; }
   #page > * { pointer-events: auto; }
+  /* <main> wraps the cards (TG-106): it must stay click-through like #page, or it covers the tavern scene. */
+  #page > main { pointer-events: none; }
+  #page > main > :not(#about):not(#flavor) { pointer-events: auto; }
 
   /* ---------- hanging sign ---------- */
   @keyframes sway { 0%,100% { transform: rotate(-.5deg); } 50% { transform: rotate(.5deg); } }
