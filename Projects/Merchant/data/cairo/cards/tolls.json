@@ -95,8 +95,10 @@
     "title": "The officer counts twice",
     "body": "Your carters wait at Alexandria to bring a merchant's goods up from a ship. A customs officer there has not met your house, so he counts every bundle twice. Customs are taxes on goods that enter a port. He asks for 5 dinars.",
     "when": {
-      "rep": "court",
-      "lte": 0
+      "all": [
+        { "rep": "court", "lte": 0 },
+        { "out": { "gte": 1 } }
+      ]
     },
     "weight": 3,
     "repeat": false,

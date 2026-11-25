@@ -391,7 +391,7 @@ function logSeason(s, content, moneyAtClose, at, firstSeason) {
   const from = last ? last.money : (firstSeason ? start : moneyAtClose);
   // `change` is the season's change in the money; `worth` and `worthChange` are the figure the top bar shows and its change: a trip sent is
   // not a loss (the money went out and the goods are counted on the road) and one come home is not a gain beyond its profit, so the
-  // true change of a season is this one (MER-146, M4e play problem 8: +1 for the season Yusuf brought 309 home and the house sent 288 out again)
+  // true change of a season is this one (MER-146, M4e play problem 8: +1 for the season a trip brought 309 home and the house sent 288 out again)
   const worth = W.worthOf(s, content);
   const startWorth = start + Object.entries(house?.stock ?? {}).reduce((n, [g, q]) => n + q * (market.baseOf(s, content, cityOf(content, 'ledger').home, g) ?? 0), 0);
   const fromWorth = Number.isInteger(last?.worth) ? last.worth : (firstSeason ? startWorth : null);

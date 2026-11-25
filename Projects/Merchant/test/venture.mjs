@@ -1646,4 +1646,40 @@ test('(MER-146, 7) estimate.yearsFirst is true only for a party still on the roa
   ok(seen.first >= 10 && seen.home >= 1, `${seen.first} parties caught by the years and ${seen.home} home as they began were compared (${seen.other} the sheet could not foresee)`);
 });
 
+// ---- MER-146 (MER-143's engine part): one string for the wage
+
+test('(MER-146, 8) the wage words are one engine string: the sheet, the return paper and the Years pass page print the same sentence for the same trip', () => {
+  const n = { road: 0, jump: 0, paper: 0, longer: 0 };
+  for (const [house, seeds] of [['spice', [1, 2, 3, 4, 6, 8]], ['cloth', [3, 5]]]) for (const seed of seeds) {
+    let s = newGame(C, { seed, length: 'acts', house });
+    const sheet = {}, page = {};
+    for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); }
+      for (const p of s.desk.filter(q => q.kind === 'return' && q.state === 'open')) {
+        const row = p.data.account.find(r => /'s wage$/.test(r.label));
+        if (!row || sheet[p.expedition] === undefined) continue;
+        const said = sheet[p.expedition];
+        // a trip that took longer than the sheet said (a closed leg, a hold) has the same wage for the same seasons and says so in its own words
+        if (p.data.trip.seasons === said.seasons) eq(row.text, said.words, `seed ${seed} ${house}: the return paper's wage row is the sheet's sentence`);
+        else { ok(row.text.startsWith(said.words.split(',')[0]), `seed ${seed} ${house}: the wage for the same seasons ("${row.text}" against "${said.words}")`); n.longer++; continue; }
+        if (page[p.expedition]) { eq(row.text, page[p.expedition], `seed ${seed} ${house}: and the Years pass page's`); n.jump++; } else n.road++;
+        n.paper++;
+        sheet[p.expedition] = undefined;
+      }
+      s = answer(s, C);
+      for (let k = 0; k < 3; k++) {
+        const v = view(s, C).venture;
+        if (!v) break;
+        const e = checkPlan(s, C, v.plan).estimate;
+        let t; try { t = outfit(s, C, v.plan); } catch { break; }
+        if (e.wageWords) sheet[t.expeditions.at(-1).id] = { words: e.wageWords, seasons: e.seasons };
+        s = t;
+      }
+      s = endSeason(s, C);
+      for (const entry of s.log) if (entry.kind === 'jump') for (const l of entry.settled) if (l.wage) page[l.expedition] = l.wage;
+    }
+  }
+  ok(n.road >= 8 && n.jump >= 4, `${n.road} trips that came home on the road and ${n.jump} that the years settled were compared`);
+});
+
 await done();

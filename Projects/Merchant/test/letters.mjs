@@ -1029,6 +1029,27 @@ test('(MER-146, 4) an Accounts paper that takes a letter\'s money line sits behi
   ok(i >= 0);
 });
 
+test('(MER-146, 7) "Your carters wait at Alexandria" is dealt only while the house has a trip out', () => {
+  const card = CAIRO.cards.find(c => c.id === 'harbour-count');
+  ok(/carters wait at Alexandria/.test(card.body), 'the card is the one that says it');
+  const s = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
+  s.rep.court = 0;
+  eq([s.expeditions.length, holds(card.when, s, CAIRO)], [0, false], 'nothing is coming: the card is closed');
+  s.expeditions.push({ id: 'x1' });
+  eq(holds(card.when, s, CAIRO), true, 'a trip is out: it may be dealt');
+  // a house that never sends anyone is never told of carters waiting
+  for (let seed = 1; seed <= 12; seed++) {
+    let g = newGame(CAIRO, { seed, length: 'acts', house: ['spice', 'cloth', 'newcomer'][seed % 3] });
+    g.rep.court = 0;
+    for (let k = 0; k < 30 && ['desk', 'interlude'].includes(g.phase); k++) {
+      if (g.phase === 'interlude') { g = openSeason(g, CAIRO); continue; }
+      for (const p of g.desk.filter(q => q.state === 'open')) for (const c of paperChoices(g, CAIRO, p.id)) { try { g = choose(g, CAIRO, p.id, c.id); break; } catch { /* closed */ } }
+      g = endSeason(g, CAIRO);
+      eq(g.desk.some(p => p.ref === 'harbour-count') && g.expeditions.length === 0 && !g.desk.some(p => p.kind === 'return'), false, `seed ${seed}: no carters with nothing coming`);
+    }
+  }
+});
+
 test('(MER-134, 15) a broker\'s paper is shown twice in a game, and the third time the return carries no offer', () => {
   eq(BROKER_SHOWN, 2);
   const shown = n => brokerPaper('return-sell-pepper', 1, { shown: n }).p.data;

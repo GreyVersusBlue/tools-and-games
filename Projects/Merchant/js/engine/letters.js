@@ -207,8 +207,8 @@ function fitBroker(s, content, p) {
   const loads = -out.by, was = pay.money, gapOf = sum => Math.round((1 - sum / (loads * price)) * 100);
   let sum = was, gap = gapOf(sum);
   if (gap < BROKER_MIN || gap > BROKER_MAX) { sum = Math.max(1, Math.round(loads * price * (1 - Number(words[2]) / 100))); gap = gapOf(sum); }
-  // A broker never pays less than the house gets from the ledger's Sell in Cairo for the same loads the same season (MER-146, M4e play
-  // problem 11: 200 for two loads of pepper against 228 from Sell; 153 for two against 91.9 a load). The paper's own sum is raised to the
+  // A broker never pays less than the house gets from the ledger's Sell at home for the same loads the same season (MER-146, M4e play
+  // problem 11: 200 for two loads against 228 from Sell; 153 for two against 91.9 a load). The paper's own sum is raised to the
   // quote, so a broker who finds the buyer is the better price and Sell is the way to sell when the house names the day. A quote the house
   // cannot take (it holds fewer loads than the broker's offer) leaves the sum alone: the choice is closed by its `requires` then.
   const quote = sellHomeQuote(s, content, out.stock, loads);
@@ -219,7 +219,7 @@ function fitBroker(s, content, p) {
   pay.money = sum;
 }
 
-/** The goods a return paper says are in the warehouse are the goods that are (MER-146, M4e play problem 3: seven loads of pepper sold on the
+/** The goods a return paper says are in the warehouse are the goods that are (MER-146, M4e play problem 3: seven loads sold on the
     Years pass page were still "in the warehouse, worth about 840" on the first paper after it, which offered to hold them and closed the broker's
     offer for "you have 0 loads"). Called whenever the warehouse changes with papers on the desk (a sale, a trip sent, a choice answered): each
     open return paper keeps what the warehouse can still cover of the goods it brought home, the papers taking from it in desk order, the value is

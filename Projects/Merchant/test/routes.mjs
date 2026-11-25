@@ -1427,6 +1427,31 @@ test('a loss paper carries its cause, from the leg that struck, on the desk', ()
   }
   eq(seen, 2, 'a whole and a part loss turned up');
 });
+test('(MER-146, 9) a loss paper names its event and carries the id of the final picture that shows it, and no id where there is none', () => {
+  const manifest = JSON.parse(fsSync.readFileSync(new URL('../assets/art/manifest.json', import.meta.url), 'utf8')).assets;
+  const still = id => manifest.find(a => a.id === id);
+  eq(Object.keys(R.LOSS_EVENTS).sort(), ['desert', 'river', 'robbers', 'sea'], 'one entry for each cause causeOf gives');
+  for (const [cause, ev] of Object.entries(R.LOSS_EVENTS)) {
+    ok(ev.event && ev.words, `${cause} has its event and its words`);
+    if (ev.picture !== null) ok(still(ev.picture)?.final === true, `${cause}: "${ev.picture}" is in the manifest and final`);
+  }
+  eq([R.LOSS_EVENTS.sea.picture, R.LOSS_EVENTS.desert.picture], ['storm-sea', 'sandstorm'], 'the storm and the sandstorm are the two finals');
+  // played: a whole loss on a mule road is the desert's, a part is robbers'
+  const c = risk(T, 1);
+  const lose = (jump, seed) => {
+    const x = variant(c, y => { y.city.jump = jump; });
+    const s = outfit(game(x), x, { ...SALTED, purse: 30 });
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, x);
+    return s.desk.find(p => p.kind === 'lost');
+  };
+  const whole = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(sd => lose({ wholeLoss: 1, survivesWhole: 0 }, sd)).find(Boolean);
+  const part = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(sd => lose({ wholeLoss: 0, partial: [0.5, 0.5] }, sd)).find(Boolean);
+  ok(whole && part, 'both a whole and a part loss turned up');
+  eq([whole.data.cause, whole.data.event, whole.data.picture], ['desert', 'sandstorm', 'sandstorm']);
+  eq([part.data.cause, part.data.event, part.data.picture], ['robbers', 'robbers', null]);
+  ok(/sandstorm/i.test(whole.data.eventWords), whole.data.eventWords);
+});
 test('loss-robbers fires only for robbers: a part lost at sea, or a whole vessel, takes another entry', () => {
   const cc = variant(T, y => { y.returns = structuredClone(cairoRet); });
   const pick = facts => R.pickEntry(game(cc), cc, 'loss', facts)?.id;

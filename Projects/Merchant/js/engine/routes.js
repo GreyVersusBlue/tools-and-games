@@ -257,6 +257,17 @@ export function causeOf(leg, loss) {
   return 'robbers';
 }
 
+/** What each cause of a loss is called, and the manifest still (assets/art/manifest.json, `final: true`) the desk shows behind its paper (MER-146,
+    M4e play problem 1 and the art section: the lost caravan used the plain desk, and the storm and the sandstorm are final). A cause with no
+    final still has `picture: null` and the desk stays plain. The lost paper carries `event` (the word the desk may caption it with),
+    `eventWords` (one sentence naming it) and `picture`. */
+export const LOSS_EVENTS = {
+  sea: { event: 'storm', words: 'A storm at sea', picture: 'storm-sea' },
+  desert: { event: 'sandstorm', words: 'A sandstorm on the road', picture: 'sandstorm' },
+  river: { event: 'high-water', words: 'High water on the river', picture: null },
+  robbers: { event: 'robbers', words: 'Robbers on the road', picture: null },
+};
+
 /** A loss happened to `x`. Draws: whole or partial; a whole loss then draws whether the agent
     lives, a partial loss how much goes. Returns what was lost; changes `x` on a partial loss. */
 function loseSome(s, content, x) {
@@ -311,7 +322,7 @@ function lostPaper(s, content, x, loss, leg) {
   if (line) lines.push({ label: 'Your order', text: line });
   const trip = tripFacts(content, x.agent, route, leg.to, mainGoodOf(x.book?.cargo ?? x.cargo), idx + 1 - x.sent, x.id);
   const entry = pickEntry(s, content, 'loss', { by: leg.by, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, agent: x.agent, to: leg.to, good: trip.good, seasons: trip.seasons, contract: x.contract.kind });
-  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, orderLine: line, route: route.id, cause: causeOf(leg, loss), whole: loss.whole, survived: loss.survived, lines, costs, worth, lossLine: says, trip, ...askOf(content, entry, trip) } };
+  return { kind: 'lost', ref: 'lost', agent: x.agent, expedition: x.id, data: { headline, orderLine: line, route: route.id, cause: causeOf(leg, loss), event: LOSS_EVENTS[causeOf(leg, loss)].event, eventWords: LOSS_EVENTS[causeOf(leg, loss)].words, picture: LOSS_EVENTS[causeOf(leg, loss)].picture, whole: loss.whole, survived: loss.survived, lines, costs, worth, lossLine: says, trip, ...askOf(content, entry, trip) } };
 }
 
 /** What a loss took, in dinars: the goods at home's price today and the money that was aboard (MER-125). */
@@ -468,6 +479,17 @@ function wageCount(s, content, route, agent, proj) {
 /** The wage for the whole trip, at the agent's wage, for the seasons `wageCount` says. */
 const tripWage = (agent, count) => count.seasons * (agent.wage ?? 0);
 
+/** The one string for a wage, which the outfit sheet, the return paper's wage row and the Years pass page all print (MER-146, MER-143's
+    engine part; M4e play problem 10: for one three-season trip an agent's wage read 27 on the sheet and 18 on the paper, another's 14, and a
+    third's account said "two seasons" under a trip headed "three"): "9 dinars a season for three seasons". `paid` is the seasons the wage is
+    for; `away` the seasons the trip is headed with. When the wage is for fewer, the string says that the others, the season the trip was
+    sent in and any it waited, are not paid, without a number: the sheet counts the seasons it expects and the paper those that passed, and the
+    words must not differ because the two counts do. */
+export function wageWords(content, agent, paid, { prepaid = false, away = null } = {}) {
+  const note = away !== null && away > paid ? ', not counting the seasons the trip waited or was sent in' : '';
+  return `${coins(content, agent.wage)} a season for ${words(paid)} ${plural(paid, 'season', 'seasons')}${note}${prepaid ? ', paid before the trip' : ''}`;
+}
+
 /** What the house would pay up front for `agentId` on `routeId`, in coins, or 0 when the road does not project. */
 export function prepayCost(state, content, routeId, agentId) {
   const route = routeOf(content, routeId), agent = agentOf(content, agentId);
@@ -589,6 +611,7 @@ function build(s, content, plan) {
       tolls: route.legs.reduce((n, l) => n + (l.toll ?? 0), 0),
       wage: kind === 'own' && !prepay && agent ? tripWage(agent, wageCount(s, content, route, agent, proj)) : 0,   // the one count the estimate and the prepay use (MER-133b, DECISIONS 2026-11-21 11:41 and 12:03)
       wagePerSeason: agent?.wage ?? 0,
+      wageWords: kind === 'own' && !prepay && agent ? wageWords(content, agent, wageCount(s, content, route, agent, proj).seasons, { away: proj.seasons }) : null,   // the same string the estimate and the return give (MER-146)
     } : null,
   };
   if (!problems.length && s.money < houseMoney) no(`The house has ${coins(content, s.money)} and this costs ${coins(content, houseMoney)}${wagePaid ? `, with ${coins(content, wagePaid)} of it ${agent.name}'s wage paid first` : ''}.`);
@@ -1256,6 +1279,7 @@ export function estimate(state, content, plan, memo = null) {
   const old = guessed || age === null ? 'The house has no news of the prices there' : `The news of the prices is ${ageWords === 'this season' ? 'from this season' : ageWords}`;
   return {
     ok: true, net, gross, stake: stakedHouse, tolls: tollsAll, wage, upkeep, shares: { agent: shares.agent, partners: shares.partners }, seasons: proj.seasons, wageSeasons: count.seasons,
+    wageWords: kind === 'own' ? wageWords(content, agent, count.seasons, { prepaid: plan.prepay === true, away: proj.seasons }) : null,   // the one string for the wage (MER-146)
     settledAtJump: count.settled, ...(count.settled ? { jumpAt: count.at } : {}),
     yearsFirst: count.settled && !count.home,   // the years pass while the party is still on the road: the one a sheet may say as "the years pass before X is home" (MER-146; settledAtJump is also true for a party that is home as the years begin)
     age, ageWords, ageOf, news: old, risk: chance, riskWord: riskWord(chance),
@@ -1801,7 +1825,7 @@ function returnPaper(s, content, r) {
   } else if (r.wage) {
     // the seasons the wage was paid for: what the trip was away (a prepaid wage was fixed at sending)
     const paid = agent.wage ? Math.round(r.wage / agent.wage) : x.out;
-    rows.push({ label: `${agent.name}'s wage`, text: `${coins(content, agent.wage)} a season for ${words(paid)} ${plural(paid, 'season', 'seasons')}${x.contract.prepaid ? ', paid before the trip' : ''}`, amount: -r.wage });
+    rows.push({ label: `${agent.name}'s wage`, text: wageWords(content, agent, paid, { prepaid: !!x.contract.prepaid, away: r.elapsed }), amount: -r.wage });
   }
   if (r.short) rows.push({ label: 'Not paid', text: `the house could not pay ${coins(content, r.short)} of what it owed, and its good name suffers` });
   rows.push({ label: n < 0 ? 'Loss' : 'Profit', text: n === 0 ? 'none, the house came out even' : `${Object.keys(r.goodsBack).length ? 'about ' : ''}${coins(content, Math.abs(n))}`, amount: n });
@@ -1900,7 +1924,8 @@ function settledLine(s, content, x, out, r) {
   const n = r.houseNet;
   // what came back, goods and money, and the seasons the account counts (MER-125)
   const back = { goods: Object.fromEntries(Object.entries(r.goodsBack ?? {}).filter(([, q]) => q > 0)), money: r.moneyBack ?? 0 };
-  return { expedition: x.id, agent: x.agent, result: 'home', cargo: { ...x.book?.cargo }, back, seasons: r.elapsed, text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
+  const paid = agent.wage ? Math.round(r.wage / agent.wage) : 0;
+  return { expedition: x.id, agent: x.agent, result: 'home', cargo: { ...x.book?.cargo }, back, seasons: r.elapsed, ...(r.wage && paid ? { wage: wageWords(content, agent, paid, { prepaid: !!x.contract.prepaid, away: r.elapsed }) } : {}), text: `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`, houseNet: n };
 }
 
 /** Settles `x` (settle, then bring it home or write it off). Returns its line. */
