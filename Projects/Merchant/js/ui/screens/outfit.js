@@ -404,7 +404,13 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     if (cost.partners) rows.push([`Put in by the partners`, -cost.partners]);
     if (cost.wagePaid) rows.push([`${agent()?.name ?? 'The agent'}'s wage, paid first`, cost.wagePaid]);
     const later = [];
-    if (cost.later?.wage) later.push(`${agent()?.name ?? 'The agent'}'s wage, about ${dinars(cost.later.wage)} (${dinars(cost.later.wagePerSeason)} a season out), is paid when the trip comes home.`);
+    // MER-145 (MER-143, play problem 10): the words say which seasons the wage pays for, the ones after the agent sets out, so a sheet that says
+    // "three seasons out and back" and a wage of two seasons never read as disagreeing. The count is the engine's own: its wage over the wage a season.
+    if (cost.later?.wage) {
+      const who = agent()?.name ?? 'The agent', per = cost.later.wagePerSeason, n = per ? Math.round(cost.later.wage / per) : 0;
+      later.push(n ? `${who}'s wage is paid when the trip comes home: ${dinars(per)} a season for the ${n === 1 ? 'season' : `${n} seasons`} after ${who} sets out, about ${dinars(cost.later.wage)}.`
+        : `${who}'s wage, about ${dinars(cost.later.wage)}, is paid when the trip comes home.`);
+    }
     if (cost.later?.tolls) later.push(`Tolls along the road come to about ${dinars(cost.later.tolls)}, paid from the money and goods sent.`);
     return h('div', { class: 'costs', id: 'outfit-costs' },
       h('p', { class: 'total', id: 'outfit-costs-h' }, h('strong', null, 'What Send takes from the house')),

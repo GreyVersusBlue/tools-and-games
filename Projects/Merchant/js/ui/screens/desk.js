@@ -253,7 +253,8 @@ export function createDesk(app) {
       // End, and no further than leaves the headline a hand under the top bar
       const y = window.scrollY, endTop = window.innerHeight - endRow.offsetHeight;
       const clear = last.getBoundingClientRect().bottom + y + 6 - endTop;
-      const most = title ? title.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 8) : clear;
+      const lead = qs('.sheet-head', sheet) ?? title;   // MER-145: the seal, not the heading, is what stays under the bar's edge
+      const most = lead ? lead.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 8) : clear;
       window.scrollTo({ top: Math.max(0, Math.min(clear, most)), behavior: 'instant' });
     });
   }
@@ -357,7 +358,12 @@ export function createDesk(app) {
   function outfitOf(choice, tripTo) {
     const e = (choice.now ?? []).find(x => x && x.outfit !== undefined);
     if (e) return { agent: e.outfit, contract: e.contract, stop: tripTo };
-    return choice.ui === 'outfit-first' ? {} : null;
+    if (choice.ui === 'outfit-first') return {};
+    // MER-145 (play a089, problem on Ali's and Samir's cards): hiring on a wage opens the sheet for the man hired, as the qirad does. The cards that hire
+    // without an `outfit` effect (Ali's, Mariam's wage, Matteo's fee and wage) name the choice 'hire', 'wage' or 'fee'; a share of the profit is the other
+    // contract and its choice is not one of these, so the sheet is not opened on a wage the player did not pick.
+    const hired = (choice.now ?? []).find(x => x && typeof x.hire === 'string');
+    return hired && ['hire', 'wage', 'fee'].includes(choice.id) ? { agent: hired.hire, contract: 'own', stop: tripTo } : null;
   }
 
   function next() {
@@ -436,7 +442,10 @@ export function createDesk(app) {
         // heading's scroll-margin (screens.css) when its top is within the bar
         // MER-138 (play b023): after Open the house the heading was at y=45, under the top bar, with the paper scrolled to its foot: every focus
         // that lands on a heading brings it below the bar, not only a raise
-        if (title && title.getBoundingClientRect().top < bar.getBoundingClientRect().bottom + 8) title.scrollIntoView({ block: 'start' });
+        // MER-145 (play c013): on an upright phone the page scrolls and the paper's seal and sender stand above its heading, so it is the seal that is brought
+        // below the bar, the heading a line or two lower; scrolled to the heading alone, the seal was under the bar
+        const lead = matchMedia('(max-width: 700px) and (min-height: 501px)').matches ? (qs('.sheet-head', sheetBox) ?? title) : title;
+        if (lead && lead.getBoundingClientRect().top < bar.getBoundingClientRect().bottom + 8) lead.scrollIntoView({ block: 'start' });
       }
     }
     revealChoice();   // after focus, which scrolls the heading into view and would undo it

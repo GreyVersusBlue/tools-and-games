@@ -123,6 +123,23 @@ function cardPlan(state, content, stopId) {
 
 const listOf = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
 
+/** MER-145 (M4e play problem 13, B Winter 1324: "Pay Yusuf a bonus of 30 dinars: You have already done this." after a bonus of 15): once a trip has had a bonus the
+    other closes (letters.js fitOffers, flag `<agent>-bonused`), and the reason says what was paid when a letter or a card's own choice is on record, which
+    is exact; a return paper's bonus is cut to half the profit, so its figure is not read back and the line names the bonus without one. null for any other flag. */
+function bonusWords(flag, state, content) {
+  const m = /^(.+)-bonused$/.exec(flag);
+  const agent = m && (content.agents ?? []).find(a => a.id === m[1]);
+  if (!agent) return null;
+  const sources = [...(content.letters ?? []), ...(content.cards ?? [])];
+  for (const d of [...(state.done ?? [])].reverse()) {
+    const c = sources.find(x => x.id === d.ref)?.choices?.find(x => x.id === d.choice);
+    if (!c || !(c.id === 'bonus' || (c.now ?? []).some(e => e && e.flag === flag))) continue;
+    const paid = -(c.now ?? []).reduce((n, e) => n + (e && Number.isFinite(e.money) && e.money < 0 ? e.money : 0), 0);
+    if (paid > 0) return `You have already paid ${agent.name} a bonus of ${dinars(paid)} for this trip.`;
+  }
+  return `You have already paid ${agent.name} a bonus for this trip.`;
+}
+
 /** The first thing a condition asks for that the house does not have, in words; null when the
     condition holds. Reads the same fields the engine's `holds` reads (turn.js, conditions.js) and
     only words them: whether a choice is open is still the engine's answer (choicesOf below). */
@@ -150,7 +167,7 @@ export function whyNot(cond, state, content) {
     if (cond.lte !== undefined && n > cond.lte) return `${cap(who)} think too well of the house for this.`;
   } else if ('flag' in cond) {
     const set = cond.flag in state.flags && (cond.gte === undefined || (typeof state.flags[cond.flag] === 'number' && state.flags[cond.flag] >= cond.gte));
-    if (cond.not ? set : !set) return cond.not ? 'You have already done this.' : 'Something has to happen first.';
+    if (cond.not ? set : !set) return cond.not ? (bonusWords(cond.flag, state, content) ?? 'You have already done this.') : 'Something has to happen first.';
   } else if ('notebook' in cond) {
     if (!state.notebook.includes(cond.notebook)) return `You have not yet learned about ${(content.notebook ?? []).find(n => n.id === cond.notebook)?.title?.toLowerCase() ?? 'this'}.`;
   } else if ('agent' in cond) {
@@ -476,7 +493,14 @@ export function accountText(r) {
 
 /** An account row for a return: label, words, and the signed dinars when the row is one of the sums. The one sign is this file's: the
     engine's words carry none in front of a figure the column shows (a loss is U+2212, never a hyphen, and never twice). */
+/** MER-145 (MER-143): the engine's wage row says "8 dinars a season for two seasons"; the account says which seasons they were, those after the agent set
+    out, so the row never reads as disagreeing with a trip headed "three seasons". A row that already says it (the engine's own words, once they do) is left as it is. */
+export function wageRowText(label, text) {
+  const who = /^(.+)'s wage$/.exec(label)?.[1];
+  return who ? String(text).replace(/ a season for (one|a|\d+|[a-z]+) (season|seasons)(?! after)/, (m, n, w) => ` a season for the ${n === 'one' || n === 'a' || n === '1' ? 'season' : `${n} ${w}`} after ${who} set out`) : text;
+}
 const sumRow = r => {
+  r = { ...r, text: wageRowText(r.label, r.text) };
   const sum = Number.isFinite(r.amount) && !r.detail;
   return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label, ' '), h('td', { colspan: sum ? null : 2 }, keepUnits(accountText(r)), sum ? ' ' : null),
     sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
