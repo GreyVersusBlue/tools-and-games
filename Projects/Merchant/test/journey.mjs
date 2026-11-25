@@ -2234,7 +2234,8 @@ try {
         eq(await texts(page, '#ledger-trail li[data-change]'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
         // MER-145: the engine's own game logged what moved the house's worth without a paper, and the ledger prints each line
         eq((await texts(page, '#ledger-trail li.ledger-worth')).sort(), book.log.filter(e => e.kind === 'worth' && (eng.view(book, nodeContent).trail.some(t => t.at === e.at) || e.at > Math.max(...book.log.filter(x => x.kind === 'season').map(x => x.at)))).map(e => e.text).sort(), 'the worth lines of the log, for the seasons the ledger shows and the one still open');
-        eq(await page.$$eval('#ledger-trail li', es => es.map(e => e.dataset.change)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, each as the log wrote it');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.cash)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, the money each as the log wrote it');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), eng.view(book, nodeContent).trail.map(t => String(t.change)), 'and the change in worth each is the engine\'s trail');
         ok((await texts(page, '#ledger-trail li')).every(t => /[+−]\d+ dinars$/.test(t)), 'signed with a real minus');
       });
 
