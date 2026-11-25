@@ -42,11 +42,12 @@ body { background: var(--night); }
   border-radius: var(--radius);
   width: fit-content;
 }
-.title-home { margin: var(--s2) 0 0; }
+.title-home { margin: 0; order: 2; }   /* after the tagline and before the menu on the page, though it is the last of them in the DOM and the Tab order */
 .home-link { display: inline-flex; align-items: center; min-height: var(--hit); padding: 0 var(--s3); background: rgba(20, 17, 13, .72); color: var(--paper); border-radius: var(--radius);
   font-family: var(--font-chrome); text-decoration: underline; text-underline-offset: .2em; }   /* MER-138: a scrim as the title and tagline have, over a pale sky */
 .home-link:hover { background: rgba(20, 17, 13, .9); }
-.title-body { margin-top: auto; }
+.title-head { order: 1; }
+.title-body { margin-top: auto; order: 3; }
 .title-menu { padding: var(--s3); display: grid; gap: var(--s2); max-width: 26em; }
 .title-menu .choice { margin: 0; }
 .title-reason {
@@ -621,6 +622,8 @@ dialog.book .panel-actions { flex: none; }
    and the menu card covers what is left: a blurred band. Laid from 38 percent across it shows the domes and roofs the picture is for, sharp, in the
    strip between the tagline and the card; the sky it was laid on for the title is the top of the picture at any x. */
 @media (max-width: 700px) and (min-height: 501px) { .title-still { object-position: 38% 0; } }
+/* MER-138: a phone on its side has the head and the menu in two columns: the link stands at the foot of the left one, under the tagline's box. */
+@media (max-height: 500px) { .title-home { position: absolute; left: max(var(--s4), env(safe-area-inset-left)); bottom: max(var(--s2), env(safe-area-inset-bottom)); } }
 /* MER-138: where the head has the width to spare (a laptop, the board) the link stands in the corner of the sky, so the page is no taller than it was
    with Continue showing (771 px in 768 with the link under the tagline). The phones keep it under the tagline, where the head has no one beside it. */
 @media (min-width: 701px) and (min-height: 501px) {

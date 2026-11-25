@@ -34,10 +34,7 @@ export function renderTitle({ city, art = null, save, onNew, onContinue, onAbout
     still,
     h('div', { class: 'title-head' },
       h('h1', { class: 'title-name', tabindex: '-1' }, city?.title ?? TITLE_TEXT.title),
-      h('p', { class: 'title-tagline' }, city?.tagline ?? TITLE_TEXT.tagline),
-      // MER-138 (site sweep 2026-11-24): the way back to the board, in the pattern of the site's other games (TG-97, an "All games" link to the
-      // site root on the title screen). It sits under the tagline, which every frame shows, so it never waits behind the menu.
-      h('p', { class: 'title-home' }, h('a', { class: 'home-link', id: 'lnk-all-games', href: '/' }, 'All games'))),
+      h('p', { class: 'title-tagline' }, city?.tagline ?? TITLE_TEXT.tagline)),
     h('div', { class: 'title-body' },
       h('div', { class: 'paper title-menu' },
         last ? h('p', { class: 'title-last', id: 'title-last' }, `Last game: ${num(last.total)} points, ${last.rank.charAt(0).toLowerCase()}${last.rank.slice(1)}. A new game replaces it.`) : null,
@@ -45,5 +42,9 @@ export function renderTitle({ city, art = null, save, onNew, onContinue, onAbout
         save ? btn('btn-continue', 'Continue', onContinue, h('span', { class: 'hint', id: 'continue-where' }, save.label)) : null,
         h('p', { class: 'title-what' }, TITLE_TEXT.about.join(' ')),
         btn('btn-about', 'About this game', onAbout),
-        btn('btn-settings', 'Settings', onSettings))));
+        btn('btn-settings', 'Settings', onSettings))),
+    // MER-138 (site sweep 2026-11-24): the way back to the board, in the pattern of the site's other games (TG-97: an "All games" link to the site root on
+    // the title screen). It is the last stop of the Tab order, so New game stays the first (every keyboard path of the game starts with one Tab), and
+    // screens.css draws it under the tagline on a phone, in the corner of the sky on a laptop and at the foot of the left column on a phone on its side.
+    h('p', { class: 'title-home' }, h('a', { class: 'home-link', id: 'lnk-all-games', href: '/' }, 'All games')));
 }

@@ -4494,8 +4494,7 @@ try {
         await page.evaluate(() => document.activeElement.blur());
         const seen = [];
         for (let i = 0; i < 6; i++) { await page.keyboard.press('Tab'); seen.push(await page.evaluate(() => document.activeElement.id)); }
-        ok(seen.includes('lnk-all-games'), `Tab never reached the link: ${seen}`);
-        ok(seen.indexOf('lnk-all-games') < seen.indexOf('btn-new') || seen.indexOf('btn-new') < 0 || true, '');
+        eq(seen.slice(0, 4), ['btn-new', 'btn-about', 'btn-settings', 'lnk-all-games'], 'the link is the fourth stop: New game stays the first, as every keyboard path of the game expects');
       });
       await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
