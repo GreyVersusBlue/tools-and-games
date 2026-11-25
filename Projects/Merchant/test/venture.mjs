@@ -406,8 +406,9 @@ test('MER-115 (2) estimate: a house mark at home that will not fade (the factor 
   eq(flat.pricesHome.silk, M.truePrice(g0, C, 'cairo', 'silk'), 'an unmarked home at its base is valued at its price now');
 });
 
-test('why, tolls: a toll paid in goods the far end would have bought for more costs the sales it took', () => {
-  // a road with a stop on the way where the keeper takes 60 and the party has no money, so the toll goes in wool (20 a load at home)
+test('(MER-149, 3) a toll paid in goods before the far end is in the sheet: the loads that go are not sold there, and the keeper\'s change is money, so the trip comes home as the sheet said and the paper blames no toll', () => {
+  // a road with a stop on the way where the keeper takes 60 and the party has no money, so the toll goes in wool (20 a load at home, 40 at Hilltown). Until MER-149 the sheet counted
+  // the 60 as money out and still sold every load at Hilltown, and the paper said "Tolls were paid in wool that would have sold for more in Hilltown." for the gap.
   const open = ['spring', 'summer', 'autumn', 'winter'];
   const leg = (from, to, toll) => ({ from, to, by: 'mules', seasons: 1, opens: open, risk: 0, toll });
   const c = still(x => {
@@ -415,9 +416,14 @@ test('why, tolls: a toll paid in goods the far end would have bought for more co
     x.routes.push({ id: 'harbour-by-saltmarsh-hilltown', to: 'hilltown', legs: [leg('harbour', 'saltmarsh', 60), leg('saltmarsh', 'hilltown', 5), leg('hilltown', 'harbour', 5)] });
   });
   const s = know(game(c), c, 'hilltown', 'wool', 40);
-  const { paper, s: end } = toReturn(outfit(s, c, { ...WOOL, route: 'harbour-by-saltmarsh-hilltown' }), c);
-  void end;
-  eq(paper.data.why, 'Tolls were paid in wool that would have sold for more in Hilltown.');
+  const plan = { ...WOOL, route: 'harbour-by-saltmarsh-hilltown' };
+  const e = estimate(s, c, plan);
+  ok(e.tollInGoods >= 60, `the sheet says the toll went in goods: ${e.tollInGoods}`);
+  ok(e.pricesSell.wool > 0 && e.impact.wool >= 0, 'the loads that are left are sold at Hilltown');
+  const { paper } = toReturn(outfit(s, c, plan), c);
+  ok(paper.data.account.some(r => r.label === 'Paid in goods'), 'the trip paid the toll in wool');
+  ok(Math.abs(paper.data.houseNet - e.net) <= 2, `estimated ${e.net}, made ${paper.data.houseNet}`);
+  eq(paper.data.why, 'The trip went about as hoped.');
 });
 
 test('MER-139 (2) a toll paid in goods is a row of the account, with the change the keeper gave', () => {
@@ -627,6 +633,7 @@ test('MER-112b (4) every proposal is expected to make about what the trip makes:
   // the stop and its news a few seasons later), then every proposal on the two roads for each of the two agents.
   const c = variant(C, x => { for (const g of x.goods) g.sigma = 0; });
   const roads = ['cairo-damascus', 'cairo-qus'];
+  // seeds 1 to 6 until MER-149, 1 to 8 now: with Damascus's prices a tenth over Cairo's more states have no plan that pays, and six seeds gave 47 trips against the 60 this case asks for
   const sendRide = (s, agent, plan) => {
     let w = outfit(structuredClone(s), c, plan), lossy = false, paper;
     const seen = new Set(w.desk.map(p => p.id));
@@ -639,7 +646,7 @@ test('MER-112b (4) every proposal is expected to make about what the trip makes:
   };
   let states = 0, compared = 0, lossy = 0;
   const seenRoads = new Set(), seenAgents = new Set();
-  for (const seed of [1, 2, 3, 4, 5, 6]) for (const n of [1, 3, 5]) for (const firstRoad of roads) {
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) for (const n of [1, 3, 5]) for (const firstRoad of roads) {
     let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
     for (let i = 0; i < n; i++) s = step(s, c);
     s.agents.ali.hired = true; s.agents.ali.where = 'cairo';
@@ -659,9 +666,8 @@ test('MER-112b (4) every proposal is expected to make about what the trip makes:
       if (!paper || lost) { lossy++; continue; }
       compared++; seenRoads.add(road); seenAgents.add(agent);
       const made = paper.data.houseNet, where = `${seed}/${n}/${firstRoad}/${agent}/${road}`;
-      if (Math.abs(made) > 2 || Math.abs(e.net) > 2) eq(Math.sign(made), Math.sign(e.net), `${where}: estimated ${e.net}, made ${made}`);   // a trip that makes about nothing has no sign to agree on (MER-148: estimated 1, made 0)
-      // 3 percent of the stake until MER-148, 6 now: a toll the purse cannot pay before the far end is paid in a load credited at what Sell would pay for a load, and the sheet counts it as money
-      ok(Math.abs(made - e.net) <= e.stake * 0.06, `${where}: estimated ${e.net}, made ${made}, stake ${e.stake}`);
+      if (Math.abs(made) > 2 || Math.abs(e.net) > 2) eq(Math.sign(made), Math.sign(e.net), `${where}: estimated ${e.net}, made ${made}`);   // a trip that makes about nothing has no sign to agree on (MER-148: estimated 1, made 0; the one-dinar rounding of a cut taken load by load)
+      ok(Math.abs(made - e.net) <= e.stake * 0.03, `${where}: estimated ${e.net}, made ${made}, stake ${e.stake}`);
     }
   }
   ok(states >= 30, `${states} states`);
@@ -686,7 +692,7 @@ function longRoadStates(road, { seeds, ns, marks }) {
     for (let i = 0; i < 30 && !paper && w.phase !== 'recall' && w.phase !== 'ended'; i++) { w = step(w, c); paper = w.desk.find(p => p.kind === 'return' && !seen.has(p.id)); }
     if (!paper) continue;
     if (/^The road took/.test(paper.data.why ?? '')) { lossy++; continue; }
-    rows.push({ at: `${seed}/${n}/${f}/${agent}`, est: e.net, made: paper.data.houseNet, stake: e.stake });
+    rows.push({ at: `${seed}/${n}/${f}/${agent}`, est: e.net, made: paper.data.houseNet, stake: e.stake, held: (paper.data.trip?.orders ?? []).some(o => o.did === 'wait' && o.changed) });   // held: a letter answered 'wait' made the party hold at a stop, which no estimate can foresee (MER-130)
   }
   return { rows, lossy };
 }
@@ -720,18 +726,18 @@ test('MER-115 (3) estimate on Aleppo (4 seasons), noise off, home\'s price unmar
   // mean 5.50 and worst 33, and fails on both the mean (5) and the worst (26); the carry removed (goods at today's price) reads
   // mean 17.50 and fails on the mean line.
   const { rows, lossy } = longRoadStates('cairo-aleppo', { seeds: [1, 2], ns: [0, 2, 3], marks: [[1, 0], [1.5, 0.2], [0.7, -0.1]] });
-  ok(rows.length >= 30, `${rows.length} trips compared, ${lossy} left out for a loss`);
+  ok(rows.length >= 28, `${rows.length} trips compared, ${lossy} left out for a loss`);   // 30 until MER-149: with the toll in the sheet two marked-high start-3 trips of Ali's make nothing and get no plan
   for (const r of rows) eq(Math.sign(r.made), Math.sign(r.est), `${r.at}: estimated ${r.est}, made ${r.made}`);
   const all = errors(rows);
-  // MER-148: mean 9.60, not 4.38, and the bound 10, not 5. The goods count at what Sell would pay for them, and a toll the purse cannot pay before the far end is paid in a loaded
-  // load credited at that price (a copper load, 14 dinars of change) which the estimate still counts as money: 12 dinars on the trips where it happens, none on the rest (found by
-  // listing every trip more than 9 out: 16 of 36, every one with 'Paid in goods' on its paper).
-  ok(all.mean <= 10, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
+  // MER-148 read mean 9.60 and loosened this to 10: a toll the purse cannot pay before the far end is paid in a load credited at what Sell would pay for a load, with change into the purse, and the
+  // sheet counted it as money out (12 dinars on the 16 trips of 36 with 'Paid in goods' on their paper). MER-149 makes the sheet pay it the way the trip does (routes.js `estimate`, `asked`), and the
+  // 28 trips read mean 2.00, worst 24, two over 13 (the start-3 marked-high state of MER-121b, Yusuf and Ali) and 2.6 on the marked-home trips: the old bounds are back.
+  ok(all.mean <= 5, `mean error ${all.mean.toFixed(2)} dinars over ${rows.length} trips`);
   const far = rows.filter(r => Math.abs(r.est - r.made) > 13);
-  ok(far.length <= 6, `${far.length} trips more than 13 dinars out (at most 2 until MER-148; the six are the marked-high trips whose silk or pepper is handed over for a toll): ${far.map(r => `${r.at} estimated ${r.est}, made ${r.made}`).join('; ')}`);
+  ok(far.length <= 2, `${far.length} trips more than 13 dinars out: ${far.map(r => `${r.at} estimated ${r.est}, made ${r.made}`).join('; ')}`);
   ok(all.worst <= 26, `worst error ${all.worst} dinars`);
   const marked = errors(rows.filter(r => !r.at.includes('/1/')));
-  ok(marked.mean <= 12, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);   // 7 until MER-148
+  ok(marked.mean <= 7, `mean error on the marked-home trips ${marked.mean.toFixed(2)} dinars`);
 });
 
 test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an act jump, which the estimate settles as `jump` does (the quotes it left with, the wage of the whole road): a mean error of at most 12 dinars on the trips the purse can pay for, 12 at worst, 2.5 percent of the stake', () => {
@@ -757,13 +763,17 @@ test('MER-116 (2) estimate on Samarkand (12 seasons): every trip ends across an 
   // four are counted and bounded apart (an overstatement of at most one load, never an understatement), and the six that are left,
   // which carry the 12 dinars the head names, keep the bound that fails when MER-115 or MER-116 is reverted (their reading was 74.4
   // mean, 92 worst).
-  const over = rows.filter(r => r.est - r.made > 150), rest = rows.filter(r => !over.includes(r));
+  const over = rows.filter(r => r.est - r.made > 150), held = rows.filter(r => !over.includes(r) && r.held), rest = rows.filter(r => !over.includes(r) && !r.held);
   ok(over.length <= 6 && over.every(r => r.est - r.made <= 215), `${over.length} trips where the estimate counts a load the purse cannot pay for: ${over.map(r => `${r.at} ${r.est - r.made}`).join(', ')}`);
+  // MER-149: the same cause one size smaller. Ali's start-0 trips (seeds 3 and 4) hold three seasons at Tabriz on the answer 'wait' to the first road letter (est 92, made 72 on a stake of 562:
+  // three seasons of upkeep at 4, which the sheet counted one of, and the rest of the 20 the road asked of the purse in the holding). Held trips are bounded apart, as the load-over ones are,
+  // and every trip the road did not hold keeps the old bands (worst 12, 2.5 percent).
+  ok(held.every(r => Math.abs(r.est - r.made) <= 25 && r.est >= r.made), `${held.length} trips held by a letter: ${held.map(r => `${r.at} ${r.est - r.made}`).join(', ')}`);
   ok(rest.length >= 4, `${rest.length} trips left for the band`);
   const { mean, worst, rel } = errors(rest);
   ok(mean <= 12, `mean ${mean.toFixed(1)} dinars over ${rest.length} trips`);
-  ok(worst <= 22, `worst ${worst} dinars`);   // 12 until MER-148: the same toll paid in a load (20 dinars on the Samarkand trips whose silk is handed over)
-  ok(rel <= 0.04, `${(rel * 100).toFixed(1)} percent of the stake`);   // 2.5 until MER-148 (3.6 now: the silk handed over for a toll is credited at what Sell would pay)
+  ok(worst <= 12, `worst ${worst} dinars`);
+  ok(rel <= 0.025, `${(rel * 100).toFixed(1)} percent of the stake`);
 });
 
 test('MER-130 estimate on Samarkand: a purse just above the four-load line before the party has paid its way to the far end and below it after counts three loads of silk, as the trip buys', () => {
@@ -1037,12 +1047,12 @@ function afterFirstTrip(first, plan, seasons) {
   return { e, paper, s, c };
 }
 
-test('MER-112b (2) estimate, a repeat trip after the house sold 25 linen at Damascus: the news of 40 carries the mark of the first trip, so the second sells at what the stop will pay, not at 40 (9aaa3721: -506 against -315)', () => {
+test('MER-112b (2) estimate, a repeat trip after the house sold 25 linen at Damascus: the news of 35 carries the mark of the first trip, so the second sells at what the stop will pay, not at 35 (9aaa3721: -506 against -315)', () => {
   const first = { stock: { linen: 25 }, plan: { agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 25 }, purse: 0, contract: 'own', sell: ['linen'], buy: [] } };
   const second = () => ({ agent: 'yusuf', route: 'cairo-damascus', cargo: { linen: 20 }, purse: 0, contract: 'own', sell: ['linen'], buy: [] });
   const { e, paper, s, c } = afterFirstTrip(first, second, 3);
-  eq(s.known.damascus.linen, { p: 40, at: 2 }, 'the house knows 40 for linen at Damascus, written the season of the first trade');
-  eq(M.truePrice(s, c, 'damascus', 'linen'), 48, 'the stop pays 48 now, the mark halved');
+  eq(s.known.damascus.linen, { p: 35, at: 2 }, 'the house knows 35 for linen at Damascus, written the season of the first trade');
+  eq(M.truePrice(s, c, 'damascus', 'linen'), 43, 'the stop pays 43 now, the mark halved');
   ok(Math.abs(e.net - paper.data.houseNet) <= Math.abs(paper.data.houseNet) * 0.1, `estimated ${e.net}, made ${paper.data.houseNet}`);
   ok(paper.data.houseNet < 0, 'the trip loses (linen bought at home for 20 loads costs more than it sells for): the sign is right too');
   eq(paper.data.why, 'The trip went about as hoped.', 'and the paper does not blame the mark the estimate knew of');
@@ -1538,7 +1548,7 @@ test('MER-133b (5) one wage count: the sheet\'s later wage, the prepay, and the 
 // ---- MER-144: the house's own plan never bets the house
 
 /** What a plan puts up now, from the engine's own cost sheet: the goods bought at home, the purse, less the partners' money. The warehouse's goods are not in it. */
-const staked = (s, c, plan) => { const k = checkPlan(s, c, plan).cost; return k.bought + k.purse - k.partners; };
+const staked = (s, c, plan) => R.planStake(s, c, plan);   // the ceiling counts the warehouse's goods at what Sell would pay (MER-148); this had counted the money alone, so a plus the engine's ceiling refuses looked like one left on the table
 /** The ceiling as the decision words it, written here from the money and the agents alone and not read from the engine: 60 percent of the money, half while another hired agent is at home with no trip. */
 const ceilingOf = (s, c, agent) => Math.floor(s.money * (c.agents.some(a => a.id !== agent && s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id)) ? 0.5 : 0.6));
 
@@ -1760,7 +1770,7 @@ test('(MER-148, 12) the plan carries goods the warehouse already holds where the
   const home = M.truePrice(game(REAL, { house: 'spice' }), REAL, 'cairo', 'glass');
   eq(home, 40, 'setup: Cairo pays 40 for a load of glass');
   const dear = at(44), between = at(37), low = at(34);
-  eq(dear.plan.cargo.glass, 2, 'dearer at Damascus than Cairo: the two loads go (as before)');
+  ok(dear.plan.cargo.glass >= 2, `dearer at Damascus than Cairo: the two loads go (as before), and a third bought at home may add (it does since MER-149: Damascus's glass is 44, not 47): ${dear.plan.cargo.glass}`);
   eq(between.plan.cargo.glass, 2, 'at 37, under Cairo\'s 40 and over the 34 Sell would pay: the two loads go, which sat through three sends in the M4f play');
   ok(!low.plan.cargo.glass, 'at 34 they would fetch no more than Sell pays at home: they stay');
   ok(estimate(between.s, REAL, between.plan).net > estimate(between.s, REAL, { ...between.plan, cargo: { ...between.plan.cargo, glass: 0 }, sell: between.plan.sell.filter(g => g !== 'glass') }).net, 'and the plan with them makes more than the plan without');

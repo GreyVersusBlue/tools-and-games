@@ -1270,8 +1270,37 @@ export function estimate(state, content, plan, memo = null, { lean = false } = {
   const costsBefore = tollsBefore + upkeepBefore;
   const pricesSell = {}, pricesBuy = {}, pricesHome = {};
   const impact = {};   // dinars each good's price moved against the house's own loads there (what a flat price would have paid, less what the loads fetched)
-  let money = purse - Math.min(purse, costsBefore);
-  const goodsBack = { ...cargo };
+  // What the road asks before the party trades, paid as `move` and `tolls` pay it, one cost at a time in the order the road asks (the waiting before a leg, then the toll
+  // on arriving from it): out of the purse first, then in loads (`payFromExpedition`: the loads with the lowest credit first, each credited at what Sell would pay for a
+  // load, the keeper giving change into the purse). A load that goes this way is a load the far market does not buy, so the sheet takes it out of the cargo before it counts
+  // the sales, and counts the change as money (MER-149: it had counted the whole shortfall as money, which is not what the trip does, and three bands of test/venture.mjs
+  // were loosened for it).
+  const homeNow = { ...state, market: { [home]: homeAfter } };
+  const credit = g => { const p = M.truePrice(homeNow, content, home, g); return p === null ? (stopOf(content, home)?.sells?.[g]?.base ?? 1) : Math.max(1, Math.round(p * (1 - M.BROKER_CUT))); };
+  let money = purse, unpaid = 0, tollBeforeInGoods = 0;
+  const cargoLeft = { ...cargo };
+  const lastLeg = atQuote ? count.leg : far;
+  const asked = [];
+  proj.legs.slice(0, lastLeg + 1).forEach((l, i) => {
+    const first = l.startK - l.waits, last = atQuote ? Math.min(l.startK - 1, count.out) : l.startK - 1;
+    for (let k = first; k <= last; k++) asked.push(UPKEEP);
+    if (i < lastLeg) asked.push(route.legs[i].toll);
+  });
+  for (const amount of asked) {
+    const fromPurse = Math.min(money, amount);
+    money -= fromPurse;
+    let owed = amount - fromPurse;
+    if (owed <= 0) continue;
+    const creditOf = {};
+    for (const g of Object.keys(cargoLeft)) creditOf[g] = credit(g);
+    for (const g of Object.keys(cargoLeft).sort((a, b) => creditOf[a] - creditOf[b] || (a < b ? -1 : 1))) {
+      while (cargoLeft[g] > 0 && owed > 0) { cargoLeft[g]--; owed -= creditOf[g]; }
+      if (!cargoLeft[g]) delete cargoLeft[g];
+    }
+    if (owed < 0) money += -owed; else unpaid += owed;   // the keeper's change goes into the purse; a shortfall no load can pay stays unpaid
+    tollBeforeInGoods += amount - fromPurse - Math.max(0, owed);
+  }
+  const goodsBack = { ...cargoLeft };
   // the far market as the party will find it, from the news and the house's own mark on it then, carried to the season of arrival
   // by market.js (`farMarket`); sales first, then purchases, as `tradeAt` does them
   const closings = proj.legs[far] ? proj.legs[far].startK + legSeasons(agent, route.legs[far]) - 1 : 0;
@@ -1291,19 +1320,20 @@ export function estimate(state, content, plan, memo = null, { lean = false } = {
   const glutOf = {};   // the mark the estimate expected on each price when the party arrives
   const quoted = g => M.truePrice(state, content, dest.id, g);   // `x.quote`: the far price today, no mark on it
   for (const g of sell) {
+    if (!cargoLeft[g]) { if (atQuote) newsOf(g); else bookOf(g); delete goodsBack[g]; continue; }   // every load of it went for tolls: nothing of it to sell (the age of its news still counts)
     if (atQuote) {
       const p = quoted(g), cut = bargain(agent, dest.id, 'sell');
       if (p === null || p === undefined) continue;
       pricesSell[g] = p; glutOf[g] = 0; impact[g] = 0; newsOf(g);
-      money += cargo[g] * Math.round(p * cut);
+      money += cargoLeft[g] * Math.round(p * cut);
       delete goodsBack[g];
       continue;
     }
     const b = bookOf(g), cut = bargain(agent, dest.id, 'sell');
     pricesSell[g] = b.free; glutOf[g] = b.glut;
     const first = Math.round(M.sellPrice(b.m, content, dest.id, g) * cut);
-    const got = saleRevenue(b.m, content, dest.id, g, cut, cargo[g]);
-    impact[g] = cargo[g] * first - got;
+    const got = saleRevenue(b.m, content, dest.id, g, cut, cargoLeft[g]);
+    impact[g] = cargoLeft[g] * first - got;
     money += got;
     delete goodsBack[g];
   }
@@ -1357,10 +1387,10 @@ export function estimate(state, content, plan, memo = null, { lean = false } = {
     }
   }
   const tollsAfterCost = fromMoney + owed + lost - change;
-  const tollInGoods = after - fromMoney - owed;   // the part of the tolls after the far end that loads pay, which makes the estimate lumpy: a purse a load's price bigger can pay in money what a load paid
+  const tollInGoods = after - fromMoney - owed + tollBeforeInGoods;   // the part of the tolls after the far end that loads pay, which makes the estimate lumpy: a purse a load's price bigger can pay in money what a load paid
   const upkeep = proj.waits * UPKEEP;
   // what the tolls took before the far end came out of the purse (money already net of it) or the cargo; the rest comes out of what is left
-  const gross = money + goodsValue - tollsAfterCost - Math.max(0, costsBefore - purse) - (upkeep - upkeepBefore);
+  const gross = money + goodsValue - tollsAfterCost - unpaid - (upkeep - upkeepBefore);
   const share = cityOf(content, 'expeditions').contracts?.qirad?.agentShare ?? [0, 1];
   const shares = split({ kind, agentShare: share[0], of: share[1] }, { house: stakedHouse, partners }, gross);
   const wage = kind === 'own' ? tripWage(agent, count) : 0;

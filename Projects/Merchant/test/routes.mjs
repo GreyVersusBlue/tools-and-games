@@ -228,7 +228,9 @@ test('suggestPlan: a free agent who knows the stop, the best road, the ten loads
   const s = cairo();
   const plan = suggestPlan(s, calmC, 'damascus');
   // MER-139: the first sheet is proposePlan's (see the case below), so the cargo is more than linen; the agent, the road and the ten loads of linen are as before
-  eq([plan.agent, plan.route, plan.cargo.linen, plan.sell.includes('linen')], ['yusuf', 'cairo-damascus', 10, true]);
+  // the card's ten loads or the rule's own count if it is more: 10 until MER-149, 11 now (Damascus's linen came down from 57 to 50, and the rule finds the eleventh load adds)
+  eq([plan.agent, plan.route, plan.cargo.linen, plan.sell.includes('linen')], ['yusuf', 'cairo-damascus', Math.max(10, R.proposePlan(s, calmC, 'yusuf', 'cairo-damascus').cargo.linen ?? 0), true]);
+  ok(plan.cargo.linen >= 10, 'never fewer than the ten the card names');
   eq(checkPlan(s, calmC, plan).ok, true);
   eq(suggestPlan(s, calmC, 'cairo'), null, 'nowhere to go from home to home');
   eq(suggestPlan(game(calm, { house: 'plain' }), calm, 'saltmarsh'), null, 'saltmarsh trades no wool, so nothing in the warehouse fits');
@@ -453,7 +455,8 @@ test('MER-139 (5) the first expedition\'s sheet is the sheet\'s own rule: propos
     const plan = suggestPlan(s, calmC, 'damascus');
     const rule = R.proposePlan(s, calmC, plan.agent, 'cairo-damascus');
     ok(Object.keys(plan.cargo).length > 1, `${house}: linen alone is not the first sheet (${JSON.stringify(plan.cargo)})`);
-    eq(plan.cargo.linen, 10, `${house}: the card's ten loads of linen`);
+    eq(plan.cargo.linen, Math.max(10, rule.cargo.linen ?? 0), `${house}: the card's ten loads of linen, or the rule's own count when it is more (11 at Damascus's linen of 50, MER-149)`);
+    ok(plan.cargo.linen >= 10, `${house}: never fewer than the card's ten`);
     // every other good is one proposePlan names, in no more loads than it names: the card's ten loads of linen stand, and the rest give way to the ceiling (MER-148)
     for (const [g, n] of Object.entries(plan.cargo)) if (g !== 'linen') ok(n <= (rule.cargo[g] ?? 0), `${house}: ${g} ${n} against proposePlan's ${rule.cargo[g] ?? 0}`);
     ok(R.planStake(s, calmC, plan) <= Math.max(R.stakeCeiling(s, calmC, plan.agent), R.planStake(s, calmC, { cargo: { linen: 10 } })), `${house}: the first sheet stakes ${R.planStake(s, calmC, plan)}, within the ceiling or the card's own ten loads`);
