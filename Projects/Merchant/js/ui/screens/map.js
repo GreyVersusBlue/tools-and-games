@@ -119,13 +119,14 @@ export function createMap(app, nav) {
   const reason = h('p', { class: 'reason', id: 'outfit-open-reason' });
   const outfitBtn = h('button', { class: 'button primary', type: 'button', id: 'btn-outfit', 'aria-describedby': 'outfit-open-reason', onclick: () => pressOutfit() });
   const board = h('aside', { class: 'board', id: 'board', 'aria-label': 'Prices and stops' },
-    h('div', { class: 'board-body', id: 'board-body' }, boardTitle, list, pricesBtn, pricesBox, toast),
+    toast,
+    h('div', { class: 'board-body', id: 'board-body' }, boardTitle, list, pricesBtn, pricesBox),
     h('div', { class: 'board-actions' }, reason, outfitBtn,
       h('button', { class: 'button', type: 'button', id: 'map-desk', onclick: () => nav.toDesk() }, 'Back to the desk')));
   const el = h('main', { class: 'map-screen', id: 'screen-map' }, bar, stage, board);
   // MER-124: the set-out toast lives in the board, in the flow above its buttons, where it covers no stop, label or token at any frame
   // (it was fixed over the picture and sat on the labels on a phone). The first press anywhere on the table dismisses it.
-  el.addEventListener('pointerdown', () => hideToast(), true);
+  el.addEventListener('click', () => hideToast(), true);   // MER-138: on the click, not the press: the board moves up when the note goes, and a press that moved it left the tap on the row below
 
   // ---- what the player can do with a stop
   function outfitState(stopId) {
@@ -575,7 +576,14 @@ export function createMap(app, nav) {
     });
     outfit = { stopId, view };
     document.body.append(view.dialog);
-    view.dialog.addEventListener('close', () => { if (outfit?.view === view) { outfit = null; view.destroy(); nav.outfitClosed(); (opener?.isConnected ? opener : outfitBtn)?.focus(); } });
+    view.dialog.addEventListener('close', () => {
+      if (outfit?.view !== view) return;
+      outfit = null; view.destroy(); nav.outfitClosed();
+      // MER-138 (play b015): focus goes back to the button that opened the sheet unless that button is dead now (after Send nobody is free, so Outfit
+      // says "Nobody is free" and takes no press): then it goes to the stop list, which is always there and always works
+      const live = b => b?.isConnected && b.getAttribute('aria-disabled') !== 'true' && !b.disabled && b.checkVisibility?.() !== false;
+      (live(opener) ? opener : live(outfitBtn) ? outfitBtn : list).focus({ preventScroll: true });
+    });
     view.dialog.showModal();
     qs('h2', view.dialog).focus();
   }

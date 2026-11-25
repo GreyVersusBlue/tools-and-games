@@ -434,8 +434,23 @@ function pictureSlot(app) {
     asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null);
 }
 
-/** How much of a scroll box's top the tabs of the papers lower in the stack cover (screens.css keeps them stuck there while the paper under them
-    scrolls: MER-132, play a029, the tabs went out of sight above the box on every return). 0 where they scroll with the page or are not drawn. */
+/** The box a raised paper scrolls in: the paper's own box on a laptop or the board (MER-138), else the stack, which is visible, and the page scrolls. */
+export function scrollBoxOf(root) {
+  const sb = qs('.sheet-box', root);
+  return sb && getComputedStyle(sb).overflowY === 'auto' ? sb : qs('.stack-papers', root);
+}
+
+/** MER-138 (play a052, b011, b017): the headline of a raised paper is whole in its box after any scroll the desk made to bring a choice into
+    view (the headline wins where both cannot show, MER-122). */
+export function keepHeadline(sheet, gap = 6) {
+  const title = qs('.sheet-title', sheet), box = sheet.closest('.sheet-box, .stack-papers');
+  if (!title || !box) return;
+  if (getComputedStyle(box).overflowY !== 'auto') return;   // the phones scroll the page: desk.js's revealOnPage and the focus code keep the headline under the bar
+  const over = box.getBoundingClientRect().top + gap - title.getBoundingClientRect().top;
+  if (over > 0) box.scrollTop = Math.max(0, box.scrollTop - over);
+}
+
+/** MER-138: the tabs lie above the paper's box and no longer cover it, so this is 0 unless a stylesheet sticks them again. Kept so the one caller reads true. */
 export function stuckHeight(box) {
   const tabs = box && qs('.edges', box);
   if (!tabs || getComputedStyle(tabs).position !== 'sticky' || !tabs.checkVisibility?.()) return 0;
@@ -531,13 +546,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
   // MER-122: the desk scrolls a raised paper's stack down to its first choice (revealChoice), and on a short frame that leaves the headline
   // above the top (play a062, b070: y=-292). A record opens on its headline, whatever else is cut: this runs after the desk's own pass and
   // again when the sheet's rise ends, which is the desk's second pass.
-  const headline = () => {
-    const box = sheet.closest('.stack-papers'), title = qs('.sheet-title', sheet);
-    if (paper.kind !== 'return' || !box || !title || getComputedStyle(box).overflowY !== 'auto') return;
-    // the tabs stuck over the box's top (stuckHeight) lie over the first part of the window: the headline is put just under them
-    const stuck = stuckHeight(box), want = box.getBoundingClientRect().top + stuck;
-    if (title.getBoundingClientRect().top < want) box.scrollTop = stuck ? Math.max(0, box.scrollTop - (want - title.getBoundingClientRect().top) - 4) : 0;
-  };
+  const headline = () => keepHeadline(sheet);
   queueMicrotask(() => {
     if (!sheet.isConnected) return;
     headline();
