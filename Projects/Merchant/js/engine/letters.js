@@ -29,13 +29,14 @@
 // A letter about a trip never reaches the desk after that trip's return paper (MER-118): see `deliver`. Lost expeditions are
 // exempt, their letters are kept (DECISIONS 2026-11-17 12:10).
 import { seasonIndex, playedSeasons } from './calendar.js';
-import { holds, placeOf } from './conditions.js';
+import { holds, placeOf, mainGoodOf } from './conditions.js';
 import { applyAll } from './effects.js';
 import { addPaper, deskFull, cityOf } from './state.js';
 import { chance, weighted } from './rng.js';
 import { lagOf, writeSeason, truePrice } from './market.js';
+import { sellHomeQuote } from './sell.js';
 import { wary, legSeasons } from './agents.js';
-import { accountItem, foldAccounts } from './routes.js';   // a cycle (routes.js reads decide and close from here); both are only called after the modules have loaded
+import { accountItem, foldAccounts, pickEntry, askOf } from './routes.js';   // a cycle (routes.js reads decide and close from here); both are only called after the modules have loaded
 
 /** The chance a letter is written, for an expedition with a letter to write, in a season. */
 export const LETTER_CHANCE = 0.5;
@@ -206,10 +207,55 @@ function fitBroker(s, content, p) {
   const loads = -out.by, was = pay.money, gapOf = sum => Math.round((1 - sum / (loads * price)) * 100);
   let sum = was, gap = gapOf(sum);
   if (gap < BROKER_MIN || gap > BROKER_MAX) { sum = Math.max(1, Math.round(loads * price * (1 - Number(words[2]) / 100))); gap = gapOf(sum); }
+  // A broker never pays less than the house gets from the ledger's Sell at home for the same loads the same season (MER-146, M4e play
+  // problem 11: 200 for two loads against 228 from Sell; 153 for two against 91.9 a load). The paper's own sum is raised to the
+  // quote, so a broker who finds the buyer is the better price and Sell is the way to sell when the house names the day. A quote the house
+  // cannot take (it holds fewer loads than the broker's offer) leaves the sum alone: the choice is closed by its `requires` then.
+  const quote = sellHomeQuote(s, content, out.stock, loads);
+  if (quote.ok && quote.got > sum) { sum = quote.got; gap = gapOf(sum); }
   const swap = text => (typeof text === 'string' ? text.replace(`for ${was} dinars`, `for ${sum} dinars`).replace(`get ${was} dinars`, `get ${sum} dinars`) : text);
-  p.data.ask.body = swap(body).replace(BROKER_WORDS, `$1${gap}$3`);
+  p.data.ask.body = swap(body).replace(BROKER_WORDS, `$1${Math.max(gap, 0)}$3`);
   choice.hint = swap(choice.hint);
   pay.money = sum;
+}
+
+/** The goods a return paper says are in the warehouse are the goods that are (MER-146, M4e play problem 3: seven loads sold on the
+    Years pass page were still "in the warehouse, worth about 840" on the first paper after it, which offered to hold them and closed the broker's
+    offer for "you have 0 loads"). Called whenever the warehouse changes with papers on the desk (a sale, a trip sent, a choice answered): each
+    open return paper keeps what the warehouse can still cover of the goods it brought home, the papers taking from it in desk order, the value is
+    worked again at today's price, and a paper left with nothing (or less of its main good) asks the question its trip now asks, from returns.json,
+    with the offer fitted afresh. The account rows are history and stay as they were. */
+export function refitReturns(s, content) {
+  const home = cityOf(content, 'market').home;
+  const left = { ...s.stock };
+  for (const p of s.desk) {
+    if (p.kind !== 'return' || !p.data || p.state === 'done') continue;
+    const d = p.data, back = d.goodsBack ?? {}, mine = {};
+    let cut = false;
+    for (const [g, n] of Object.entries(back)) {
+      const k = Math.min(n, left[g] ?? 0);
+      left[g] = (left[g] ?? 0) - k;
+      if (k > 0) mine[g] = k;
+      if (k < n) cut = true;
+    }
+    if (cut) {
+      d.goodsBack = mine;
+      d.cargoValue = Math.round(Object.entries(mine).reduce((v, [g, n]) => v + n * (truePrice(s, content, home, g) ?? 0), 0));
+      const trip = d.trip, homeGood = mainGoodOf(mine);
+      if (d.facts && trip) {
+        const was = d.entry;
+        const facts = { ...d.facts, brought: homeGood !== null, good: homeGood ?? trip.good };
+        const entry = pickEntry(s, content, 'return', facts);
+        if (entry?.id !== was) {
+          if (was && /^return-sell-/.test(was) && s.seen[`shown:${was}`] > 0) s.seen[`shown:${was}`] -= 1;   // an offer the player never saw is not one of the two
+          Object.assign(d, askOf(content, entry, { ...trip, good: homeGood ?? trip.good }), { facts });
+          d.fitted = false;
+        }
+      }
+    }
+    if (!d.fitted) { limitBroker(s, p); fitOffers(p); }
+    fitBroker(s, content, p);
+  }
 }
 
 /** A bonus is never offered above the trip's profit (MER-123): the return paper's bonus choice is cut to half the profit,
@@ -314,6 +360,11 @@ function accountFor(s, content, idx, items) {
   const open = s.desk.find(q => q.kind === 'accounts' && q.state === 'open');
   if (!open) { foldAccounts(s, content, items); return; }
   open.items.push(...items);
+  // The paper that tells what a letter cost never comes before the letter (MER-146, M4e play problem 4: the Accounts paper of the season's
+  // earlier closing was already on the desk, the customs letter was put on after it, and its 40 dinars were read as "the customs men count"
+  // a paper before the letter that said why). An Accounts paper that takes a letter's line goes to the end of the desk, behind every letter.
+  s.desk.splice(s.desk.indexOf(open), 1);
+  s.desk.push(open);
   s.log.push({ at: idx, kind: 'accounts', items: items.map(i => i.text) });
 }
 

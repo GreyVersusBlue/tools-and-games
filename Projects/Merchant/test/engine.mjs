@@ -675,7 +675,7 @@ test('season log: one { at, kind: season, change } entry for each closed season,
   const { s } = play(content, { seed: 7 });
   const seasons = s.log.filter(e => e.kind === 'season');
   eq(seasons.map(e => [e.at, e.change]), [[0, -40], [1, -30], [2, 59], [3, -15], [4, -12], [5, -20], [6, -40], [7, -30], [8, 84], [9, -40], [10, -12]]);
-  eq(seasons.map(e => Object.keys(e).sort().join()).every(k => k === 'at,change,kind,money'), true, 'the ledger reads at and change; money is where the next change starts');
+  eq(seasons.map(e => Object.keys(e).sort().join()).every(k => k === 'at,change,kind,money,worth,worthChange'), true, 'the ledger reads at and change; money is where the next change starts; worth and worthChange are the true change (MER-146)');
   eq(500 + seasons.reduce((n, e) => n + e.change, 0), s.money, 'the plain house starts with 500 and the changes add up to what it ends with');
 });
 test('pinned game: one extra state.rng step in openSeason changes the papers, so the pin above is a guard', () => {
