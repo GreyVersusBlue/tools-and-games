@@ -69,6 +69,7 @@ export const GROUPS = {
     'engine/checks.test.mjs', // SV2-09
     'engine/checks-duties.test.mjs', // SV2-84
     'engine/routing.test.mjs', // SV2-05
+    'engine/routing-extra.test.mjs', // SV2-148
     'engine/directions.test.mjs', // SV2-05
     'engine/load.test.mjs', // SV2-15
     'engine/places.test.mjs', // SV2-15

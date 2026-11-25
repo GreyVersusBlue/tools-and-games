@@ -183,6 +183,7 @@ row names a file it does not run.
 | `test/engine/checks.test.mjs` | The schedule checks of spec 5.7 |
 | `test/engine/checks-duties.test.mjs` | The checks with marks and duties: duty-clash, duty-nobody, no-planning and consecutive when a duty or a mark takes a period, the empty-period note under a mark |
 | `test/engine/routing.test.mjs` | Routes: the quickest, the tie-breaks, the options, the named failures |
+| `test/engine/routing-extra.test.mjs` | Routing's extra-cost options: a jam on one lane of a two-corridor plan avoided while the opposite lane's penalty changes nothing, a link penalty (and a car's, by its link) avoided by other stairs, absent and all-zero arrays giving equal routes on the sample and `bigProject({ seed: 1 })`, the cache untouched (entries, fields, searches counted), a failure explained as without extras, wrong arrays refused |
 | `test/engine/directions.test.mjs` | A route in words, the reader's "squares", the plain no-stairs refusal |
 | `test/engine/load.test.mjs` | What each group adds to the cells it crosses |
 | `test/engine/places.test.mjs` | Stretches of corridor, their names, the hotspot ranking |
