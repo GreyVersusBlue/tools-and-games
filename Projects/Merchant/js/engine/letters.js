@@ -360,6 +360,11 @@ function accountFor(s, content, idx, items) {
   const open = s.desk.find(q => q.kind === 'accounts' && q.state === 'open');
   if (!open) { foldAccounts(s, content, items); return; }
   open.items.push(...items);
+  // The paper that tells what a letter cost never comes before the letter (MER-146, M4e play problem 4: the Accounts paper of the season's
+  // earlier closing was already on the desk, the customs letter was put on after it, and its 40 dinars were read as "the customs men count"
+  // a paper before the letter that said why). An Accounts paper that takes a letter's line goes to the end of the desk, behind every letter.
+  s.desk.splice(s.desk.indexOf(open), 1);
+  s.desk.push(open);
   s.log.push({ at: idx, kind: 'accounts', items: items.map(i => i.text) });
 }
 

@@ -158,7 +158,7 @@ test('outfit moves the cargo and the money out of the house, buys the rest at th
   ok(t.market.harbour.wool.glut < 0, 'buying makes wool scarcer at home');
   eq(x.staked, { house: 200 + paid + 40, partners: 0 }, 'the house put in the ten it held (at 20) and all it paid');
   eq([x.id, x.route, x.leg, x.left, x.sent, x.contract, x.orders], ['x1', 'harbour-hilltown', 0, 2, 0, { kind: 'own' }, []]);
-  eq(t.log.at(-1), { at: 0, kind: 'outfit', ref: 'x1', choice: 'harbour-hilltown' });
+  eq(t.log.filter(e => e.kind !== 'worth').at(-1), { at: 0, kind: 'outfit', ref: 'x1', choice: 'harbour-hilltown' });   // (a worth line may follow it: MER-146)
   eq(game().expeditions.length, 0, 'the input state is untouched');
 });
 
@@ -904,7 +904,7 @@ test('the act jump in cairo: act one to act two applies seven-paragraph material
   eq(s.phase, 'interlude');
   const p = view(s, calmC).interlude;
   eq([p.from, p.to, p.years], [1325, 1335, 9], 'winter 1325 to spring 1335');
-  eq(p.paragraphs.map(x => x.id), ['ibn-battuta-alexandria', 'aydhab-closed-1326', 'sultan-pilgrimage-1332']);
+  eq(p.paragraphs.map(x => x.id).filter(id => !/^worth-/.test(id)), ['ibn-battuta-alexandria', 'aydhab-closed-1326', 'sultan-pilgrimage-1332']);   // (the reset's worth line may follow them: MER-146)
   eq(s.flags['aydhab-shut'], undefined, 'shut in 1326, open again in 1330');
   ok(s.notebook.includes('person-ibn-battuta') && s.notebook.includes('person-al-nasir'));
   const next = openSeason(s, calmC);
@@ -1516,6 +1516,23 @@ test('(MER-146, 4) in every return paper of seeded games the inside rows add to 
   }
   ok(papers >= 30, `${papers} return papers were checked`);
   ok(inGoods >= 3 && jumped >= 1, `${inGoods} accounts had a toll paid in goods, ${jumped} of them part money and part goods`);
+});
+
+// ---- MER-146 (M4e play problem 7): the jump's reset is a line on the Years pass page
+
+test('(MER-146, 7) the years pass moves what the warehouse is worth and the Years pass page and the log say by how much', () => {
+  let s = newGame(calmC, { seed: 7, length: 'acts', house: 'spice' });
+  s.stock = { pepper: 10 };
+  while (s.phase !== 'interlude') s = step(s, calmC);
+  const line = s.log.find(e => e.kind === 'worth' && e.cause === 'reset');
+  ok(line, 'a reset line is in the log');
+  const jump = s.log.find(e => e.kind === 'jump');
+  eq(line.at, jump.to, 'it belongs to the first season of the new act');
+  const para = view(s, calmC).interlude.paragraphs.find(p => p.id === 'worth-warehouse');
+  ok(para && /^In the years that passed the goods in the warehouse (rose|fell) in price: [+\u2212]\d+\.$/.test(para.text), para?.text);
+  eq(para.text, line.text, 'the page and the ledger line say the same words');
+  const price = M.truePrice(s, calmC, 'cairo', 'pepper'), shown = s.known.cairo.pepper.p;
+  eq(shown, price, 'the price the house sees on the page is the reset price');
 });
 
 done();

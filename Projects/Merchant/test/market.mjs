@@ -8,7 +8,9 @@ import { holds } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import * as M from '../js/engine/market.js';
-import { newGame, endSeason, view, paperChoices, choose, sellHome, sellHomeQuote, BROKER_CUT } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, view, paperChoices, choose, outfit, sellHome, sellHomeQuote, BROKER_CUT } from '../js/engine/index.js';
+import { steps } from '../js/engine/turn.js';
+import { worthOf, NOTE } from '../js/engine/worth.js';
 
 const CITIES = {
   testport: { content: await loadContent('testport', { fs }), house: 'plain', stop: 'saltmarsh', good: 'lamps', far: 'hilltown', farLag: 2, nearLag: 1, foldAt: 2 },
@@ -455,6 +457,58 @@ test('sellHome: selling all of 100 loads at once fetches less a load than sellin
   ok(all.last < all.first, 'the last load fetches less than the first');
   const t = sellHome(s, CAIRO, 'copper', 100);
   eq([t.stock.copper, t.money - s.money], [undefined, all.got], 'the warehouse is empty and the quote held');
+});
+
+// ---- MER-146 (M4e play problem 7): worth moves for a reason the log names
+
+const C = CITIES.cairo.orig;   // Cairo as the data has it (the loop above reads `priceNews: true` copies of both cities)
+
+test('(MER-146, 7) every move of worth of 10 dinars or more in a closing step with no paper of its own has a worth line in the log', () => {
+  const own = new Set(['returns', 'risk', 'letters', 'fireDue', 'jump']);   // a return, a loss, a letter or later effect with an Accounts line, the Years pass page
+  const marks = [];
+  const wrapped = {};
+  for (const name of Object.keys(steps)) {
+    wrapped[name] = steps[name];
+    steps[name] = function (s, ...rest) {
+      const w0 = worthOf(s, C), n0 = s.log.length, held = s.expeditions.length;
+      const r = wrapped[name].call(this, s, ...rest);
+      const d = worthOf(s, C) - w0, lines = s.log.slice(n0).filter(e => e.kind === 'worth').reduce((n, e) => n + e.change, 0);
+      if (Math.abs(d) >= NOTE && !own.has(name) && !(name === 'news' && s.t === 0)) marks.push({ name, d, lines, room: NOTE * (['tolls', 'move'].includes(name) ? held + 1 : 1) });
+      return r;
+    };
+  }
+  let causes = new Set();
+  try {
+    for (const [house, seeds] of [['spice', [1, 2, 3, 4, 5, 6]], ['cloth', [1, 2]]]) for (const seed of seeds) {
+      let s = newGame(C, { seed, length: 'acts', house });
+      for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+        if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+        for (const p of s.desk.filter(q => q.state === 'open')) { const ch = paperChoices(s, C, p.id); for (const c of ch) { try { s = choose(s, C, p.id, c.id); break; } catch { /* closed */ } } }
+        const v = view(s, C).venture;
+        if (v) { try { s = outfit(s, C, v.plan); } catch { /* did not fit */ } }
+        s = endSeason(s, C);
+        for (const e of s.log) if (e.kind === 'worth') causes.add(e.cause);
+      }
+    }
+  } finally { Object.assign(steps, wrapped); }
+  ok(marks.length >= 100, `${marks.length} moves of worth of ${NOTE} dinars or more in steps with no paper of their own were looked at`);
+  const loose = marks.filter(m => Math.abs(m.d - m.lines) >= m.room);
+  eq(loose, [], `${loose.length} moves of worth have no line: ${JSON.stringify(loose.slice(0, 3))}`);
+  ok(['prices', 'trade'].every(c => causes.has(c)), `the log named drift and trade as causes (${[...causes]})`);
+});
+
+test('(MER-146, 7) the warehouse rising in price writes the line the ledger prints, with the dinars it moved worth by', () => {
+  let s = newGame(C, { seed: 4, length: 'full', house: 'spice' });
+  s.stock = { pepper: 7 };
+  const held = s.known.cairo.pepper.p;
+  s.market.cairo.pepper.f = 1.4;
+  s = endSeason(answer(s, C), C);   // the closing's drift moves the price, the next opening reads it
+  const line = s.log.find(e => e.kind === 'worth' && e.cause === 'prices' && e.part === 'warehouse');
+  ok(line, 'a price line for the warehouse');
+  const now = s.known.cairo.pepper.p;
+  eq(line.change, Math.round(7 * (now - held)), 'the line says what seven loads moved by');
+  ok(/^The goods in the warehouse (rose|fell) in price: [+\u2212]\d+\.$/.test(line.text), line.text);
+  eq(line.at, s.t, 'it belongs to the season whose desk shows the new figure');
 });
 
 done();

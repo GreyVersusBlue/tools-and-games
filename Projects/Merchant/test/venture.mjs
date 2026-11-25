@@ -1612,4 +1612,38 @@ test('MER-144 (4) a named share is the bot\'s own and the player can still raise
   ok(hand >= 10, `${hand} hand-raised plans past the ceiling that the engine takes`);
 });
 
+// ---- MER-146 (M4e play problem 16): the sheet says "the years pass before X is home" only when they do
+
+test('(MER-146, 7) estimate.yearsFirst is true only for a party still on the road when the years pass, and false for one that is home as they begin', () => {
+  const seen = { first: 0, home: 0, other: 0 };
+  for (const [house, seeds] of [['spice', [1, 2, 3, 4, 6, 8, 9, 12]], ['cloth', [3, 5, 14]]]) for (const seed of seeds) {
+    let s = newGame(C, { seed, length: 'acts', house });
+    const said = {};
+    for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+      s = answer(s, C);
+      for (let k = 0; k < 3; k++) {
+        const v = view(s, C).venture;
+        if (!v) break;
+        const e = checkPlan(s, C, v.plan).estimate;
+        let t; try { t = outfit(s, C, v.plan); } catch { break; }
+        said[t.expeditions.at(-1).id] = e;
+        s = t;
+      }
+      s = endSeason(s, C);
+      for (const entry of s.log) if (entry.kind === 'jump') for (const l of entry.settled) {
+        const e = said[l.expedition];
+        if (!e || e.done) continue;
+        e.done = true;
+        if (l.result === 'lost') continue;   // a loss is a loss; the sheet could not say
+        if (l.quoted && !e.settledAtJump) seen.other++;   // held on the road by a waiting agent or a closed leg: the sheet could not foresee it
+        else if (l.quoted) { eq(e.yearsFirst, true, `seed ${seed} ${house}: the party was on the road when the years passed, and the sheet said so`); seen.first++; }
+        else if (e.settledAtJump) { eq(e.yearsFirst, false, `seed ${seed} ${house}: the party was home as the years began, and the sheet does not say the years pass first`); seen.home++; }
+        else seen.other++;
+      }
+    }
+  }
+  ok(seen.first >= 10 && seen.home >= 1, `${seen.first} parties caught by the years and ${seen.home} home as they began were compared (${seen.other} the sheet could not foresee)`);
+});
+
 await done();

@@ -1012,6 +1012,23 @@ test('(MER-146, 11) a broker\'s offer for goods in the warehouse is never worse 
   ok(raised > 0, 'at least one price had the broker\'s old sum under Sell, so the case could fail');
 });
 
+test('(MER-146, 4) an Accounts paper that takes a letter\'s money line sits behind that letter, even when the paper was on the desk first', () => {
+  const base = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
+  const s = structuredClone(base), i = idx(s, CAIRO);
+  s.desk = []; s.t = 2;
+  s.money = 90;
+  s.post = [{ id: 'alexandria-twenty-in-a-hundred', kind: 'report', expedition: 'x1', agent: 'yusuf', stop: 'alexandria', standing: true, written: idx(s, CAIRO) - 1, lag: 1, arrive: idx(s, CAIRO) }];
+  // the Accounts paper of the season's earlier closing, already on the desk and not yet read
+  addPaper(s, { kind: 'accounts', ref: 'accounts', items: [{ from: 'x/y', card: 'A card', choice: 'A choice', changes: ['+5 dinars'], text: 'From A card: +5 dinars' }] });
+  steps.letters(s, CAIRO);
+  const kinds = s.desk.map(p => p.kind), at = kinds.indexOf('letter'), acc = kinds.indexOf('accounts');
+  ok(at >= 0, `the customs letter reached the desk (${kinds})`);
+  ok(s.money < 90, 'its forty dinars were taken on arrival, as the letter says');
+  ok(s.desk[acc].items.some(it => it.from === 'alexandria-twenty-in-a-hundred'), 'the Accounts paper carries the letter\'s line');
+  ok(at < acc, `the letter (desk place ${at}) comes before the Accounts paper that reports its money (desk place ${acc})`);
+  ok(i >= 0);
+});
+
 test('(MER-134, 15) a broker\'s paper is shown twice in a game, and the third time the return carries no offer', () => {
   eq(BROKER_SHOWN, 2);
   const shown = n => brokerPaper('return-sell-pepper', 1, { shown: n }).p.data;

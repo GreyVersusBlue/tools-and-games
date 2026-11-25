@@ -16,6 +16,7 @@ import * as routes from './routes.js';
 import * as letters from './letters.js';
 import * as agents from './agents.js';
 import { score } from './score.js';
+import * as W from './worth.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
@@ -31,7 +32,11 @@ export const steps = {
   news(s, content) {
     // city.json's priceNews (default true) turns price letters off for a city
     if (content.city?.priceNews === false) return;
+    // home's price is always current at an opening, so the goods the house holds are worth what the new price says: the move is a line
+    // in the log, "The goods in the warehouse rose in price: +81" (MER-146, M4e play problem 7)
+    const was = W.homePrices(s, content), held = W.heldLoads(s);
     market.news(s, content);
+    for (const l of W.priceLines(s, content, was, held)) s.log.push({ at: seasonIndex(s, content), kind: 'worth', cause: 'prices', part: l.part, change: l.change, text: `${l.text}.` });
   },
   events(s, content) {
     const idx = seasonIndex(s, content);
