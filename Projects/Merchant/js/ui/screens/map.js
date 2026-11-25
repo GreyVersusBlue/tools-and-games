@@ -109,7 +109,7 @@ export function createMap(app, nav) {
   const date = h('p', { class: 'date', id: 'map-date' });
   const money = h('p', { class: 'money', id: 'map-money' });
   const bar = h('header', { class: 'map-bar' }, h('div', { class: 'bar-date' }, date), money,
-    h('button', { class: 'button', type: 'button', id: 'map-desk-top', onclick: () => nav.toDesk() }, 'Back to the desk'));
+    h('button', { class: 'button', type: 'button', id: 'map-desk-top', onclick: () => leave() }, 'Back to the desk'));
 
   const boardTitle = h('h2', { class: 'board-title', id: 'board-title', tabindex: '-1' });
   const list = h('div', { class: 'stoplist', id: 'stoplist', role: 'listbox', tabindex: '0', 'aria-label': 'Stops',
@@ -126,7 +126,7 @@ export function createMap(app, nav) {
     toast,
     h('div', { class: 'board-body', id: 'board-body' }, boardTitle, list, pricesBtn, pricesBox),
     h('div', { class: 'board-actions' }, reason, outfitBtn,
-      h('button', { class: 'button', type: 'button', id: 'map-desk', onclick: () => nav.toDesk() }, 'Back to the desk')));
+      h('button', { class: 'button', type: 'button', id: 'map-desk', onclick: () => leave() }, 'Back to the desk')));
   const el = h('main', { class: 'map-screen', id: 'screen-map' }, bar, stage, board);
   // MER-124: the set-out toast lives in the board, in the flow above its buttons, where it covers no stop, label or token at any frame
   // (it was fixed over the picture and sat on the labels on a phone). The first press anywhere on the table dismisses it.
@@ -627,6 +627,26 @@ export function createMap(app, nav) {
     app.say(text);
   }
 
+  // ---- leaving the map. MER-147 (CI, PR #620: Esc after a keyboard Send left the walk on the map, at #map with the board's heading focused): closing the
+  // sheet steps the history back from #outfit to #map (app.js outfitClosed), and the browser takes that step some time after the close, not at it. A leave
+  // asked for in between pushed #desk, the step then landed on #map and the page went back to the map. So a leave asked for while the step is on its way
+  // waits for it, and is made the moment it lands (or after a second, if it never does).
+  let stepping = false, leaveWaits = false;
+  function settleStep() {
+    if (!stepping) return;
+    stepping = false;
+    if (leaveWaits) { leaveWaits = false; if (!gone) nav.toDesk(); }
+  }
+  function holdLeave() {
+    stepping = true;
+    addEventListener('popstate', settleStep, { once: true });
+    setTimeout(() => { removeEventListener('popstate', settleStep); settleStep(); }, 1000);
+  }
+  function leave() {
+    if (stepping) { leaveWaits = true; return; }
+    nav.toDesk();
+  }
+
   // ---- the outfit sheet, over the map; its hash is #outfit and its draft lives only here
   function showOutfit() {
     if (outfit) return;
@@ -647,7 +667,9 @@ export function createMap(app, nav) {
     document.body.append(view.dialog);
     view.dialog.addEventListener('close', () => {
       if (outfit?.view !== view) return;
-      outfit = null; view.destroy(); nav.outfitClosed();
+      outfit = null; view.destroy();
+      if (location.hash === '#outfit') holdLeave();
+      nav.outfitClosed();
       // MER-138 (play b015): focus goes back to the button that opened the sheet unless that button is dead now (after Send nobody is free, so Outfit
       // says "Nobody is free" and takes no press): then it goes to the stop list, which is always there and always works
       const live = b => b?.isConnected && b.getAttribute('aria-disabled') !== 'true' && !b.disabled && b.checkVisibility?.() !== false;
@@ -673,7 +695,7 @@ export function createMap(app, nav) {
       e.preventDefault();
       if (pricesBox.classList.contains('open')) closePrices();
       else if (zoom) setZoom(null);
-      else nav.toDesk();
+      else leave();
       return true;
     }
     return false;

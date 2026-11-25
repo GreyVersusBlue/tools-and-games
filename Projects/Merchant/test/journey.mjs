@@ -402,6 +402,40 @@ async function mer147() {
       }
     }
   }
+
+    // (6) CI on PR #620: after a keyboard Send, Esc left the walk on the map. Closing the sheet steps the history back from #outfit, the browser takes the
+    // step later than the close, and a leave asked for in between was undone by it. The step is made slow here (500 ms) so the leave always lands inside it.
+    {
+      const idle = () => {
+        let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' }[p.ref]);
+        return g;
+      };
+      const put = async (page, st) => {
+        const G = URL_ + `?test=1&seed=${SEED}`;
+        await page.goto(G, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+        await page.goto(G + '#map', { waitUntil: 'load' });
+        await page.waitForSelector('#screen-map[data-ready]');
+      };
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      for (const [how, leaveIt] of [['Esc', p => p.keyboard.press('Escape')], ['Back to the desk', p => p.click('#map-desk')]]) {
+        await test(`MER-147 ${how}: leaving the map straight after a send reaches the desk, and the browser's slow step back to the map does not undo it`, async () => {
+          await put(page, idle());
+          await page.evaluate(() => { const back = history.back.bind(history); history.back = () => { setTimeout(back, 500); }; });
+          await page.focus('#btn-outfit'); await page.keyboard.press('Enter');
+          await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+          await page.focus('#outfit-send'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#map-toast:not([hidden])');
+          await leaveIt(page);
+          await page.waitForSelector('#screen-desk');
+          await page.evaluate(() => new Promise(r => setTimeout(r, 1000)));   // longer than the slow step
+          eq(await page.evaluate(() => [location.hash, !!document.getElementById('screen-desk'), !!document.getElementById('screen-map')]), ['#desk', true, false], 'the page is on the desk');
+        });
+      }
+      await test('MER-147 leaving: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
 }
 
 // the whole suite runs them last; with the shortcut set they run alone, before anything else
