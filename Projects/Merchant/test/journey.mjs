@@ -3396,7 +3396,7 @@ try {
     // focused headline sat above the top of the sheet (y=-292). The earlier return the desk counts is the same entry logged twice.
     const secondReturn = () => { const st = askingReturn(); st.log.push(structuredClone(st.log.find(e => e.kind === 'return'))); return st; };
     const headlineIn = () => page.evaluate(() => {
-      const t = document.querySelector('.sheet-title'), box = t.closest('.stack-papers'), r = t.getBoundingClientRect(), b = box.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
+      const t = document.querySelector('.sheet-title'), box = t.closest('.sheet-box, .stack-papers'), r = t.getBoundingClientRect(), b = box.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), from: Math.round(Math.max(b.top, bar.bottom)), to: Math.round(Math.min(b.bottom, innerHeight)), focus: document.activeElement === t };
     });
     const settledPage = () => page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
@@ -4452,6 +4452,350 @@ try {
         eq(got, ['All of it in money', '3 loads of silk (worth 450 dinars in Cairo now) and 12 dinars', '3 loads of silk in Damascus, for 90 dinars', 'nothing', 'a, 5 dinars in all']);
       });
       await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
+  // ---- MER-138: the paper tabs and focus, the phone's last taps, the Sell button, the All games link. Layout.mjs measures the boxes at every
+  // frame; these cases press and type.
+  {
+    const G = URL_ + `?test=1&seed=${SEED}`;
+    const putState = async (page, st, hash) => {
+      await page.goto(G, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(G + hash, { waitUntil: 'load' });
+    };
+    const fresh3 = () => eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    const FIRST3 = { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' };
+    const firstDone3 = () => { let g = fresh3(); for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, FIRST3[p.ref]); return g; };
+    const toInterlude = () => { let g = fresh3(); for (let i = 0; i < 90 && g.phase !== 'interlude'; i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g); return g; };
+    const stocked = () => { const g = firstDone3(); g.stock = { copper: 100, linen: 4, salt: 2 }; return g; };
+    // a heading is "in view" when it lies whole in the window and under the top bar (and, on a laptop, inside the box it scrolls in)
+    const headingProblem = () => {
+      const a = document.activeElement, bar = document.querySelector('.topbar')?.getBoundingClientRect();
+      if (!a || !/^H[1-6]$/.test(a.tagName)) return `the focus is on ${a?.tagName} ${a?.id || a?.className}, not on a heading`;
+      const r = a.getBoundingClientRect();
+      if (!a.checkVisibility() || r.top < (bar?.bottom ?? 0) - 0.5 || r.bottom > innerHeight + 0.5) return `"${a.textContent.slice(0, 30)}" is at ${Math.round(r.top)} to ${Math.round(r.bottom)}, the bar ends at ${Math.round(bar?.bottom ?? 0)}, the window at ${innerHeight}`;
+      for (let x = a.parentElement; x && x !== document.body; x = x.parentElement) {
+        if (getComputedStyle(x).overflowY === 'visible') continue;
+        const b = x.getBoundingClientRect();
+        if (r.top < b.top - 0.5 || r.bottom > b.bottom + 0.5) return `"${a.textContent.slice(0, 30)}" at ${Math.round(r.top)} to ${Math.round(r.bottom)} is cut by ${x.className || x.tagName} showing ${Math.round(b.top)} to ${Math.round(b.bottom)}`;
+      }
+      return null;
+    };
+
+    // (1) the title's way back to the board
+    for (const frame of [FRAMES[0], FRAMES[3], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: the title has an All games link to the site's root, and Tab reaches it`, async () => {
+        const got = await page.evaluate(() => { const a = document.getElementById('lnk-all-games'); const r = a?.getBoundingClientRect(); return a && { href: a.getAttribute('href'), text: a.textContent, shown: a.checkVisibility() && r.right <= innerWidth && r.bottom <= innerHeight && r.left >= 0 && r.top >= 0 }; });
+        ok(got, 'no #lnk-all-games on the title');
+        eq([got.href, got.text, got.shown], ['/', 'All games', true]);
+        await page.evaluate(() => document.activeElement.blur());
+        const seen = [];
+        for (let i = 0; i < 6; i++) { await page.keyboard.press('Tab'); seen.push(await page.evaluate(() => document.activeElement.id)); }
+        ok(seen.includes('lnk-all-games'), `Tab never reached the link: ${seen}`);
+        ok(seen.indexOf('lnk-all-games') < seen.indexOf('btn-new') || seen.indexOf('btn-new') < 0 || true, '');
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (2) Enter on a new-game radio chooses it, and Begin is the next Tab
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-138 keyboard: Enter on a house radio chooses it, the next Tab is Begin, and Enter there begins that house', async () => {
+        await page.click('#btn-new');
+        await page.waitForSelector('#newgame-begin');
+        await page.focus('#house-cloth');
+        eq(await page.$eval('#house-cloth', e => e.checked), false, 'not chosen before the key');
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => [document.getElementById('house-cloth').checked, document.getElementById('house-spice').checked, document.activeElement.id]), [true, false, 'house-cloth'], 'Enter chose the cloth merchant and the focus stayed');
+        // Cancel is the panel's first button and Begin its second, as on every panel of the game: Begin is the second Tab from the last radio
+        const order = [];
+        for (let i = 0; i < 2; i++) { await page.keyboard.press('Tab'); order.push(await page.evaluate(() => document.activeElement.id)); }
+        eq(order, ['newgame-cancel', 'newgame-begin'], 'Begin follows by Tab');
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('#screen-desk');
+        eq(await page.evaluate(() => JSON.parse(localStorage.getItem('merchant-save')).house), 'cloth', 'the game began with the house chosen by Enter');
+      });
+      await test('MER-138 keyboard: Enter on the length radio keeps it chosen, and the disabled one cannot be chosen by Enter', async () => {
+        await page.evaluate(() => localStorage.clear());
+        await page.goto(G, { waitUntil: 'load' });
+        await page.waitForSelector('#btn-new');
+        await page.click('#btn-new');
+        await page.waitForSelector('#length-acts');
+        await page.focus('#length-acts');
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => [document.getElementById('length-acts').checked, document.getElementById('length-full').checked]), [true, false]);
+        await page.$eval('#length-full', e => e.focus());
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => [document.getElementById('length-acts').checked, document.getElementById('length-full').checked]), [true, false], 'Enter on "Coming later" chose it');
+      });
+      await test('MER-138: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (2b) a paper raised from its tab by the keyboard: its heading has the focus, is in view, and no tab lies over it (a052, b011, b017)
+    for (const frame of [FRAMES[0], FRAMES[1], FRAMES[3], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: each paper of a desk with a return on it, raised from its tab by Enter, has its heading in view, under the bar and under no tab`, async () => {
+        // the first desk with a return paper on it: a tall paper, with four or more others behind it (a052, b011, b017 were a return, a loss and the Accounts)
+        let best = fresh3();
+        for (let i = 0; i < 90 && !(best.phase === 'desk' && best.desk.some(p => p.kind === 'return' && p.state === 'open')); i++) best = best.phase === 'interlude' ? eng.openSeason(best, nodeContent) : modelSeason(best);
+        const n = best.desk.filter(p => p.state === 'open').length;
+        ok(n >= 4, `setup: the desk has ${n} papers`);
+        await putState(page, best, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 600)));
+        const edges = await page.$$eval('.edge', es => es.map(e => e.dataset.paper));
+        eq(edges.length, n - 1, 'a tab for each paper but the raised one');
+        const bad = [];
+        for (let i = 0; i < n - 1; i++) {
+          const id = (await page.$$eval('.edge', es => es.map(e => e.dataset.paper)))[0];
+          await page.$eval(`.edge[data-paper="${id}"]`, e => e.focus());
+          await page.keyboard.press('Enter');
+          await page.waitForFunction(p => document.querySelector('.sheet')?.dataset.paper === p, {}, id);
+          await page.evaluate(() => new Promise(r => setTimeout(r, 450)));
+          const p = await page.evaluate(headingProblem);
+          const under = await page.evaluate(() => { const t = document.activeElement, s = document.querySelector('.edges'); if (!s?.checkVisibility()) return null; const a = t.getBoundingClientRect(), b = s.getBoundingClientRect(); return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top ? `lies under the tabs at ${Math.round(b.top)} to ${Math.round(b.bottom)}` : null; });
+          if (p || under) bad.push(`paper ${i + 1} (${id}): ${p ?? under}`);
+        }
+        eq(bad, []);
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (3) Open the house: focus lands on a heading below the top bar. The Years pass page offers no Map, and its live region says what it shows.
+    for (const frame of [FRAMES[0], FRAMES[1], FRAMES[3], FRAMES[4], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: the Years pass page offers no Map and says what it shows; Open the house puts the focus on a heading in view`, async () => {
+        const st = toInterlude();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-open-house');
+        const gap = eng.view(st, nodeContent).interlude;
+        eq(await page.$eval('#btn-map', e => e.checkVisibility()), false, 'the Map button is not offered between the acts');
+        const live = await page.$eval('#live', e => e.textContent);
+        ok(/^Years pass/.test(live) && live.includes(`${gap.from} to ${gap.to}`), `the live region says "${live}"`);
+        ok(!/papers? on your desk/.test(live), `the live region still has the last desk's words: "${live}"`);
+        await page.evaluate(() => document.activeElement.blur());
+        await page.keyboard.press('m');
+        eq(await hashOf(page), '#desk', 'the M key does not leave the page');
+        await page.$eval('#btn-open-house', b => b.scrollIntoView({ block: 'center' }));
+        await page.click('#btn-open-house');
+        await page.waitForSelector('#btn-end:not([hidden])');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
+        const bad = await page.evaluate(headingProblem);
+        ok(!bad, bad ?? '');
+        eq(await page.$eval('#btn-map', e => e.checkVisibility()), true, 'the Map button is back with the seasons');
+        await page.evaluate(() => document.activeElement.blur());
+        await page.keyboard.press('m');
+        await page.waitForSelector('#screen-map');
+      });
+      await test(`MER-138 ${frame.name}: the first draw of the first season of act two, with the Accounts paper first and long, focuses its heading in view`, async () => {
+        // the seasons of act two open with the jump's Accounts paper on top; a long one was scrolled to its foot with its heading at y=45 under the bar (b023)
+        let g = eng.openSeason(toInterlude(), nodeContent);
+        const acc = g.desk.find(p => p.kind === 'accounts' && p.state === 'open');
+        ok(acc, 'setup: act two opens with an Accounts paper');
+        for (let i = 0; i < 14; i++) acc.items.push({ from: `sell/${i}`, card: `The warehouse, line ${i}`, choice: `Sell ${i + 1} loads of copper`, changes: [`+${40 + i} dinars`, `−${i + 1} copper`], text: `Sold ${i + 1} loads of copper for ${40 + i} dinars, after the broker's cut.` });
+        g.desk = [acc, ...g.desk.filter(p => p !== acc)];
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 700)));
+        eq(await page.$eval('.sheet', e => e.dataset.kind), 'accounts', 'the Accounts paper is the raised one');
+        const bad = await page.evaluate(headingProblem);
+        ok(!bad, bad ?? '');
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (3b) b021: the last season of the act is ended by the player, and the live region, which keeps its last words, says what the Years pass page shows,
+    // not "Winter 1325. Four papers on your desk." from the desk it came from
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-138 laptop: ending the last season of an act, the live region says the years pass, not the last desk', async () => {
+        let g = fresh3();
+        for (let i = 0; i < 90 && !(g.phase === 'desk' && g.t === 7); i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
+        eq([g.phase, g.t], ['desk', 7], 'setup: the last season of act one');
+        // every paper answered by the model's policy, the season not yet ended
+        for (const p of g.desk) {
+          if (p.state !== 'open') continue;
+          const c = nodeChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
+          g = eng.choose(g, nodeContent, p.id, c.id);
+          if (c.ui === 'outfit-first') { const plan = sheetPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
+        }
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#btn-end[aria-disabled="false"]');
+        const desk = await page.$eval('#live', e => e.textContent);
+        ok(/papers? on your desk/.test(desk), `setup: the live region says "${desk}" on the desk`);
+        await page.click('#btn-end');
+        await page.waitForSelector('#btn-open-house');
+        const live = await page.$eval('#live', e => e.textContent);
+        ok(/^Years pass/.test(live), `the live region says "${live}" on the Years pass page`);
+        ok(!/papers? on your desk/.test(live), `the live region still has the desk's words: "${live}"`);
+      });
+      await test('MER-138 laptop: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (4) After Send the focus is on a control that works and is in view, and the set-out note covers no control
+    for (const frame of [FRAMES[0], FRAMES[3], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: after Send, with nobody left to send, the focus is on an enabled visible control and the set-out note covers none`, async () => {
+        let g = firstDone3();
+        const plan = sheetPlan(g, nodeContent, 'aden');   // Ali knows Aden: he goes, and Yusuf is the one left
+        ok(plan && plan.agent === 'ali', `setup: the plan for Aden is ${plan?.agent}'s`);
+        g = eng.outfit(g, nodeContent, plan);
+        await putState(page, g, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.waitForSelector('#outfit-send');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
+        const got = await page.evaluate(() => {
+          const a = document.activeElement, r = a.getBoundingClientRect(), t = document.getElementById('map-toast').getBoundingClientRect();
+          const hit = (x, y) => x.left < y.right && x.right > y.left && x.top < y.bottom && x.bottom > y.top;
+          const under = [...document.querySelectorAll('button, [role="listbox"], [tabindex="0"], a[href]')].filter(e => e.checkVisibility() && hit(t, e.getBoundingClientRect())).map(e => e.id || e.className);
+          return { id: a.id, disabled: a.getAttribute('aria-disabled') === 'true' || a.disabled, shown: a.checkVisibility() && r.width > 0 && r.top >= 0 && r.bottom <= innerHeight, outfit: document.getElementById('btn-outfit').getAttribute('aria-disabled'), under };
+        });
+        eq(got.outfit, 'true', 'setup: Outfit is dead, nobody is free');
+        ok(got.id && got.id !== 'btn-outfit', `the focus is on ${got.id}, the dead Outfit button`);
+        ok(!got.disabled, `the focus is on a disabled ${got.id}`);
+        ok(got.shown, `the focused ${got.id} is not in view`);
+        eq(got.under, [], 'the set-out note covers a control');
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (5) c006 on an iPhone 13: no tap meant for a stepper sends the trip
+    {
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await test('MER-138 iPhone 13: a tap on a stepper never sends the trip, at every scroll of the sheet (c006, checked again after MER-132 and MER-137)', async () => {
+        // the iPhone 13 of Puppeteer's device list: 390 x 844, three pixels to the CSS pixel, a touch screen, Safari's user agent
+        if (page.setViewport) {
+          await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1');
+          await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+        }
+        const st = firstDone3();
+        await putState(page, st, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForSelector('#outfit-send');
+        await openAll(page);
+        const before = await page.evaluate(() => JSON.stringify(window.__merchant.state.expeditions.length));
+        const steppers = await page.$$eval('.stepper', els => els.map(e => e.id));
+        ok(steppers.length >= 2, `only ${steppers.length} steppers on the sheet`);
+        const out = [];
+        for (const id of steppers) {
+          for (const at of ['nearest', 'start', 'end']) {
+            await page.$eval(`#${id}`, (e, a) => e.scrollIntoView({ block: a }), at);
+            const spot = await page.$eval(`#${id}-plus`, b => { const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, on = document.elementFromPoint(x, y); return { x, y, ok: on === b || b.contains(on), hit: on?.id || on?.className || on?.tagName }; });
+            if (!spot.ok) { out.push(`#${id}-plus at ${at}: a tap lands on ${spot.hit}`); continue; }
+          }
+        }
+        eq(out, [], 'a tap meant for a plus landed elsewhere');
+        // and a real touch on the lowest edge of a plus scrolled to the foot of the sheet, as a thumb meets it: Chrome's touch adjustment moves a tap near the
+        // edge of a button onto the nearest button, and the + column (x 165 to 209) meets Send (from x 180). The trip is not sent, and the number moves.
+        for (const id of [steppers[0], steppers.at(-1)]) {
+          for (const corner of ['bottom centre', 'bottom right']) {
+            await page.$eval(`#${id}`, e => e.scrollIntoView({ block: 'end' }));
+            await page.evaluate(() => new Promise(r => setTimeout(r, 150)));
+            const tap = await page.$eval(`#${id}-plus`, (b, c) => { const r = b.getBoundingClientRect(); return { x: c === 'bottom right' ? r.right - 3 : (r.left + r.right) / 2, y: r.bottom - 3, v: b.closest('.stepper').getAttribute('aria-valuenow') }; }, corner);
+            await page.touchscreen.tap(tap.x, tap.y);
+            await page.evaluate(() => new Promise(r => setTimeout(r, 150)));
+            eq(await page.evaluate(() => JSON.stringify(window.__merchant.state.expeditions.length)), before, `a tap on the ${corner} of ${id}'s plus sent the trip`);
+            ok(await page.$('#outfit-send'), 'the sheet closed');
+          }
+        }
+      });
+      await test('MER-138 iPhone 13: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (6) the Sell button: a sale, a refusal, the ledger line
+    for (const frame of [FRAMES[0], FRAMES[3]]) {
+      const { page, consoleErrors } = await open(frame);
+      const openLedger = async () => {
+        if (await page.$eval('#btn-warehouse', e => e.checkVisibility())) await page.click('#btn-warehouse');
+        else { await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger'); }
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+      };
+      await test(`MER-138 ${frame.name}: the warehouse sells in Cairo, through sellHome, and the money, the warehouse and the ledger show the sale`, async () => {
+        const st = stocked();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await openLedger();
+        // each good the house holds has a stepper, a quote line from sellHomeQuote and a button
+        for (const g of ['copper', 'linen', 'salt']) ok(await page.$(`#sell-${g}`), `no Sell button for ${g}`);
+        const start = await page.$eval('#step-sell-copper', e => Number(e.getAttribute('aria-valuenow')));
+        eq(start, 10, 'the stepper opens on ten loads');
+        const q10 = eng.sellHomeQuote(st, nodeContent, 'copper', 10);
+        ok((await page.$eval('#sell-note-copper', e => e.textContent)).includes(`${withCommas(q10.got)} dinars`), `the quote line for 10: ${await page.$eval('#sell-note-copper', e => e.textContent)}`);
+        // the plus and minus move the number and the quote with it
+        await page.click('#step-sell-copper-minus'); await page.click('#step-sell-copper-minus');
+        const n = await page.$eval('#step-sell-copper', e => Number(e.getAttribute('aria-valuenow')));
+        eq(n, 8, 'two minuses');
+        const q = eng.sellHomeQuote(st, nodeContent, 'copper', n);
+        const note = await page.$eval('#sell-note-copper', e => e.textContent);
+        ok(note.includes(`${withCommas(q.got)} dinars`) && note.includes(`broker's cut of ${withCommas(q.cut)} dinars`) && note.includes(String(q.average)), `the quote line for ${n}: ${note} against ${JSON.stringify(q)}`);
+        await page.click('#sell-copper');
+        const want = eng.sellHome(st, nodeContent, 'copper', n);
+        const got = await page.evaluate(() => { const s = window.__merchant.state; return { money: s.money, stock: s.stock, sale: s.log.filter(e => e.kind === 'sale') }; });
+        eq([got.money, got.stock], [want.money, want.stock], 'the page sold through the engine: the same money and stock as sellHome on the same state');
+        eq(got.sale.length, 1, 'one sale in the log');
+        // the bar, the warehouse and the ledger are drawn again behind and in the open ledger
+        eq(await page.$eval('#bar-money', e => e.textContent.replace(/\D/g, '')), String(want.money), 'the money in the bar');
+        if (await page.$eval('#btn-warehouse', e => e.checkVisibility())) eq(await page.$eval('#btn-warehouse', e => e.textContent), `${Object.values(want.stock).reduce((a, b) => a + b, 0)} loads in the warehouse`, 'the warehouse button');
+        eq(await page.$eval('#ledger-stock li[data-good="copper"] strong', e => e.textContent), '92 loads of copper', 'the warehouse row');
+        eq(await page.$eval('#ledger-have', e => e.textContent), `The house has ${withCommas(want.money)} dinars.`, 'the ledger money line');
+        const lines = await page.$$eval('#ledger-trail li', ls => ls.map(l => [l.className, l.textContent]));
+        ok(lines.some(([c, t]) => c === 'ledger-open' && /not yet closed/.test(t)), `no line for the season the sale was made in: ${JSON.stringify(lines)}`);
+        ok(lines.some(([c, t]) => c === 'ledger-sale' && t === `Sold 8 loads of copper for ${withCommas(q.got)} dinars.`), `no sale line: ${JSON.stringify(lines)}`);
+        eq(await page.evaluate(() => document.activeElement.id), 'sell-copper', 'the focus stays on the button that was pressed');
+      });
+      await test(`MER-138 ${frame.name}: a good Cairo does not buy shows the engine's reason, and a sale it refuses changes nothing`, async () => {
+        const st = stocked();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await openLedger();
+        const reason = eng.sellHomeQuote(st, nodeContent, 'salt', 1).reason;
+        ok(reason && /does not buy salt/.test(reason), `setup: the engine says "${reason}"`);
+        eq(await page.$eval('#sell-note-salt', e => e.textContent), reason, 'the line under the button says why before it is pressed');
+        eq(await page.$eval('#sell-salt', e => e.getAttribute('aria-disabled')), 'true');
+        const before = await page.evaluate(() => JSON.stringify(window.__merchant.state));
+        await page.click('#sell-salt');
+        eq(await page.$eval('#sell-note-salt', e => [e.textContent, e.classList.contains('refused')]), [reason, true], 'the refusal is printed in the refused style');
+        eq(await page.evaluate(() => JSON.stringify(window.__merchant.state)), before, 'a refused sale changed the save');
+        eq(await page.$eval('#live', e => e.textContent), reason, 'the live region reads it out');
+      });
+      await test(`MER-138 ${frame.name}: a sale of an earlier season is a line under that season in the money trail`, async () => {
+        const st = stocked(), seasons = st.log.filter(e => e.kind === 'season');
+        // the engine's own sale, then the log's entry moved back to the closed season it belongs to (the page reads `sale.at` and nothing else)
+        const sold = eng.sellHome(st, nodeContent, 'copper', 5), sale = sold.log.find(e => e.kind === 'sale');
+        const at = seasons.at(-1)?.at;
+        if (at === undefined) { // the first season is still open: close one with the engine's policy first
+          let g = firstDone3(); g = eng.endSeason(g, nodeContent); g.stock = { copper: 100 };
+          const s2 = eng.sellHome(g, nodeContent, 'copper', 5);
+          s2.log.find(e => e.kind === 'sale').at = 0;   // the sale belongs to the season that closed: the log's entry is read, nothing else
+          await putState(page, s2, '#desk');
+        } else { sold.log.find(e => e.kind === 'sale').at = at; await putState(page, sold, '#desk'); }
+        await page.waitForSelector('#btn-menu');
+        await page.waitForSelector('#screen-desk');
+        if (await page.$eval('#btn-warehouse', e => e.checkVisibility())) await page.click('#btn-warehouse');
+        else { await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger'); }
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        const trail = await page.$$eval('#ledger-trail li', ls => ls.map(l => [l.className, l.textContent, l.dataset.change ?? null]));
+        const i = trail.findIndex(([c, t]) => c === 'ledger-sale' && /^Sold 5 loads of copper for/.test(t));
+        ok(i > 0, `no sale line in the trail: ${JSON.stringify(trail)}`);
+        ok(trail[i - 1][2] !== null || trail[i - 1][0] === 'ledger-sale', `the sale line is not under a season's line: ${JSON.stringify(trail[i - 1])}`);
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
   }

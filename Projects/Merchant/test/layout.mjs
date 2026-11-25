@@ -52,6 +52,12 @@ const BREAKS = {
   overflow: 'body::after{content:"";position:absolute;left:0;top:0;width:3000px;height:1px}',
   target: 'button,.button,.bar-btn{min-height:0!important;height:20px!important;width:30px!important;min-width:0!important}',
   contrast: '.sheet,.sheet *,h1,.title-tagline,.title-menu *,.paper *{color:#9a8f7a!important}',
+  // MER-138: each deliberate fault is one of the bugs its case guards (#34); `layout.mjs` without the variable never reads these
+  tabs: '.stack-papers{overflow-y:auto!important}.sheet-box{overflow:visible!important;flex:none!important}.edges{position:sticky!important;top:0;z-index:1;flex-wrap:nowrap!important}.edge{flex:0 1 auto!important}.edge>span:not(.seal){display:block!important;white-space:nowrap!important;text-overflow:ellipsis!important}',
+  glyph: '.step-btn{display:block!important;text-align:left!important;padding:0 0 0 3px!important}',
+  homelink: '#lnk-all-games{display:none!important}',
+  picture: '.title-still{object-position:0 0!important}',
+  blurb: '.title-what{display:block!important}',
 };
 if (BREAK && !BREAKS[BREAK]) throw new Error(`MERCHANT_LAYOUT_BREAK=${BREAK}: expected one of ${Object.keys(BREAKS).join(', ')}`);
 
@@ -209,6 +215,9 @@ const plain = s => JSON.parse(JSON.stringify(s));
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'b' },
     { from: 'gift/yes', card: 'A gift for the court', choice: 'Send the gift', changes: ['good name with court +1'], text: 'c' }] }] };
 }
+
+// MER-138: the book house with goods in the warehouse: copper Cairo buys, linen, and salt, which it does not (the refusal's case)
+states.stocked = (() => { const s = structuredClone(states.book); s.stock = { copper: 100, linen: 4, salt: 2 }; return s; })();
 
 // MER-84: the ending's pages after the recall was sent. Every expedition still out is called home, so the
 // engine's own rolls decide who lives; the pages read the state this leaves.
@@ -401,6 +410,14 @@ const SCREENS = [
       // the shot's money trail is four different seasons, the engine's own (MER-119), not one season four times
       const seasons = await p.$$eval('#ledger-trail li[data-change] span', n => n.map(e => e.textContent));
       if (seasons.length !== 4 || new Set(seasons).size !== 4) throw new Error(`layout.mjs: the ledger shot shows ${JSON.stringify(seasons)}, not four different seasons`);
+    } },
+  { name: 'ledger-sell', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states.stocked, large: f.large });
+      await p.waitForSelector('#btn-menu');
+      if (await p.$eval('#btn-warehouse', e => e.checkVisibility())) await p.click('#btn-warehouse'); else await openBook(p, 'ledger');
+      await p.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+      await p.waitForSelector('#sell-copper');
     } },
   { name: 'notebook', modal: 'dialog[open]',
     go: async (p, f) => {
@@ -752,7 +769,9 @@ try {
             ok(/assets\/art\/title\.webp$/.test(got.src), `the picture is ${got.src}, not title.webp`);
             ok(got.loaded && got.shown, `the picture loaded ${got.loaded}, shown ${got.shown}`);
             ok(got.covers, 'the picture does not cover the frame');
-            ok(got.fit === 'cover' && /^0(px|%) 0(px|%)$/.test(got.pos), `laid from the top left, covering: ${got.fit} ${got.pos}`);
+            // MER-138: laid from the top left everywhere but an upright phone, where the left edge is the blurred foreground (the sharpness case below)
+            const upright = frame.height > frame.width && frame.mobile;
+            ok(got.fit === 'cover' && (upright ? /^38% 0(px|%)$/ : /^0(px|%) 0(px|%)$/).test(got.pos), `laid from ${upright ? '38 percent across' : 'the top left'}, covering: ${got.fit} ${got.pos}`);
             ok(got.z < got.menuZ || got.z < 0, `the picture (z ${got.z}) is not behind the panel (z ${got.menuZ})`);
             ok(got.title.left >= 0 && got.title.top >= 0 && got.title.left < got.box.w && got.title.top < got.box.h, `the headline starts at ${got.title.left},${got.title.top}, outside the plain corner of ${got.box.w} x ${got.box.h}`);
             ok(got.title.right <= got.box.w + 1 && got.title.bottom <= got.box.h + 1, `the headline (${JSON.stringify(got.title)}) runs out of the plain corner of ${got.box.w} x ${got.box.h}`);
@@ -777,7 +796,7 @@ try {
               eq(await page.$eval('.sheet', e => e.dataset.paper), lead.id, 'setup: the return is the paper raised on arrival');
             } else await page.evaluate(() => window.scrollTo(0, 0));
             const bad = await page.evaluate(() => {
-              const saved = [document.scrollingElement, ...document.querySelectorAll('.stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
+              const saved = [document.scrollingElement, ...document.querySelectorAll('.sheet-box, .stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
               const seen = e => { const q = e.getBoundingClientRect(); const v = { top: q.top, bottom: q.bottom, left: q.left, right: q.right };
                 for (let x = e.parentElement; x && x !== document.body; x = x.parentElement) { if (getComputedStyle(x).overflowY !== 'visible') { const c = x.getBoundingClientRect(); v.top = Math.max(v.top, c.top); v.bottom = Math.min(v.bottom, c.bottom); } }
                 return v; };
@@ -804,14 +823,14 @@ try {
             await page.evaluate(() => window.scrollTo(0, 0));
             ok(!bad.length, brief(bad));
           });
-          // where the stack is its own scroll box (a laptop or the board) the tabs are stuck to its top: each is whole in it, under nothing, and a press
+          // where the paper has its own scroll box (a laptop or the board) the tabs lie above it, in the stack: each is whole in it, under nothing, and a press
           // at its centre lands on it. The phones lay the tabs in the page's flow under the paper (upright) or in a column of their own (on its side).
           await test(`${tag}: the other papers' tabs stay in view while the papers-left tag shows`, async () => {
             await page.evaluate(() => window.scrollTo(0, 0));
             const got = await page.evaluate(() => {
               const tabs = [...document.querySelectorAll('.edge')], tag = document.querySelector('.stack-count'), box = document.querySelector('.stack-papers'), strip = document.querySelector('.edges');
               if (!tag || !/papers? left/.test(tag.textContent) || !tabs.length) return { missing: true };
-              if (getComputedStyle(box).overflowY !== 'auto') return { flow: true };   // the phones: the page or a column scrolls, and the tabs lie in its flow
+              if (getComputedStyle(document.querySelector('.sheet-box')).overflowY !== 'auto') return { flow: true };   // the phones: the page or a column scrolls, and the tabs lie in its flow (MER-138: the paper scrolls in .sheet-box, and the tabs lie above it, in the stack)
               const bar = document.querySelector('.topbar').getBoundingClientRect(), b = box.getBoundingClientRect(), out = [];
               for (const t of tabs) {
                 const r = t.getBoundingClientRect(), name = `tab "${t.textContent.trim().slice(0, 20)}" at ${Math.round(r.top)} to ${Math.round(r.bottom)}`;
@@ -935,7 +954,7 @@ try {
               const row = document.querySelector('.end-row');
               if (!row || !row.checkVisibility()) return ['End the season is not on the desk'];
               const out = [];
-              const saved = [...document.querySelectorAll('.stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
+              const saved = [...document.querySelectorAll('.sheet-box, .stack-papers, .edges, .sheet')].map(e => [e, e.scrollTop]);
               const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
               const targets = { 'the last choice': document.querySelector('.sheet .choices .choice:last-of-type'), "the second paper's tab": document.querySelectorAll('.edges .edge')[1] };
               for (const [name, el] of Object.entries(targets)) {
@@ -1143,6 +1162,133 @@ try {
             ok(!/We (hoped|expected)/.test(got.title), `the hope is not in the headline: ${got.title}`);
             ok(got.lead && /We (hoped|expected)/.test(got.lead), `the lead holds the hope: ${got.lead}`);
             ok(got.leadSize < got.titleSize, `the lead is in body type: ${got.leadSize} against ${got.titleSize}`);
+          });
+        }
+        // ---- MER-138
+        const TAB_SCREENS = new Set(['desk-papers', 'desk-return', 'desk-return2', 'desk-return-open', 'desk-return2-open', 'desk-loss', 'desk-accounts']);
+        if (TAB_SCREENS.has(screen.name) && !frame.large) {
+          // a052, b011, b017: the row of the other papers' tabs covered the headline of a scrolled paper, and the headline a focus had just
+          // brought up. Wherever the paper scrolls (its own box on a laptop or the board, the page on a phone) no part of the headline, the
+          // sender line or the head lies under a tab, at rest and at the top, the middle and the foot of the scroll.
+          await test(`${tag}: no tab covers the headline, the sender line or the head, at any scroll`, async () => {
+            await page.evaluate(() => window.scrollTo(0, 0));
+            const got = await page.evaluate(() => {
+              const strip = document.querySelector('.edges');
+              if (!strip || !strip.checkVisibility()) return { none: true };
+              const box = ['.sheet-box', '.stack-papers'].map(q => document.querySelector(q)).find(e => e && getComputedStyle(e).overflowY === 'auto') ?? null;
+              const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+              const seen = e => { const r = e.getBoundingClientRect(); const v = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+                for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) { if (getComputedStyle(a).overflowY !== 'visible') { const c = a.getBoundingClientRect(); v.top = Math.max(v.top, c.top); v.bottom = Math.min(v.bottom, c.bottom); } }
+                return v; };
+              const saved = box?.scrollTop ?? 0, out = [], span = box ? box.scrollHeight - box.clientHeight : 0;
+              for (const f of box ? [0, 0.5, 1] : [0]) {
+                if (box) box.scrollTop = Math.round(span * f);
+                for (const q of ['.sheet-title', '.sheet-head .sender', '.sheet-head']) {
+                  const e = document.querySelector(q); if (!e) continue;
+                  const v = seen(e);
+                  if (v.bottom - v.top > 1 && hit(v, strip.getBoundingClientRect())) out.push(`${q} shows ${Math.round(v.top)} to ${Math.round(v.bottom)} under the tabs at ${Math.round(strip.getBoundingClientRect().top)} to ${Math.round(strip.getBoundingClientRect().bottom)} (scrolled to ${Math.round(f * 100)} percent)`);
+                }
+              }
+              if (box) box.scrollTop = saved;
+              return { out };
+            });
+            if (!got.none) ok(!got.out.length, brief(got.out));
+          });
+          // the headline a raised paper's focus lands on is whole in view when the paper opens, in the box it scrolls in, under the top bar and the tabs
+          if (!/-open$/.test(screen.name)) await test(`${tag}: the focused headline is whole in view when the paper opens`, async () => {
+            await page.evaluate(() => window.scrollTo(0, 0));
+            const got = await page.evaluate(wholeInView, '.sheet-title');
+            ok(!got, got ?? '');
+          });
+        }
+        if (screen.name === 'desk-papers' && !frame.large) {
+          // b011, b017: with four tabs each shrank to "A..." or "Acc...". Each tab shows its first twelve characters at least (all of a shorter title).
+          await test(`${tag}: with four or more tabs, each shows enough of its title to tell the papers apart`, async () => {
+            const got = await page.evaluate(() => {
+              const tabs = [...document.querySelectorAll('.edge')];
+              const tilted = tabs.map(t => [t, t.style.transform]); tabs.forEach(t => { t.style.transform = 'none'; });   // a tab is tilted a degree or two: its characters' boxes are measured upright
+              const visibleChars = span => {
+                const box = span.getBoundingClientRect(), walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+                let n = 0, total = 0;
+                for (let t = walker.nextNode(); t; t = walker.nextNode()) for (let i = 0; i < t.length; i++) {
+                  const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1);
+                  const q = r.getBoundingClientRect(); total++;
+                  const cx = (q.left + q.right) / 2, cy = (q.top + q.bottom) / 2;   // a character is shown when its middle is inside the box: its own box is taller than the line
+                  if (q.width > 0 && cx >= box.left && cx <= box.right && cy >= box.top && cy <= box.bottom) n++;
+                }
+                return { n, total, text: span.textContent };
+              };
+              const shown = tabs.map(t => visibleChars(t.querySelector(':scope > span:not(.seal)')));
+              for (const [t, v] of tilted) t.style.transform = v;
+              return { count: tabs.length, shown };
+            });
+            ok(got.count >= 4, `the setup has ${got.count} tabs, not four`);
+            const bad = got.shown.filter(t => t.n < Math.min(t.total, 12)).map(t => `"${t.text}" shows ${t.n} of ${t.total} characters`);
+            ok(!bad.length, brief(bad));
+          });
+        }
+        if (screen.name === 'outfit-second-open') {
+          // c005: the minus and plus glyphs hugged the left edge of their 44 px cells
+          await test(`${tag}: the minus and plus glyphs sit in the middle of their cells`, async () => {
+            const got = await page.evaluate(() => [...document.querySelectorAll('.step-btn')].filter(b => b.checkVisibility()).map(b => {
+              const r = b.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(b);
+              const g = range.getBoundingClientRect();
+              return { id: b.id, off: Math.round((((g.left + g.right) / 2) - ((r.left + r.right) / 2)) * 10) / 10, v: Math.round((((g.top + g.bottom) / 2) - ((r.top + r.bottom) / 2)) * 10) / 10 };
+            }));
+            ok(got.length >= 2, 'the sheet shows no stepper');
+            const bad = got.filter(b => Math.abs(b.off) > 1.5 || Math.abs(b.v) > 3).map(b => `${b.id}: ${b.off} px across, ${b.v} px down`);
+            ok(!bad.length, brief(bad));
+          });
+        }
+        if ((screen.name === 'desk-question' || screen.name === 'desk-report') && frame.height > frame.width && !frame.large) {
+          // MER-142 fixed a return and a loss; a letter or a card with two choices still had the second behind End the season on an upright phone
+          await test(`${tag}: the second choice is not behind End the season`, async () => {
+            // as the desk left the page when the paper opened: it measures once the sheet has risen (220 ms) and scrolls the page itself, so no scroll is reset here
+            await page.evaluate(() => new Promise(r => setTimeout(r, 450)));
+            const got = await page.evaluate(() => {
+              const row = document.querySelector('.end-row'), choices = [...document.querySelectorAll('.sheet .choices .choice')];
+              if (!row || !row.checkVisibility() || choices.length < 2) return { missing: `End row ${!!row}, choices ${choices.length}` };
+              const e = row.getBoundingClientRect(), title = document.querySelector('.sheet-title').getBoundingClientRect(), top = document.querySelector('.topbar').getBoundingClientRect().bottom;
+              // where the headline and the last choice cannot both show above the bar, the headline wins (MER-122)
+              const fits = choices.at(-1).getBoundingClientRect().bottom - title.top <= e.top - top - 8;
+              return { fits, behind: choices.map((c, i) => [i + 1, c.getBoundingClientRect()]).filter(([, r]) => r.bottom > e.top + 0.5 && r.top < e.bottom - 0.5).map(([i, r]) => `choice ${i} at ${Math.round(r.top)} to ${Math.round(r.bottom)} under End at ${Math.round(e.top)}`) };
+            });
+            ok(!got.missing, got.missing ?? '');
+            if (got.fits) ok(!got.behind.length, brief(got.behind));
+          });
+        }
+        if (screen.name === 'title' || screen.name === 'title-continue') {
+          // the site sweep: the title had no visible way back to the board on a phone. The pattern is the other games' (TG-97): an "All games" link to the site's root
+          await test(`${tag}: the All games link to the board is on screen, covered by nothing, and reachable by Tab`, async () => {
+            const got = await page.evaluate(() => {
+              const a = document.getElementById('lnk-all-games');
+              if (!a) return { missing: true };
+              const r = a.getBoundingClientRect(), on = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+              a.focus();
+              return { href: a.getAttribute('href'), text: a.textContent, resolves: new URL(a.href).pathname, shown: a.checkVisibility() && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+                covered: !(on === a || a.contains(on)), focused: document.activeElement === a, tab: a.tabIndex };
+            });
+            ok(!got.missing, 'the title has no #lnk-all-games');
+            eq([got.text, got.resolves], ['All games', '/'], 'the link');
+            ok(got.shown, 'the link is not wholly on screen');
+            ok(!got.covered, 'something lies over the link');
+            ok(got.focused && got.tab >= 0, 'Tab cannot reach the link');
+          });
+        }
+        if (screen.name === 'title' && frame.height > frame.width && frame.mobile && !frame.large) {
+          // c000: on an upright phone the head and the menu card cover the picture but for a strip between them, and that strip was 60 px of roofs with the
+          // picture's blurred foreground in the gutters at the card's sides. The strip is at least 120 px of the picture, it starts where the city starts (the
+          // plain sky above it is under the title, DESIGN 4.2's safe box), and the picture is cut from further along than its soft left edge.
+          await test(`${tag}: between the title and the menu the picture shows a strip of the city, at least 120 px, from the city's first rows`, async () => {
+            const got = await page.evaluate(() => {
+              const vw = document.documentElement.clientWidth, vh = innerHeight, k = Math.max(vw / 1920, vh / 1080);
+              const head = document.querySelector('.title-head').getBoundingClientRect(), home = document.getElementById('lnk-all-games').getBoundingClientRect(), menu = document.querySelector('.title-menu').getBoundingClientRect();
+              const top = Math.max(head.bottom, home.bottom), pos = parseFloat(getComputedStyle(document.querySelector('.title-still')).objectPosition) / 100;
+              return { strip: Math.round(menu.top - top), firstRow: Math.round((top / (1080 * k)) * 100) / 100, left: Math.round((1 - vw / (1920 * k)) * pos * 100) };
+            });
+            ok(got.strip >= 120, `the strip between the title and the menu is ${got.strip} px tall`);
+            ok(got.firstRow >= 0.2 && got.firstRow <= 0.42, `the strip starts at ${got.firstRow} of the picture's height, not at its city (0.2 to 0.42, under the plain sky)`);
+            ok(got.left >= 15, `the picture is cut from ${got.left} percent of its width, its soft left edge`);
           });
         }
         const geo = await page.evaluate(measureGeometry, scopeSel, MIN_TARGET);
