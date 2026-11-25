@@ -15,10 +15,14 @@
 // in Node:
 //
 //   buildLanes(project, entries) -> lanes
-//     entries   [{ groupId, rank, route }]: a found route of routing.js and
-//               the group's place in the project's list
+//     entries   [{ groupId, rank, route, dash? }]: a found route of routing.js and
+//               the group's place in the project's list. `dash` is true for
+//               a walk drawn dashed (a teacher's walk across a free period);
+//               a dashed and a solid walk between the same rooms are two
+//               lines. For a teacher `groupId` is the teacher's id and the
+//               rank 0.
 //     lanes     { pitch, most,
-//                 floors: Map floorId -> [{ groupId, rank, points: [x, y, x, y, …] }],
+//                 floors: Map floorId -> [{ groupId, rank, dash, points: [x, y, x, y, …] }],
 //                 at:     Map "groupId|floorId|cell" -> [x, y], a point of the group's lane in that cell,
 //                 links:  Map connectionId -> [groupId, …] }
 //     Points are in cells: (3.5, 7.5) is the middle of cell (3, 7).
@@ -125,7 +129,7 @@ export function buildLanes(project, entries) {
     const route = entry.route;
     if (!route || route.ok !== true || route.same === true || !Array.isArray(route.cells) || route.cells.length === 0) continue;
     // the same walk in two transitions is one line
-    ordered.push({ entry, once: entry.groupId + '|' + route.fromRoomId + '|' + route.toRoomId + '|' + route.cells.length + '|' + (route.connections || []).join(',') });
+    ordered.push({ entry, once: entry.groupId + '|' + (entry.dash === true ? 'd' : 's') + '|' + route.fromRoomId + '|' + route.toRoomId + '|' + route.cells.length + '|' + (route.connections || []).join(',') });
   }
   ordered.sort((a, b) => a.entry.rank - b.entry.rank || (a.once < b.once ? -1 : a.once > b.once ? 1 : 0));
   for (const { entry, once } of ordered) {
@@ -147,7 +151,7 @@ export function buildLanes(project, entries) {
           if (!users.has(key)) users.set(key, new Set());
           users.get(key).add(entry.rank);
         }
-        walks.push({ groupId: entry.groupId, rank: entry.rank, floorId, piece });
+        walks.push({ groupId: entry.groupId, rank: entry.rank, dash: entry.dash === true, floorId, piece });
       }
     }
   }
@@ -204,7 +208,7 @@ export function buildLanes(project, entries) {
       }
     }
     if (!lanes.floors.has(floorId)) lanes.floors.set(floorId, []);
-    lanes.floors.get(floorId).push({ groupId: walk.groupId, rank: walk.rank, points });
+    lanes.floors.get(floorId).push({ groupId: walk.groupId, rank: walk.rank, dash: walk.dash, points });
   }
   // drawn in the project's order, so which line is on top never depends on the choice
   for (const list of lanes.floors.values()) list.sort((a, b) => a.rank - b.rank);
@@ -312,33 +316,55 @@ function trace(g, view, points) {
   for (let i = 2; i < points.length; i += 2) g.lineTo(view.x + points[i] * size, view.y + points[i + 1] * size);
 }
 
+// The long dashes of a walk across a free period, in pixels at a line of
+// width 2 or less (they grow with a wider line). Not the stairs arcs' dots.
+export const DASH = [6, 2];
+
+function dashFor(width) {
+  const scale = Math.max(1, width / 2);
+  return [DASH[0] * scale, DASH[1] * scale];
+}
+
 function drawLines(g, view, list, lanes, colourOf, constant, theme) {
   const width = lineWidth(lanes, view.size, constant);
   g.lineJoin = 'round';
   g.lineCap = 'round';
+  const dash = dashFor(width);
   // a light edge under every line first, so a line shows on a band of its own colour
+  // (a dashed line's edge is dashed with it, solid lines first)
   if (width >= 2) {
-    g.beginPath();
-    for (const lane of list) trace(g, view, lane.points);
-    g.strokeStyle = theme.card;
-    g.globalAlpha = 0.7;
-    g.lineWidth = width + 1.5;
-    g.stroke();
-    g.globalAlpha = 1;
+    for (const dashed of [false, true]) {
+      const some = list.filter((lane) => (lane.dash === true) === dashed);
+      if (some.length === 0) continue;
+      g.beginPath();
+      for (const lane of some) trace(g, view, lane.points);
+      g.strokeStyle = theme.card;
+      g.globalAlpha = 0.7;
+      g.lineWidth = width + 1.5;
+      g.setLineDash(dashed ? dash : []);
+      g.stroke();
+      g.globalAlpha = 1;
+    }
   }
+  // strokes are batched by colour and by dash
   let colour = null;
+  let dashed = false;
   for (const lane of list) {
     const next = colourOf(lane.groupId);
-    if (next !== colour) {
+    const now = lane.dash === true;
+    if (next !== colour || now !== dashed) {
       if (colour !== null) g.stroke();
       colour = next;
+      dashed = now;
       g.beginPath();
       g.strokeStyle = colour;
       g.lineWidth = width;
+      g.setLineDash(dashed ? dash : []);
     }
     trace(g, view, lane.points);
   }
   if (colour !== null) g.stroke();
+  g.setLineDash([]);
 }
 
 // A marker for each group a room sees, with the periods it is there: small
