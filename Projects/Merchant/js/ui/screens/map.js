@@ -44,7 +44,7 @@ const SIDES = {
   'left-up': { dx: -12, dy: -9, ax: -1, ay: -0.5 }, 'left-down': { dx: -12, dy: 9, ax: -1, ay: -0.5 },
 };
 const ANCHOR_AX = { start: 0, middle: -0.5, end: -1 };
-const REACH_FAR = 60;            // MER-137: the last resort before a label lies over a caption: still on its own side of its own dot
+const REACH_FAR = 44;            // MER-137: the last resort before a label lies over a caption: still on its own side of its own dot
 const MAX_AWAY = 36;             // MER-137: px from a dot's centre to the nearest edge of its label; further and the label reads as another stop's
 const GAP = 3;                   // px kept clear around a label, so two never touch
 const hits = (a, b) => a.left < b.right + GAP && b.left < a.right + GAP && a.top < b.bottom + GAP && b.top < a.bottom + GAP;

@@ -132,7 +132,7 @@ function money(app) {
       ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, [...trail.flatMap(t => [
         h('li', { dataset: { change: String(t.change), ...(Number.isInteger(t.cash) ? { cash: String(t.cash) } : {}) } },
           h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`),
-          Number.isInteger(t.cash) && t.cash !== t.change ? h('span', { class: 'ledger-cash' }, ` in worth, ${signed(t.cash)} in the money`) : null),
+          Number.isInteger(t.cash) && t.cash !== t.change ? h('small', { class: 'ledger-cash' }, ` in worth, ${signed(t.cash)} in the money`) : null),
         ...saleLines(t.at), ...worthLines(t.at),
         ...(t.after ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.after.years) } }, trailJumpWords(t.after))] : [])]),
       // a season not yet closed has no change to show, only what the house sold in it so far and what moved its worth

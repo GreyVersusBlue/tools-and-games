@@ -552,6 +552,7 @@ dialog.book .panel-actions { flex: none; }
 .ledger-list { list-style: none; margin: 0; padding: 0; }
 .ledger-list li { display: flex; flex-wrap: wrap; gap: 0 var(--s3); align-items: baseline; justify-content: space-between; padding: var(--s1) 0; border-bottom: 1px dotted var(--paper-shade); font-variant-numeric: tabular-nums; }
 .ledger-list li > span { color: var(--ink-soft); font-family: var(--font-chrome); font-size: var(--step--1); }
+.ledger-list li > small { color: var(--ink-soft); font-family: var(--font-chrome); font-size: var(--step--1); }
 .ledger-trip, .ledger-person > div { display: grid; gap: 0; }
 .ledger-trip { display: grid !important; }
 .ledger-person { justify-content: flex-start !important; align-items: center !important; flex-wrap: nowrap !important; gap: var(--s3) !important; }
