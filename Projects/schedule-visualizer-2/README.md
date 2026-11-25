@@ -209,6 +209,7 @@ row names a file it does not run.
 | `test/engine/readers.test.mjs` | What readers will see of the problems that remain, sentence by sentence |
 | `test/engine/prints-movement.test.mjs` | The movement view's tables, CSV files and print documents |
 | `test/engine/grid-edits.test.mjs` | The grid editor's one action and the pure parts that feed it |
+| `test/engine/grid-across.test.mjs` | Editing the Grid by room and by teacher, the engine: a Rooms or Teachers cell turned into slot fields, the typed names, a pasted block, every refusal's sentence |
 | `test/engine/import-subjects.test.mjs` | The subject list from a CSV file |
 | `test/engine/scenario.test.mjs` | The scenario engine: apply, normalise, reconcile, the comparison, the difference map's numbers, compare with another file, the chip words |
 | `test/engine/evacuation.test.mjs` | Evacuation: every room's way out, the exits' rooms and people, the rooms with no way out, the door card's data, and shut cells and blocked exits in both functions |
@@ -366,5 +367,6 @@ row names a file it does not run.
 | `test/timing/compare-buildings.mjs` | The first comparison of two buildings (the other building's cold run on its own route cache, `buildGraph`, the comparison and the bands on one scale) and choosing the day type again, under their budgets |
 | `test/timing/difference-card.mjs` | The difference map's card, the first after an answer and a later one, under its budgets |
 | `test/timing/checks.mjs` | The schedule checks of both day types, the engine call alone, under their budget |
+| `test/timing/grid.mjs` | Fifty edits on the Rooms rows of the big fixture (translate, stage, preview, checks), the model of each under its budget |
 | `test/timing/worker.mjs` | Full routing and the first derive, cold, in a worker thread running `engine/worker.js`, under their budgets |
 | `test/timing/page.mjs` | In the planner in Chromium: paint one cell and redraw, the movement render after the worker answers, and an autosave write into IndexedDB, under their budgets |

@@ -95,6 +95,7 @@ export const GROUPS = {
     'engine/readers.test.mjs', // SV2-42
     'engine/prints-movement.test.mjs', // SV2-18
     'engine/grid-edits.test.mjs', // SV2-12
+    'engine/grid-across.test.mjs', // SV2-152
     'engine/import-subjects.test.mjs', // SV2-13
     'engine/scenario.test.mjs', // SV2-60
     'engine/evacuation.test.mjs', // SV2-62
@@ -261,6 +262,7 @@ export const GROUPS = {
     'timing/compare-buildings.mjs', // SV2-123
     'timing/difference-card.mjs', // SV2-69c
     'timing/checks.mjs', // SV2-32i
+    'timing/grid.mjs', // SV2-152
     'timing/worker.mjs', // SV2-32i
     'timing/page.mjs', // SV2-32i: starts Chromium (Tools/board-check installed)
   ],
