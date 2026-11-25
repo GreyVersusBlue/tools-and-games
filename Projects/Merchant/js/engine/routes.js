@@ -1952,7 +1952,7 @@ export function jump(s, content) {
   const to = played[s.t], from = played[s.t - 1];
   const years = Math.max(1, Math.round((to - from) / 4));
   const entry = { at: to, kind: 'jump', from, to, years, settled: [], loans: [], agents: [], events: [] };
-  const money0 = s.money;
+  const money0 = s.money, worth0 = W.worthOf(s, content);
 
   // 1. every expedition on the road is settled
   const papers = [];   // the return papers of the ones that came home, put on the desk once step 3 has said who is still in the house's service
@@ -2026,6 +2026,7 @@ export function jump(s, content) {
   }
   entry.change = s.money - money0;   // all the jump did to the house's money; the ledger takes it out of the season it was written in
   entry.money = s.money;             // what the house carries into the next years, the figure the page prints
+  entry.worthChange = W.worthOf(s, content) - worth0;   // all the jump did to worth: the ledger's trail takes it out of the season it was written in (MER-146)
   s.log.push(entry);
   s.phase = 'interlude';
 }

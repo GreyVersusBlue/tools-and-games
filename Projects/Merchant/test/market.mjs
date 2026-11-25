@@ -511,4 +511,53 @@ test('(MER-146, 7) the warehouse rising in price writes the line the ledger prin
   eq(line.at, s.t, 'it belongs to the season whose desk shows the new figure');
 });
 
+// ---- MER-146 (M4e play problem 8): the ledger's last four seasons give each season's true change
+
+test('(MER-146, 8) a season that sends a trip out is not a loss in the ledger: the trail gives the change in worth, the cash change stays as it was', () => {
+  let s, v;
+  for (const seed of [5, 1, 2, 3, 4, 6, 7, 8]) {   // the first game that has a plan to send on one of its first three desks
+    s = newGame(C, { seed, length: 'acts', house: 'spice' });
+    for (let k = 0; k < 3 && !v; k++) {
+      s = answer(s, C);
+      v = view(s, C).venture;
+      if (!v) s = endSeason(s, C);
+    }
+    if (v) break;
+  }
+  ok(v, 'a seeded game with a plan on one of its first desks');
+  s = outfit(s, C, v.plan);
+  const stake = v.plan.purse + 1;
+  s = endSeason(answer(s, C), C);
+  const row = view(s, C).trail.at(-1), entry = s.log.filter(e => e.kind === 'season').at(-1);
+  ok(entry.change < -300, `the money went out: ${entry.change}`);
+  eq(row.cash, entry.change, 'the cash change is what the log had');
+  ok(Math.abs(row.change) < Math.abs(entry.change) / 4, `the true change is ${row.change} against a cash change of ${entry.change}`);
+  ok(stake >= 1);
+});
+
+test('(MER-146, 8) the trail follows the log across the jump: each season keeps its own change and the years are the line after the season they followed', () => {
+  let s = newGame(C, { seed: 6, length: 'acts', house: 'cloth' });
+  let at = 0;
+  for (let g = 0; g < 40 && s.phase !== 'interlude'; g++) {
+    s = answer(s, C);
+    const v = view(s, C).venture;
+    if (v) { try { s = outfit(s, C, v.plan); } catch { /* did not fit */ } }
+    s = endSeason(s, C);
+    at = g;
+  }
+  eq(s.phase, 'interlude');
+  const seasons = s.log.filter(e => e.kind === 'season'), trail = view(s, C).trail, jump = s.log.find(e => e.kind === 'jump');
+  eq(trail.length, 4, 'four seasons');
+  const last = trail.at(-1);
+  eq(last.at, jump.from, 'the last row is the season the years followed');
+  eq(last.after.years, jump.years, 'with the jump as its line');
+  eq(last.change, seasons.at(-1).worthChange - jump.worthChange, 'its own change leaves out what the years did');
+  eq(last.change + jump.worthChange, seasons.at(-1).worthChange, 'and the two add to what worth moved by');
+  const w = seasons.map(e => e.worth);
+  seasons.slice(1).forEach((e, k) => eq(e.worthChange, w[k + 1] - w[k], `season ${k + 1}'s change is the move from the worth before it`));
+  const opened = openSeason(s, C);
+  eq(view(opened, C).trail.at(-1).at, jump.from, 'on the first desk after the years the trail still ends with that season and its jump line');
+  ok(at > 0);
+});
+
 done();
