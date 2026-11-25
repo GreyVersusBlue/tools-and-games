@@ -28,7 +28,7 @@ const fmt = n => Math.round(n).toLocaleString('en-US');   // 2453 -> "2,453"; fi
 
 /** What `loads` loads of `good` are worth to the house at home now: what selling them in the warehouse would fetch, the broker's cut off every load and each
     load priced after the one before it (market.js `houseSale`, the run the Sell button makes), not the price of one load times the loads (MER-148, M4f play
-    problem 1: 43 loads of copper counted 375 and fetched 580 less than that). A good the home market does not trade has no such price: the last known
+    problem 1: 43 loads of one good counted 375 and fetched 580 less than that). A good the home market does not trade has no such price: the last known
     price at home is the old flat count, and a good with neither is null. */
 export function loadsWorth(state, content, good, loads, ahead = 0) {
   const home = cityOf(content, 'score').home;

@@ -758,7 +758,7 @@ export function suggestPlan(state, content, stopId) {
     // buy back the good that is cheaper there than at home by what the house knows
     const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
       .sort((a, b) => (homePrice(b) - there(b)) - (homePrice(a) - there(a)) || (a < b ? -1 : 1));
-    // The first sheet is the one place a plan may stake past the ceiling, and only by the opening card's own load: the card says "ten loads of your linen"
+    // The first sheet is the one place a plan may stake past the ceiling, and only by the opening card's own load: the card names a number of loads of one good
     // and the house hears it before any trip has been lost (MER-148). Every other good and the purse stay within the ceiling or the card's load, whichever is more.
     const cardStake = planStake(state, content, { cargo: { [g]: load } });
     const room = Math.max(stakeCeiling(state, content, agent.id), cardStake);
@@ -816,7 +816,7 @@ export function stakeCeiling(state, content, agentId) {
 }
 /** What `plan` puts at risk on the road, the figure the return account's 'Sent out' row carries: the goods bought now at home, the goods drawn from the
     warehouse at today's price, and the purse, less the partners' money. This, not the money alone, is what `stakeCeiling` limits for a plan the engine proposes
-    (MER-148, M4f play problem 2: Quseir's plan sent 4 loads from the warehouse and 779 dinars, 1,263 of the house's 1,299, and the warehouse goods did
+    (MER-148, M4f play problem 2: one default plan sent 4 loads from the warehouse and 779 dinars, 1,263 of the house's 1,299, and the warehouse goods did
     not count). */
 export function planStake(state, content, plan) {
   const h = homeStake(state, content, Object.fromEntries(Object.entries(plan.cargo ?? {}).filter(([g, n]) => goodOf(content, g) && n > 0)));
@@ -892,8 +892,8 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   for (const e of state.log) if (e.kind === 'brought') Object.assign(boughtAt, e.from);
   const out = Object.keys(dest.sells ?? {}).map(g => ({ g, far: farPrice(state, content, dest.id, g) ?? { p: M.baseOf(state, content, dest.id, g) }, at: homeP(g) }))
     // a good the warehouse already holds is worth carrying where it fetches more than Sell at home would pay for it, the broker's cut off: the house's own
-    // goods that sat through three sends (MER-148, M4f play problem 12: Ilyas's two loads of glass, which the far stop buys for less than Cairo's price and
-    // more than Cairo's broker pays) are tried, and the estimate keeps them only if they add
+    // goods that sat through three sends (MER-148, M4f play problem 12: two loads a friend sent, which the far stop buys for less than the home price and
+    // more than the home broker pays) are tried, and the estimate keeps them only if they add
     .filter(e => e.far && e.at !== null && e.far.p > ((state.stock[e.g] ?? 0) > 0 ? Math.round(e.at * (1 - M.BROKER_CUT)) : e.at) && !((state.stock[e.g] ?? 0) > 0 && boughtAt[e.g] === dest.id))
     .sort((x, y) => rank(x.g) - rank(y.g) || y.far.p / y.at - x.far.p / x.at || (x.g < y.g ? -1 : 1));
   const carried = out.map(e => e.g);
@@ -1303,9 +1303,9 @@ export function estimate(state, content, plan, memo = null) {
     money -= spent;
     if (q) { goodsBack[g] = (goodsBack[g] ?? 0) + q; impact[g] = spent - q * first; }
   });
-  // The goods that come home are valued at what Sell in Cairo would pay for that many loads when the party is back (MER-148, M4f play problem 1): the
+  // The goods that come home are valued at what Sell at home would pay for that many loads when the party is back (MER-148, M4f play problem 1): the
   // market carried to the day the paper opens, the loads sold one after another with the broker's cut, behind whatever of the good the warehouse still
-  // holds after this plan's cargo is drawn from it. Not one load's price times the loads: 43 loads of copper "made 375" and fetched 580 less.
+  // holds after this plan's cargo is drawn from it. Not one load's price times the loads: 43 loads of one good "made 375" and fetched 580 less.
   let goodsValue = 0;
   const homeValue = {};   // what each good that comes home is worth to the house, the figure `bringHome` counts it at
   const homeSim = {}, aheadOf = {};
@@ -1710,7 +1710,7 @@ function bringHome(s, content, x, { elapsed, at = null, reset = false }) {
   // `reset`: the act jump settles the party before step 4 resets the markets, but the ledger's price for the season it opens is the
   // reset one (the new act's base, no glut), so a jump's return is valued there and not at the price of the closing before (MER-121b).
   const priceOf = g => reset ? Math.max(1, Math.round(M.baseOf(s, content, home, g) ?? 0)) : M.truePrice(s, content, home, g);
-  // The goods that come home count at what Sell in Cairo would pay for that many loads now: the run the Sell button makes, the broker's cut off every load,
+  // The goods that come home count at what Sell at home would pay for that many loads now: the run the Sell button makes, the broker's cut off every load,
   // behind what the warehouse already holds of the good (MER-148, M4f play problem 1). The return account's 'back home', the house's profit and worth all read it.
   // At the jump the market is still the old act's when this runs, so the reset one is built: the new act's base, no glut.
   const cargoParts = Object.fromEntries(Object.entries(x.cargo).map(([g, n]) => {
@@ -1819,7 +1819,7 @@ export function gapCauses(s, content, x, r) {
     largest of the causes in `gapCauses`, in words, or "about as hoped" when the gap is small, or a gain's reason. Null for
     an expedition sent before the estimate existed. */
 /** A gap this small, in dinars, between the net the sheet hoped for and the net the trip made is "about as hoped": a tenth of the hope, at least 10. The return
-    paper's why sentence and the clerk's complaint that an agent sold too cheaply read the same line (MER-148, M4f play problem 7: a paper called Ali's trip
+    paper's why sentence and the clerk's complaint that an agent sold too cheaply read the same line (MER-148, M4f play problem 7: a paper called one agent's trip
     "about as hoped" and the next said he sold too cheaply). */
 export const hopeSmall = hoped => Math.max(10, Math.abs(hoped) * 0.1);
 function whyLine(s, content, x, r) {
