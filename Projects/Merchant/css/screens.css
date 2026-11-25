@@ -382,7 +382,12 @@ html.large-text .title-what { display: none; }
 .stoplist .option[aria-selected="true"] { background: var(--paper-shade); font-weight: 600; box-shadow: inset .3rem 0 0 var(--brass); }
 .stoplist .option.lit { outline: 2px solid var(--brass-dark); outline-offset: -2px; }
 .prices-open { display: none; }
-.prices-box { container-type: inline-size; }
+.prices-box { container-type: inline-size; display: flex; flex-direction: column; }
+/* MER-147 (play a025, b007): the board's body scrolls under the buttons, and "Every price in ..." sat after three trades and was cut by their top edge at rest at
+   1920 and 1366. It is shown straight under the stop list instead, with its table (the document order is unchanged: the trades hold nothing to tab to). The
+   phone's dialog below sets the box back to block, where order does nothing. */
+.prices-box > .all-prices { order: -1; align-self: flex-start; }
+.prices-box > .prices-all { order: -1; }
 .prices-head { font-size: var(--step-1); margin: 0 0 var(--s1); }
 .trades { list-style: none; margin: var(--s2) 0; padding: 0; font-family: var(--font-chrome); font-size: var(--step-0); }
 .trade { padding: var(--s2) 0; border-bottom: 1px solid var(--paper-shade); }

@@ -11,7 +11,10 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { test, eq, ok, done } from './lib.mjs';
+import { test as runTest, eq, ok, done } from './lib.mjs';
+// MERCHANT_JOURNEY_ONLY=MER-147 runs just the cases whose name has that text (a development shortcut; the suite must run whole to count)
+const ONLY = process.env.MERCHANT_JOURNEY_ONLY || '';
+const test = (name, fn) => (ONLY && !name.includes(ONLY) ? Promise.resolve() : runTest(name, fn));
 
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -189,6 +192,263 @@ const reduceMotion = async page => {
   if (page.emulateMediaFeatures) await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
   else await page.emulateMedia({ reducedMotion: 'reduce' });
 };
+
+// MER-147: the map cases, in a function so that MERCHANT_JOURNEY_ONLY can run them first and alone
+async function mer147() {
+  // ---- MER-147 (M4f play A, B, C): the map shows where each trip is. A token stood at Cairo in nine looks while the ledger said "on the caravan from
+  // Damascus to Cairo" (a016, a025, a092); a stack's caption lay 190 px away with its leader through two labels; a token sat on Cairo's label; on a phone
+  // Famagusta's label moved from Cyprus to Egypt, Tuat's dot lay under Cairo's label and Hormuz's label stood 45 px from its dot.
+  // The trips below are the engine's own: a party sent on its plan, put on a longer road, and the seasons ended by the engine until it is home.
+  {
+    const G = URL_ + `?test=1&seed=${SEED}`;
+    const sent = (stop = 'damascus') => {
+      let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' }[p.ref]);
+      return structuredClone(eng.outfit(g, nodeContent, eng.suggestPlan(g, nodeContent, stop)));
+    };
+    const settle = st => {
+      for (const p of st.desk) {
+        if (p.state !== 'open') continue;
+        const c = eng.paperChoices(st, nodeContent, p.id).find(x => { try { eng.choose(structuredClone(st), nodeContent, p.id, x.id); return true; } catch { return false; } });
+        if (c) st = eng.choose(st, nodeContent, p.id, c.id);
+      }
+      return st;
+    };
+    /** Every state of one trip from the day it is sent to its last season out: the engine's own plan for `stop`, and the engine ending the seasons until
+        the party is home. The season a party is sent in does not move it (the engine counts a trip from the next season), so the state after that
+        season's end is the day's own and is left out. Each leg is ridden once, with no wait and no loss, or the setup says so. */
+    const played = stop => {
+      let g = sent(stop);
+      const route = g.expeditions[0].route, r = nodeContent.routes.find(q => q.id === route);
+      const out = [structuredClone(g)];
+      for (let i = 0; i < 20; i++) {
+        try { g = eng.endSeason(settle(g), nodeContent); } catch { break; }   // (the return's paper is not needed: the trip is home)
+        if (!g.expeditions.some(e => e.status !== 'home')) break;
+        out.push(structuredClone(g));
+      }
+      eq(out.slice(1).map(st => `${st.expeditions[0].status} ${st.expeditions[0].leg}`), r.legs.map((l, i) => `out ${i}`), `setup: ${route} rides each leg once with no wait and no loss`);
+      return out.slice(1);
+    };
+    const trips = list => {
+      const g = sent(), model = structuredClone(g.expeditions[0]);
+      g.expeditions = list.map(([agent, route, leg, left], i) => ({ ...structuredClone(model), id: `x${i + 1}`, agent, route, leg, left, status: 'out' }));
+      return g;
+    };
+    const put = async (page, st, hash = '#map') => {
+      await page.goto(G, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(G + hash, { waitUntil: 'load' });
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.evaluate(() => new Promise(r => setTimeout(r, 450)));
+    };
+    /** What the map shows, in screen px: every stop's place (from the roads, which end on the stops), labels, dots, tokens, captions and leaders. */
+    const probe = page => page.evaluate(() => {
+      const box = e => { const b = e.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; };
+      const road = document.querySelector('.map-roads'), rr = road.getBoundingClientRect(), at = {};
+      for (const l of road.querySelectorAll('line')) {
+        at[l.dataset.from] = [rr.left + l.getAttribute('x1') / 1920 * rr.width, rr.top + l.getAttribute('y1') / 1080 * rr.height];
+        at[l.dataset.to] = [rr.left + l.getAttribute('x2') / 1920 * rr.width, rr.top + l.getAttribute('y2') / 1080 * rr.height];
+      }
+      const dots = [...document.querySelectorAll('.dot')].map(d => { const r = box(d); return { id: d.dataset.stop ?? d.dataset.cluster, cluster: !!d.dataset.cluster, x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, r }; });
+      const labels = [...document.querySelectorAll('.stop-label')].map(l => ({ id: l.dataset.stop ?? l.dataset.cluster, text: l.textContent, shown: !l.hidden && l.checkVisibility(), keep: !!l.dataset.keep, r: box(l) }));
+      const tokens = [...document.querySelectorAll('.token')].map(t => {
+        const p = box(t.querySelector('.token-piece')), c = t.querySelector('.token-label'), ld = t.querySelector('.token-leader');
+        return { ids: t.dataset.expedition, piece: p, cx: (p.left + p.right) / 2, cy: (p.top + p.bottom) / 2, cap: c.checkVisibility() ? box(c) : null, leader: !ld.hidden && ld.checkVisibility() };
+      });
+      return { at, dots, labels, tokens };
+    });
+    const gap = (a, b) => Math.hypot(Math.max(a.left - b.right, 0, b.left - a.right), Math.max(a.top - b.bottom, 0, b.top - a.bottom));
+    const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const core = r => { const k = (r.right - r.left) / 4; return { left: r.left + k, right: r.right - k, top: r.top + k, bottom: r.bottom - k }; };
+    const frames = [FRAMES[1], FRAMES[0], FRAMES[3]];       // board, laptop, phone upright
+    const wide = [FRAMES[1], FRAMES[0], FRAMES[2]];         // the frames that show captions: board, laptop, small laptop
+    const ROADS = ['aleppo', 'aydhab', 'constantinople'];
+    const PLAYED = Object.fromEntries(ROADS.map(r => [r, played(r)]));
+
+    // (1) problem 3: the token is on the leg its trip is on and moves between seasons as the trip does, so its distance from Cairo grows out and shrinks home
+    for (const frame of frames) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-147 ${frame.name}: a token's distance from Cairo grows season by season going out and shrinks coming home, and it is on its own leg`, async () => {
+        for (const [route, seq] of Object.entries(PLAYED)) {
+          const r = nodeContent.routes.find(q => q.id === seq[0].expeditions[0].route);
+          const farAt = r.legs.length / 2;   // the state in which the party stands on the far stop: the first of its return legs (one season to a leg)
+          const d = [];
+          for (const [i, st] of seq.entries()) {
+            await put(page, st);
+            const m = await probe(page), x = st.expeditions[0], leg = r.legs[x.leg];
+            eq(m.tokens.length, 1, `${route} season ${i}: one token`);
+            const t = m.tokens[0], from = m.at[leg.from], to = m.at[leg.to];
+            // on its own leg: within a piece of the segment between the leg's two stops
+            const dx = to[0] - from[0], dy = to[1] - from[1], k = Math.max(0, Math.min(1, ((t.cx - from[0]) * dx + (t.cy - from[1]) * dy) / (dx * dx + dy * dy || 1)));
+            const off = Math.hypot(t.cx - (from[0] + dx * k), t.cy - (from[1] + dy * k));
+            ok(off <= 24, `${route} season ${i}: the token is ${off.toFixed(1)} px off ${leg.from} to ${leg.to}`);
+            d.push(Math.hypot(t.cx - m.at.cairo[0], t.cy - m.at.cairo[1]));
+          }
+          for (let i = 1; i <= farAt; i++) ok(d[i] > d[i - 1] + 2, `${route}: going out the token is ${d[i - 1].toFixed(1)} px from Cairo in season ${i - 1} and ${d[i].toFixed(1)} in season ${i}, not farther`);
+          for (let i = farAt + 1; i < d.length; i++) ok(d[i] < d[i - 1] - 2, `${route}: coming home the token is ${d[i - 1].toFixed(1)} px from Cairo in season ${i - 1} and ${d[i].toFixed(1)} in season ${i}, not nearer`);
+        }
+      });
+      await test(`MER-147 ${frame.name}: nothing offsite, no console error (tokens)`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (2) problem 4 and (3): a caption within 90 px of its pieces, its leader across no label, and no token on Cairo's label once two or more trips are out
+    const CROWD = {
+      three: trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1], ['samir', 'cairo-aydhab', 2, 1]]),
+      stack: trips([['yusuf', 'cairo-quseir', 1, 1], ['ali', 'cairo-aydhab', 1, 1], ['samir', 'cairo-jeddah', 1, 1]]),
+      cairo: trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-qus', 0, 1], ['samir', 'cairo-alexandria', 0, 1]]),
+      far: trips([['yusuf', 'cairo-gao', 3, 1], ['ali', 'cairo-walata', 2, 1], ['samir', 'cairo-aden', 3, 1]]),
+      back: trips([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-qus', 1, 1], ['samir', 'cairo-tuat', 1, 1]]),
+      // the two states MER-131's older case reads (a caption never covers a stop's dot): two parties leaving Cairo with a Tuat road in it, and two on Qus and Quseir
+      twoBack: trips([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-aydhab', 1, 1]]),   // layout's map-two-back: a label lay over Yusuf's caption at 1366 and 1280
+      crowd: trips([['yusuf', 'cairo-alexandria', 0, 1], ['ali', 'cairo-tuat', 0, 2]]),
+      merged: trips([['yusuf', 'cairo-qus', 0, 1], ['ali', 'cairo-quseir', 0, 1]]),
+    };
+    for (const frame of wide) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-147 ${frame.name}: a stack's caption lies within 90 px of its pieces and its leader crosses no stop label`, async () => {
+        for (const [name, st] of Object.entries(CROWD)) {
+          await put(page, st);
+          const m = await probe(page), labels = m.labels.filter(l => l.shown);
+          for (const t of m.tokens) {
+            ok(t.cap, `${name}: the caption of ${t.ids} is not shown`);
+            for (const d of m.dots) ok(!meets(t.cap, d.r), `${name}: the caption of ${t.ids} covers the dot of ${d.id}`);
+            for (const l of labels) ok(!meets(t.cap, l.r), `${name}: the caption of ${t.ids} lies under the label of ${l.id}`);
+            const away = gap(t.cap, t.piece);
+            ok(away <= 90.5, `${name}: the caption of ${t.ids} is ${away.toFixed(0)} px from its piece`);
+            if (t.leader) {
+              // the leader runs from the piece's centre to the nearest point of the caption
+              const px = Math.max(t.cap.left, Math.min(t.cx, t.cap.right)), py = Math.max(t.cap.top, Math.min(t.cy, t.cap.bottom)), n = Math.ceil(Math.hypot(px - t.cx, py - t.cy) / 3);
+              for (const l of labels) for (let j = 0; j <= n; j++) {
+                const x = t.cx + (px - t.cx) * j / n, y = t.cy + (py - t.cy) * j / n;
+                ok(!(x > l.r.left && x < l.r.right && y > l.r.top && y < l.r.bottom), `${name}: the leader of ${t.ids} crosses the label of ${l.id}`);
+              }
+            }
+          }
+        }
+      });
+      await test(`MER-147 ${frame.name}: no token sits on Cairo's label once two or more trips are out`, async () => {
+        for (const [name, st] of Object.entries(CROWD)) {
+          await put(page, st);
+          const m = await probe(page), home = m.labels.find(l => l.keep);
+          ok(home?.shown, `${name}: Cairo has a label`);
+          for (const t of m.tokens) ok(!meets(core(t.piece), home.r), `${name}: the token of ${t.ids} sits on the label "${home.text}"`);
+        }
+      });
+      await test(`MER-147 ${frame.name}: nothing offsite, no console error (captions)`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (4) phone: a label keeps its place between seasons when nothing near it changed, none lies over another stop's dot, none is more than 36 px from its dot
+    for (const frame of [FRAMES[3], FRAMES[4]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-147 ${frame.name}: a stop's label keeps its place between seasons when nothing near it changed`, async () => {
+        const seq = PLAYED.aleppo.concat(PLAYED.aydhab);
+        let prev = null, compared = 0;
+        for (const [i, st] of seq.entries()) {
+          await put(page, st);
+          const m = await probe(page);
+          if (prev && i !== PLAYED.aleppo.length) {
+            const reach = l => ({ left: l.r.left - 40, right: l.r.right + 40, top: l.r.top - 40, bottom: l.r.bottom + 40 });
+            for (const l of m.labels) {
+              const was = prev.labels.find(q => q.id === l.id);
+              if (!was || !l.shown || !was.shown) continue;
+              const dot = m.dots.find(d => d.id === l.id), dotWas = prev.dots.find(d => d.id === l.id);
+              const near = [...m.tokens, ...prev.tokens].some(t => meets(reach(l), t.piece) || meets(reach(was), t.piece));
+              if (near) continue;
+              compared++;
+              eq([Math.round(l.r.left - dot.x), Math.round(l.r.top - dot.y)], [Math.round(was.r.left - dotWas.x), Math.round(was.r.top - dotWas.y)], `season ${i}: the label of ${l.id} moved with nothing near it`);
+            }
+          }
+          prev = m;
+        }
+        ok(compared >= 20, `only ${compared} labels were compared, so the case proves little`);
+      });
+      await test(`MER-147 ${frame.name}: Tuat's dot is never under Cairo's label, and no label is more than 36 px from its dot`, async () => {
+        for (const [name, st] of [...Object.entries(CROWD), ['none', trips([])], ['one', sent()]]) {
+          await put(page, st);
+          const m = await probe(page);
+          ok(m.labels.some(l => l.keep && l.shown), `${name}: Cairo has no label`);
+          // every group of close stops keeps its name within 36 px of its dot (layout's and journey's older case: "every cluster is labelled by its name")
+          eq(m.dots.filter(d => d.cluster && !m.labels.some(l => l.id === d.id && l.shown)).map(d => d.id), [], `${name}: a cluster has no label`);
+          for (const l of m.labels.filter(q => q.shown)) {
+            const own = m.dots.find(d => d.id === l.id);
+            const away = Math.hypot(Math.max(l.r.left - own.x, 0, own.x - l.r.right), Math.max(l.r.top - own.y, 0, own.y - l.r.bottom));
+            ok(away <= 36.5, `${name}: the label "${l.text}" is ${away.toFixed(0)} px from its dot`);
+            // Tuat's dot lay under Cairo's label (c007). Cairo's label has no dot-free place on a phone, so its last resort covers the cheapest dots: never a far one
+            if (l.keep) { const over = m.dots.filter(d => d.id !== l.id && meets(l.r, d.r)).map(d => d.id); ok(!over.includes('tuat'), `${name}: Tuat's dot is under "${l.text}"`); ok(over.length <= 2, `${name}: "${l.text}" lies over the dots of ${over}`); }
+          }
+        }
+      });
+      await test(`MER-147 ${frame.name}: nothing offsite, no console error (labels)`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (5) "Every price in ..." is whole at rest and opened, above the buttons at the foot of the board, at the two frames it was cut at (a025, b007)
+    {
+      const withTrades = [sent(), ...Object.values(PLAYED).flat()].map(st => ({ st, n: eng.view(st, nodeContent).bestTrades?.length ?? 0 })).sort((a, b) => b.n - a.n)[0];
+      for (const frame of [FRAMES[1], FRAMES[0]]) {
+        const { page, consoleErrors } = await open(frame);
+        await test(`MER-147 ${frame.name}: "Every price" is not cut by the buttons at the foot of the board, at rest or opened`, async () => {
+          ok(withTrades.n >= 1, 'setup: the state has best trades listed above the button');
+          await put(page, withTrades.st);
+          const read = () => page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(), b = r('#btn-all-prices'), v = r('#board-body'), a = r('.board-actions'); return { top: b.top, bottom: b.bottom, body: [v.top, v.bottom], actions: a.top, scrolled: document.getElementById('board-body').scrollTop, trades: document.querySelectorAll('#best-trades li').length }; });
+          const rest = await read();
+          eq(rest.scrolled, 0, 'the board is at rest');
+          eq(rest.trades, withTrades.n, 'trades listed');
+          ok(rest.top >= rest.body[0] - 0.5 && rest.bottom <= rest.body[1] + 0.5 && rest.bottom <= rest.actions + 0.5, `at rest Every price spans ${rest.top} to ${rest.bottom}, the board's body ${rest.body}, the buttons begin at ${rest.actions}`);
+          await page.click('#btn-all-prices');
+          await page.waitForSelector('#prices-all:not([hidden]) table');
+          const open_ = await read();
+          ok(open_.top >= open_.body[0] - 0.5 && open_.bottom <= open_.body[1] + 0.5 && open_.bottom <= open_.actions + 0.5, `opened, Every price spans ${open_.top} to ${open_.bottom}, the board's body ${open_.body}, the buttons begin at ${open_.actions}`);
+        });
+        await test(`MER-147 ${frame.name}: nothing offsite, no console error (prices)`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+        await page.close();
+      }
+    }
+  }
+
+    // (6) CI on PR #620: after a keyboard Send, Esc left the walk on the map. Closing the sheet steps the history back from #outfit, the browser takes the
+    // step later than the close, and a leave asked for in between was undone by it. The step is made slow here (500 ms) so the leave always lands inside it.
+    {
+      const idle = () => {
+        let g = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+        for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' }[p.ref]);
+        return g;
+      };
+      const put = async (page, st) => {
+        const G = URL_ + `?test=1&seed=${SEED}`;
+        await page.goto(G, { waitUntil: 'load' });
+        await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+        await page.goto(G + '#map', { waitUntil: 'load' });
+        await page.waitForSelector('#screen-map[data-ready]');
+      };
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      for (const [how, leaveIt] of [['Esc', p => p.keyboard.press('Escape')], ['Back to the desk', p => p.click('#map-desk')]]) {
+        await test(`MER-147 ${how}: leaving the map straight after a send reaches the desk, and the browser's slow step back to the map does not undo it`, async () => {
+          await put(page, idle());
+          await page.evaluate(() => { const back = history.back.bind(history); history.back = () => { setTimeout(back, 500); }; });
+          await page.focus('#btn-outfit'); await page.keyboard.press('Enter');
+          await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+          await page.focus('#outfit-send'); await page.keyboard.press('Enter');
+          await page.waitForSelector('#map-toast:not([hidden])');
+          await leaveIt(page);
+          await page.waitForSelector('#screen-desk');
+          await page.evaluate(() => new Promise(r => setTimeout(r, 1000)));   // longer than the slow step
+          eq(await page.evaluate(() => [location.hash, !!document.getElementById('screen-desk'), !!document.getElementById('screen-map')]), ['#desk', true, false], 'the page is on the desk');
+        });
+      }
+      await test('MER-147 leaving: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+}
+
+// the whole suite runs them last; with the shortcut set they run alone, before anything else
+if (ONLY) {
+  try { await mer147(); } finally { await browser.close(); server.close(); }
+  await done();
+  process.exit(process.exitCode ?? 0);
+}
 
 try {
   for (const frame of FRAMES) {
@@ -4943,6 +5203,10 @@ try {
       await page.close();
     }
   }
+
+  await mer147();
+
+
 
 
 } finally {
