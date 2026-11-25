@@ -87,6 +87,18 @@
 //                        the plan is the plain one and shares its fields.
 //   avoidExits           routeToExit only: a Set or list of exit ids. A step-free
 //                        routeToExit also leaves out every exit whose `stepFree` is false
+//   extraSeconds         an Int32Array over graph.count × 4 slots, whole seconds ≥ 0 added
+//                        on entering a node, by the heading of the step that enters
+//                        it (slot = node × 4 + heading). route, routeToExit and
+//                        routeToCells take it. A plan with it never reads or writes
+//                        the cache (its fields are good for that array only) but
+//                        still counts cache.searches. The route's `seconds` stays
+//                        the plain walking time; `extraSeconds` on the route is the
+//                        sum of the extra paid (the room's own first and last cells
+//                        are not steps, so they pay none). Left out: nothing changes.
+//   extraLinkSeconds     an Int32Array over graph.links, seconds added on taking a
+//                        connection (a car by its `link`, as crowd.js indexes it).
+//                        Same rules as extraSeconds; either one makes the plan extra
 //   cache                a cache from createRouteCache(); without one every
 //                        call searches afresh
 //   geometryVersion      the store's counter. The cache is emptied when this
@@ -104,6 +116,7 @@
 //     connections: ['c…'],                   the stairs connections used, in order
 //     connectionAt: [index],                 connections[i] is taken from cells[connectionAt[i]] to the next cell
 //     seconds, turns,
+//     extraSeconds,                          only when a plan had extraSeconds or extraLinkSeconds: the extra paid
 //     stairs,                                stairs connections used
 //     rides }                                elevator rides used. A ride is in `connections` by its car's id; its
 //                                            ends are cells[connectionAt[i]] and the next cell, never the connection's own ends
@@ -241,6 +254,14 @@ function listOf(value) {
   return Array.from(value).filter((item) => typeof item === 'string').sort();
 }
 
+function extraArray(value, length, name) {
+  if (value === undefined || value === null) return null;
+  if (!(value instanceof Int32Array) || value.length !== length) {
+    throw new TypeError(name + ' must be an Int32Array of ' + length + ' slots');
+  }
+  return value;
+}
+
 // What the options mean on this graph: which links are shut, which nodes are
 // shut, and a key that is the same for options that mean the same thing.
 function planFor(graph, options) {
@@ -358,7 +379,12 @@ function planFor(graph, options) {
   // what a ride costs, only where there is a car; and the staff-only rule
   if (graph.hasElevator) parts.push('e' + graph.elevator.wait + ',' + graph.elevator.perFloor);
   if (studentsOnly) parts.push('s');
-  return { key: parts.join('|'), options: opts, stepsOpen, avoidStairs, studentsOnly, linkShut, nodeShut, avoiding, linkWay, undirected };
+  // extra seconds: a plan with either array has its own key and is never
+  // cached, because the array is not part of the key
+  const extra = extraArray(opts.extraSeconds, graph.count * 4, 'extraSeconds');
+  const extraLink = extraArray(opts.extraLinkSeconds, graph.links.length, 'extraLinkSeconds');
+  if (extra || extraLink) parts.push('x');
+  return { key: parts.join('|'), options: opts, stepsOpen, avoidStairs, studentsOnly, linkShut, nodeShut, avoiding, linkWay, undirected, extra, extraLink, uncached: Boolean(extra || extraLink) };
 }
 
 function linkOpen(link, index, from, plan) {
@@ -475,6 +501,8 @@ function computeField(graph, room, plan) {
   const links = graph.links;
   const nodeShut = plan.nodeShut;
   const step = graph.secondsPerCell * SECOND;
+  const extra = plan.extra;
+  const extraLink = plan.extraLink;
   const lifts = graph.lifts;
   // the car each lift cell is a stop of, -1 for any other cell
   const carOfLift = new Int32Array(graph.count).fill(-1);
@@ -501,7 +529,7 @@ function computeField(graph, room, plan) {
       if (next === -1 || (nodeShut && nodeShut[next])) continue;
       // a walker who has ridden this car may not step onto one of its lift cells
       if (layer !== 0 && carOfLift[next] === layer - 1) continue;
-      const nextKey = key + step + (heading !== HEADING_NONE && heading !== d ? TURN : 0);
+      const nextKey = key + step + (heading !== HEADING_NONE && heading !== d ? TURN : 0) + (extra ? extra[next * 4 + d] * SECOND : 0);
       const nextState = (layer * count + next) * STATES + d;
       if (nextKey < cost[nextState]) {
         cost[nextState] = nextKey;
@@ -517,7 +545,7 @@ function computeField(graph, room, plan) {
       if (!linkOpen(link, index, node, plan)) continue;
       const next = link.a === node ? link.b : link.a;
       if (nodeShut && nodeShut[next]) continue;
-      const nextKey = key + link.seconds * SECOND + step + STAIR;
+      const nextKey = key + link.seconds * SECOND + step + STAIR + (extraLink ? extraLink[link.elevator ? graph.cars[link.car].link : index] * SECOND : 0);
       const nextState = ((link.elevator ? 1 + link.car : 0) * count + next) * STATES + HEADING_NONE;
       if (nextKey < cost[nextState]) {
         cost[nextState] = nextKey;
@@ -544,6 +572,11 @@ function syncCache(cache, graph, options) {
 
 function fieldFor(graph, room, plan, cache) {
   const key = room.id + '|' + plan.key;
+  if (plan.uncached) {
+    // good for this plan's arrays only: counted, never held
+    if (cache) cache.searches += 1;
+    return computeField(graph, room, plan);
+  }
   if (cache) {
     const held = cache.fields.get(key);
     if (held) {
@@ -594,6 +627,7 @@ function trace(graph, field, plan, node, heading) {
   let turns = 0;
   let seconds = 0;
   let rides = 0;
+  let extraPaid = 0;
   for (let i = 0; i < nodes.length; i += 1) {
     cells.push({ floorId: graph.floors[graph.nodeFloor[nodes[i]]].id, cell: graph.nodeCell[nodes[i]] });
     seconds += graph.secondsPerCell;
@@ -609,13 +643,15 @@ function trace(graph, field, plan, node, heading) {
         connectionAt.push(i - 1);
         seconds += link.seconds;
         if (link.elevator) rides += 1;
+        if (plan.extraLink) extraPaid += plan.extraLink[link.elevator ? graph.cars[link.car].link : index];
         break;
       }
     } else if (headings[i - 1] !== HEADING_NONE && headings[i - 1] !== headings[i]) {
       turns += 1;
     }
+    if (plan.extra && i > 0 && headings[i] !== HEADING_NONE) extraPaid += plan.extra[nodes[i] * 4 + headings[i]];
   }
-  return { nodes, headings, cells, connections, connectionAt, seconds, turns, rides };
+  return { nodes, headings, cells, connections, connectionAt, seconds, turns, rides, extraPaid };
 }
 
 function place(graph, room, entry) {
@@ -631,7 +667,10 @@ function explain(graph, failed, plan, run) {
   if (failed.ok || explained.has(failed)) return failed;
   explained.add(failed);
   if (failed.reason !== 'unreachable' && failed.reason !== 'no-entry') return failed;
-  const base = plan.options || {};
+  // a failure never depends on the extras (they are finite), so the re-runs leave them out
+  const base = { ...(plan.options || {}) };
+  delete base.extraSeconds;
+  delete base.extraLinkSeconds;
   if (plan.avoidStairs && !plan.stepsOpen && (plan.avoiding.includes('steps') || plan.avoiding.includes('step-doors'))) {
     if (run({ ...base, stepsOpen: true }).ok) failed.stepBlocked = true;
   }
@@ -665,7 +704,7 @@ function searchRoute(graph, fromRoomId, toRoomId, plan, cache) {
   if (!hasEntry(to, plan)) return failure('no-entry', 'to', toRoomId, to.floorId, fromRoomId, toRoomId, plan);
 
   const routeKey = fromRoomId + '>' + toRoomId + '|' + plan.key;
-  if (cache) {
+  if (cache && !plan.uncached) {
     const held = cache.routes.get(routeKey);
     if (held) return held;
   }
@@ -718,8 +757,9 @@ function searchRoute(graph, fromRoomId, toRoomId, plan, cache) {
       stairs: path.connections.length - path.rides,
       rides: path.rides,
     };
+    if (plan.uncached) result.extraSeconds = path.extraPaid;
   }
-  if (cache) cache.routes.set(routeKey, result);
+  if (cache && !plan.uncached) cache.routes.set(routeKey, result);
   return result;
 }
 
@@ -788,7 +828,7 @@ function searchTargets(graph, fromRoomId, targets, options) {
 
 function shapeRoute(graph, found, fromRoomId) {
   const { path } = found;
-  return {
+  const shaped = {
     ok: true,
     fromRoomId,
     from: place(graph, found.from, found.leaving),
@@ -800,6 +840,8 @@ function shapeRoute(graph, found, fromRoomId) {
     stairs: path.connections.length - path.rides,
     rides: path.rides,
   };
+  if (found.plan.uncached) shaped.extraSeconds = path.extraPaid;
+  return shaped;
 }
 
 // The quickest way from a room to any exit. The result is a route with
@@ -831,7 +873,9 @@ export function routeToExit(graph, fromRoomId, options) {
     return found.failed;
   }
   const result = shapeRoute(graph, found, fromRoomId);
-  return { ok: true, fromRoomId, exitId: found.target.id, from: result.from, exit: { id: found.target.id, floorId: found.target.floorId, cell: found.target.cell }, cells: result.cells, connections: result.connections, connectionAt: result.connectionAt, seconds: result.seconds, turns: result.turns, stairs: result.stairs, rides: result.rides };
+  const exitRoute = { ok: true, fromRoomId, exitId: found.target.id, from: result.from, exit: { id: found.target.id, floorId: found.target.floorId, cell: found.target.cell }, cells: result.cells, connections: result.connections, connectionAt: result.connectionAt, seconds: result.seconds, turns: result.turns, stairs: result.stairs, rides: result.rides };
+  if ('extraSeconds' in result) exitRoute.extraSeconds = result.extraSeconds;
+  return exitRoute;
 }
 
 // The quickest way from a room to any of a list of cells, `targets` being
