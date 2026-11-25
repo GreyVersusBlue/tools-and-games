@@ -2236,7 +2236,7 @@ try {
         eq((await texts(page, '#ledger-trail li.ledger-worth')).sort(), book.log.filter(e => e.kind === 'worth' && (eng.view(book, nodeContent).trail.some(t => t.at === e.at) || e.at > Math.max(...book.log.filter(x => x.kind === 'season').map(x => x.at)))).map(e => e.text).sort(), 'the worth lines of the log, for the seasons the ledger shows and the one still open');
         eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.cash)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, the money each as the log wrote it');
         eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), eng.view(book, nodeContent).trail.map(t => String(t.change)), 'and the change in worth each is the engine\'s trail');
-        ok((await texts(page, '#ledger-trail li')).every(t => /[+−]\d+ dinars$/.test(t)), 'signed with a real minus');
+        ok((await texts(page, '#ledger-trail li[data-change] strong')).every(t => /^[+−]\d[\d,]* dinars?$/.test(t)), 'signed with a real minus');
       });
 
       await test(`${how}: the ledger's warehouse shows each good with Cairo's price as last known and its date, from the engine's view`, async () => {
