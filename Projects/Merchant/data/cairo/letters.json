@@ -1180,7 +1180,7 @@
       "role": "On the road"
     },
     "title": "The flood fills the boats",
-    "body": "We are on the river. The Nile is in flood and every boat is loading in a rush. The boatmen asked double. I paid it and took the first boat, so our goods were not left on the bank. The next boat would have been a week away.",
+    "body": "We are on the river. The Nile is in flood and every boat is loading in a rush. The boatmen asked double. I paid it, 25 of your money, and took the first boat, so our goods were not left on the bank. The next boat would have been a week away.",
     "when": {
       "all": [
         {
@@ -1272,7 +1272,7 @@
       "role": "On the road"
     },
     "title": "The boatman stops at every landing",
-    "body": "The boat is slow. The boatman stops at every landing to sell goods of his own. I paid him extra to go straight on, so we would not lose a week.",
+    "body": "The boat is slow. The boatman stops at every landing to sell goods of his own. I paid him 15 extra to go straight on, so we would not lose a week.",
     "when": {
       "leg": {
         "by": "nileboat"
@@ -1336,7 +1336,7 @@
       "role": "On the road"
     },
     "title": "Too many goods, too few boats",
-    "body": "I am at Qus. Goods have come over the desert from the Red Sea, and they all wait for a boat down the river. Boats are few. I paid for a place on the next one. Waiting for a cheaper place could take weeks.",
+    "body": "I am at Qus. Goods have come over the desert from the Red Sea, and they all wait for a boat down the river. Boats are few. I paid 20 of your money for a place on the next one. Waiting for a cheaper place could take weeks.",
     "when": {
       "at": "qus"
     },
@@ -1413,7 +1413,7 @@
       "role": "On the road"
     },
     "title": "Camels for the desert",
-    "body": "I am at Qus. The camel men say the desert road to Quseir takes five days, and the road to Aydhab takes much longer. I hired camels for the whole time, with some spare, so nothing would be left behind.",
+    "body": "I am at Qus. The camel men say the desert road to Quseir takes five days, and the road to Aydhab takes much longer. I hired camels for the whole time, with some spare, so nothing would be left behind. It cost 25 of your money.",
     "when": {
       "at": "qus"
     },
@@ -1475,7 +1475,7 @@
       "role": "On the road"
     },
     "title": "Ships fight the north wind",
-    "body": "I am at Quseir. Ships come up the Red Sea against the north wind, and it makes them slow. The owner of the next ship wants half the freight now. I paid it, so our goods have a place. If I had waited, the next ship might have been weeks away.",
+    "body": "I am at Quseir. Ships come up the Red Sea against the north wind, and it makes them slow. The owner of the next ship wants half the freight now. I paid it, 30 of your money, so our goods have a place. If I had waited, the next ship might have been weeks away.",
     "when": {
       "at": "quseir"
     },
@@ -1556,7 +1556,7 @@
       "role": "On the road"
     },
     "title": "The short road from Qus",
-    "body": "I am at Quseir. The road from Qus took five days. Merchants here say that is why they come, and not to Aydhab. The camel men want a high price to take goods back, so I hired them early. They would have asked more if I had waited.",
+    "body": "I am at Quseir. The road from Qus took five days. Merchants here say that is why they come, and not to Aydhab. The camel men want a high price to take goods back, so I hired them early for 20 of your money. They would have asked more if I had waited.",
     "when": {
       "at": "quseir"
     },
@@ -1637,7 +1637,7 @@
       "role": "On the road"
     },
     "title": "Flax weighed with its sack",
-    "body": "I am at Constantinople. The buyers here weigh flax with its sack. Flax is the plant that linen is made from. One buyer took 4 in every hundred off the weight for the sack itself. I agreed, and he paid at once.",
+    "body": "I am at Constantinople. The buyers here weigh flax with its sack. Flax is the plant that linen is made from. One buyer took 4 in every hundred off the weight for the sack itself. I agreed, and he paid at once. The house gained 20.",
     "when": {
       "at": "constantinople"
     },
@@ -1699,7 +1699,7 @@
       "role": "On the road"
     },
     "title": "A captain who sails in winter",
-    "body": "I am at Alexandria, and it is winter. The Italian cities say their ships must stay in port until spring. A captain here will sail anyway for extra pay. I paid him, so we did not lose a season.",
+    "body": "I am at Alexandria, and it is winter. The Italian cities say their ships must stay in port until spring. A captain here will sail anyway for extra pay. I paid him 35 of your money, so we did not lose a season.",
     "when": {
       "all": [
         {
@@ -1785,7 +1785,7 @@
       "role": "On the road"
     },
     "title": "The canal is filling",
-    "body": "I am at Alexandria. The canal from the Nile is filling with the flood, and loaded boats are setting sail. I booked a place on the first one before the price went up. A week later it would have cost more.",
+    "body": "I am at Alexandria. The canal from the Nile is filling with the flood, and loaded boats are setting sail. I booked a place on the first one for 20 of your money before the price went up. A week later it would have cost more.",
     "when": {
       "all": [
         {
@@ -1871,7 +1871,7 @@
       "role": "On the road"
     },
     "title": "The customs men count",
-    "body": "I am at Alexandria. The customs men, who tax goods that come in, took 20 in every hundred of mine. They took nothing on goods going out. I paid, and they gave me a paper to show it.",
+    "body": "I am at Alexandria. The customs men, who tax goods that come in, took 20 in every hundred of mine. They took nothing on goods going out. I paid 40 of your money, and they gave me a paper to show it.",
     "when": {
       "at": "alexandria"
     },
@@ -1935,7 +1935,7 @@
       "role": "On the road"
     },
     "title": "A Genoese buyer",
-    "body": "I am at Alexandria. Few Venetian ships have come, but a Genoese buyer did. He wanted my goods and paid a fair price at once. I sold him some of my goods, so the house has cash in hand. I did not wait for a better buyer.",
+    "body": "I am at Alexandria. Few Venetian ships have come, but a Genoese buyer did. He wanted my goods and paid a fair price at once. I sold him some of my goods for 30, so the house has cash in hand. I did not wait for a better buyer.",
     "when": {
       "all": [
         {
@@ -2026,7 +2026,7 @@
       "role": "On the road"
     },
     "title": "Freight on the galley",
-    "body": "We are on a galley, a long ship with oars. The captain charges freight by the load, and it must be paid before we land. I paid for all our goods, so none was put off at the next port.",
+    "body": "We are on a galley, a long ship with oars. The captain charges freight by the load, and it must be paid before we land. I paid 30 of your money for all our goods, so none was put off at the next port.",
     "when": {
       "leg": {
         "by": "galley"
@@ -2172,7 +2172,7 @@
       "role": "On the road"
     },
     "title": "Venice's galleys are back",
-    "body": "I am at Alexandria. Venice's galleys, its long ships with oars, have come back after many years. Their buyers pay well for goods from the east. I sold at once and did not wait, because more ships were coming and the price would fall.",
+    "body": "I am at Alexandria. Venice's galleys, its long ships with oars, have come back after many years. Their buyers pay well for goods from the east. I sold at once for 40 and did not wait, because more ships were coming and the price would fall.",
     "when": {
       "all": [
         {

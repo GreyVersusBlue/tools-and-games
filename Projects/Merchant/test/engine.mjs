@@ -476,7 +476,8 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
   eq(s.money, 403, 'final money');
   // MER-60: 24 became 30. The closing step writes one `season` entry for each of the six seasons played.
   // MER-61: 30 became 31. The opening keeps one `trust` entry, replaced each season, not one a season.
-  eq(s.log.length, 31, 'log length');
+  // MER-148: 31 became 44. The log gains the worth lines (a trip home, an answer, a price moved by a closing), 13 of them; money and papers are what they were.
+  eq(s.log.length, 44, 'log length');
   eq(JSON.stringify(s), JSON.stringify((() => {
     let t = game();
     while (t.phase !== 'recall') { t = t.phase === 'interlude' ? openSeason(t, content) : endSeason(answer(t, content), content); }
@@ -667,7 +668,7 @@ test('pinned game: the papers of each season of seed 7 (full) are pinned, and a 
     'lamp-quarrel+bridge-toll', 'wool-offer+harvest-gift', 'lamp-order', 'wool-due+salt-order', 'quay-toll+salt-dispute+court-summons', 'fair-closes+rope-dispute',
   ]);   // MER-78: seasons 4 to 7, 10 and 11 changed (one favour a season, no two of one kind; testport has few cards, so season 5 is one card); seasons 1 to 3, 8 and 9 deal what they dealt
   eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, true, true, true], 'the seasons that open with an Accounts paper');
-  eq([s.money, s.log.length], [404, 52]);   // MER-78: 396 and 51 became 404 and 52 (other cards, so another delayed line and one more Accounts paper)   // MER-61: 50 became 51, the one `trust` entry
+  eq([s.money, s.log.length], [404, 77]);   // MER-148: 52 became 77, the worth lines the closings and the answers write (25); the money and the papers above are unchanged   // MER-78: 396 and 51 became 404 and 52 (other cards, so another delayed line and one more Accounts paper)   // MER-61: 50 became 51, the one `trust` entry
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
 });
@@ -964,7 +965,7 @@ test('turn: over 120 seeded bot games no return paper and no Accounts paper is d
   // paper the game put or tried to put, and a drop is a log entry (routes.js `put`)
   const saved = steps.end;
   let dropped = [];
-  steps.end = (st, ...a) => { dropped = st.log.filter(e => e.kind === 'dropped' && e.reason === 'the desk was full' && (e.ref === 'return' || e.ref === 'accounts' || e.ref === 'lost')); return saved(st, ...a); };
+  steps.end = (st, ...a) => { dropped = st.log.filter(e => e.kind === 'dropped' && e.reason === 'the desk was full' && !e.atJump && (e.ref === 'return' || e.ref === 'accounts' || e.ref === 'lost')); return saved(st, ...a); };
   const bad = [];
   let games = 0;
   try {

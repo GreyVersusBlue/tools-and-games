@@ -42,7 +42,7 @@
       {
         "id": "hide",
         "label": "Hide the sacks and hope",
-        "hint": "Bad food is easy to smell, but your street hears nothing yet.",
+        "hint": "It costs 4 in two seasons. Bad food is easy to smell, but your street hears nothing yet.",
         "now": [],
         "later": [
           {
@@ -176,7 +176,7 @@
       {
         "id": "judge",
         "label": "Press Daud's claim before a judge",
-        "hint": "It costs now. Daud will thank you in coin. Isaac will not forgive it.",
+        "hint": "It costs 4 dinars now and pays back 9 in two seasons. Daud will thank you in coin. Isaac will not forgive it.",
         "requires": {
           "money": {
             "gte": 4
@@ -322,7 +322,7 @@
       {
         "id": "ask",
         "label": "Ask him for the accounts",
-        "hint": "It costs nothing. Hamid may be offended, and Nur will thank you.",
+        "hint": "It costs nothing now and brings 5 in two seasons. Hamid may be offended, and Nur will thank you.",
         "now": [],
         "later": [
           {
@@ -338,7 +338,7 @@
       {
         "id": "judge",
         "label": "Take him to a judge",
-        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues. Nur pays you well.",
+        "hint": "It costs 5 now and pays back 11 in two seasons. The court backs you, but Hamid will be your enemy and partners dislike a house that sues. Nur pays you well.",
         "requires": {
           "money": {
             "gte": 5

@@ -31,7 +31,7 @@
       {
         "id": "share",
         "label": "Put money into Jamil's cloth",
-        "hint": "He sells to the Malians. You share the profit.",
+        "hint": "It costs 9 now and pays 16 in a season. He sells to the Malians. You share the profit.",
         "requires": {
           "money": {
             "gte": 9
@@ -214,7 +214,7 @@
       {
         "id": "move",
         "label": "Sell in her market",
-        "hint": "Her fee is high. Your neighbours will see you go.",
+        "hint": "It costs 4 now and pays 9 in two seasons. Her fee is high. Your neighbours will see you go.",
         "requires": {
           "all": [
             {
@@ -252,7 +252,7 @@
       {
         "id": "stay",
         "label": "Stay in your own market",
-        "hint": "No fee, and your neighbours are glad.",
+        "hint": "No fee, and you gain 3 in two seasons. Your neighbours are glad.",
         "now": [
           {
             "rep": "partners",

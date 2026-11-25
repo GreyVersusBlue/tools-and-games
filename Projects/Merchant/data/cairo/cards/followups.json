@@ -16,7 +16,7 @@
       {
         "id": "favour",
         "label": "Take the place and do the favour",
-        "hint": "It costs 5 dinars. Abu Bakr is pleased.",
+        "hint": "It costs 5 dinars now and pays back 7 in two seasons. Abu Bakr is pleased.",
         "requires": {
           "money": {
             "gte": 5
@@ -45,7 +45,7 @@
       {
         "id": "no-favour",
         "label": "Take the place and skip the favour",
-        "hint": "It costs nothing. Abu Bakr is not pleased.",
+        "hint": "It costs nothing now, and 7 dinars come in two seasons. Abu Bakr is not pleased.",
         "now": [
           {
             "rep": "partners",
@@ -166,7 +166,7 @@
       {
         "id": "pick",
         "label": "Buy the best dyes at her price",
-        "hint": "It costs money now. Dyers pay well.",
+        "hint": "It costs 5 now and pays 4 in two seasons. Dyers pay well.",
         "requires": {
           "money": {
             "gte": 5
@@ -195,7 +195,7 @@
       {
         "id": "wait",
         "label": "Wait for the price to fall",
-        "hint": "You keep your money, and buyers abroad hear that you wait for a fair price.",
+        "hint": "You keep your money and gain 3 in two seasons, and buyers abroad hear that you wait for a fair price.",
         "now": [],
         "later": [
           {
@@ -238,7 +238,7 @@
       {
         "id": "forgive",
         "label": "Forgive the rest",
-        "hint": "Farid will not forget it.",
+        "hint": "You get 1 back in four seasons. Farid will not forget it.",
         "now": [
           {
             "rep": "partners",
@@ -259,7 +259,7 @@
       {
         "id": "hold",
         "label": "Ask for the rest over a year",
-        "hint": "You may get it. Farid will be hurt, and the court likes a clear book.",
+        "hint": "You may get 2 in four seasons. Farid will be hurt, and the court likes a clear book.",
         "now": [],
         "later": [
           {
@@ -400,7 +400,7 @@
       {
         "id": "argue",
         "label": "Say the sacks were not yours",
-        "hint": "It saves face for now.",
+        "hint": "It saves face for now, and 4 come in two seasons.",
         "now": [
           {
             "rep": "court",
@@ -447,7 +447,7 @@
       {
         "id": "take",
         "label": "Take the buyer",
-        "hint": "It costs money to fill the order. It may pay, and Alexandria hears of it.",
+        "hint": "It costs 4 now to fill the order and may pay 7 in two seasons. Alexandria hears of it.",
         "requires": {
           "money": {
             "gte": 4
@@ -543,7 +543,7 @@
       {
         "id": "thanks",
         "label": "Thank her with a gift",
-        "hint": "It costs 3 dinars now. She will remember it.",
+        "hint": "It costs 3 dinars now and 1 comes back in two seasons. She will remember it.",
         "now": [
           {
             "money": -3
@@ -601,7 +601,7 @@
       {
         "id": "again",
         "label": "Agree to ship with him next year",
-        "hint": "He will keep a place for you.",
+        "hint": "In four seasons you get 4. He will keep a place for you.",
         "now": [
           {
             "rep": "partners",
@@ -622,7 +622,7 @@
       {
         "id": "open",
         "label": "Keep your choice open",
-        "hint": "You can pick the best boat each year.",
+        "hint": "In four seasons you get 5. You can pick the best boat each year.",
         "now": [],
         "later": [
           {
@@ -665,7 +665,7 @@
       {
         "id": "pay",
         "label": "Pay the cousin too",
-        "hint": "It costs you. Your name grows.",
+        "hint": "It costs 4 dinars now and 3 come back in two seasons. Your name grows.",
         "requires": {
           "money": {
             "gte": 4
@@ -740,7 +740,7 @@
       {
         "id": "share",
         "label": "Take a share of his trip",
-        "hint": "It costs money now. It may pay.",
+        "hint": "It costs 5 now and may pay 8 in three seasons.",
         "requires": {
           "money": {
             "gte": 5
@@ -957,7 +957,7 @@
       {
         "id": "share",
         "label": "Take a share in his shipment",
-        "hint": "It costs money now. It may pay.",
+        "hint": "It costs 5 now and may pay 8 in three seasons.",
         "requires": {
           "money": {
             "gte": 5
@@ -1284,7 +1284,7 @@
       {
         "id": "seal",
         "label": "Give him the house's seal",
-        "hint": "He carries your name, and his debts may fall on you. It costs nothing now.",
+        "hint": "It costs nothing now and 5 dinars in three seasons, if his debts fall on you. He carries your name.",
         "now": [
           {
             "trust": "matteo",
@@ -1314,7 +1314,7 @@
       {
         "id": "fee",
         "label": "Pay him a fee for one more job",
-        "hint": "It costs 4 dinars. He stays free to go.",
+        "hint": "It costs 4 dinars now and brings 6 in two seasons. He stays free to go.",
         "requires": {
           "money": {
             "gte": 4

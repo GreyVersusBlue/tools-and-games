@@ -568,6 +568,16 @@ test('rule 17: a choice that takes money now and could be the only open one requ
   eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; })).filter(r => r === 17), [17], 'pay with no requires and a sibling that needs money');
   eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; k.choices.push({ id: 'wait', label: 'Wait', now: [] }); })).filter(r => r === 17), [], 'a choice that is always open lets the cost stand');
 });
+test('rule 19: a sum that lands later is named on the paper that chose it; take the figure out of a hint or a letter and the lint names it (MER-148)', () => {
+  eq(rulesOf(cairo).filter(r => r === 19), []);
+  // the three cases the M4f play found: a letter's own cost, a later cost behind 'You win nothing back', a later gain behind 'It costs nothing'
+  eq(rulesOf(cairoEdit(c => { const l = letterOf(c, 'qus-camels'); l.body = l.body.replace(' It cost 25 of your money.', ''); })).filter(r => r === 19), [19], 'the camel letter without its 25');
+  eq(rulesOf(cairoEdit(c => { cardOf(c, 'ali-beyond-the-paper').choices.find(x => x.id === 'forgive').hint = 'You win nothing back. Ali is grateful.'; })).filter(r => r === 19), [19], 'forgive without its 2');
+  eq(rulesOf(cairoEdit(c => { cardOf(c, 'abu-bakr-again').choices.find(x => x.id === 'no-favour').hint = 'It costs nothing. Abu Bakr is not pleased.'; })).filter(r => r === 19), [19], 'a later gain left out');
+  const counted = [];
+  for (const c of cairo.cards) for (const ch of c.choices ?? []) if ((ch.later ?? []).some(l => (l.do ?? []).some(e => typeof e.money === 'number'))) counted.push(`${c.id}/${ch.id}`);
+  ok(counted.length >= 50, `${counted.length} choices have a later sum, each named in its hint`);
+});
 test('rule 13: a bonus costs no more than the letter brings, a card bonus about a trip home needs that agent\'s profit, and a return bonus is for a profit', () => {
   eq(rulesOf(cairo).filter(r => r === 13), []);
   eq(rulesOf(cairoEdit(c => { letterOf(c, 'damascus-early-caravan').choices.find(x => x.id === 'bonus').now[0].money = -30; })).filter(r => r === 13), [13], 'a bonus of 30 on a letter that brings 25');

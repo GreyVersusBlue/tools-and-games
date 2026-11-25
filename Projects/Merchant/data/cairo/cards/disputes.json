@@ -56,7 +56,7 @@
       {
         "id": "walk",
         "label": "Say no and buy elsewhere",
-        "hint": "You buy elsewhere, and other sellers hear of it.",
+        "hint": "You buy elsewhere and gain 4 in two seasons, and other sellers hear of it.",
         "now": [
           {
             "rep": "partners",
@@ -356,7 +356,7 @@
       {
         "id": "forgive",
         "label": "Forgive him and write stricter orders",
-        "hint": "You win nothing back. Ali is grateful.",
+        "hint": "You win nothing back now, and it costs 2 dinars in two seasons. Ali is grateful.",
         "now": [
           {
             "trust": "ali",

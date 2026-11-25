@@ -272,7 +272,7 @@
       {
         "id": "return",
         "label": "Send the gift back with thanks",
-        "hint": "You owe nothing. Ilyas will think it odd.",
+        "hint": "You owe nothing, and you gain 2 dinars in two seasons. Ilyas will think it odd.",
         "now": [
           {
             "flag": "ilyas-gift-returned",
@@ -410,7 +410,7 @@
       {
         "id": "keep",
         "label": "Keep him on and write well of him",
-        "hint": "It costs a clerk's time. Ilyas will be glad.",
+        "hint": "It costs a clerk's time, 2 in two seasons. Ilyas will be glad.",
         "now": [
           {
             "trust": "tadros",

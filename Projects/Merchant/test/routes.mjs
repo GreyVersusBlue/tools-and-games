@@ -14,7 +14,7 @@ import * as M from '../js/engine/market.js';
 import { steps } from '../js/engine/turn.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import { netWealth } from '../js/engine/score.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, recall, outfit, suggestPlan, checkPlan, routeFor, destinations, view, sellHome } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, recall, outfit, suggestPlan, checkPlan, routeFor, destinations, view, sellHome, sellHomeQuote } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
 const T0 = await loadContent('testport', { fs });
@@ -156,7 +156,8 @@ test('outfit moves the cargo and the money out of the house, buys the rest at th
   const paid = s.money - t.money - 40;
   ok(paid > 5 * 20 && paid < 5 * 26, `five loads bought at 20 and rising cost ${paid}`);
   ok(t.market.harbour.wool.glut < 0, 'buying makes wool scarcer at home');
-  eq(x.staked, { house: 200 + paid + 40, partners: 0 }, 'the house put in the ten it held (at 20) and all it paid');
+  const held = sellHomeQuote(s, calm, 'wool', 10).got;   // the ten the warehouse gave up count at what Sell would pay for them, not at 20 a load (MER-148)
+  eq(x.staked, { house: held + paid + 40, partners: 0 }, 'the house put in the ten it held (at what Sell pays for them) and all it paid');
   eq([x.id, x.route, x.leg, x.left, x.sent, x.contract, x.orders], ['x1', 'harbour-hilltown', 0, 2, 0, { kind: 'own' }, []]);
   eq(t.log.filter(e => e.kind !== 'worth').at(-1), { at: 0, kind: 'outfit', ref: 'x1', choice: 'harbour-hilltown' });   // (a worth line may follow it: MER-146)
   eq(game().expeditions.length, 0, 'the input state is untouched');
@@ -453,7 +454,9 @@ test('MER-139 (5) the first expedition\'s sheet is the sheet\'s own rule: propos
     const rule = R.proposePlan(s, calmC, plan.agent, 'cairo-damascus');
     ok(Object.keys(plan.cargo).length > 1, `${house}: linen alone is not the first sheet (${JSON.stringify(plan.cargo)})`);
     eq(plan.cargo.linen, 10, `${house}: the card's ten loads of linen`);
-    eq({ ...plan.cargo, linen: 0 }, { ...rule.cargo, linen: 0 }, `${house}: every other good is the one proposePlan names`);
+    // every other good is one proposePlan names, in no more loads than it names: the card's ten loads of linen stand, and the rest give way to the ceiling (MER-148)
+    for (const [g, n] of Object.entries(plan.cargo)) if (g !== 'linen') ok(n <= (rule.cargo[g] ?? 0), `${house}: ${g} ${n} against proposePlan's ${rule.cargo[g] ?? 0}`);
+    ok(R.planStake(s, calmC, plan) <= Math.max(R.stakeCeiling(s, calmC, plan.agent), R.planStake(s, calmC, { cargo: { linen: 10 } })), `${house}: the first sheet stakes ${R.planStake(s, calmC, plan)}, within the ceiling or the card's own ten loads`);
     ok(R.estimate(s, calmC, plan).net > R.estimate(s, calmC, { ...plan, cargo: { linen: 10 }, sell: ['linen'] }).net, `${house}: it makes more than linen alone`);
     eq(R.checkPlan(s, calmC, plan).reasons, [], `${house}: and the engine takes it`);
   }
@@ -633,9 +636,10 @@ test('a qirad end to end: the partners are paid their stake and share out of wha
   const c = risk(variant(plainMira(T), y => {
     y.city.contracts = { qirad: { agentShare: [1, 3] } };
     for (const l of y.routes.find(r => r.id === 'harbour-hilltown').legs) l.toll = 0;
+    y.stops.find(r => r.id === 'harbour').sells.salt = { base: 16, depth: 80 };   // dearer salt at home than 10 (MER-148: the salt counts at what Sell would pay, and at 10 the partners' trip no longer made a profit)
   }), 0);
   let s = outfit(game(c, { house: 'plain' }), c, { ...SALTED, contract: 'qirad', partners: 100, purse: 100 });
-  eq(s.expeditions[0].staked, { house: 200, partners: 100 });
+  eq(s.expeditions[0].staked, { house: sellHomeQuote(game(c, { house: 'plain' }), c, 'wool', 10).got, partners: 100 }, 'the ten loads the house held count at what Sell would pay, and its purse is the partners\'');
   eq(s.expeditions[0].contract, { kind: 'qirad', agentShare: 1, of: 3 });
   const money0 = s.money;
   let before;
@@ -1172,7 +1176,7 @@ test('(MER-88) the same holds on a road that waits for its season: the estimate 
     MER-111b: the cases below need a trip that pays (they ask what the house does with goods that came home), and Damascus's pepper
     is 144 in the data now, not 164: two loads no longer cover the wage and the tolls once the proceeds are spent on sugar. So the trip
     runs on the same city with Damascus's pepper at the old 164, `dearC`. */
-const dearC = variant(calmC, x => { x.stops.find(s => s.id === 'damascus').sells.pepper.base = 164; });
+const dearC = variant(calmC, x => { x.stops.find(s => s.id === 'damascus').sells.pepper.base = 164; x.stops.find(s => s.id === 'cairo').sells.sugar.base = 80; x.stops.find(s => s.id === 'cairo').sells.silk.base = 520; });   // and, since MER-148, sugar at 80 and silk at 520 in Cairo (45 and 450 in the data): the goods that come home count at what Sell would pay, the broker's cut off and the price falling load by load, and at the data's prices the trips bought them dearer than the house could sell them
 const tripOfPepper = ({ purse = 0, buy = [], sell = ['pepper'], stock = {} } = {}) => {
   const s = newGame(dearC, { seed: 7, length: 'full', house: 'spice' });
   Object.assign(s.stock, { pepper: 4, ...stock });
@@ -1480,7 +1484,7 @@ test('(MER-146, 3) a sale on the Years pass page, and one between papers, leaves
   // sold part: the paper keeps what is left, at today's price
   const part = openSeason(sellHome(s, c, 'wool', s.stock.wool - 3), c);
   const left = part.desk.find(p => p.kind === 'return');
-  eq([left.data.goodsBack, left.data.cargoValue], [{ wool: 3 }, 3 * M.truePrice(part, c, 'harbour', 'wool')], 'three loads are left and valued at the price now');
+  eq([left.data.goodsBack, left.data.cargoValue], [{ wool: 3 }, sellHomeQuote(part, c, 'wool', 3).got], 'three loads are left and valued at what Sell would pay for them now (MER-148)');
   // sold between papers, with the return open on the desk: the open paper is fitted too
   const open = openSeason(s, c);
   const there = open.desk.find(p => p.kind === 'return');
@@ -1558,6 +1562,50 @@ test('(MER-146, 7) the years pass moves what the warehouse is worth and the Year
   eq(para.text, line.text, 'the page and the ledger line say the same words');
   const price = M.truePrice(s, calmC, 'cairo', 'pepper'), shown = s.known.cairo.pepper.p;
   eq(shown, price, 'the price the house sees on the page is the reset price');
+});
+
+// ---- MER-148 (M4f play problem 9): the wage words say the seasons paid, and why, and read the same for the same road
+
+test('(MER-148, 9) the wage words give the seasons paid against the seasons away, and the reason, in plain terms', () => {
+  const yusuf = calmC.agents.find(a => a.id === 'yusuf'), ali = calmC.agents.find(a => a.id === 'ali');
+  eq(R.wageWords(calmC, yusuf, 4, { away: 5, past: true }), '8 dinars a season for four of the five seasons Yusuf was away: the house does not pay for the season Yusuf set out', 'the M4f play\'s case, on the paper');
+  eq(R.wageWords(calmC, yusuf, 4, { away: 5 }), '8 dinars a season for four of the five seasons Yusuf is away: the house does not pay for the season Yusuf sets out', 'on the sheet, before he goes');
+  eq(R.wageWords(calmC, ali, 6, { away: 8, past: true }), '9 dinars a season for six of the eight seasons Ali was away: the house does not pay for the season Ali set out, or for the one season the trip waited');
+  eq(R.wageWords(calmC, ali, 5, { away: 9 }), '9 dinars a season for five of the nine seasons Ali is away: the house does not pay for the season Ali sets out, or for the three seasons the trip waits');
+  eq(R.wageWords(calmC, yusuf, 5, { away: 5 }), '8 dinars a season for five seasons', 'a wage for every season away needs no reason');
+  eq(R.wageWords(calmC, yusuf, 5, { away: null }), '8 dinars a season for five seasons');
+  eq(R.wageWords(calmC, yusuf, 3, { away: 3, prepaid: true }), '8 dinars a season for three seasons, paid before the trip');
+  ok(!/not counting/.test(R.wageWords(calmC, yusuf, 4, { away: 5 })), 'the old words, "not counting the seasons the trip waited or was sent in", are gone');
+});
+
+test('(MER-148, 9) the same agent\'s wage for the same road reads the same on the sheet and on the paper, and never disagrees with the trip\'s length', () => {
+  let roads = 0, noted = 0;
+  const route = c => c.routes.map(r => r.id);
+  for (const agent of ['yusuf', 'ali']) for (const id of route(calmC)) {
+    const s0 = newGame(calmC, { seed: 3, length: 'acts', house: 'spice' });
+    const plan = R.proposePlan(s0, calmC, agent, id, { check: false });
+    if (!plan || plan.why) continue;
+    const est = R.estimate(s0, calmC, plan);
+    let s;
+    try { s = outfit(s0, calmC, plan); } catch { continue; }
+    let paper = null;
+    for (let i = 0; i < 30 && !paper && !['recall', 'ended'].includes(s.phase); i++) { s = step(s, calmC); paper = s.desk.find(p => p.kind === 'return'); }
+    if (!paper) continue;
+    roads++;
+    const row = paper.data.account.find(r => /wage/.test(r.label)), long = /, (.+) seasons?$/.exec(paper.data.route)[1];
+    eq(-row.amount, est.wage, `${agent} on ${id}: the sheet's wage and the paper's are the same sum`);
+    // the paper's words agree with its own heading: a wage for fewer seasons says how many seasons the trip was away, and it is the heading's number
+    if (/ of the /.test(row.text)) { noted++; ok(row.text.includes(` of the ${long} seasons `), `${agent} on ${id}: "${row.text}" under a trip of ${long} seasons`); ok(/the house does not pay for the season \w+ set out/.test(row.text), row.text); }
+    else ok(row.text.endsWith(` for ${long} seasons`), `${agent} on ${id}: "${row.text}" under a trip of ${long} seasons`);
+    // and when the trip ran as the sheet said, the two strings are one
+    const sameLength = (['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'].indexOf(long) + 1 || Number(long)) === est.seasons;
+    if (sameLength && !/ of the /.test(est.wageWords)) eq(row.text, est.wageWords, `${agent} on ${id}: the sheet and the paper read the same`);
+  }
+  ok(roads >= 20, `${roads} roads came home`);
+  ok(noted >= 1, `${noted} of them were paid for fewer seasons than they were away`);
+  // two houses, two seeds, one agent and one road: the same words
+  const words = seed => R.estimate(newGame(calmC, { seed, length: 'acts', house: 'spice' }), calmC, R.proposePlan(newGame(calmC, { seed, length: 'acts', house: 'spice' }), calmC, 'yusuf', 'cairo-venice', { check: false })).wageWords;
+  eq(words(1), words(9), 'Yusuf to Venice reads the same in two games');
 });
 
 done();

@@ -188,7 +188,7 @@
       {
         "id": "vouch",
         "label": "Vouch for Giorgio",
-        "hint": "He will not forget it. His debt could become yours.",
+        "hint": "It costs 5 in two seasons. He will not forget it. His debt could become yours.",
         "now": [
           {
             "rep": "foreign",
