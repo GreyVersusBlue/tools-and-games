@@ -39,6 +39,9 @@ const SIDES = {
   above: { dx: 0, dy: -11, ax: -0.5, ay: -1 }, below: { dx: 0, dy: 11, ax: -0.5, ay: 0 },
   'above-right': { dx: 8, dy: -8, ax: 0, ay: -1 }, 'below-right': { dx: 8, dy: 8, ax: 0, ay: 0 },
   'above-left': { dx: -8, dy: -8, ax: -1, ay: -1 }, 'below-left': { dx: -8, dy: 8, ax: -1, ay: 0 },
+  // MER-145: beside the dot but a hand higher or lower, for a crowd where the plain side misses a neighbour's label by a pixel (Aleppo at 1366, above Damascus)
+  'right-up': { dx: 12, dy: -9, ax: 0, ay: -0.5 }, 'right-down': { dx: 12, dy: 9, ax: 0, ay: -0.5 },
+  'left-up': { dx: -12, dy: -9, ax: -1, ay: -0.5 }, 'left-down': { dx: -12, dy: 9, ax: -1, ay: -0.5 },
 };
 const ANCHOR_AX = { start: 0, middle: -0.5, end: -1 };
 const REACH_FAR = 60;            // MER-137: the last resort before a label lies over a caption: still on its own side of its own dot

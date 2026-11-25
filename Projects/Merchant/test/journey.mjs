@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test, eq, ok, done } from './lib.mjs';
 
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS = path.join(HERE, '..', '..', '..', 'Tools', 'board-check', 'harness.mjs');
 const { serve, launch, prepPage } = await import(pathToFileURL(HARNESS).href);
@@ -23,6 +24,9 @@ const eng = await import(pathToFileURL(path.join(MER, 'engine', 'index.js')).hre
 const { loadContent } = await import(pathToFileURL(path.join(MER, 'data.js')).href);
 const nodeContent = eng.validateContent(await loadContent('cairo', { fs: await import('node:fs/promises') }));
 const SEED = 1324;
+const { legSeasons } = await import(pathToFileURL(path.join(MER, 'engine', 'agents.js')).href);
+// what each agent's leg of 2 to 6 seasons takes him (a careful agent a season more): a token's fraction done is `left` over this
+const LEG_TOTALS = Object.fromEntries(nodeContent.agents.map(a => [a.id, [2, 3, 4, 5, 6].map(n => legSeasons(a, { seasons: n }))]));
 const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'state.js')).href);
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -1002,7 +1006,7 @@ try {
           ok(rows.length >= 3 && rows.some(r => r.includes('Profit') || r.includes('Back home')), rows.join(' | '));
           // MER-119: the rows a child reads add up. Each sum row shows its dinars, and the ones before the last come to the last,
           // which is the headline's number: 'Sent out' (what the goods and money cost), 'Back home', the wage, then Profit
-          { const sums = await page.$$eval('.account tr.sum', trs => trs.map(t => [t.querySelector('th').textContent, t.querySelector('.amount').textContent]));
+          { const sums = await page.$$eval('.account tr.sum', trs => trs.map(t => [t.querySelector('th').textContent.trim(), t.querySelector('.amount').textContent.trim()]));
             const n = s => Number(s.replace('\u2212', '-').replace(/[^\d+-]/g, ''));
             ok(sums.length >= 3 && sums[0][0] === 'Sent out' && n(sums[0][1]) < 0, JSON.stringify(sums));
             ok(/^(Profit|Loss)$/.test(sums.at(-1)[0]), JSON.stringify(sums));
@@ -1363,14 +1367,16 @@ try {
       // Lengthen the live leg in the page and look again: the token sits at the fraction done, and
       // two expeditions at the same place on a leg are one token with a count.
       await test('tokens stand at the fraction of their leg done, and two on the same spot stack with a count', async () => {
-        await page.evaluate(() => {
+        await page.evaluate(totals => {
           // the expedition the case before left on the road, found by what it is (the last one sent that is not home), not by where a seed's play put it
           const m = window.__merchant, x = m.state.expeditions.filter(e => e.status === 'out' || e.status === 'waiting').at(-1) ?? m.state.expeditions.at(-1);
           if (!x) throw new Error('no expedition is on the road: the case before it sends one');
           const leg = m.content.routes.find(r => r.id === x.route).legs[x.leg];
-          leg.seasons = 4; x.left = 3; x.status = 'out';
-          m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin', agent: 'ali' });
-        });
+          // MER-145: the seasons a leg takes are the agent's own, so the leg is lengthened to one this agent rides in a multiple of four, with three quarters left
+          const row = totals[x.agent], i = row.findIndex(n => n % 4 === 0);
+          leg.seasons = i + 2; x.left = row[i] * 3 / 4; x.status = 'out';
+          m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin' });
+        }, LEG_TOTALS);
         await goDesk(page); await goMap(page);
         const ts = await tokens(page);
         eq(ts.length, 1, 'two expeditions on one spot are one token');
@@ -1760,7 +1766,7 @@ try {
       const money0 = await moneyOf(page);
       ok(shown > 100, `the bought linen is in the number: ${shown}`);
       const later = await page.$$eval('#outfit-costs .cost-later', ps => ps.map(p => p.textContent));
-      ok(later.some(t => /wage, about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
+      ok(later.some(t => /wage is paid when the trip comes home: [\d,]+ dinars a season for the (\d+ seasons|season) after \w+ sets out, about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
       await page.click('#outfit-send');
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
       eq(money0 - await moneyOf(page), shown, 'the number shown is the number taken, to the dinar');
@@ -1833,8 +1839,10 @@ try {
     await page.screenshot({ path: path.join(SHOTS, `map-${frame.name}.png`) });
     await test(`${frame.name}: the map table has no horizontal overflow, its buttons are 44 px, the picture is whole`, async () => {
       const m = await page.evaluate(() => {
-        const f = document.getElementById('map-frame').getBoundingClientRect();
-        return { doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth], frame: [Math.round(f.width / f.height * 100) / 100, f.left >= -1, f.right <= innerWidth + 1],
+        const f = document.getElementById('map-frame').getBoundingClientRect(), st = document.querySelector('.map-stage').getBoundingClientRect();
+        // MER-145: whole inside the pane, or larger than it on both sides (the wide frames show the table as large as fits and the pane clips the wood)
+        const within = f.left >= st.left - 1 && f.right <= st.right + 1, covers = f.left <= st.left + 1 && f.right >= st.right - 1;
+        return { doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth], frame: [Math.round(f.width / f.height * 100) / 100, within || covers, f.right - f.left > 0],
           hits: [...document.querySelectorAll('#btn-outfit, #map-desk, #map-desk-top, .stoplist .option')].map(b => { const r = b.getBoundingClientRect(); return [b.id || b.className, Math.round(r.height)]; }) };
       });
       eq(m.doc[0], m.doc[1]);
@@ -1848,7 +1856,7 @@ try {
           const box = e => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
           const key = e => e.dataset.stop ?? `cluster:${e.dataset.cluster}`;
           return {
-            frame: box(document.getElementById('map-frame')), board: box(document.getElementById('board')),
+            frame: (() => { const f = box(document.getElementById('map-frame')), s = box(document.querySelector('.map-stage')); return { l: Math.max(f.l, s.l), t: Math.max(f.t, s.t), r: Math.min(f.r, s.r), b: Math.min(f.b, s.b) }; })(), board: box(document.getElementById('board')),
             labels: [...document.querySelectorAll('.stop-label')].map(l => ({ id: key(l), hidden: l.hidden, ...box(l) })),
             dots: [...document.querySelectorAll('.dot')].map(d => ({ id: key(d), name: d.getAttribute('aria-label'), role: d.getAttribute('role'), ...box(d) })),
           };
@@ -2231,7 +2239,9 @@ try {
       await test(`${how}: the ledger's warehouse shows each good with Cairo's price as last known and its date, from the engine's view`, async () => {
         const want = Object.entries(book.stock).filter(([, q]) => q > 0).map(([id, q]) => {
           const g = nodeContent.goods.find(x => x.id === id), p = view.prices.cairo[id];
-          return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`;
+          // MER-145: the price line is the quote for the loads the stepper holds (ten at most), not the news price
+          const quote = eng.sellHomeQuote(book, nodeContent, id, Math.min(q, 10)), cur = n => `${withCommas(n)} ${n === 1 ? 'dinar' : 'dinars'}`;
+          return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} ${quote.ok ? `Cairo pays ${cur(quote.first)} a ${g.unit} now${quote.first === quote.last ? '' : `, falling to ${cur(quote.last)} by the last`}, after the broker's cut` : `Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`}`;
         });
         ok(want.length >= 2, 'the saved game holds at least two goods');
         // MER-138: each row also holds the Sell button's stepper and quote line (their own cases are further down): the row's own words are its first two parts
@@ -3931,7 +3941,9 @@ try {
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
         const got = await page.evaluate(() => {
-          const t = document.getElementById('map-toast').getBoundingClientRect(), fr = document.querySelector('.map-frame').getBoundingClientRect();
+          const t = document.getElementById('map-toast').getBoundingClientRect(), fr0 = document.querySelector('.map-frame').getBoundingClientRect(), sg = document.querySelector('.map-stage').getBoundingClientRect();
+          // MER-145: the picture is larger than the pane at the wide frames and the pane clips it, so what is on the picture is the part inside the pane
+          const fr = { left: Math.max(fr0.left, sg.left), right: Math.min(fr0.right, sg.right), top: Math.max(fr0.top, sg.top), bottom: Math.min(fr0.bottom, sg.bottom) };
           const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
           const under = [...document.querySelectorAll('.stop-label:not([hidden]), .token, .dot')].filter(e => e.checkVisibility() && hit(t, e.getBoundingClientRect())).map(e => e.className.split(' ')[0] + ' ' + (e.textContent.trim().slice(0, 20) || e.dataset.stop || ''));
           return { onPicture: hit(t, fr), under, text: document.getElementById('map-toast').textContent };
@@ -3940,7 +3952,7 @@ try {
         ok(!got.onPicture, 'the toast lies over the picture');
         eq(got.under, [], 'the toast covers nothing on the map');
         // the first press anywhere on the table takes it away: a press on the picture, as a thumb would
-        const at = await page.$eval('.map-frame', e => { const b = e.getBoundingClientRect(); return { x: b.left + 6, y: b.top + 6 }; });
+        const at = await page.$eval('.map-frame', e => { const b = e.getBoundingClientRect(), g = document.querySelector('.map-stage').getBoundingClientRect(); return { x: Math.max(b.left, g.left) + 6, y: Math.max(b.top, g.top) + 6 }; });   // MER-145: the part of the picture the pane shows
         await page.mouse.click(at.x, at.y);
         await page.waitForSelector('#map-toast[hidden]', { timeout: 1500 });
       });
@@ -4081,7 +4093,7 @@ try {
           await put(page, st, '#map');
           const a = await reach(page);
           // MER-137: parties standing on one stop are one token with a count, whatever road each is about to take
-          eq(a.length, PLACES[name], `${name}: one token for each place a party stands`);
+          ok(a.length >= 1 && a.length <= PLACES[name], `${name}: at most one token for each place a party stands, ${a.length} for ${PLACES[name]} (MER-145: parties a piece's width apart are one stack, and that is a distance in px)`);
           for (const t of a) ok(t.off <= 24, `${name}: the token for ${t.ids} on ${t.leg} stands ${t.off.toFixed(1)} px from its road`);
           // a second render of the same state: a resize redraws the map, and a press on another stop redraws it again
           await page.evaluate(() => dispatchEvent(new Event('resize')));
@@ -4149,7 +4161,7 @@ try {
     const solo = trips([['yusuf', 'cairo-damascus', 0, 1]]);
     const noOne = (() => { const g = structuredClone(solo); for (const [id, a] of Object.entries(g.agents)) if (id !== 'yusuf') a.hired = false; return g; })();
     const withFree = (() => { const g = structuredClone(noOne); g.agents.ali.hired = true; g.agents.ali.where = nodeContent.city.home; return g; })();
-    const withBusy = trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-qus', 1, 1]]);
+    const withBusy = trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-aden', 3, 1]]);   // MER-145: Ali stands on Jeddah, far enough from Cairo that his piece and Yusuf's are never one stack
     for (const frame of [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3]]) {
       const { page, consoleErrors } = await open(frame);
       const centre = id => page.evaluate(id => {
@@ -4426,7 +4438,7 @@ try {
         const rows = r.data.account, last = rows[rows.length - 1];
         last.label = 'Loss'; last.text = 'about 31 dinars'; last.amount = -31;
         const back = rows.find(x => x.label === 'Back home'); back.text = '31 dinars, 31 dinars in all'; back.amount = 31;
-        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent, cells: [...t.querySelectorAll('td')].map(c => c.textContent) }))); };
+        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent.trim(), cells: [...t.querySelectorAll('td')].map(c => c.textContent.trim()) }))); };
         for (const [name, st] of [['a profit', gain], ['a loss', loss]]) {
           const got = await read(st), all = got.flatMap(x => x.cells).join(' | ');
           const home = got.find(x => x.label === 'Back home');

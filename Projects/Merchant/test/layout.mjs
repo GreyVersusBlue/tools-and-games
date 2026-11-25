@@ -204,6 +204,8 @@ const CAREFUL = (() => {
 })();
 const MAP145 = {
   'map-close': { state: tripsOn([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 0, 2]]), tokens: 1, stack: 2 },
+  // Qus and Quseir are 28 px apart at 1920 wide: a party standing on each is two groups (two stops) and one stack (a piece is wider than the gap)
+  'map-near': { state: tripsOn([['yusuf', 'cairo-quseir', 1, 1], ['ali', 'cairo-quseir', 2, 1]]), tokens: 1, stack: 2 },
   'map-careful': { state: tripsOn([['yusuf', CAREFUL.route, 0, CAREFUL.left]]), tokens: 1, careful: true },
 };
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
