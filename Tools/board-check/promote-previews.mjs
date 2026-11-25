@@ -52,7 +52,7 @@ const KNOWN = new Set([
   'absalom-inheritance', 'daredevil', 'fracture-cycle', 'corner-and-kettle',
   'torchbearer', 'orbital', 'blue-hour', 'signal-city', 'converter',
   'skywings64', 'throneshard', 'hearth', 'school-generator',
-  'schedule-visualizer-2',
+  'schedule-visualizer-2', 'merchant',
 ]);
 
 const OUTPUTS = [
