@@ -142,7 +142,7 @@ html.large-text .title-what { display: none; }
 .stack-count { margin: 0; align-self: flex-start; padding: 0 var(--s2); background: rgba(20, 17, 13, .72); color: var(--paper);
   font-family: var(--font-chrome); font-size: var(--step--1); border-radius: var(--radius); }
 .stack-count:empty { display: none; }
-.stack-papers { position: relative; display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 0; }
+.stack-papers { position: relative; display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow: hidden; overflow: clip; padding: 0; }   /* clip, not hidden: a hidden box still scrolls when a script scrolls something into view in it, and took the whole paper up with it */
 /* MER-138 (play a052, b011, b017): the paper scrolls in its own box, and the row of other papers' tabs lies above that box, outside it. The tabs were
    stuck over the top of one scrolling stack, so a headline scrolled or focused into the first 50 px was under them. Nothing scrolls under the tabs now. */
 .sheet-box { display: flex; justify-content: center; align-items: flex-start; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .2rem .3rem .5rem; }

@@ -123,7 +123,8 @@ function quoteWords(app, q) {
 }
 
 /** MER-138 (M4d play problem 1, the Sell button over MER-139's sellHome): the warehouse sells in Cairo, a stepper of loads and the quote line for
-    each good the house holds. `loads` keeps each good's number across a redraw; `refusal` is the engine's reason for the last sale it refused. */
+    each good the house holds. `loads` keeps each good's number across a redraw. A sale the engine would refuse says its reason under the button
+    before the button is pressed (the quote's own), and a press on it says that reason again, in the live region. */
 function warehouse(app, ui) {
   const { state, content } = app;
   const home = content.city.home;
@@ -140,15 +141,15 @@ function warehouse(app, ui) {
     ui.loads[id] = n;
     const quote = engine.sellHomeQuote(state, content, id, n);
     const name = good?.name?.toLowerCase() ?? id;
-    const note = ui.refusal?.good === id ? ui.refusal.reason : quoteWords(app, quote);
+    const note = quoteWords(app, quote);
     return h('li', { dataset: { good: id } },
       h('strong', null, `${num(q)} ${q === 1 ? unit : `${unit}s`} of ${name}`), ' ', h('span', null, price),
       selling ? h('div', { class: 'sell-row' },
         stepper({ key: `sell-${id}`, label: `Loads of ${name} to sell`, value: n, min: 1, max: q, big: 10, text: `${n} ${n === 1 ? unit : `${unit}s`}`,
-          onChange: v => { ui.loads[id] = v; ui.refusal = null; ui.redraw(`step-sell-${id}`); } }),
+          onChange: v => { ui.loads[id] = v; ui.redraw(`step-sell-${id}`); } }),
         h('button', { class: 'button sell-btn', type: 'button', id: `sell-${id}`, 'aria-describedby': `sell-note-${id}`, 'aria-disabled': quote.ok ? null : 'true',
           onclick: () => ui.sell(id, n) }, `Sell in ${stopName(content, home)}`),
-        h('p', { class: `sell-note${quote.ok && ui.refusal?.good !== id ? '' : ' refused'}`, id: `sell-note-${id}` }, note)) : null);
+        h('p', { class: `sell-note${quote.ok ? '' : ' refused'}`, id: `sell-note-${id}` }, note)) : null);
   });
   return section('warehouse', 'Warehouse',
     rows.length ? h('ul', { class: 'ledger-list', id: 'ledger-stock' }, rows) : h('p', { class: 'ledger-line', id: 'ledger-stock' }, 'The warehouse is empty.'));
@@ -195,7 +196,7 @@ function people(app) {
     ledger and the desk's bar are drawn again; the engine's reason for a sale it refuses is printed under that good's button and read out. */
 export function ledgerBody(app) {
   const scroll = h('div', { class: 'ledger-scroll' });
-  const ui = { loads: {}, refusal: null,
+  const ui = { loads: {},
     redraw(focusId = null) {
       const keep = scroll.scrollTop;
       scroll.replaceChildren(money(app), warehouse(app, ui), road(app), people(app));
@@ -204,13 +205,9 @@ export function ledgerBody(app) {
     },
     sell(good, loads) {
       try { app.act(s => engine.sellHome(s, app.content, good, loads)); } catch (e) {
-        const reason = String(e.message).replace(/^sellHome: /, '');
-        ui.refusal = { good, reason };
-        app.say(reason);
-        ui.redraw(`sell-${good}`);
+        app.say(String(e.message).replace(/^sellHome: /, ''));   // the engine's own reason, which is the line already under the button
         return;
       }
-      ui.refusal = null;
       app.say(`Sold ${loads} ${loads === 1 ? 'load' : 'loads'}. The house has ${dinars(app.state.money)}.`);
       app.refreshDesk?.();
       // the good may be gone from the warehouse: focus goes to what is left, else to the section's heading
