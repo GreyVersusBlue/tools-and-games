@@ -1089,9 +1089,18 @@ try {
             const got = await page.evaluate(() => {
               const box = e => { const b = e.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; };
               const fr = box(document.querySelector('.map-frame')), board = box(document.querySelector('#board'));
+              const labels = [...document.querySelectorAll('.stop-label')].filter(l => !l.hidden && l.checkVisibility()).map(l => ({ id: l.dataset.stop ?? l.dataset.cluster, keep: !!l.dataset.keep, r: box(l) }));
               return [...document.querySelectorAll('.token')].map(t => {
-                const l = t.querySelector('.token-label'), r = box(l);
-                return { ids: t.dataset.expedition, count: Number(t.dataset.count), shown: l.checkVisibility(), text: l.textContent, spoken: t.getAttribute('aria-label'),
+                const l = t.querySelector('.token-label'), r = box(l), pc = box(t.querySelector('.token-piece')), ld = t.querySelector('.token-leader');
+                return { ids: t.dataset.expedition, count: Number(t.dataset.count), shown: l.checkVisibility(), text: l.textContent, spoken: t.getAttribute('aria-label'), labels, piece: pc, cap: r, leader: !ld.hidden && ld.checkVisibility(),
+                  // MER-147: how far the caption's box is from its piece's, and the stop labels its leader (piece centre to the caption's nearest point) crosses
+                  away: Math.hypot(Math.max(r.left - pc.right, 0, pc.left - r.right), Math.max(r.top - pc.bottom, 0, pc.top - r.bottom)),
+                  crossed: (() => {
+                    const cx = (pc.left + pc.right) / 2, cy = (pc.top + pc.bottom) / 2, px = Math.max(r.left, Math.min(cx, r.right)), py = Math.max(r.top, Math.min(cy, r.bottom)), n = Math.max(1, Math.ceil(Math.hypot(px - cx, py - cy) / 3));
+                    if (ld.hidden) return [];
+                    return labels.filter(q => { for (let j = 0; j <= n; j++) { const x = cx + (px - cx) * j / n, y = cy + (py - cy) * j / n; if (x > q.r.left && x < q.r.right && y > q.r.top && y < q.r.bottom) return true; } return false; }).map(q => q.id);
+                  })(),
+                  home: (() => { const q = labels.find(z => z.keep); if (!q) return null; const k = (pc.right - pc.left) / 4; return pc.left + k < q.r.right && q.r.left < pc.right - k && pc.top + k < q.r.bottom && q.r.top < pc.bottom - k; })(),
                   whole: r.left >= fr.left - 0.5 && r.right <= fr.right + 0.5 && r.top >= fr.top - 0.5 && r.bottom <= fr.bottom + 0.5,
                   onBoard: r.left < board.right && r.right > board.left && r.top < board.bottom && r.bottom > board.top };
               });
@@ -1104,6 +1113,9 @@ try {
               ok(t.shown, `the caption of ${t.ids} is not shown: ${t.text}`);
               ok(t.whole, `the caption of ${t.ids} is not whole inside the picture`);
               ok(!t.onBoard, `the caption of ${t.ids} lies under the price board`);
+              ok(t.away <= 90.5, `MER-147: the caption of ${t.ids} is ${t.away.toFixed(0)} px from its piece`);   // a stack's lay 190 px away, by Gao (a016, a092)
+              eq(t.crossed, [], `MER-147: the leader of the caption of ${t.ids} crosses a stop label`);
+              if (m137.state.expeditions.length >= 2) ok(t.home === false, `MER-147: the piece of ${t.ids} sits on Cairo's label (${t.home})`);   // a092
               const names = t.spoken.match(/[A-Z][a-z]+, home about [A-Z][a-z]+ \d+/g) ?? [];
               eq(names.length, t.count, `${t.ids} is named once for each agent in "${t.spoken}"`);
               for (const n of names) ok(t.text.includes(n), `the caption "${t.text}" lacks "${n}"`);
@@ -1143,10 +1155,10 @@ try {
                 const a = l.getBoundingClientRect(), b = d.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
                 return [l.textContent, Math.hypot(Math.max(a.left - cx, 0, cx - a.right), Math.max(a.top - cy, 0, cy - a.bottom))];
               });
-              return { cairo: visible.some(l => /Cairo/.test(l.textContent)), far: away.filter(([, d]) => d > 44).map(([t, d]) => `${t} ${Math.round(d)} px`) };
+              return { cairo: visible.some(l => /Cairo/.test(l.textContent)), far: away.filter(([, d]) => d > 36.5).map(([t, d]) => `${t} ${Math.round(d)} px`) };   // MER-147: 36 px (Hormuz's stood 45 from its dot, c007)
             });
             ok(got.cairo, "no label says Cairo (on the house's own stop, or on the group that holds it)");
-            eq(got.far, [], 'a label stands more than 44 px from its dot');
+            eq(got.far, [], 'a label stands more than 36 px from its dot');
           });
         }
         if (screen.name === 'map-board') {
@@ -1173,7 +1185,11 @@ try {
             });
             ok(got.ids.length, 'neither price control is on the board');
             ok(got.barBelow, 'the buttons lie over the scrolling part of the board');
-            for (const r of got.rest) { ok(!r.covered, `${r.id} lies under the buttons at rest`); ok(!r.cut || r.scrolls, `${r.id} is cut at the foot of a board that does not scroll`); }
+            for (const r of got.rest) {
+              ok(!r.covered, `${r.id} lies under the buttons at rest`); ok(!r.cut || r.scrolls, `${r.id} is cut at the foot of a board that does not scroll`);
+              // MER-147 (play a025, b007): at the two frames a teacher plays on, "Every price" is shown whole at rest, not left half under the buttons for a scroll to find
+              if (r.id === 'btn-all-prices' && ['board', 'laptop'].includes(frame.name)) ok(!r.cut, `${r.id} is cut by the edge of the board at rest`);
+            }
             for (const r of got.focused) { ok(!r.covered, `${r.id} lies under the buttons once focused`); ok(!r.cut, `${r.id} is cut at the edge of the board once focused`); }
           });
         }
