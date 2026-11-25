@@ -93,17 +93,22 @@ export function houseSale(state, content, stopId, goodId, loads, ahead = 0) {
   const e = state.market?.[stopId]?.[goodId];
   const out = { gross: 0, got: 0, first: null, last: null, after: null };
   if (!e) return out;
-  const m = { t: state.t, length: state.length, seed: state.seed, market: { [stopId]: { [goodId]: { ...e } } } };   // only what truePrice and noteSale read
-  for (let i = 0; i < ahead; i++) noteSale(m, content, stopId, goodId, 1);
+  // The same arithmetic as `sellPrice` and `noteSale`, load by load, with the base price and the depth read once (the loop is run many times a season: the worth bar,
+  // the estimate and every worth line read it, and reading the base for every load was most of what a game cost). test/market.mjs holds it to `sellHome`, which sells with the two.
+  const base = baseOf(state, content, stopId, goodId), depth = depthOf(content, stopId, goodId);
+  let glut = e.glut;
+  const price = () => Math.max(1, Math.round(base * e.f * (1 - glut)));
+  const sold = () => { glut = Math.min(GLUT_MAX, round4(glut + 1 / depth)); };
+  for (let i = 0; i < ahead; i++) sold();
   for (let i = 0; i < loads; i++) {
-    const price = sellPrice(m, content, stopId, goodId);
-    const net = Math.max(1, Math.round(price * (1 - BROKER_CUT)));
-    out.gross += price; out.got += net;
+    const p = price();
+    const net = Math.max(1, Math.round(p * (1 - BROKER_CUT)));
+    out.gross += p; out.got += net;
     if (out.first === null) out.first = net;
     out.last = net;
-    noteSale(m, content, stopId, goodId, 1);
+    sold();
   }
-  out.after = sellPrice(m, content, stopId, goodId);
+  out.after = price();
   return out;
 }
 
