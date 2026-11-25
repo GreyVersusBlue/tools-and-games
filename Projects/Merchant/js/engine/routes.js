@@ -1337,6 +1337,7 @@ export function estimate(state, content, plan, memo = null) {
     }
   }
   const tollsAfterCost = fromMoney + owed + lost - change;
+  const tollInGoods = after - fromMoney - owed;   // the part of the tolls after the far end that loads pay, which makes the estimate lumpy: a purse a load's price bigger can pay in money what a load paid
   const upkeep = proj.waits * UPKEEP;
   // what the tolls took before the far end came out of the purse (money already net of it) or the cargo; the rest comes out of what is left
   const gross = money + goodsValue - tollsAfterCost - Math.max(0, costsBefore - purse) - (upkeep - upkeepBefore);
@@ -1356,7 +1357,7 @@ export function estimate(state, content, plan, memo = null) {
     yearsFirst: count.settled && !count.home,   // the years pass while the party is still on the road: the one a sheet may say as "the years pass before X is home" (MER-146; settledAtJump is also true for a party that is home as the years begin)
     age, ageWords, ageOf, news: old, risk: chance, riskWord: riskWord(chance),
     line: `If prices hold: about ${sign}${commas(Math.abs(net))} ${cityOf(content, 'expeditions').currency ?? 'coins'}. ${old}; the road is ${riskWord(chance)}.`,
-    pricesSell, pricesBuy, pricesHome, homeValue, impact, glut: glutOf, back: goodsBack,
+    pricesSell, pricesBuy, pricesHome, homeValue, tollInGoods, impact, glut: glutOf, back: goodsBack,
   };
 }
 
