@@ -12,6 +12,7 @@
 import { seasonIndex } from './calendar.js';
 import { cityOf, addPaper } from './state.js';
 import * as M from './market.js';
+import { refitReturns } from './letters.js';
 
 export const BROKER_CUT = 0.15;
 
@@ -79,5 +80,6 @@ export function sellHome(state, content, good, loads) {
     const k = s.desk.length - 1;
     s.desk[k].id = `p${s.t}-${k}`;
   }
+  refitReturns(s, content);   // a paper that says these loads are in the warehouse, or offers to sell them, is fitted to what is left (MER-146)
   return s;
 }

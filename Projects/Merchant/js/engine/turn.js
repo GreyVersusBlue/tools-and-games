@@ -337,6 +337,7 @@ export function choose(state, content, paperId, choiceId) {
     for (const e of card.unlocks ?? []) if (!s.notebook.includes(e)) s.notebook.push(e);
   }
   paper.state = 'done';
+  letters.refitReturns(s, content);   // an answer may have moved goods out of the warehouse; the return papers still open are fitted to what is left (MER-146)
   paper.choice = choiceId;
   s.done.push({ id: paper.id, ref: paper.ref, choice: choiceId });
   s.log.push({ at: idx, kind: info ? 'event' : 'card', ref: paper.ref, choice: choiceId });

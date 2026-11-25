@@ -25,7 +25,7 @@ import { next as dice } from '../js/engine/rng.js';
 import { steps } from '../js/engine/turn.js';
 import { repair } from '../js/save.js';
 import { playGame } from '../tools/bots.mjs';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view, sellHomeQuote } from '../js/engine/index.js';
 
 const T = await loadContent('testport', { fs });
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
@@ -968,12 +968,13 @@ test('(MER-123) every card choice that costs money later is closed to a house th
 
 /** The home state with its first return paper made into a broker's offer for `entryId`, the home market's price for the good at `f`
     times its base, and the paper's letters step run again. */
-function brokerPaper(entryId, f, { shown = 0 } = {}) {
+function brokerPaper(entryId, f, { shown = 0, stock = null } = {}) {
   const { s: base, p: k } = homeState();
   const s = structuredClone(base), p = s.desk[k], entry = CAIRO.returns.find(e => e.id === entryId), good = entry.facts.good[0];
   s.market.cairo[good].f = f;
   p.data.entry = entryId; p.data.ask = { title: entry.title, body: entry.body }; p.data.choices = structuredClone(entry.choices); delete p.data.fitted;
   if (shown) s.seen[`shown:${entryId}`] = shown;
+  if (stock !== null) s.stock[good] = stock;
   reopen(s, CAIRO);
   return { s, p, good, price: truePrice(s, CAIRO, 'cairo', good, idx(s, CAIRO)) };
 }
@@ -995,6 +996,20 @@ test('(MER-134, 7) a broker\'s "about N in every hundred less" is the gap betwee
     said.add(`${id}:${o.said}`);
   }
   ok(new Set([...said].filter(k => k.startsWith('return-sell-pepper')).map(k => k.split(':')[1])).size >= 3, 'the number follows the price: pepper says at least three different figures over seven prices');
+});
+
+test('(MER-146, 11) a broker\'s offer for goods in the warehouse is never worse than Sell in Cairo for the same loads the same season', () => {
+  let raised = 0;
+  for (const id of ['return-sell-pepper', 'return-sell-silk', 'return-sell-sugar', 'return-sell-linen']) for (const f of [0.55, 0.8, 0.95, 1, 1.1, 1.3, 1.7, 2]) {
+    const b = brokerPaper(id, f, { stock: 6 }), o = brokerOf(b);
+    const q = sellHomeQuote(b.s, CAIRO, b.good, o.loads);
+    ok(q.ok, `${id} at ${f}: the house holds the loads, so Sell can quote them`);
+    ok(o.offer >= q.got, `${id} at ${f}: the broker offers ${o.offer} for ${o.loads} and Sell gives ${q.got}`);
+    eq(o.pay, o.offer, `${id} at ${f}: the choice pays what the words offer`);
+    ok(o.said >= 0 && o.said <= BROKER_MAX, `${id} at ${f}: still a broker's discount in the words (${o.said} in every hundred)`);
+    if (o.offer > o.loads * 0 && q.got > Math.round(o.loads * b.price * (1 - 0.30))) raised++;
+  }
+  ok(raised > 0, 'at least one price had the broker\'s old sum under Sell, so the case could fail');
 });
 
 test('(MER-134, 15) a broker\'s paper is shown twice in a game, and the third time the return carries no offer', () => {
