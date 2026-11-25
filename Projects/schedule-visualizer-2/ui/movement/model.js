@@ -4,12 +4,15 @@
 //
 // The choice (kept by the view while the page is open):
 //
-//   { who: 'all' | 'grade' | 'groups',
+//   { who: 'all' | 'grade' | 'groups' | 'teacher',
 //     grade,                 the grade shown when who is 'grade'
 //     groupIds,              the groups compared when who is 'groups' (none: nothing is shown)
 //     dayTypeId,
 //     bellsId,               null for the day type's regular bells, or a bell schedule's id (ARCHITECTURE 17.8)
-//     transition,            null for all of the day, or the period walked out of
+//     transition,            null for all of the day, or the period walked out of (a teacher's walk across a free period is under the period it leaves)
+//     teacherId,             the teacher shown when who is 'teacher' (null: nothing is shown yet)
+//     toRoomId, subjectId,   Going to and Rooms of subject (ARCHITECTURE 23.7): null for any, subjectId '' for a room with no subject;
+//                            left alone while who is 'teacher' (teachers have no such filters) and ignored there
 //     measure: 'busiest' | 'total',   what the colours count over a whole day
 //     floors: 'auto' | 'side' | 'stacked' | a floor id,
 //     labels,                period labels on the room markers
@@ -40,14 +43,18 @@
 import { findDayType, effectiveDayType, ownDayTypes } from '../../engine/day-types.js';
 import { bellsFor, periodName, periodLabel, formatTime, findBellSchedule, offPeriods, parseTime } from '../../engine/bells.js';
 import { transitionPlan } from '../../engine/crowd.js';
-import { resolveSlotRoom, bellSchedulesOf, ELEVATOR_KIND, stairsLetter, spacelessKey } from '../../engine/schema.js';
+import { resolveSlotRoom, bellSchedulesOf, ELEVATOR_KIND, stairsLetter, spacelessKey, findById, findRoom, nameOfRoom } from '../../engine/schema.js';
 import { meetingSlots } from '../../engine/runs.js';
 import { runResults } from '../../engine/worker.js';
 import { periodWords, list } from '../components/words.js';
 import { loads, contributors, indexRoutes, bandOf, bandEdges } from '../../engine/load.js';
 import { describeFailure, startsAsTyped } from '../../engine/directions.js';
+import { formatDuration } from '../../engine/findings.js';
 import { placeAt } from '../../engine/places.js';
 import { buildLanes, BAND_EXCLUDED } from '../surface/overlays/lanes.js';
+import { teacherTrail } from '../../engine/teacher-trail.js';
+import { createRouteCache } from '../../engine/routing.js';
+import { filteredRoutes, destinationWords } from './filters.js';
 
 export const COMPARE_LIMIT = 4;
 
@@ -70,7 +77,7 @@ export function compareFull(limit) {
 export const COMPARE_REASON = compareReason(COMPARE_LIMIT);
 
 export function defaultChoice(project) {
-  return { who: 'all', grade: '', groupIds: [], dayTypeId: project.dayTypes[0].id, bellsId: null, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
+  return { who: 'all', grade: '', groupIds: [], teacherId: null, toRoomId: null, subjectId: null, dayTypeId: project.dayTypes[0].id, bellsId: null, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
 }
 
 // Grades are one grade whatever their spaces and case (spacelessKey), as the
@@ -94,7 +101,11 @@ export function settleChoice(project, choice) {
   const known = new Set(project.groups.map((group) => group.id));
   // each group once, in the order chosen
   next.groupIds = Array.from(new Set((Array.isArray(next.groupIds) ? next.groupIds : []).filter((id) => known.has(id)))).slice(0, COMPARE_LIMIT);
-  if (!['all', 'grade', 'groups'].includes(next.who)) next.who = 'all';
+  if (!['all', 'grade', 'groups', 'teacher'].includes(next.who)) next.who = 'all';
+  // a teacher, a destination room and a subject must be ones the project has; what is not is as if never chosen
+  if (typeof next.teacherId !== 'string' || !findById(project.teachers, next.teacherId)) next.teacherId = null;
+  if (typeof next.toRoomId !== 'string' || next.toRoomId === '' || !findRoom(project, next.toRoomId)) next.toRoomId = null;
+  if (typeof next.subjectId !== 'string' || (next.subjectId !== '' && !findById(subjectsOf(project), next.subjectId))) next.subjectId = null;
   const grades = gradesOf(project);
   if (next.who === 'grade' && !grades.includes(next.grade)) {
     if (grades.length === 0) next.who = 'all';
@@ -109,7 +120,20 @@ export function settleChoice(project, choice) {
   return next;
 }
 
+function subjectsOf(project) {
+  return Array.isArray(project.subjects) ? project.subjects : [];
+}
+
+// Is a destination or subject filter set, and does it apply (not in teacher mode)?
+export function filterOf(choice) {
+  if (choice.who === 'teacher') return null;
+  const toRoomId = typeof choice.toRoomId === 'string' && choice.toRoomId !== '' ? choice.toRoomId : null;
+  const subjectId = typeof choice.subjectId === 'string' ? choice.subjectId : null;
+  return toRoomId === null && subjectId === null ? null : { toRoomId, subjectId };
+}
+
 export function shownGroups(project, choice) {
+  if (choice.who === 'teacher') return [];
   if (choice.who === 'all') return project.groups.slice();
   if (choice.who === 'grade') return project.groups.filter((group) => spacelessKey(typeof group.grade === 'string' ? group.grade : '') === spacelessKey(choice.grade));
   return project.groups.filter((group) => choice.groupIds.includes(group.id));
@@ -306,8 +330,8 @@ export function shownFloors(project, choice) {
 // The load of the groups on screen. With every group shown it is the
 // pipeline's own answer; for some of them it is the same rule, loads(), given
 // only their routes.
-function loadFor(project, results, graph, dayType, bellsId, groups, routes) {
-  const all = groups.length === project.groups.length;
+function loadFor(project, results, graph, dayType, bellsId, groups, routes, filtered) {
+  const all = filtered !== true && groups.length === project.groups.length;
   const kept = all ? runOf(results, dayType.id, bellsId).loads : null;
   if (kept && kept.cells.busiest.length === graph.count) return kept;
   const wanted = new Set(groups.map((group) => group.id));
@@ -334,15 +358,27 @@ function zonesOnScreen(project, graph, floorIds) {
   return found;
 }
 
+// A routes object of one run (filteredRoutes' shape) as the run's entry.
+function entryOfRoutes(object) {
+  return object.bells && object.bells.length > 0 ? object.bells[0] : object.days[0];
+}
+
+// Is the walk out of period t among those on screen under this choice?
+function inChosen(choice, t) {
+  return choice.transition === null || t === choice.transition;
+}
+
 export function pictureOf(project, results, graph, input) {
   const choice = settleChoice(project, input);
   const dayType = effectiveDayType(project, choice.dayTypeId);
   const chosenDay = findDayType(project, choice.dayTypeId);
-  const groups = shownGroups(project, choice);
+  let groups = shownGroups(project, choice);
   const floors = shownFloors(project, choice);
   const floorIds = new Set(floors.map((floor) => floor.id));
   const transitions = transitionsOf(project, choice.dayTypeId, choice.bellsId);
   const bellSchedule = findBellSchedule(project, choice.bellsId);
+  const filter = filterOf(choice);
+  const teaching = choice.who === 'teacher';
   const picture = {
     choice,
     ready: Boolean(results),
@@ -358,7 +394,17 @@ export function pictureOf(project, results, graph, input) {
     floors,
     transitions,
     transition: choice.transition === null ? null : transitions.find((each) => each.period === choice.transition) || null,
-    mode: groups.length === 0 ? 'empty' : groups.length === 1 ? 'single' : 'load',
+    mode: teaching ? (choice.teacherId === null ? 'empty' : 'teacher') : groups.length === 0 ? 'empty' : groups.length === 1 ? 'single' : 'load',
+    // why a picture has nothing in it: 'teacher' (none chosen), 'groups' (none chosen) or 'filter' (the filters match no walk)
+    emptyBecause: teaching ? (choice.teacherId === null ? 'teacher' : null) : groups.length === 0 ? 'groups' : null,
+    // the destination and subject filters when set: { toRoomId, subjectId, words, walks, groups, empty }
+    filter: null,
+    // a teacher's day (mode 'teacher'): { teacher, colour, trail, walks }
+    teacher: null,
+    trail: null,
+    // the routes object the picture is of when a filter is set (every walk that does not pass is null), and its entry
+    routesObject: null,
+    routesEntry: null,
     drawn: 0,
     same: 0,
     failed: [],
@@ -374,18 +420,65 @@ export function pictureOf(project, results, graph, input) {
   const rank = new Map(project.groups.map((group, index) => [group.id, index]));
   const periods = choice.transition === null ? settings.periods : 2;
   const firstPeriod = choice.transition === null ? 0 : choice.transition;
+  const run = runOf(results, dayType.id, picture.bellsId);
+  const routes = run.routes;
 
-  // the room markers: where each group on screen is, period by period
+  if (teaching) {
+    for (const floor of floors) picture.markers.set(floor.id, []);
+    return choice.teacherId === null ? picture : teacherPicture(project, results, graph, picture, run, floorIds);
+  }
+
+  // with a filter set, the groups on screen are those with a walk that passes it (ARCHITECTURE 23.7)
+  let kept = null;
+  if (filter && results && routes && graph && groups.length > 0) {
+    const object = filteredRoutes(project, routes, groups, choice);
+    const entry = entryOfRoutes(object);
+    const keep = new Set();
+    let walks = 0;
+    for (const each of entry.groups) {
+      each.routes.forEach((route, t) => {
+        if (!route || !inChosen(choice, t) || !meets(transitions, t)) return;
+        keep.add(each.groupId);
+        walks += 1;
+      });
+    }
+    kept = { object, entry, keep };
+    groups = groups.filter((group) => keep.has(group.id));
+    picture.groups = groups;
+    picture.mode = groups.length === 0 ? 'empty' : groups.length === 1 ? 'single' : 'load';
+    picture.emptyBecause = groups.length === 0 ? 'filter' : null;
+    picture.routesObject = object;
+    picture.routesEntry = entry;
+    picture.filter = { toRoomId: filter.toRoomId, subjectId: filter.subjectId, words: destinationWords(project, choice), walks, groups: groups.length, empty: groups.length === 0 ? emptyFilterWords(project, picture, choice) : null };
+  } else if (filter) {
+    picture.filter = { toRoomId: filter.toRoomId, subjectId: filter.subjectId, words: destinationWords(project, choice), walks: 0, groups: groups.length, empty: null };
+  }
+
+  // the room markers: where each group on screen is, period by period. With
+  // a filter, a group is marked only where it walks into a room that passes
+  // and the room it walks out of, so a walk has its two ends.
   const rooms = new Map();
+  const mark = (group, p, slots) => {
+    const room = slots && p < slots.length ? resolveSlotRoom(project, slots[p]).room : null;
+    if (!room) return;
+    if (!rooms.has(room.id)) rooms.set(room.id, new Map());
+    const here = rooms.get(room.id);
+    if (!here.has(group.id)) here.set(group.id, []);
+    if (!here.get(group.id).includes(p)) here.get(group.id).push(p);
+  };
   for (const group of groups) {
     const slots = meetingSlots(project, group.id, dayType.id, picture.bellsId) || [];
-    for (let p = firstPeriod; p < Math.min(slots.length, firstPeriod + periods); p += 1) {
-      const room = resolveSlotRoom(project, slots[p]).room;
-      if (!room) continue;
-      if (!rooms.has(room.id)) rooms.set(room.id, new Map());
-      const here = rooms.get(room.id);
-      if (!here.has(group.id)) here.set(group.id, []);
-      here.get(group.id).push(p);
+    if (kept) {
+      const entry = kept.entry.groups.find((each) => each.groupId === group.id);
+      entry.routes.forEach((route, t) => {
+        if (!route || !inChosen(choice, t) || !meets(transitions, t)) return;
+        mark(group, t, slots);
+        const to = reached(transitions, t);
+        mark(group, Number.isInteger(to) ? to : t + 1, slots);
+      });
+      for (const here of rooms.values()) if (here.has(group.id)) here.get(group.id).sort((a, b) => a - b);
+    } else {
+      for (let p = firstPeriod; p < Math.min(slots.length, firstPeriod + periods); p += 1) mark(group, p, slots);
     }
   }
   for (const floor of floors) {
@@ -402,8 +495,6 @@ export function pictureOf(project, results, graph, input) {
     picture.markers.set(floor.id, list);
   }
 
-  const run = runOf(results, dayType.id, picture.bellsId);
-  const routes = run.routes;
   if (!results || !routes || !graph) return picture;
   // who crosses which cell, worked out with the picture and kept (engine/load.js): the first cell card is then as quick as the rest
   indexRoutes(project, results.routes, dayType.id, graph, picture.bellsId);
@@ -411,7 +502,7 @@ export function pictureOf(project, results, graph, input) {
   // the routes on screen
   const entries = [];
   const shown = new Set(groups.map((group) => group.id));
-  for (const entry of routes.groups) {
+  for (const entry of kept ? kept.entry.groups : routes.groups) {
     if (!shown.has(entry.groupId)) continue;
     entry.routes.forEach((route, t) => {
       if (choice.transition !== null && t !== choice.transition) return;
@@ -439,11 +530,15 @@ export function pictureOf(project, results, graph, input) {
   }
   picture.links.push(...rideLinks(project, connections, entries));
 
-  // who is late, by the crowd model's own rule
+  // who is late, by the crowd model's own rule (of the walks that pass the filters)
   {
     for (const walk of run.walks.groups) {
       if (walk.late !== true || !shown.has(walk.groupId)) continue;
       if (choice.transition !== null && walk.period !== choice.transition) continue;
+      if (kept) {
+        const entry = kept.entry.groups.find((each) => each.groupId === walk.groupId);
+        if (!entry || !entry.routes[walk.period]) continue;
+      }
       picture.late.push(walk);
     }
   }
@@ -451,7 +546,7 @@ export function pictureOf(project, results, graph, input) {
   // the load of what is on screen. One group alone is not coloured by it
   // (spec 7.3), but its card and the summary still give the numbers.
   if (picture.mode === 'empty') return picture;
-  const load = loadFor(project, results, graph, dayType, picture.bellsId, groups, routes);
+  const load = loadFor(project, results, graph, dayType, picture.bellsId, groups, kept ? kept.entry : routes, kept !== null);
   if (!load) return picture;
   const cells = choice.transition !== null ? load.cells.byTransition[choice.transition] : choice.measure === 'total' ? load.cells.total : load.cells.busiest;
   const links = choice.transition !== null ? load.connections.byTransition[choice.transition] : choice.measure === 'total' ? load.connections.total : load.connections.busiest;
@@ -518,6 +613,129 @@ export function pictureOf(project, results, graph, input) {
   return picture;
 }
 
+// ---------------------------------------------------------------- a teacher's day
+
+// The room as a sentence names it, in pieces: "Room " and the number as
+// typed, or the number alone when it is a word ("Gym").
+function roomPartsOf(room) {
+  const named = nameOfRoom(room, false);
+  const number = typeof room.number === 'string' ? room.number : '';
+  if (number.trim() === '') return [{ text: named }];
+  return named === 'Room ' + number ? [{ text: 'Room ' }, { text: number, name: true }] : [{ text: number, name: true }];
+}
+
+function roomPartsById(project, roomId) {
+  const room = findRoom(project, roomId);
+  return room ? roomPartsOf(room) : [{ text: 'a room that is not in the building' }];
+}
+
+function partsText(parts) {
+  return parts.map((part) => part.text).join('');
+}
+
+// The teacher's colour as a line: the subject's, or none (the page uses ink).
+export function teacherColourOf(project, teacher) {
+  const subject = teacher && typeof teacher.subjectId === 'string' ? findById(subjectsOf(project), teacher.subjectId) : null;
+  return subject && typeof subject.colour === 'string' && subject.colour !== '' ? subject.colour : null;
+}
+
+// teacherTrail, kept for what it was worked out from (ARCHITECTURE 23.6): the
+// building, groups, teachers, day types, settings and bell schedules, the
+// results whose figures it carries, the graph and who, when, under which bells.
+// The route cache is the trail's own, of sixteen fields.
+const memo = { key: null, value: null };
+
+export function trailFor(project, results, graph, teacherId, dayTypeId, bellsId) {
+  const key = [project.building, project.groups, project.teachers, project.dayTypes, project.settings, project.bellSchedules, results, graph, teacherId, dayTypeId, bellsId];
+  if (memo.key && memo.key.length === key.length && memo.key.every((part, i) => part === key[i])) return memo.value;
+  const run = runOf(results, dayTypeId, bellsId);
+  const value = teacherTrail(project, graph, { teacherId, dayTypeId, bellsId, cache: createRouteCache(16), walks: run.walks.teachers });
+  memo.key = key;
+  memo.value = value;
+  return value;
+}
+
+// "yes", "no, 10 s over", "yes, Period 3 is free (52 min)" or "not worked out yet": whether a teacher's walk
+// fits the time there is, in { state: 'yes' | 'no' | 'free' | 'pending' | 'failed', text, over }.
+export function fitsOf(settings, walk) {
+  if (walk.failed === true) return { state: 'failed', text: 'no route', over: null };
+  if (walk.across.length > 0) {
+    const named = walk.across.map((period) => periodName(settings, period));
+    const free = named.length === 1 ? named[0] + ' is free' : list(named) + ' are free';
+    return { state: 'free', text: 'yes, ' + free + (walk.passingSeconds === null ? '' : ' (' + formatDuration(walk.passingSeconds) + ')'), over: null };
+  }
+  if (walk.walking === null || walk.late === null) return { state: 'pending', text: 'not worked out yet', over: null };
+  if (walk.late === true) {
+    const over = Math.max(1, Math.round(walk.walking + (walk.riding || 0) - walk.passingSeconds));
+    return { state: 'no', text: 'no, ' + formatDuration(over) + ' over', over };
+  }
+  return { state: 'yes', text: 'yes', over: null };
+}
+
+// The teacher's walks on screen, in period order (one transition when one is chosen): the figures the rows and the
+// sentence are made of.
+export function teacherWalksOn(picture) {
+  const trail = picture.trail;
+  if (!trail) return [];
+  return trail.walks.filter((walk) => picture.choice.transition === null || walk.period === picture.choice.transition);
+}
+
+function teacherPicture(project, results, graph, picture, run, floorIds) {
+  const choice = picture.choice;
+  const teacher = findById(project.teachers, choice.teacherId);
+  const settings = project.settings;
+  picture.teacher = { teacher, colour: teacherColourOf(project, teacher), walks: [], notes: [] };
+  if (!results || !run.routes || !graph) return picture;
+  const trail = trailFor(project, results, graph, teacher.id, picture.dayTypeId, picture.bellsId);
+  picture.trail = trail;
+  if (!trail) return picture;
+  const walks = teacherWalksOn(picture);
+  picture.teacher.walks = walks;
+  // the periods whose rooms are marked: the whole day, or the two ends of the walk chosen
+  const first = choice.transition;
+  const last = first === null ? null : Number.isInteger(reached(picture.transitions, first)) ? reached(picture.transitions, first) : first + 1;
+  picture.teacher.notes = trail.notes.filter((note) => first === null || note.period === first || note.period === last);
+  const names = new Map(project.groups.map((group) => [group.id, group.name]));
+  const colour = picture.teacher.colour || '';
+  const markers = new Map();
+  for (const stop of trail.stops) {
+    if (first !== null && stop.period !== first && stop.period !== last) continue;
+    for (const room of stop.rooms) {
+      if (room.roomId === null) continue;
+      if (!markers.has(room.roomId)) markers.set(room.roomId, []);
+      const taught = stop.groupIds.map((id) => names.get(id)).filter((name) => typeof name === 'string');
+      markers.get(room.roomId).push({ groupId: teacher.id, colour, text: 'P' + periodLabel(settings, stop.period) + (taught.length > 0 ? ' \u00b7 ' + taught.join(', ') : ''), periods: [stop.period] });
+    }
+  }
+  for (const floor of picture.floors) {
+    const entries = [];
+    for (const space of floor.spaces) {
+      if (space.kind === 'room' && markers.has(space.id)) entries.push({ roomId: space.id, box: boxOf(space, floor.width), pills: markers.get(space.id) });
+    }
+    picture.markers.set(floor.id, entries);
+  }
+  const entries = [];
+  for (const walk of walks) {
+    const route = walk.route;
+    if (!route || route.ok !== true) {
+      if (route) picture.failed.push({ teacherId: teacher.id, period: walk.period, ...(walk.toPeriod !== walk.period + 1 ? { toPeriod: walk.toPeriod } : {}), route, across: walk.across });
+      continue;
+    }
+    if (route.same === true) continue;
+    picture.drawn += 1;
+    entries.push({ groupId: teacher.id, rank: 0, route, dash: walk.across.length > 0 });
+  }
+  picture.lanes = buildLanes(project, entries);
+  const connections = byId(project.building.connections);
+  for (const [id, groupIds] of picture.lanes.links) {
+    const connection = connections.get(id);
+    if (connection && connection.kind !== ELEVATOR_KIND) picture.links.push({ id, label: stairsLetter(connection), a: connection.a, b: connection.b, groupIds });
+  }
+  picture.links.push(...rideLinks(project, connections, entries));
+  picture.late = walks.filter((walk) => walk.late === true);
+  return picture;
+}
+
 // The elevator rides on screen, one link for each pair of stops ridden:
 // { id: the car's, label: 'Elevator D', car: 'D', elevator: true, a, b, groupIds }.
 // The ends are the route's own cells on each side of the ride (ARCHITECTURE
@@ -559,13 +777,15 @@ export function unitWord(unit, n) {
 // route failed at that end. The reason comes after a comma, so a sentence
 // that opens with a word of the tool's own loses its capital there.
 export function failureParts(project, failure, withDay) {
-  const group = project.groups.find((each) => each.id === failure.groupId);
+  // a teacher's failed walk is worded as a group's, naming the teacher
+  const teacher = typeof failure.teacherId === 'string' ? findById(project.teachers, failure.teacherId) : null;
+  const group = teacher ? { name: teacher.name } : project.groups.find((each) => each.id === failure.groupId);
   const dayType = withDay ? findDayType(project, failure.dayTypeId) : null;
   const sentence = describeFailure(project, failure.route).replace(/\.$/, '');
   // the directions say whether the sentence opens with what was typed (engine/directions.js): one rule, kept there
   const text = startsAsTyped(project, failure.route) ? sentence : sentence[0].toLowerCase() + sentence.slice(1);
   return [
-    { text: group ? group.name : 'A group', name: true },
+    { text: group ? group.name : teacher === null && typeof failure.teacherId === 'string' ? 'A teacher' : 'A group', name: true },
     { text: ', ' + periodName(project.settings, failurePeriod(failure)) + (dayType ? ' on ' : '') },
     ...(dayType ? [{ text: dayType.name, name: true }] : []),
     { text: ', ' },
@@ -697,16 +917,192 @@ export function failedSentence(standing) {
   return { parts, showMe: false };
 }
 
+// What a filter that matches nothing says (DESIGN 17.7 item 15), in pieces: a
+// room or subject nobody meets in ("Room 204 has no class on A Day."), or one
+// nobody walks into ("Nobody walks into Room 204 on A Day: 7-1 is there from
+// Period 1 and stays.").
+function emptyFilterWords(project, picture, choice) {
+  const filter = filterOf(choice);
+  const dest = destinationWords(project, choice).slice(1);
+  const day = [{ text: picture.dayName, name: true }];
+  const via = picture.bellsName !== null ? [{ text: ' with ' }, { text: picture.bellsName, name: true }, { text: ' bells' }] : [];
+  const where = (filter.toRoomId !== null ? [findRoom(project, filter.toRoomId)] : project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room')).filter((room) => (typeof room.subjectId === 'string' ? room.subjectId : '') === filter.subjectId)).filter(Boolean);
+  const ids = new Set(where.map((room) => room.id));
+  // who has the room, and when: the first group in the project's order that is in one of them in some period
+  let there = null;
+  for (const group of project.groups) {
+    const slots = meetingSlots(project, group.id, picture.dayTypeId, picture.bellsId) || [];
+    const periods = [];
+    slots.forEach((slot, p) => {
+      const found = resolveSlotRoom(project, slot).room;
+      if (found && ids.has(found.id)) periods.push(p);
+    });
+    if (periods.length > 0) {
+      there = { group, periods };
+      break;
+    }
+  }
+  if (there === null && filter.toRoomId !== null && filter.subjectId === null) return [...dest, { text: ' has no class on ' }, ...day, ...via, { text: '.' }];
+  if (there === null) return [{ text: 'No class meets in ' }, ...dest, { text: ' on ' }, ...day, ...via, { text: '.' }];
+  const parts = [{ text: 'Nobody walks into ' }, ...dest];
+  if (picture.transition) return [...parts, { text: ' in ' + picture.transition.name + ' on ' }, ...day, ...via, { text: '.' }];
+  parts.push({ text: ' on ' }, ...day, ...via, { text: ': ' });
+  const run = there.periods.every((period, i) => i === 0 || period === there.periods[i - 1] + 1);
+  if (run && filter.toRoomId !== null) parts.push({ text: there.group.name, name: true }, { text: ' is there from ' + periodName(project.settings, there.periods[0]) + ' and stays.' });
+  else parts.push({ text: 'the groups that meet in ' + (filter.toRoomId !== null ? 'it' : 'them') + ' are already there.' });
+  return parts;
+}
+
+// "1 walk", "3 walks"
+function walkCount(n) {
+  return plural(n, 'walk');
+}
+
+// The first line for a teacher (DESIGN 17.2, 17.7 items 11 and 12).
+function teacherSentence(project, picture) {
+  const settings = project.settings;
+  const parts = [];
+  const teacher = picture.teacher.teacher;
+  const name = { text: teacher.name, name: true };
+  const walks = teacherWalksOn(picture);
+  const trail = picture.trail;
+  if (!picture.ready) {
+    parts.push(name, { text: '\u2019s day on ' }, { text: picture.dayName, name: true }, { text: '. Working out the routes.' });
+    return { parts, showMe: false };
+  }
+  if (nothingMeets(project, picture.bellsId)) {
+    parts.push(...nothingMeetsParts(project, picture.bellsId));
+    return { parts, showMe: false };
+  }
+  const day = [{ text: ' on ' }, { text: picture.dayName, name: true }, ...(picture.bellsName !== null ? [{ text: ' with ' }, { text: picture.bellsName, name: true }, { text: ' bells' }] : [])];
+  const notes = picture.teacher.notes;
+  const tail = () => {
+    for (const note of notes) parts.push({ text: ' ' }, ...note.parts);
+  };
+  const taught = trail ? trail.stops.filter((stop) => stop.kind === 'teaching') : [];
+  const roomIds = new Set(taught.flatMap((stop) => stop.rooms.map((room) => room.roomId)));
+  const transition = picture.transition;
+  if (transition) {
+    // one transition: the walk out of that period, or that the teacher stays put
+    const walk = walks[0];
+    if (walk) {
+      const fits = fitsOf(settings, walk);
+      parts.push(name, { text: ' walks from ' }, ...roomPartsById(project, walk.fromRoomId), { text: ' to ' }, ...roomPartsById(project, walk.toRoomId), { text: ' in ' + walkWords(settings, walk.period, walk.toPeriod) + (transition.times && walk.across.length === 0 ? ' (' + transition.times + ')' : '') + ': ' });
+      if (walk.failed) parts.push({ text: 'no route was found.' });
+      else if (walk.across.length > 0) parts.push({ text: (walk.walking === null ? 'not worked out yet' : formatDuration(walk.walking)) + ', with a free period between.' });
+      else if (fits.state === 'pending') parts.push({ text: 'not worked out yet.' });
+      else parts.push({ text: formatDuration(walk.walking + (walk.riding || 0)) + ' for a ' + formatDuration(walk.passingSeconds) + ' passing time. ' + (fits.state === 'no' ? 'It does not fit.' : 'It fits.') });
+      tail();
+      return { parts, showMe: walk.failed === true || fits.state === 'no', showTab: walk.failed === true ? 'summary' : 'tables' };
+    }
+    const here = trail ? trail.stops.find((stop) => stop.period === transition.period) : null;
+    const next = trail ? trail.stops.find((stop) => stop.period === (Number.isInteger(transition.toPeriod) ? transition.toPeriod : transition.period + 1)) : null;
+    const same = here && next && here.rooms.length === 1 && next.rooms.length === 1 && here.rooms[0].roomId !== null && here.rooms[0].roomId === next.rooms[0].roomId;
+    if (same) parts.push(name, { text: ' stays in ' }, ...roomPartsById(project, here.rooms[0].roomId), { text: ' from ' + transition.name + '.' });
+    else parts.push(name, { text: ' has no walk from ' + transition.name + ' on ' }, { text: picture.dayName, name: true }, { text: '.' });
+    tail();
+    return { parts, showMe: false };
+  }
+  const between = walks.filter((walk) => walk.across.length === 0);
+  const across = walks.filter((walk) => walk.across.length > 0);
+  if (walks.length === 0 && !notes.some((note) => note.kind === 'two-rooms')) {
+    if (roomIds.size === 0) {
+      parts.push(name, { text: ' has no class' }, ...day, { text: ', so there is nothing to walk.' });
+    } else if (roomIds.size === 1) {
+      const only = Array.from(roomIds)[0];
+      parts.push(name, { text: ' teaches in ' }, ...(only === null ? [{ text: 'a room that is not in the building' }] : roomPartsById(project, only)), { text: ' all day' }, ...day, { text: ', so there is nothing to walk.' });
+    } else {
+      parts.push(name, { text: ' has no walk between rooms' }, ...day, { text: '.' });
+    }
+    tail();
+    return { parts, showMe: false };
+  }
+  parts.push(name, { text: '\u2019s day' }, ...day, { text: ': ' });
+  const sums = between.reduce((total, walk) => total + (walk.walking === null ? 0 : walk.walking + (walk.riding || 0)), 0);
+  const pending = between.filter((walk) => walk.walking === null && walk.failed !== true).length;
+  const words = [];
+  if (between.length > 0) words.push(walkCount(between.length) + ' between classes' + (sums > 0 || pending === 0 ? ', ' + formatDuration(sums) + ' (walking alone, not slowed by the crowd)' : ''));
+  if (across.length > 0) words.push(walkCount(across.length) + ' with a free period between');
+  if (words.length === 0) words.push('no walk between classes');
+  parts.push({ text: words.length === 2 ? words[0] + ', and ' + words[1] : words[0] });
+  parts.push({ text: '. ' });
+  if (pending > 0) parts.push({ text: pending === 1 ? 'One walk is not worked out yet. ' : pending + ' walks are not worked out yet. ' });
+  const failed = picture.failed;
+  const over = walks.filter((walk) => walk.late === true && walk.failed !== true);
+  if (failed.length > 0) {
+    parts.push({ text: plural(failed.length, 'walk') + (failed.length === 1 ? ' has no route: ' : ' have no route. The first: ') });
+    parts.push(...failureParts(project, { ...failed[0], dayTypeId: picture.dayTypeId }, false), { text: '. ' });
+  }
+  if (over.length > 0) {
+    const walk = over[0];
+    parts.push({ text: over.length === 1 ? '1 does not fit: ' : over.length + ' do not fit. The first: ' }, { text: walkWords(settings, walk.period, walk.toPeriod) + ', ' });
+    parts.push(...roomPartsById(project, walk.fromRoomId), { text: ' to ' }, ...roomPartsById(project, walk.toRoomId));
+    parts.push({ text: ', ' + formatDuration(walk.walking + (walk.riding || 0)) + ' for a ' + formatDuration(walk.passingSeconds) + ' passing time.' });
+  }
+  tail();
+  // trailing spaces tidied
+  const lastPart = parts[parts.length - 1];
+  if (lastPart && !lastPart.name) lastPart.text = lastPart.text.replace(/ +$/, '');
+  return { parts, showMe: failed.length > 0 || over.length > 0, showTab: failed.length > 0 ? 'summary' : 'tables' };
+}
+
+// The words for what is on screen when a filter is set, in pieces: "Showing walks into Room 204 by grade 7 on A Day, all transitions: 6 groups, 9 walks."
+function filterSentence(project, picture, health) {
+  const parts = [];
+  const choice = picture.choice;
+  const settings = project.settings;
+  parts.push({ text: 'Showing walks ' }, ...picture.filter.words);
+  if (choice.who === 'grade') parts.push({ text: ' by grade ' }, { text: choice.grade === '' ? '(none)' : choice.grade, name: choice.grade !== '' });
+  else if (choice.who === 'groups') {
+    parts.push({ text: ' by ' });
+    choice.groupIds.forEach((id, i) => {
+      const group = project.groups.find((each) => each.id === id);
+      if (i > 0) parts.push({ text: i === choice.groupIds.length - 1 ? ' and ' : ', ' });
+      parts.push({ text: group ? group.name : '?', name: true });
+    });
+  }
+  parts.push({ text: ' on ' }, { text: picture.dayName, name: true });
+  if (picture.bellsName !== null) parts.push({ text: ' with ' }, { text: picture.bellsName, name: true }, { text: ' bells' });
+  parts.push({ text: picture.transition ? ', ' + picture.transition.name + (picture.transition.times ? ' (' + picture.transition.times + ')' : '') + ': ' : ', all transitions: ' });
+  if (!picture.ready) {
+    parts.push({ text: 'working out the routes.' });
+    return { parts, showMe: false };
+  }
+  if (nothingMeets(project, picture.bellsId)) {
+    parts.length = 0;
+    parts.push(...nothingMeetsParts(project, picture.bellsId));
+    return { parts, showMe: false };
+  }
+  parts.push({ text: plural(picture.filter.groups, 'group') + (picture.transition ? '' : ', ' + plural(picture.filter.walks, 'walk')) + '.' });
+  const failed = picture.failed.length;
+  if (failed > 0) {
+    parts.push({ text: ' ' + plural(failed, 'route') + ' failed' + (failed === 1 ? ': ' : '. The first: ') });
+    parts.push(...failureParts(project, { ...picture.failed[0], dayTypeId: picture.dayTypeId }, false));
+    parts.push({ text: '.' });
+  }
+  return { parts, showMe: failed > 0 };
+}
+
 // The screen's first line (DESIGN 5.3), in pieces: [{ text, name }], and
 // whether "Show me" has anything to show.
 //   "Showing 8 groups on A Day, all transitions. 1 route failed: 7-2, Period 3, Room 105 does not open onto a corridor."
 export function sentenceOf(project, picture, health) {
   const parts = [];
+  if (picture.mode === 'teacher') return teacherSentence(project, picture);
   const n = picture.groups.length;
+  if (picture.emptyBecause === 'teacher') {
+    parts.push({ text: 'Nothing is shown. Choose a teacher to see where they walk.' });
+    return { parts, showMe: false };
+  }
+  if (picture.emptyBecause === 'filter' && picture.filter && picture.filter.empty) {
+    parts.push(...picture.filter.empty);
+    return { parts, showMe: false, clearFilter: true };
+  }
   if (n === 0) {
     parts.push({ text: 'Nothing is shown. Choose a group, a grade or every group to see where they walk.' });
     return { parts, showMe: false };
   }
+  if (picture.filter) return filterSentence(project, picture, health);
   parts.push({ text: 'Showing ' });
   if (n === 1) parts.push({ text: picture.groups[0].name, name: true });
   else if (picture.choice.who === 'grade') parts.push({ text: plural(n, 'group') + ' of grade ' }, { text: picture.choice.grade === '' ? '(none)' : picture.choice.grade, name: picture.choice.grade !== '' });
@@ -844,12 +1240,25 @@ export function cellCard(project, results, graph, picture, floorId, cell) {
   if (!place) return null;
   const f = graph.floorIndex.get(floorId);
   const node = graph.floors[f].nodeOfCell[cell];
+  if (picture.mode === 'teacher') {
+    // a teacher's walks that cross the cell: no load, no crowd (ARCHITECTURE 23.6)
+    const walks = picture.teacher ? picture.teacher.walks.filter((walk) => walk.route && walk.route.ok === true && Array.isArray(walk.route.cells) && walk.route.cells.some((at) => at.floorId === floorId && at.cell === cell)) : [];
+    return { place, parts: place.parts, floorName: graph.floors[f].name, load: 0, unit: 'students', measure: 'teacher', excluded: false, peak: null, groups: [], teacher: { teacher: picture.teacher ? picture.teacher.teacher : null, walks: walks.map((walk) => ({ period: walk.period, toPeriod: walk.toPeriod, across: walk.across })) } };
+  }
   const routes = dayRoutes(results, picture.dayTypeId, picture.bellsId);
   const shown = new Set(picture.groups.map((group) => group.id));
-  const mine = routes ? routesOfRun(routes, routes.groups.filter((entry) => shown.has(entry.groupId))) : null;
+  // with a filter set the card counts the walks that pass it, and says what everyone's load there is too
+  const kept = picture.routesEntry || null;
+  const mine = kept ? routesOfRun(kept, kept.groups.filter((entry) => shown.has(entry.groupId))) : routes ? routesOfRun(routes, routes.groups.filter((entry) => shown.has(entry.groupId))) : null;
   const period = picture.choice.transition;
   const crossing = mine ? contributors(project, mine, picture.dayTypeId, { nodes: [node] }, graph, { bellsId: picture.bellsId, ...(period === null ? {} : { period }) }) : [];
   const groups = byId(project.groups);
+  let everyone = null;
+  if (picture.filter) {
+    const all = runOf(results, picture.dayTypeId, picture.bellsId).loads;
+    const part = all && all.cells ? (period !== null ? all.cells.byTransition[period] : picture.choice.measure === 'total' ? all.cells.total : all.cells.busiest) : null;
+    everyone = part ? part[node] : null;
+  }
   return {
     place,
     parts: place.parts,
@@ -859,6 +1268,7 @@ export function cellCard(project, results, graph, picture, floorId, cell) {
     measure: period !== null ? 'transition' : picture.choice.measure,
     excluded: picture.load ? picture.load.excluded[node] === 1 : false,
     peak: picture.load && picture.load.peak && picture.load.peak[node] >= 0 ? picture.load.peak[node] : null,
+    ...(picture.filter ? { filter: picture.filter, everyone } : {}),
     groups: crossing.filter((each) => groups.has(each.groupId)).map((each) => ({ group: groups.get(each.groupId), times: each.times, count: each.count })),
   };
 }
