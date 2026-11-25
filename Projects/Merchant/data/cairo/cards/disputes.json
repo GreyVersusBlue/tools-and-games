@@ -467,6 +467,11 @@
         "id": "settle",
         "label": "Settle it yourselves over a meal",
         "hint": "It costs 4 dinars, and the street likes a quarrel ended. It may come back.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
         "now": [
           {
             "money": -4

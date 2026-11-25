@@ -65,7 +65,7 @@ export function traitWords(app, agent) {
 const shareWords = ([a, b]) => FRACTIONS[`${a}/${b}`] ?? `${words(a)} of every ${words(b)}`;
 
 /** A group that is one tab stop, with minus and plus beside a number that is text. */
-function stepper({ key, label, value, min, max, step = 1, fine = step, big = 10, text, onChange }) {
+export function stepper({ key, label, value, min, max, step = 1, fine = step, big = 10, text, onChange }) {
   const clamp = n => Math.max(min, Math.min(max, n));
   const set = n => { n = clamp(n); if (n !== value) onChange(n); };
   // Shift narrows a press to `fine` (money moves by 50, and by 10 with Shift)

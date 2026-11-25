@@ -26,6 +26,12 @@
 // 13 a bonus has a profit behind it (MER-123): a letter's bonus costs no more than the letter's own gain, and a card
 //   about a trip that came home requires that agent's `-profit` flag to be at least the bonus
 // 14 a letter that lets the house say "You should have waited" tells of a wait it could have made (MER-123)
+// 18 a choice's words are true of every house that can read them (MER-140, the second play): no "You keep your 140 dinars"
+//   (the purse is not 140), no label that sends the house itself along with an agent (it never travels), and no "It costs less"
+//   with no figure
+// 17 a money cost that could be a paper's only open choice says so (MER-141): the engine never lets a choice take money the
+//   house does not hold (it is shown closed, in words, and a card with none open is not dealt), so the content must name
+//   the sum in `requires` for any choice that takes money now and has no sibling open whatever the house holds
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -61,6 +67,8 @@ export const RULES = {
   12: 'no fee below zero',
   13: 'a bonus has a profit behind it',
   14: 'a wait to blame',
+  17: 'a money cost that could be the only open choice says so',
+  18: 'a choice says only what is true of any house',
 };
 
 // Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
@@ -147,6 +155,22 @@ const needs = r => {
   return Array.isArray(r.all) ? Math.max(0, ...r.all.map(needs)) : 0;
 };
 
+/** Rule 17: a choice that takes money now, on a paper where no other choice is always open (no money cost now, no `requires`),
+    could be the only open one, so its `requires` must hold the sum. Not testing the choice's later effects: rule 12 does. */
+export function lastWayFailures(content) {
+  const out = [];
+  const always = ch => !loss(ch.now) && !ch.requires;
+  for (const kind of ['cards', 'letters', 'returns']) for (const c of content[kind] ?? []) {
+    const list = c.choices ?? [];
+    for (const ch of list) {
+      if (loss(ch.now) && needs(ch.requires) < loss(ch.now) && !list.some(o => o !== ch && always(o))) {
+        out.push({ rule: 17, path: `${kind}[${c.id}].choices[${ch.id}]`, message: `takes ${loss(ch.now)} now and could be the only open choice, but requires ${needs(ch.requires)}; require the money so it shows closed when the house is short` });
+      }
+    }
+  }
+  return out;
+}
+
 /** Rule 12: a choice that costs money later requires the money now and later together. */
 export function feeFailures(content) {
   const out = [];
@@ -196,6 +220,20 @@ export function gainFailures(content) {
     if (!m) continue;
     const now = (ch.now ?? []).reduce((n, e) => n + (e && typeof e.money === 'number' && e.money > 0 ? e.money : 0), 0);
     if (now !== Number(m[1])) out.push({ rule: 15, path: `${kind}[${c.id}].choices[${ch.id}]`, message: `the hint says "You gain ${m[1]} dinars" but the choice brings ${now} now, so no +${m[1]} tag shows` });
+  }
+  return out;
+}
+
+/** Rule 18 (MER-140): what the second play found wrong in choice words. A hint that says the house keeps a named sum states a purse
+    it cannot know; a label that has the house go, ride, sail or travel with an agent contradicts the opening ("you never travel");
+    a hint that says a choice costs less or more and gives no figure says nothing. */
+export function wordingFailures(content) {
+  const out = [];
+  for (const kind of ['cards', 'letters', 'returns']) for (const c of content[kind] ?? []) for (const ch of c.choices ?? []) {
+    const where = `${kind}[${c.id}].choices[${ch.id}]`, hint = ch.hint ?? '', label = ch.label ?? '';
+    if (/\bkeeps? your \d[\d,]* \w+/i.test(hint)) out.push({ rule: 18, path: where, message: `the hint "${hint}" names a sum the house keeps; the house may hold less or more, say "your money"` });
+    if (/\b(go|ride|sail|travel|come) (along )?with (him|her|them|it)\b/i.test(label)) out.push({ rule: 18, path: where, message: `the label "${label}" has the house travel with an agent, and the house never travels` });
+    if (/\bcosts? (a little |much )?(less|more)\b(?! than \d)/i.test(hint) && !/\d/.test(hint)) out.push({ rule: 18, path: where, message: `the hint "${hint}" says the choice costs less or more and gives no figure` });
   }
   return out;
 }
@@ -407,7 +445,7 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
 
   // rules 11 to 14 (MER-123)
   // Cairo only: Testport is the suites' fixture, written before these rules, and its cards are test inputs
-  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...bonusFailures(content), ...waitFailures(content), ...gainFailures(content), ...bonusOnceFailures(content));
+  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...lastWayFailures(content), ...bonusFailures(content), ...waitFailures(content), ...gainFailures(content), ...bonusOnceFailures(content), ...wordingFailures(content));
 
   // rule 8
   for (const [i, g] of (content.city?.gradients ?? []).entries()) {

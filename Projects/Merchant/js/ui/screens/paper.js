@@ -80,8 +80,11 @@ export function priceLine(app) {
   const { content, state } = app;
   const home = content.city.home, stopId = content.city.firstStop ?? 'damascus';
   const stop = (content.stops ?? []).find(x => x.id === stopId);
-  const plan = cardPlan(state, content, stopId);
-  const good = Object.keys(plan?.cargo ?? {})[0] ?? Object.keys(state.stock).find(g => stop?.sells?.[g]);
+  // The first expedition's card names its own good ("ten loads of linen") and the line under it prices that good, not the sheet's first
+  // cargo, which `proposePlan` orders by its own rule (MER-142). From the second expedition the sheet's proposal is what the card sends (MER-97).
+  const first = !state.log.some(e => e.kind === 'outfit');
+  const good = (first && engine.openingGood(state, content, stopId)) || Object.keys(cardPlan(state, content, stopId)?.cargo ?? {})[0]
+    || Object.keys(state.stock).find(g => stop?.sells?.[g]);
   if (!stop || !good) return null;
   const prices = app.view().prices, name = goodName(content, good);
   const here = prices[home]?.[good], there = prices[stopId]?.[good];
@@ -431,15 +434,33 @@ function pictureSlot(app) {
     asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null);
 }
 
-/** How much of a scroll box's top the tabs of the papers lower in the stack cover (screens.css keeps them stuck there while the paper under them
-    scrolls: MER-132, play a029, the tabs went out of sight above the box on every return). 0 where they scroll with the page or are not drawn. */
+/** The box a raised paper scrolls in: the paper's own box on a laptop or the board (MER-138), else the stack, which is visible, and the page scrolls. */
+export function scrollBoxOf(root) {
+  const sb = qs('.sheet-box', root);
+  return sb && getComputedStyle(sb).overflowY === 'auto' ? sb : qs('.stack-papers', root);
+}
+
+/** MER-138 (play a052, b011, b017): the headline of a raised paper is whole in its box after any scroll the desk made to bring a choice into
+    view (the headline wins where both cannot show, MER-122). */
+export function keepHeadline(sheet, gap = 6) {
+  const title = qs('.sheet-title', sheet), box = sheet.closest('.sheet-box, .stack-papers');
+  if (!title || !box) return;
+  if (getComputedStyle(box).overflowY !== 'auto') return;   // the phones scroll the page: desk.js's revealOnPage and the focus code keep the headline under the bar
+  const over = box.getBoundingClientRect().top + gap - title.getBoundingClientRect().top;
+  if (over > 0) box.scrollTop = Math.max(0, box.scrollTop - over);
+}
+
+/** MER-138: the tabs lie above the paper's box and no longer cover it, so this is 0 unless a stylesheet sticks them again. Kept so the one caller reads true. */
 export function stuckHeight(box) {
   const tabs = box && qs('.edges', box);
   if (!tabs || getComputedStyle(tabs).position !== 'sticky' || !tabs.checkVisibility?.()) return 0;
   return tabs.getBoundingClientRect().height + (parseFloat(getComputedStyle(box).rowGap) || 0);
 }
 
-const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v));
+/** An account cell's words with each figure and its unit ("340 dinars", "4 loads") in one nowrap span, so a long sentence breaks between
+    words and never between a number and what it counts (MER-142: "340 / dinars" at the phone's width). The text is the same text. */
+const keepUnits = text => String(text ?? '').split(/(\d[\d,]* (?:loads?|dinars?)(?![a-z]))/).map((part, i) => (i % 2 ? h('span', { class: 'nb' }, part) : part));
+const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, keepUnits(v)));
 /** The words of an account row for a return. A sum row (an `amount`, no `detail`) shows its total in the last column, so the engine's
     closing ", 527 dinars in all" is dropped from the words (MER-132, play: "Back home / 527 dinars, 527 dinars in all / +527 dinars" said
     the figure three times). What is left is what came home; a row of money alone, whose words would be the figure again, says so in words. */
@@ -455,7 +476,7 @@ export function accountText(r) {
     engine's words carry none in front of a figure the column shows (a loss is U+2212, never a hyphen, and never twice). */
 const sumRow = r => {
   const sum = Number.isFinite(r.amount) && !r.detail;
-  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, accountText(r)),
+  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, keepUnits(accountText(r))),
     sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
 };
 
@@ -525,13 +546,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
   // MER-122: the desk scrolls a raised paper's stack down to its first choice (revealChoice), and on a short frame that leaves the headline
   // above the top (play a062, b070: y=-292). A record opens on its headline, whatever else is cut: this runs after the desk's own pass and
   // again when the sheet's rise ends, which is the desk's second pass.
-  const headline = () => {
-    const box = sheet.closest('.stack-papers'), title = qs('.sheet-title', sheet);
-    if (paper.kind !== 'return' || !box || !title || getComputedStyle(box).overflowY !== 'auto') return;
-    // the tabs stuck over the box's top (stuckHeight) lie over the first part of the window: the headline is put just under them
-    const stuck = stuckHeight(box), want = box.getBoundingClientRect().top + stuck;
-    if (title.getBoundingClientRect().top < want) box.scrollTop = stuck ? Math.max(0, box.scrollTop - (want - title.getBoundingClientRect().top) - 4) : 0;
-  };
+  const headline = () => keepHeadline(sheet);
   queueMicrotask(() => {
     if (!sheet.isConnected) return;
     headline();

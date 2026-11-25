@@ -5,7 +5,7 @@
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { leftHow } from '../../engine/agents.js';
-import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, stuckHeight, RECORD_KINDS } from './paper.js';
+import { front, back, record, edge, paperTitle, happened, num, dinars, returnLead, stuckHeight, RECORD_KINDS, scrollBoxOf, keepHeadline } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
@@ -147,7 +147,8 @@ export function createDesk(app) {
         h('button', { class: 'bar-btn loads', type: 'button', id: 'btn-warehouse', 'aria-haspopup': 'dialog',
           onclick: e => openBook('ledger', e.currentTarget, 'warehouse') }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
       h('div', { class: 'bar-tools' },
-        h('button', { class: 'bar-btn', type: 'button', id: 'btn-map', onclick: () => toMap() }, 'Map'),
+        // MER-138 (play b022): between the acts there is no map table to open, so the button is not offered (it opened nothing and said so in a note)
+        h('button', { class: 'bar-btn', type: 'button', id: 'btn-map', hidden: app.state.phase !== 'desk', onclick: () => toMap() }, 'Map'),
         h('button', { class: 'bar-btn', type: 'button', id: 'btn-ledger', 'aria-haspopup': 'dialog',
           onclick: e => openBook('ledger', e.currentTarget) }, 'Ledger'),
         h('button', { class: 'bar-btn', type: 'button', id: 'btn-notebook', 'aria-haspopup': 'dialog',
@@ -205,13 +206,14 @@ export function createDesk(app) {
       a long body can push the choices below its foot; the stack is then scrolled until the choice shows (the paper's
       head and its edges scroll up out of sight, and scrolling back brings them). */
   function revealChoice(late = null) {
-    const box = qs('.stack-papers', el);
+    const box = scrollBoxOf(el);
     // a late measure (the arrival animation ended, a font came) only finishes the first one: if the stack has been
     // scrolled since, by a hand or a script, it is left where it is
     if (late !== null && box.scrollTop !== late) return;
     if (late === null) box.scrollTop = 0;
     const sheet = qs('.sheet', sheetBox);
-    if (!sheet || getComputedStyle(box).overflowY !== 'auto') return;
+    if (sheet && getComputedStyle(box).overflowY !== 'auto') { if (late === null) revealOnPage(sheet); return; }
+    if (!sheet) return;
     const target = qs('.choice, #btn-next', sheet);
     if (!target) return;
     const boxRect = box.getBoundingClientRect();
@@ -224,11 +226,36 @@ export function createDesk(app) {
       const last = qsa('.choice', sheet).at(-1);
       if (last && last !== target) need = Math.max(need, Math.min(last.getBoundingClientRect().bottom + 6 - boxRect.bottom, target.getBoundingClientRect().top - top));
     }
-    if (need > 0) box.scrollTop += need;   // the head may scroll off: the choice is the part a player cannot do without
+    if (need > 0) box.scrollTop += need;
+    keepHeadline(sheet);   // MER-138: the headline wins where both cannot show (a052, b011, b017: the tabs and the box's edge hid it)
     const at = box.scrollTop;
     // the sheet rises into place for 220 ms, and a font may arrive: measure once more when it lies still
     sheet.addEventListener('animationend', () => revealChoice(at), { once: true });
     if (late === null && document.fonts?.status === 'loading') document.fonts.ready.then(() => { if (sheet.isConnected) revealChoice(at); });
+  }
+
+  /** The upright phone's counterpart of the above (MER-142): the page scrolls, not the stack, and End the season is a bar stuck to the foot of
+      the screen. A return or a loss that ends by asking has its last choice brought clear of that bar, by scrolling the page, as far as the
+      headline can go up and still stay under the top bar (the headline wins where both do not fit, MER-122). A paper that grew by a sentence
+      (the unsold goods, a second line of why) had its second choice under End at 360 x 740 with nothing to say so until the player scrolled. */
+  function revealOnPage(sheet) {
+    // measured only once the sheet lies still: it rises into place for 220 ms, and its boxes sit lower while it does (a first version measured
+    // then and scrolled 130 px, the headline under the top bar). A scroll the player makes while it settles is left alone.
+    const was = window.scrollY, moving = (sheet.getAnimations?.() ?? []).filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => null));
+    Promise.all(moving).then(() => {
+      if (!sheet.isConnected || window.scrollY !== was) return;
+      const endRow = qs('.end-row', el), bar = qs('.topbar');
+      if (!endRow || !bar || getComputedStyle(endRow).position !== 'sticky' || !endRow.checkVisibility()) return;
+      // MER-138: every paper that ends by asking, not only a return or a loss (MER-142): a letter or a card with two choices had the second behind End
+      const last = qsa('.choice', sheet).at(-1), title = qs('.sheet-title', sheet);
+      if (!last) return;
+      // where the page must be scrolled to, from the page's own top (as the stack's scrollTop is reset first): the last choice's foot clear of
+      // End, and no further than leaves the headline a hand under the top bar
+      const y = window.scrollY, endTop = window.innerHeight - endRow.offsetHeight;
+      const clear = last.getBoundingClientRect().bottom + y + 6 - endTop;
+      const most = title ? title.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 8) : clear;
+      window.scrollTo({ top: Math.max(0, Math.min(clear, most)), behavior: 'instant' });
+    });
   }
 
   // what the settled trips came to for the house, from the jump's own lines (`houseNet` of each)
@@ -391,6 +418,10 @@ export function createDesk(app) {
       if (app.state.phase === 'desk') {
         const n = openPapers().length;
         app.say(`${cap(v.season)} ${v.year}. ${COUNT[Math.min(n, 5)]} ${n === 1 ? 'paper' : 'papers'} on your desk.`);
+      } else if (app.state.phase === 'interlude') {
+        // MER-138 (play b021): the page between the acts says what it shows; the region used to keep the last desk's "Winter 1325. Four papers on your desk."
+        const gap = v.interlude;
+        app.say(gap ? `Years pass, ${gap.from} to ${gap.to}. The house carries ${dinars(gap.money ?? app.state.money)} into the next years.` : 'Years pass.');
       }
       if (opts.focus !== 'season' && opts.focus !== 'raise' && opts.focus !== 'back' && opts.focus !== 'next') opts = { ...opts, focus: 'season' };
     }
@@ -403,7 +434,9 @@ export function createDesk(app) {
         (title ?? endBtn).focus();
         // focus alone leaves a heading under the top bar when the page was scrolled to press an edge: bring it to the
         // heading's scroll-margin (screens.css) when its top is within the bar
-        if (title && f === 'raise' && title.getBoundingClientRect().top < bar.getBoundingClientRect().bottom + 8) title.scrollIntoView({ block: 'start' });
+        // MER-138 (play b023): after Open the house the heading was at y=45, under the top bar, with the paper scrolled to its foot: every focus
+        // that lands on a heading brings it below the bar, not only a raise
+        if (title && title.getBoundingClientRect().top < bar.getBoundingClientRect().bottom + 8) title.scrollIntoView({ block: 'start' });
       }
     }
     revealChoice();   // after focus, which scrolls the heading into view and would undo it

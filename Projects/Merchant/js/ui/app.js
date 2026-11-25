@@ -52,6 +52,8 @@ const app = {
   /** The ledger or the notebook over the desk; `section` is where the ledger opens ('warehouse'). */
   openBook: (name, opener, section) => open(name, opener, { section }),
   toTitle: () => goTo('title'),
+  /** The desk drawn again (bar, money, the Accounts paper's lines), for what changed outside it: a sale from the ledger, MER-138. */
+  refreshDesk: () => desk?.draw({}),
   /** The last season is played: the ending's first page (DESIGN 4.12). */
   toEnding: () => goTo(`ending/${ENDING_PAGES[app.state.phase]?.[0] ?? 'notice'}`),
   recallPlan: {},  // expedition id -> 'recall' | 'stay', chosen on the recall page and not yet sent

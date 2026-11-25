@@ -178,7 +178,9 @@ function tripFacts(s, content) {
     if (p.kind !== 'return' || !p.data || !agentOf(content, p.agent)) continue;
     const net = p.data.houseNet, sold = (p.data.account ?? []).some(r => r.label === 'Sold' && r.amount > 0);
     s.flags[`${p.agent}-profit`] = net;
-    if (sold && Number.isFinite(p.data.hoped) && net < p.data.hoped) s.flags[`${p.agent}-undersold`] = 1;
+    // a trip the road robbed already has its blame paper (the lost paper): the clerk does not blame the agent's selling for what the robbers took (MER-139, play problem 10)
+    const robbed = (p.data.account ?? []).some(r => r.label === 'Lost');
+    if (sold && !robbed && Number.isFinite(p.data.hoped) && net < p.data.hoped) s.flags[`${p.agent}-undersold`] = 1;
     const sent = sentSeason(s, p.expedition), given = s.flags[`${p.agent}-widened`];
     if (sent !== null && Number.isFinite(given) && given >= sent) s.flags[`${p.agent}-widened-trip`] = 1;
   }
@@ -289,15 +291,15 @@ function deliver(s, content, idx) {
     if (p.arrive > idx || deskFull(s, room)) { waiting.push(p); continue; }
     if (!letter) continue;
     const ctx = { agent: p.agent, expedition: p.expedition };
-    const trial = structuredClone(s);
-    try { applyAll(trial, content, letter.happened, ctx); }
+    const trial = structuredClone(s), shorts = [];
+    try { applyAll(trial, content, letter.happened, { ...ctx, shorts: [] }); }
     catch (e) { s.log.push({ at: idx, kind: 'dropped', ref: letter.id, reason: e.message }); continue; }
-    applyAll(s, content, letter.happened, ctx); // the trial said it holds
+    applyAll(s, content, letter.happened, { ...ctx, shorts }); // the trial said it holds; a fee over the money takes what there is (MER-141)
     addPaper(s, { kind: 'letter', ref: letter.id, agent: p.agent, expedition: p.expedition, stop: p.stop, standing: p.standing, written: p.written, lag: p.lag, reached: idx });
     const paper = s.desk.pop(), k = s.desk.findIndex(q => q.kind === 'return' && q.expedition === p.expedition);
     s.desk.splice(k < 0 ? s.desk.length : k, 0, paper);                   // ahead of its own trip's return paper
     s.log.push({ at: idx, kind: 'letter', ref: letter.id });
-    const item = moves ? accountItem(s, content, { do: letter.happened, from: letter.id, agent: p.agent, viaCard: letter.title }) : null;
+    const item = moves ? accountItem(s, content, { do: letter.happened, from: letter.id, agent: p.agent, viaCard: letter.title }, shorts) : null;
     if (item) items.push(item);
   }
   s.post = waiting;

@@ -5,7 +5,8 @@ import { h } from '../dom.js';
 import { writeSeason } from '../../engine/market.js';
 import { leftHow } from '../../engine/agents.js';
 import { num, dinars, seal } from './paper.js';
-import { stopName, traitWords, cap } from './outfit.js';
+import * as engine from '../../engine/index.js';
+import { stopName, traitWords, cap, stepper } from './outfit.js';
 
 export const SECTIONS = ['money', 'warehouse', 'road', 'people'];
 const MINUS = '−';
@@ -31,6 +32,21 @@ export function moneyTrail(content, log) {
     return { at: e.at, season: writeSeason(content, e.at), change: known ? e.change - j.change : e.change,
       after: j ? { years: j.years, ...(known ? { change: j.change, trips: j.trips, net: j.net } : {}) } : null };
   });
+}
+
+/** The warehouse sales the log holds (`sale` entries: { at, good, loads, got, cut }), grouped by the season they were made in, as
+    { at, season, lines: ['Sold 10 loads of copper for 255 dinars.'] }, oldest first (MER-138). The ledger prints each under its season's line,
+    and a season still open (no `season` entry yet) gets a line of its own. */
+export function salesBySeason(content, log) {
+  const by = new Map();
+  for (const e of log ?? []) {
+    if (e.kind !== 'sale' || !Number.isInteger(e.at)) continue;
+    const good = (content.goods ?? []).find(g => g.id === e.good), unit = good?.unit ?? 'load';
+    const line = `Sold ${num(e.loads)} ${e.loads === 1 ? unit : `${unit}s`} of ${(good?.name ?? e.good).toLowerCase()} for ${dinars(e.got)}.`;
+    if (!by.has(e.at)) by.set(e.at, { at: e.at, season: writeSeason(content, e.at), lines: [] });
+    by.get(e.at).lines.push(line);
+  }
+  return [...by.values()].sort((a, b) => a.at - b.at);
 }
 
 /** The line for the years of a jump: "10 years passed. The trips made 235 dinars for the house." The money's own figure follows when
@@ -76,6 +92,10 @@ const section = (key, title, ...body) => h('section', { class: 'ledger-sec', id:
 function money(app) {
   const { state, content } = app;
   const trail = moneyTrail(content, state.log);
+  const sales = salesBySeason(content, state.log);
+  const closed = Math.max(-1, ...state.log.filter(e => e.kind === 'season' && Number.isInteger(e.at)).map(e => e.at));
+  const saleLines = at => (sales.find(x => x.at === at)?.lines ?? []).map(l => h('li', { class: 'ledger-sale', dataset: { saleAt: String(at) } }, l));
+  const openSales = sales.filter(x => x.at > closed);
   const loans = state.loans ?? [];
   return section('money', 'Money',
     h('p', { class: 'ledger-line', id: 'ledger-have' }, `The house has ${dinars(state.money)}.`),
@@ -84,26 +104,52 @@ function money(app) {
         `Owes ${dinars(l.principal)} to ${cap(l.from)}, due ${writeSeason(content, l.due)}.`)))
       : h('p', { class: 'ledger-line', id: 'ledger-loans' }, 'The house owes nothing.'),
     h('h4', null, 'The last four seasons'),
-    trail.length
-      ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, trail.flatMap(t => [
+    trail.length || openSales.length
+      ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, [...trail.flatMap(t => [
         h('li', { dataset: { change: String(t.change) } },
           h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`)),
-        ...(t.after ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.after.years) } }, jumpWords(t.after))] : [])]))
+        ...saleLines(t.at),
+        ...(t.after ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.after.years) } }, jumpWords(t.after))] : [])]),
+      // a season not yet closed has no change to show, only what the house sold in it so far
+      ...openSales.flatMap(x => [h('li', { class: 'ledger-open', dataset: { open: String(x.at) } }, h('span', null, `${x.season}, not yet closed`)), ...saleLines(x.at)])])
       : h('p', { class: 'ledger-line', id: 'ledger-trail' }, 'No season has been closed in the books yet.'));
 }
 
-function warehouse(app) {
+/** What a sale quote says in one line: what the loads fetch after the broker's cut and the average a load, or the engine's own reason. */
+function quoteWords(app, q) {
+  if (!q.ok) return q.reason;
+  const home = stopName(app.content, app.content.city.home);
+  return `${q.loads === 1 ? 'This load fetches' : `These ${num(q.loads)} loads fetch`} ${dinars(q.got)} in ${home} after the broker's cut of ${dinars(q.cut)}${q.loads === 1 ? '' : `, ${String(q.average).replace(/\.0$/, '')} ${q.average === 1 ? 'dinar' : 'dinars'} a load on average`}.`;
+}
+
+/** MER-138 (M4d play problem 1, the Sell button over MER-139's sellHome): the warehouse sells in Cairo, a stepper of loads and the quote line for
+    each good the house holds. `loads` keeps each good's number across a redraw. A sale the engine would refuse says its reason under the button
+    before the button is pressed (the quote's own), and a press on it says that reason again, in the live region. */
+function warehouse(app, ui) {
   const { state, content } = app;
   const home = content.city.home;
   const prices = app.view().prices[home] ?? {};
   const held = Object.entries(state.stock).filter(([, q]) => q > 0);
+  const selling = ['desk', 'interlude'].includes(state.phase);
   const rows = held.map(([id, q]) => {
     const good = content.goods.find(g => g.id === id);
     const p = prices[id];
     const unit = good?.unit ?? 'load';
     const price = p?.p == null ? 'no news of the price'
       : `${stopName(content, home)} price ${dinars(p.p)} a ${unit}, ${p.written}, ${p.ageWords}`;
-    return h('li', { dataset: { good: id } }, h('strong', null, `${num(q)} ${q === 1 ? unit : `${unit}s`} of ${good?.name?.toLowerCase() ?? id}`), ' ', h('span', null, price));
+    const n = Math.max(1, Math.min(q, ui.loads[id] ?? Math.min(q, 10)));
+    ui.loads[id] = n;
+    const quote = engine.sellHomeQuote(state, content, id, n);
+    const name = good?.name?.toLowerCase() ?? id;
+    const note = quoteWords(app, quote);
+    return h('li', { dataset: { good: id } },
+      h('strong', null, `${num(q)} ${q === 1 ? unit : `${unit}s`} of ${name}`), ' ', h('span', null, price),
+      selling ? h('div', { class: 'sell-row' },
+        stepper({ key: `sell-${id}`, label: `Loads of ${name} to sell`, value: n, min: 1, max: q, big: 10, text: `${n} ${n === 1 ? unit : `${unit}s`}`,
+          onChange: v => { ui.loads[id] = v; ui.redraw(`step-sell-${id}`); } }),
+        h('button', { class: 'button sell-btn', type: 'button', id: `sell-${id}`, 'aria-describedby': `sell-note-${id}`, 'aria-disabled': quote.ok ? null : 'true',
+          onclick: () => ui.sell(id, n) }, `Sell in ${stopName(content, home)}`),
+        h('p', { class: `sell-note${quote.ok ? '' : ' refused'}`, id: `sell-note-${id}` }, note)) : null);
   });
   return section('warehouse', 'Warehouse',
     rows.length ? h('ul', { class: 'ledger-list', id: 'ledger-stock' }, rows) : h('p', { class: 'ledger-line', id: 'ledger-stock' }, 'The warehouse is empty.'));
@@ -146,7 +192,29 @@ function people(app) {
     h('ul', { class: 'ledger-list ledger-reps', id: 'ledger-reps' }, reps));
 }
 
-/** The body of the ledger panel: the four sections, in order. */
+/** The body of the ledger panel: the four sections, in order. A sale (the Sell button of the warehouse) is made through the engine, saved, and the
+    ledger and the desk's bar are drawn again; the engine's reason for a sale it refuses is printed under that good's button and read out. */
 export function ledgerBody(app) {
-  return [h('div', { class: 'ledger-scroll' }, money(app), warehouse(app), road(app), people(app))];
+  const scroll = h('div', { class: 'ledger-scroll' });
+  const ui = { loads: {},
+    redraw(focusId = null) {
+      const keep = scroll.scrollTop;
+      scroll.replaceChildren(money(app), warehouse(app, ui), road(app), people(app));
+      scroll.scrollTop = keep;
+      if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
+    },
+    sell(good, loads) {
+      try { app.act(s => engine.sellHome(s, app.content, good, loads)); } catch (e) {
+        app.say(String(e.message).replace(/^sellHome: /, ''));   // the engine's own reason, which is the line already under the button
+        return;
+      }
+      app.say(`Sold ${loads} ${loads === 1 ? 'load' : 'loads'}. The house has ${dinars(app.state.money)}.`);
+      app.refreshDesk?.();
+      // the good may be gone from the warehouse: focus goes to what is left, else to the section's heading
+      ui.redraw();
+      const left = document.getElementById(`sell-${good}`) ?? scroll.querySelector('.sell-btn') ?? document.getElementById('ledger-warehouse-h');
+      left?.focus({ preventScroll: true });
+    } };
+  ui.redraw();
+  return [scroll];
 }

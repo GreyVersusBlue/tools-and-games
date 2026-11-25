@@ -36,7 +36,7 @@ export const EXEMPT = {
 // yet. Keyed by the href as the board card writes it; each needs a reason, and
 // check-integrity fails an entry whose page now does link home (delete the line).
 export const HOME_EXEMPT = {
-  'Projects/Merchant/': 'Merchant is being built in its own stream, which adds its own link',
+  'Projects/Merchant/': 'Merchant draws its All games link (href "/") from js/ui/screens/title.js, which a scan of the static page cannot see',
   'Projects/schedule-visualizer-2/': 'SV2 stream adds its own link',
 };
 

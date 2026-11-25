@@ -218,9 +218,11 @@ jobs:
               node tools/lint-content.mjs cairo
               node tools/reading-level.mjs cairo
 
+          # journey takes about 13 minutes on a runner and layout (1,733 cases) about 15; the default 20 cut layout off on #619
           - name: Merchant in a browser
             dir: Projects/Merchant
             install: Tools/board-check
+            timeout: 45
             commands: |
               node test/journey.mjs
               node test/layout.mjs

@@ -8,7 +8,7 @@ import { validateContent } from '../js/engine/content.js';
 import { holds, tripOf, tripLeaf } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { lintContent, tripFailures } from '../tools/lint-content.mjs';
-import { destinations, risk, accountItem, repSentence } from '../js/engine/routes.js';
+import { destinations, risk, accountItem, repSentence, estimate } from '../js/engine/routes.js';
 import { moneyTrail, jumpWords } from '../js/ui/screens/ledger.js';
 import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view } from '../js/engine/index.js';
 import { seasonIndex } from '../js/engine/calendar.js';
@@ -41,7 +41,7 @@ const WOOL = { agent: 'mira', route: 'harbour-hilltown', cargo: { wool: 10 }, pu
 function answer(s, c) {
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
-    const ch = paperChoices(s, c, p.id).find(x => holds(x.requires, s, c));
+    const ch = paperChoices(s, c, p.id).find(x => { try { choose(s, c, p.id, x.id); return true; } catch { return false; } });   // the first choice the house can take (MER-141: one that costs more than it holds is refused)
     s = choose(s, c, p.id, ch.id);
   }
   return s;
@@ -467,9 +467,33 @@ test('MER-125 (1) a settled line names what came back, goods and money, the seas
     // the seasons the line counts are the seasons the paper's account counts
     ok(paper.data.route.includes(`${COUNT_WORD[line.seasons]} seasons`), `quoted ${quoted}: the line says ${line.seasons}, the paper says "${paper.data.route}"`);
   }
-  // a trip home before the years passed came back in the season it names: sent in season 0, away `seasons`, back by the closing of `from`
+  // a trip home before the years passed came back in the season it names: sent in season 0, away `seasons` counting the season it left in (MER-140), back by the closing of `from`
   const j = jumpedTrip(l => l.quoted === false);
-  eq(0 + j.line.seasons, j.s.log.findLast(e => e.kind === 'jump').from, 'the season the line counts to is the one the why sentence names');
+  eq(j.line.seasons - 1, j.s.log.findLast(e => e.kind === 'jump').from, 'the season the line counts to is the one the why sentence names');
+});
+
+test('MER-140 (1) the years-pass page and the paper give a settled trip\'s length as the sheet counted it, "about N seasons", whether it was home before the years passed or settled by quotes', () => {
+  // the line used to say `out` (the closings away) and so one season short of the sheet's five or six; seven calendars, three seeds each
+  let quoted = 0, home = 0;
+  for (let end = 1; end <= 7; end++) for (const seed of [7, 1, 2]) {
+    const c = withActEnd(salty, end);
+    const s0 = game(c, { length: 'acts', seed });
+    const sheet = estimate(s0, c, SALT_BACK).seasons;
+    let s = outfit(s0, c, SALT_BACK);
+    for (let i = 0; i < 20 && s.phase !== 'interlude' && s.phase !== 'recall'; i++) s = step(s, c);
+    const line = s.phase === 'interlude' ? view(s, c).interlude.settled[0] : null;
+    if (line?.result !== 'home') continue;
+    eq(line.seasons, sheet, `end ${end}, seed ${seed}, quoted ${line.quoted}: the page counts the sheet's seasons`);
+    const paper = openSeason(s, c).desk.find(p => p.kind === 'return');
+    if (paper) ok(paper.data.route.includes(`${COUNT_WORD[sheet]} seasons`), `the paper's road line agrees: ${paper.data.route}`);
+    line.quoted ? quoted++ : home++;
+  }
+  ok(quoted >= 6 && home >= 1, `${quoted} settled by quotes and ${home} home before the years passed were compared`);
+});
+
+test('MER-140 (3) the Accounts paper says "+1 coin" and "\u22121 coin" for one, and "coins" for the rest', () => {
+  const says = n => accountItem(game(), calm, { do: [{ money: n }], from: 'x/y' }).changes;
+  eq([says(1), says(-1), says(2), says(-12)], [['+1 coin'], ['\u22121 coin'], ['+2 coins'], ['\u221212 coins']]);
 });
 
 test('MER-125 (3) the money the house carries into the next years is the money on the first desk after the jump, over every calendar and seed that settles a trip', () => {

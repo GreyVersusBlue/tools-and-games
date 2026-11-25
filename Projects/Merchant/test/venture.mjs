@@ -32,7 +32,7 @@ const know = (s, c, stop, good, p, age = 0) => { (s.known[stop] ??= {})[good] = 
 function answer(s, c) {
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
-    const ch = paperChoices(s, c, p.id).find(x => holds(x.requires, s, c));
+    const ch = paperChoices(s, c, p.id).find(x => { try { choose(s, c, p.id, x.id); return true; } catch { return false; } });   // the first choice the house can take (MER-141)
     s = choose(s, c, p.id, ch.id);
   }
   return s;
@@ -409,6 +409,23 @@ test('why, tolls: a toll paid in goods the far end would have bought for more co
   const { paper, s: end } = toReturn(outfit(s, c, { ...WOOL, route: 'harbour-by-saltmarsh-hilltown' }), c);
   void end;
   eq(paper.data.why, 'Tolls were paid in wool that would have sold for more in Hilltown.');
+});
+
+test('MER-139 (2) a toll paid in goods is a row of the account, with the change the keeper gave', () => {
+  // the play's A6: bought 5 pepper, came home with 4 and 114 dinars; the fifth had gone to a toll-keeper, who gave change, and no row said so.
+  // Here the keeper takes 50, the purse is empty and wool is 20 a load at home: three loads go, and 10 dinars of change come back
+  const open = ['spring', 'summer', 'autumn', 'winter'];
+  const leg = (from, to, toll) => ({ from, to, by: 'mules', seasons: 1, opens: open, risk: 0, toll });
+  const c = still(x => {
+    x.stops.find(z => z.id === 'hilltown').sells.wool = { base: 40, depth: 100 };
+    x.routes.push({ id: 'harbour-by-saltmarsh-hilltown', to: 'hilltown', legs: [leg('harbour', 'saltmarsh', 50), leg('saltmarsh', 'hilltown', 5), leg('hilltown', 'harbour', 5)] });
+  });
+  const s = know(game(c), c, 'hilltown', 'wool', 40);
+  const { paper } = toReturn(outfit(s, c, { ...WOOL, route: 'harbour-by-saltmarsh-hilltown' }), c);
+  const goods = paper.data.account.find(r => r.label === 'Paid in goods');
+  ok(goods && goods.detail, 'a row says goods left the cargo for a toll');
+  eq(goods.text, '3 loads of wool given to the toll-keepers, with 10 coins given back as change');  // testport's money is coins
+  eq(goods.amount, 10);
 });
 
 test('MER-112b (1) gapCauses, tolls: the loads a toll took are priced from the price the party found with the house\'s mark on it, not from the news price with none', () => {
