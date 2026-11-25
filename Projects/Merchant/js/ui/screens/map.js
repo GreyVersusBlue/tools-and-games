@@ -6,6 +6,7 @@
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { dinars } from './paper.js';
+import { legSeasons } from '../../engine/agents.js';
 import { createOutfit, firstLegState, freeAgents, stopOf, stopName, cap } from './outfit.js';
 
 const NEAR = 48;                 // a press goes to the closest stop within this many px (DESIGN 4.7)
@@ -162,6 +163,10 @@ export function createMap(app, nav) {
   function drawMap() {
     if (!geo) return;
     const v = app.view();
+    // MER-145 (play a038, a093): the seasons a leg takes are the agent's own (a careful agent rides a long leg a season longer, agents.js legSeasons), and
+    // `left` counts down from that number. Read against the leg's own length, a careful agent's first season out gave 1 - 3/2 < 0, which drew him at
+    // Cairo a season after he had left.
+    const seasonsOf = (x, leg) => legSeasons(content.agents.find(ag => ag.id === x.agent), leg);
     let k = 1, tx = 0, ty = 0;
     if (zoom) {
       const ps = members(zoom).map(s => pos[s.id]);
@@ -199,7 +204,7 @@ export function createMap(app, nav) {
     // the stops a party stands on: their labels choose a place before the rest do, so a trip never costs a stop its name (MER-137)
     const occupied = new Set(app.state.expeditions.map(x => {
       const leg = content.routes.find(r => r.id === x.route)?.legs[x.leg];
-      return leg && (x.status !== 'out' || x.left >= leg.seasons) ? leg.from : null;
+      return leg && (x.status !== 'out' || x.left >= seasonsOf(x, leg)) ? leg.from : null;
     }).filter(Boolean));
     const grp = grouped() ? clusters() : [];
     const drawn = new Set();
@@ -231,15 +236,34 @@ export function createMap(app, nav) {
       const route = content.routes.find(r => r.id === x.route);
       const leg = route?.legs[x.leg];
       if (!leg || !pos[leg.from] || !pos[leg.to]) continue;
-      const total = leg.seasons, done = x.status === 'out' ? Math.max(0, Math.min(1, 1 - x.left / total)) : 0;
+      const total = seasonsOf(x, leg), done = x.status === 'out' ? Math.max(0, Math.min(1, 1 - x.left / total)) : 0;
       const frac = Math.round(done * 20) / 20;
       const key = frac === 0 ? `@${leg.from}` : `${leg.from}>${leg.to}@${frac}`;
       if (!groups.has(key)) groups.set(key, { leg, frac, list: [] });
       groups.get(key).list.push(x);
     }
-    for (const g of groups.values()) {
-      const a = pos[g.leg.from], b = pos[g.leg.to];
-      const x = a.x + (b.x - a.x) * g.frac, y = a.y + (b.y - a.y) * g.frac;
+    // MER-145 (play a025, a072): pieces closer than their own size are one stack, never a smudge of two. Two parties that are not at one place but
+    // at places a piece's width apart (one just out of Cairo on one road and one setting out on another) merge into one token with a count, standing
+    // at the middle of their places. The distance is in screen px, so it is the same test at every frame and zoom.
+    const size = parseFloat(getComputedStyle(el).getPropertyValue('--token')) || 64;
+    const wide = frame.clientWidth * k / 100, tall = frame.clientHeight * k / 100;
+    const place = g => ({ x: pos[g.leg.from].x + (pos[g.leg.to].x - pos[g.leg.from].x) * g.frac, y: pos[g.leg.from].y + (pos[g.leg.to].y - pos[g.leg.from].y) * g.frac });
+    let stacks = [...groups.values()].map(g => ({ ...g, ...place(g), start: g.frac === 0, parts: [g] }));
+    if (wide && tall) {
+      for (let merged = true; merged;) {
+        merged = false;
+        outer: for (let i = 0; i < stacks.length; i++) for (let j = i + 1; j < stacks.length; j++) {
+          const a = stacks[i], b = stacks[j];
+          if (Math.hypot((a.x - b.x) * wide, (a.y - b.y) * tall) >= size) continue;
+          const n = a.parts.length + b.parts.length, wa = a.parts.length / n;
+          stacks.splice(j, 1);
+          stacks[i] = { ...a, list: [...a.list, ...b.list], parts: [...a.parts, ...b.parts], x: a.x * wa + b.x * (1 - wa), y: a.y * wa + b.y * (1 - wa), start: a.start && b.start };
+          merged = true; break outer;
+        }
+      }
+    }
+    for (const g of stacks) {
+      const x = g.x, y = g.y;
       const first = g.list[0], agent = content.agents.find(ag => ag.id === first.agent), n = g.list.length;
       const tok = app.art.get(`token-${g.leg.by}`) ?? app.art.get('token-caravan');
       // a caption names each agent and the season that agent is due home (MER-131); a stack lists them, one line each (MER-137)
@@ -250,7 +274,7 @@ export function createMap(app, nav) {
         ? h('p', { class: 'token-label', 'aria-hidden': 'true' }, seal(first), who(first))
         : h('p', { class: 'token-label token-stack', 'aria-hidden': 'true' }, h('span', { class: 'token-head' }, `${n} expeditions`),
           ...g.list.map(e => h('span', { class: 'token-line' }, seal(e), who(e))));
-      out.push(h('div', { class: 'token', role: 'img', 'aria-label': spoken, style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n), from: g.leg.from, to: g.leg.to, ...(g.frac === 0 ? { start: '1' } : {}) } },
+      out.push(h('div', { class: 'token', role: 'img', 'aria-label': spoken, style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n), from: g.leg.from, to: g.leg.to, ...(g.start ? { start: '1' } : {}) } },
         h('span', { class: 'token-leader', 'aria-hidden': 'true' }),
         h('div', { class: 'token-piece' }, h('img', { src: `assets/art/${tok.file}`, alt: '', width: 64, height: 64 }), n > 1 ? h('span', { class: 'token-count' }, String(n)) : null),
         caption));
@@ -274,7 +298,10 @@ export function createMap(app, nav) {
   function placeLabels(pairs) {
     const fr = frame.getBoundingClientRect();
     if (!fr.width || !fr.height) return;
-    const clip = { left: fr.left, right: fr.right, top: fr.top, bottom: fr.bottom };
+    // MER-145: the picture is shown larger than the pane at the wide frames (css --crop), so its edge may lie outside the stage: a label or caption
+    // must be whole in what shows
+    const sr = stage.getBoundingClientRect();
+    const clip = { left: Math.max(fr.left, sr.left), right: Math.min(fr.right, sr.right), top: Math.max(fr.top, sr.top), bottom: Math.min(fr.bottom, sr.bottom) };
     const walls = [board, unzoom].filter(b => b && !b.hidden).map(b => b.getBoundingClientRect()).filter(r => r.width && r.height);
     const centre = d => { const r = d.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
     const tokens = qsa('.token', layer);
@@ -307,9 +334,11 @@ export function createMap(app, nav) {
       if (!cap.offsetWidth) return;                      // this frame shows no captions
       const pr = pieces[i], cr = cap.getBoundingClientRect(), w = cr.width, hgt = cr.height, cx = pr.left + pr.width / 2, cy = pr.top + pr.height / 2;
       // twelve places round the piece: four centred on a side, then each side with the caption flush to either end of the piece's edge; the
-      // same twelve again 22 px and 44 px further out where the near ones are taken (a crowd of stops round Qus leaves none close in)
+      // same twelve again 22, 44 and 80 px further out where the near ones are taken (a crowd of stops round Qus leaves none close in). MER-145:
+      // never further, so a caption is at most about 90 px from its piece (play a038, a093: a stack's landed 200 px away, by Gao, with its leader
+      // through two labels); where all of them are crowded the one that covers least wins and the caption lies over a label, which the name still beats
       const sides = {};
-      for (const g of [0, 22, 44, 80, 120]) {
+      for (const g of [0, 22, 44, 80]) {
         const at = (name, left, top) => { sides[g ? `${name}+${g}` : name] = { left, top }; };
         at('below', cx - w / 2, pr.bottom + g); at('above', cx - w / 2, pr.top - hgt - g);
         at('right', pr.right + g, cy - hgt / 2); at('left', pr.left - w - g, cy - hgt / 2);

@@ -315,7 +315,11 @@ html.large-text .title-what { display: none; }
 .map-bar .date { font-family: var(--font-paper); font-weight: 700; font-size: var(--step-1); line-height: 1.1; }
 .map-bar .money { font-weight: 600; font-variant-numeric: tabular-nums; }
 .map-stage { position: relative; container-type: size; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; }
-.map-frame { position: relative; width: min(100cqw, 100cqh * 16 / 9); aspect-ratio: 16 / 9; overflow: hidden; background: var(--night); cursor: pointer; }
+/* MER-145 (play a005): at 1920 x 1080 the picture filled 1,286 x 723 of a 1,286 x 1,080 pane, with blurred wood above and below. It is shown --crop times larger than
+   the pane's fit and the pane clips it: the stops lie between 9 and 91 percent across and 19 and 79 percent down, so 1.16 keeps every one of them in view.
+   A grid item wider than its area starts at the area's edge instead of centring, so the overflow is split by hand. */
+.map-frame { --fw: calc(min(100cqw, 100cqh * 16 / 9) * var(--crop, 1.16)); position: relative; width: var(--fw); aspect-ratio: 16 / 9;
+  left: min(0px, calc((100cqw - var(--fw)) / 2)); top: min(0px, calc((100cqh - var(--fw) * 9 / 16) / 2)); overflow: hidden; background: var(--night); cursor: pointer; }
 .map-img, .map-roads { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .map-img { object-fit: contain; }
 .map-roads, .map-layer { transform-origin: 0 0; }
@@ -398,11 +402,11 @@ html.large-text .title-what { display: none; }
 .board-actions { flex: none; display: grid; gap: var(--s2); padding: var(--s2) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); background: var(--paper); box-shadow: 0 -1px 0 var(--paper-shade); }
 .board-actions .reason { margin: 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--madder); }
 .board-actions .reason[hidden] { display: none; }
-@media (min-width: 1600px) { .map-screen { --token: 80px; } }
+@media (min-width: 1600px) { .map-screen { --token: 80px; grid-template-columns: minmax(0, 1fr) minmax(24rem, 28%); } }   /* MER-145: the board needs 28 percent at 1920, and the picture the rest */
 
 /* Phone on its side (DESIGN 5.2): the picture at full height on the left, the list and the board in the column on the right */
 @media (max-height: 500px) {
-  .map-screen { grid-template-columns: minmax(0, 1fr) minmax(14rem, 240px); --token: 48px; }
+  .map-screen { grid-template-columns: minmax(0, 1fr) minmax(14rem, 240px); --token: 48px; --crop: 1; }
   .map-bar { min-height: 44px; height: 44px; padding-top: 0; padding-bottom: 0; }
   .board-body { padding: var(--s2); gap: var(--s2); }
   .board-actions { padding: var(--s2); }
@@ -417,7 +421,7 @@ html.large-text .title-what { display: none; }
 @media (max-width: 700px) and (min-height: 501px) {
   .map-screen { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); --token: 32px; }
   .map-stage { container-type: normal; }
-  .map-frame { width: 100%; }
+  .map-frame { width: 100%; left: 0; top: 0; }
   .board { grid-column: 1; grid-row: 3; }
   .board-body { padding: var(--s3); }
   .board-actions { padding: var(--s2) var(--s3) var(--s3); }
