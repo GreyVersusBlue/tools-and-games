@@ -447,6 +447,10 @@ export function simulateTransition(graph, walkers, options) {
   const count = taking.length;
 
   const cellDelay = new Int32Array(graph.count);
+  // the same seconds as cellDelay, kept by the lane (node × 4 + heading) the
+  // refused step was entering: a jam is one lane's, never the opposite one's
+  // (ARCHITECTURE 23.12). cellDelay[n] is the sum of slotDelay[n × 4 .. n × 4 + 3].
+  const slotDelay = new Int32Array(graph.count * 4);
   const connectionDelay = new Int32Array(graph.links.length);
   let longest = 0;
   let wide = false;
@@ -517,8 +521,10 @@ export function simulateTransition(graph, walkers, options) {
         refusedAt[g] = tick;
         if (wanted === CROSSING) crossingWaited[g] += 1;
         const refused = path.slots[at + 1];
-        if (refused < numbering.stairsStart) cellDelay[refused >> 2] += 1;
-        else connectionDelay[numbering.linkOfSlot[refused - numbering.stairsStart]] += 1;
+        if (refused < numbering.stairsStart) {
+          cellDelay[refused >> 2] += 1;
+          slotDelay[refused] += 1;
+        } else connectionDelay[numbering.linkOfSlot[refused - numbering.stairsStart]] += 1;
         continue;
       }
       if (wanted >= 0) occupancy[wanted] = g;
@@ -568,7 +574,7 @@ export function simulateTransition(graph, walkers, options) {
       positions,
     };
   });
-  return { passingSeconds, marginSeconds, cap, seconds, groups, cellDelay, connectionDelay };
+  return { passingSeconds, marginSeconds, cap, seconds, groups, cellDelay, slotDelay, connectionDelay };
 }
 
 // The same transition under another passing time, or null when the result
@@ -777,16 +783,26 @@ export function bellMoves(day, off) {
   }));
 }
 
-export function teacherWalks(project, graph, options) {
-  const routing = routingGraph(project, graph);
-  const cache = options && options.cache ? options.cache : createRouteCache();
-  const routeOptions = { cache };
+// The one route call a teacher's walk makes (ARCHITECTURE 23.6): teacherWalks
+// and the movement view's teacher picture both ask it, so the line drawn and
+// the figure timed are one route. options: { cache, geometryVersion, ways,
+// avoidConnections, shutCells }, routing's own, each passed on only when
+// given. `routing` is routingGraph's result.
+export function teacherRoute(routing, fromRoomId, toRoomId, options) {
+  const routeOptions = {};
+  if (options && options.cache) routeOptions.cache = options.cache;
   if (options && options.geometryVersion !== undefined) routeOptions.geometryVersion = options.geometryVersion;
   // the scenario's building levers (a stair one way or closed, closed cells)
   // reach a teacher as they reach a class (ARCHITECTURE 18.3)
   if (options && options.ways) routeOptions.ways = options.ways;
   if (options && options.avoidConnections) routeOptions.avoidConnections = options.avoidConnections;
   if (options && options.shutCells) routeOptions.shutCells = options.shutCells;
+  return route(routing, fromRoomId, toRoomId, routeOptions);
+}
+
+export function teacherWalks(project, graph, options) {
+  const routing = routingGraph(project, graph);
+  const routeOptions = { ...(options || {}), cache: options && options.cache ? options.cache : createRouteCache() };
   const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
   const bellRuns = Boolean(options && options.bells === true);
   const runs = runsOf(project).filter((run) => (run.bellsId !== null) === bellRuns);
@@ -803,7 +819,7 @@ export function teacherWalks(project, graph, options) {
       const day = days.get(teacher.id);
       if (!day) continue;
       for (const move of bellMoves(day, off)) {
-        const found = route(routing, move.fromRoomId, move.toRoomId, routeOptions);
+        const found = teacherRoute(routing, move.fromRoomId, move.toRoomId, routeOptions);
         const parts = walkParts(routing, found);
         const walking = parts === null ? null : parts.walking;
         const riding = parts === null ? 0 : parts.riding;
