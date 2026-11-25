@@ -170,11 +170,18 @@
 
 /* Going to and Rooms of subject: under Who, hidden for a teacher (DESIGN 17.3) */
 .mov-ctl--filters {
-  align-content: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-2) var(--s-4);
 }
 
 .mov-ctl--filters[hidden] {
   display: none;
+}
+
+.mov-ctl--filters .mov-ctl__more {
+  margin-top: 0;
 }
 
 .mov-ctl__hint {

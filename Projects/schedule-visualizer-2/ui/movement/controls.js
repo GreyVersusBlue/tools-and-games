@@ -120,12 +120,15 @@ export function controls(options) {
   const subjectId = uid('mov-subject');
   const subjectHint = uid('mov-subject-hint');
   const subjectSelect = h('select', { class: 'field__input mov-ctl__select', id: subjectId, 'aria-describedby': subjectHint, data: { control: 'subject' }, on: { change: () => options.change({ subjectId: subjectSelect.value === ANY_SUBJECT ? null : subjectSelect.value === NO_SUBJECT ? '' : subjectSelect.value }) } });
+  // two blocks side by side, so the row of controls is no taller than Who's
   const filtersBox = h('div', { class: 'mov-ctl mov-ctl--filters', data: { control: 'filters' } },
-    h('span', { class: 'mov-ctl__label', id: uid('mov-going') }, 'Going to'),
-    h('div', { class: 'mov-ctl__more mov-ctl__more--room' }, roomChip, roomPick.element),
-    h('label', { class: 'mov-ctl__label', for: subjectId }, 'Rooms of subject'),
-    subjectSelect,
-    h('p', { class: 'mov-ctl__hint', id: subjectHint }, 'By the room\u2019s subject, not the class\u2019s.'));
+    h('div', { class: 'mov-ctl' },
+      h('span', { class: 'mov-ctl__label', id: uid('mov-going') }, 'Going to'),
+      h('div', { class: 'mov-ctl__more mov-ctl__more--room' }, roomChip, roomPick.element)),
+    h('div', { class: 'mov-ctl' },
+      h('label', { class: 'mov-ctl__label', for: subjectId }, 'Rooms of subject'),
+      subjectSelect,
+      h('p', { class: 'mov-ctl__hint', id: subjectHint }, 'By the room\u2019s subject, not the class\u2019s.')));
 
   // ---- which day type
   const dayId = uid('mov-day');
