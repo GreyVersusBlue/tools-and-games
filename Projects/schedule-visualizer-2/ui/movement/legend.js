@@ -123,7 +123,9 @@ export function legend(options) {
     setOpen(!open);
     if (open) toggle.focus();
   });
-  const line = h('div', { class: 'mov-legend-line', hidden: true, data: { legend: 'dock' } }, lineWords, scaleButton);
+  // the way to the absolute scale, on the docked line too: the card brought out over a small map can be taller than it
+  const lineAbsolute = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'use-absolute-docked' }, on: { click: () => options.scale('absolute') } }, 'Use the absolute scale');
+  const line = h('div', { class: 'mov-legend-line', hidden: true, data: { legend: 'dock' } }, lineWords, lineAbsolute, scaleButton);
 
   function draw() {
     // docked, the card is whole whenever it is brought out: folding is for the card that stands on the map
@@ -175,6 +177,7 @@ export function legend(options) {
     update(project, picture, chosen) {
       element.hidden = picture.mode === 'empty';
       lineWords.textContent = lineText(picture);
+      lineAbsolute.hidden = true;
       draw();
       if (picture.mode === 'empty') return;
       const group = picture.mode === 'single' ? picture.groups[0] : null;
@@ -214,6 +217,7 @@ export function legend(options) {
         : only !== null ? only + (load.max > 0 ? ': fifths of the busiest cell, ' + load.max + '.' : '. Nobody crosses a corridor here.')
           : load.max > 0 ? 'Relative: fifths of the busiest cell on screen, ' + load.max + '.' : 'Relative: fifths of the busiest cell on screen. Nobody crosses a corridor here.';
       scaleLink.hidden = !(picture.filter && load.mode !== 'absolute');
+      lineAbsolute.hidden = scaleLink.hidden;
       zones.textContent = load.zones === 0
         ? 'No exclusion zones.'
         : count(load.zones, 'exclusion zone') + (load.zones === 1 ? ' is' : ' are') + ' left out of the scale.';

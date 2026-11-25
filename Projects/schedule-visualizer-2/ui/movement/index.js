@@ -266,6 +266,8 @@ export const section = {
       showMe(tab) {
         // a teacher's walk that does not fit is shown in Travel time, a failed route in Summary
         const to = tab === 'tables' ? 'tables' : 'summary';
+        // a sheet over the map on a phone: open it, so what is focused is there to be seen
+        ctx.openInspector();
         inspector.select(to);
         memory.tab = to;
         drawPanel();
