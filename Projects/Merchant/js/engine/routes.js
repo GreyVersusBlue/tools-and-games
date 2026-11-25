@@ -1868,7 +1868,7 @@ function settledLine(s, content, x, out, r) {
 }
 
 /** Settles `x` (settle, then bring it home or write it off). Returns its line. */
-function settleAndClose(s, content, x, elapsed, { papers = null, at = null } = {}) {
+function settleAndClose(s, content, x, elapsed, { papers = null, at = null, counted = null } = {}) {
   const wasHome = x.status === 'home';   // it finished its road before the years passed; otherwise the jump settles it by quotes
   const out = settle(s, content, x);
   if (out.result === 'lost') {
@@ -1878,6 +1878,9 @@ function settleAndClose(s, content, x, elapsed, { papers = null, at = null } = {
     return settledLine(s, content, x, out);
   }
   const r = bringHome(s, content, x, { elapsed, at: papers && wasHome ? at : null, reset: !!papers });
+  // the wage is for `elapsed` (the one count the sheet's estimate and the prepay use, DECISIONS 2026-11-21 12:03); the page, the paper's road
+  // line and its card words give the trip's length as the trip counted it, the sheet's `seasons` (MER-140, play problem 11)
+  if (counted) r.elapsed = Math.max(elapsed, counted);
   // a trip that came home while the years passed leaves its paper for the first desk after the interlude (MER-98), with
   // what the sheet hoped and one sentence for the gap, which the interlude page carries too (MER-119)
   const line = { ...settledLine(s, content, x, out, r), quoted: !wasHome };   // `quoted`: settled by the prices it left with, not home before the years passed
@@ -1897,6 +1900,14 @@ function settleAndClose(s, content, x, elapsed, { papers = null, at = null } = {
 export function wholeRoad(content, x) { return roadSeasons(agentOf(content, x.agent), routeOf(content, x.route)); }
 const roadSeasons = (agent, route) => route.legs.reduce((n, l) => n + legSeasons(agent, l), 0);
 
+/** The seasons a trip the jump settles was away, counted as its return paper and the sheet's "about N seasons" count them (MER-140):
+    the closings it has moved in, the season it left in, and the seasons its road still had to run. One already home counts what
+    `returns` would have, `out + 1`. The wage is not this number: it stays the sheet's wage count (`wageCount`), which `jump` charges. */
+function countedSeasons(content, x) {
+  if (!routeOf(content, x.route)) return null;
+  return x.out + 1 + (x.status === 'home' ? 0 : seasonsLeft(content, x));
+}
+
 /** Closing step "jump": the years between acts. Called after `t` has advanced to the first
     season of the next act. Writes one log entry, kind "jump", which the interlude page reads
     (view().interlude). */
@@ -1914,8 +1925,9 @@ export function jump(s, content) {
   for (const x of s.expeditions) {
     norm(x);
     const road = routeOf(content, x.route) ? wholeRoad(content, x) : 0;
+    const counted = countedSeasons(content, x);   // read before `out` is raised to the road: it is what the trip has done so far
     x.out = Math.max(x.out, road);
-    entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out), { papers, at: from }));
+    entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out), { papers, at: from, counted }));
     close(s, content, x, to);
   }
   s.expeditions = [];
