@@ -317,6 +317,13 @@ test('reversed groups give the same answer: the order is waiting, then id as tex
   assert.deepEqual(b.crowd.transitions.map((t) => t.groups.map((g) => [g.groupId, g.total])), a.crowd.transitions.map((t) => t.groups.map((g) => [g.groupId, g.total])));
   const routesOf = (run) => Object.fromEntries(run.routes.groups.map((entry) => [entry.groupId, entry.routes.map((found) => found.cells && found.cells.map((cell) => cell.cell).join(','))]));
   assert.deepEqual(routesOf(b), routesOf(a));
+  // a tie in waiting is where the order shows: West 1 and East 4 both waited 39 s in the first transition (West 4 and East 1 in
+  // the second), and with room for one group in a round it is the lower id, whichever way the project lists them
+  const one = awareOf(project, { groupsMost: 1, rounds: 1 }).run;
+  const oneReversed = awareOf(reversed, { groupsMost: 1, rounds: 1 }).run;
+  assert.deepEqual(oneReversed.changed, one.changed);
+  assert.ok(one.changed.length > 0);
+  assert.deepEqual(one.changed.map((entry) => [entry.period, entry.groupId]), [[0, 'gplan00001'], [1, 'gplan00004']], 'the lower id of the two that waited longest, in each transition');
 });
 
 test('a follower day type uses its base\'s run, and the answer names that run', () => {
