@@ -77,13 +77,15 @@ function loadIn(load, period) {
 
 // The ranking for anything that can say what it wants ranked:
 //   asked = { dayTypeId, bellsId (null for regular bells), groups, load (loads()'s result for those groups),
+//             routes (the run's entry with the walks that do not pass a filter left out; the run's own when left out),
 //             max (the load the relative bands are fifths of),
 //             transition (a period, or null), measure, transitions (transitionsOf()) }
 export function rankedPlaces(project, results, graph, asked) {
   if (!project || !results || !graph || !asked || !asked.load || !results.places) return [];
   const bellsId = typeof asked.bellsId === 'string' ? asked.bellsId : null;
   const run = runOf(results, asked.dayTypeId, bellsId);
-  const day = run.routes;
+  // with a filter set, the routes are the run's with every walk that does not pass it left out (asked.routes, filteredRoutes' entry)
+  const day = asked.routes || run.routes;
   if (!day) return [];
   const shown = new Set(asked.groups.map((group) => group.id));
   // the routes of the groups shown, in the shape routesByRun gives: the run's own entry, under bells when there are some
@@ -149,6 +151,7 @@ function ranking(project, results, graph, picture) {
     dayTypeId: picture.dayTypeId,
     bellsId: picture.bellsId,
     groups: picture.groups,
+    routes: picture.routesEntry || undefined,
     load: picture.load.source,
     max: picture.load.max,
     transition: picture.choice.transition,
@@ -412,9 +415,11 @@ export function hotspotsPanel(env) {
   const allFloors = h('button', { type: 'button', class: 'mov-link', data: { action: 'all-floors' } }, 'Show all floors');
   const elsewhereLine = h('p', { class: 'mov-panel__note', hidden: true, data: { hotspots: 'elsewhere' } }, elsewhereText, ' ', allFloors);
   const notes = h('p', { class: 'mov-panel__note', data: { hotspots: 'notes' } });
+  // with Going to or Rooms of subject set: whose walks the load counts, and that the delay is everyone's (DESIGN 17.7 item 14)
+  const filterHeading = h('h3', { class: 'mov-panel__sub', hidden: true, data: { hotspots: 'heading' } });
   const element = h('div', { class: 'mov-panel', data: { panel: 'hotspots', pulse: 'none' } },
     h('h2', { class: 'mov-panel__title' }, 'Hotspots'),
-    lead, scroller, all, elsewhereLine, notes);
+    filterHeading, lead, scroller, all, elsewhereLine, notes);
 
   // Is this elevator held by a group at the second playback shows?
   const inUse = (carId) => Boolean(env.rides) && env.rides.now.some((rider) => rider.car === carId);
@@ -478,8 +483,12 @@ export function hotspotsPanel(env) {
       lead.textContent = 'Working out the routes.';
     } else if (nothingMeets(state.project, picture.bellsId)) {
       lead.replaceChildren(...nothingMeetsParts(state.project, picture.bellsId).map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
+    } else if (picture.mode === 'teacher') {
+      lead.textContent = 'Hotspots are about groups. Choose Every group, a grade or chosen groups to see them.';
+    } else if (picture.emptyBecause === 'filter') {
+      lead.textContent = 'No walk passes the filter, so there is nothing to rank. Clear the filter to see every walk.';
     } else if (picture.mode === 'empty') {
-      lead.textContent = 'Nothing is shown, so there is nothing to rank. Choose a group, a grade or every group.';
+      lead.textContent = picture.emptyBecause === 'teacher' ? 'Hotspots are about groups. Choose Every group, a grade or chosen groups to see them.' : 'Nothing is shown, so there is nothing to rank. Choose a group, a grade or every group.';
     } else if (rows.length === 0) {
       lead.textContent = elsewhere > 0 ? 'Nobody on screen crosses a corridor on the floor shown, so there is nothing to rank here.' : 'Nobody on screen crosses a corridor, so there is nothing to rank.';
     } else {
@@ -489,6 +498,8 @@ export function hotspotsPanel(env) {
       const floor = picture.floors.length < state.project.building.floors.length && picture.floors.length === 1 ? [' on ', h('bdi', null, picture.floors[0].name)] : [];
       lead.replaceChildren(rows.length === 1 ? 'The one place anyone crosses' : 'The ' + rows.length + ' places anyone crosses', ...floor, (rows.length === 1 ? '' : ', busiest first') + ': ' + who + ' on ', h('bdi', null, picture.dayTypeName), ', each place ' + what + '. Choose a place to see it on the map.');
     }
+    filterHeading.hidden = !picture.filter || picture.mode === 'empty';
+    filterHeading.textContent = picture.filter ? 'Load: walks ' + picture.filter.words.map((part) => part.text).join('') + '. Delay: everyone\u2019s' : '';
     elsewhereLine.hidden = !picture.ready || elsewhere === 0;
     elsewhereText.textContent = count(elsewhere, 'more place') + ' on floors not shown.';
 

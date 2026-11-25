@@ -32,6 +32,8 @@ export function fixFor(project, failure) {
   if ((route.reason === 'no-entry' || route.reason === 'unreachable') && floor) {
     return { label: 'Show the room', hash: '#building/' + floor.id + '?room=' + encodeURIComponent(route.roomId), slot: null };
   }
+  // a teacher's walk is put right in the teacher's rooms or the groups' slots: the Teachers tab is where those are seen
+  if (typeof failure.teacherId === 'string') return { label: 'Fix it in the schedule', hash: '#schedule/teachers', slot: null };
   return { label: 'Fix it in the schedule', hash: '#schedule/groups', slot: { groupId: failure.groupId, dayTypeId: failure.dayTypeId, period: failure.fixPeriod } };
 }
 
@@ -55,7 +57,21 @@ export function summaryPanel(env) {
       h('dd', null, h('span', { class: 'mov-figure__value' }, value), more ? h('span', { class: 'mov-figure__more' }, more) : null));
   }
 
+  // A teacher's day has three figures of its own (DESIGN 17.2): no load, no groups.
+  function drawTeacherFigures(project, picture) {
+    const walks = picture.teacher ? picture.teacher.walks : [];
+    const over = walks.filter((walk) => walk.late === true && walk.failed !== true);
+    const list = [figure('routes', 'Walks drawn', String(picture.drawn), null)];
+    list.push(figure('late', 'Walks that do not fit', over.length === 0 ? 'None' : String(over.length), over.length === 0 ? null : [over.map((walk) => walkNamed(project.settings, picture.transitions, walk.period)).join(', '), '.']));
+    list.push(figure('failed', 'Routes that failed', picture.failed.length === 0 ? 'None' : String(picture.failed.length), picture.failed.length === 0 ? null : ['Named under Route health, below.']));
+    figures.replaceChildren(...list);
+  }
+
   function drawFigures(project, picture) {
+    if (picture.mode === 'teacher') {
+      drawTeacherFigures(project, picture);
+      return;
+    }
     const settings = project.settings;
     const list = [];
     list.push(figure('routes', 'Routes drawn', String(picture.drawn), picture.same > 0 ? [count(picture.same, 'transition') + ' with no walk: the group stays in its room.'] : null));
@@ -124,9 +140,26 @@ export function summaryPanel(env) {
         h('td', null, row.stairs ? 'Yes' : 'No'))))));
   }
 
-  function drawHealth(project, list) {
+  // the teacher's own failed walks, first in the list (they are not a group's, so not in the project-wide list below)
+  function teacherItems(project, picture) {
+    return (picture.mode === 'teacher' ? picture.failed : []).map((failure) => {
+      const whole = { ...failure, dayTypeId: picture.dayTypeId, fixPeriod: failure.route.end === 'to' ? (Number.isInteger(failure.toPeriod) ? failure.toPeriod : failure.period + 1) : failure.period };
+      const fix = fixFor(project, whole);
+      return h('li', { class: 'mov-health__item', data: { teacher: failure.teacherId, day: picture.dayTypeId, period: String(failure.period), reason: failure.route.reason } },
+        h('p', { class: 'mov-health__text' }, parts(failureParts(project, whole, true)), '.'),
+        h('button', { type: 'button', class: 'mov-link', data: { action: 'fix' }, on: { click: () => env.fix(fix) } }, fix.label));
+    });
+  }
+
+  function drawHealth(project, list, picture) {
     const days = ownDayTypes(project).length;
-    health.hidden = list.length === 0;
+    const first = teacherItems(project, picture);
+    health.hidden = list.length === 0 && first.length === 0;
+    if (list.length === 0 && first.length > 0) {
+      healthLine.textContent = count(first.length, 'walk') + (first.length === 1 ? ' of the teacher\u2019s has' : ' of the teacher\u2019s have') + ' no route, and every group\u2019s route was found.';
+      health.replaceChildren(...first);
+      return;
+    }
     if (list.length === 0) {
       healthLine.textContent = project.groups.length === 0
         ? 'There are no groups to check yet.'
@@ -134,9 +167,9 @@ export function summaryPanel(env) {
       health.replaceChildren();
       return;
     }
-    healthLine.textContent = count(list.length, 'route') + ' failed, of every group on ' + (days === 1 ? 'the one day type' : 'all ' + days + ' day types') + '. Each is a transition nobody can be drawn walking.';
+    healthLine.textContent = (first.length > 0 ? count(first.length, 'walk') + ' of the teacher\u2019s and ' : '') + count(list.length, 'route') + ' failed, of every group on ' + (days === 1 ? 'the one day type' : 'all ' + days + ' day types') + '. Each is a transition nobody can be drawn walking.';
     // the routes are counted above; the list is what there is to put right, each thing once
-    health.replaceChildren(...foldHealth(list).map((failure) => {
+    health.replaceChildren(...first, ...foldHealth(list).map((failure) => {
       const fix = fixFor(project, failure);
       const dayType = findDayType(project, failure.dayTypeId);
       const fixed = periodName(project.settings, failure.fixPeriod);
@@ -153,7 +186,7 @@ export function summaryPanel(env) {
       staleLine.hidden = state.stale !== true;
       drawFigures(state.project, state.picture);
       drawGroups(state.project, state.results, state.picture);
-      drawHealth(state.project, state.health);
+      drawHealth(state.project, state.health, state.picture);
     },
     focusHealth() {
       healthTitle.scrollIntoView({ block: 'start' });

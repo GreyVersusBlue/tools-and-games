@@ -159,8 +159,27 @@
   display: none;
 }
 
-.mov-ctl__more--groups .picker {
+.mov-ctl__more--groups .picker,
+.mov-ctl__more--teacher .picker,
+.mov-ctl__more--room .picker {
   width: 11rem;
+}
+
+/* Going to and Rooms of subject: under Who, hidden for a teacher (DESIGN 17.3) */
+.mov-ctl--filters {
+  align-content: start;
+}
+
+.mov-ctl--filters[hidden] {
+  display: none;
+}
+
+.mov-ctl__hint {
+  margin: 0;
+  max-width: 14rem;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  color: var(--ink-2);
 }
 
 .mov-ctl__reason {
@@ -588,6 +607,28 @@
 
 .mov-card__extra:empty {
   display: none;
+}
+
+/* the card's two figures when a filter is set, and a room's one button (the card lets the pointer through, the button does not) */
+.mov-card__figures {
+  margin: var(--s-1) 0 0;
+}
+
+.mov-card__figures[hidden],
+.mov-card__load[hidden],
+.mov-card__into[hidden] {
+  display: none;
+}
+
+.mov-card__into {
+  margin-top: var(--s-2);
+  pointer-events: auto;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .mov-card__into {
+    min-height: 44px;
+  }
 }
 
 /* ---------- Zoom ---------- */

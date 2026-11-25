@@ -76,8 +76,8 @@ import { formatDuration } from '../../engine/findings.js';
 import { findDayType, effectiveDayType } from '../../engine/day-types.js';
 import { findBellSchedule, offPeriods, periodName } from '../../engine/bells.js';
 import { parse } from '../colour.js';
-import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts } from './model.js';
-import { ELEVATOR_KIND, elevatorSettings } from '../../engine/schema.js';
+import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts, fitsOf } from './model.js';
+import { ELEVATOR_KIND, elevatorSettings, findRoom, nameOfRoom } from '../../engine/schema.js';
 import { headCountOf } from '../../engine/crowd.js';
 import { printButtons } from '../prints/index.js';
 import { printButton, openPrintPreview } from '../components/print-preview.js';
@@ -352,6 +352,34 @@ function sheetButton(env, group, options) {
   return button;
 }
 
+// A room as the table names it: its number as typed, or the words of a room with none.
+function roomNameOf(project, roomId) {
+  const room = findRoom(project, roomId);
+  if (!room) return 'a room that is not in the building';
+  return typeof room.number === 'string' && room.number.trim() !== '' ? room.number : nameOfRoom(room, false);
+}
+
+// A teacher's walks, one table (DESIGN 17.2): Period, From, To, Walking, Passing time, Fits. A walk that is not
+// worked out yet says so; one across a free period is "with a free period between" and is never late.
+function teacherTable(project, picture) {
+  const settings = project.settings;
+  const base = uid('teacher-walks');
+  const heads = ['Period', 'From', 'To', 'Walking', 'Passing time', 'Fits'];
+  return h('table', { class: 'table mov-travel__table mov-travel__table--teacher', data: { travel: 'teacher-table' } },
+    h('caption', { class: 'vh' }, picture.teacher.teacher.name + '\u2019s walks on ' + picture.dayTypeName + ', in the order they are made'),
+    h('thead', null, h('tr', null, heads.map((label, index) => h('th', { scope: 'col', class: index >= 3 && index <= 4 ? 'table__num' : null, id: base + '-c' + index }, label)))),
+    h('tbody', null, picture.trail.walks.map((walk) => {
+      const fits = fitsOf(settings, walk);
+      return h('tr', { data: { period: String(walk.period), toPeriod: String(walk.toPeriod), across: String(walk.across.length > 0), fits: fits.state } },
+        h('th', { scope: 'row' }, walkWords(settings, walk.period, walk.toPeriod)),
+        h('td', null, h('bdi', null, roomNameOf(project, walk.fromRoomId))),
+        h('td', null, h('bdi', null, roomNameOf(project, walk.toRoomId))),
+        h('td', { class: 'table__num' }, walk.failed ? 'no route' : walk.walking === null ? 'not worked out yet' : formatDuration(walk.walking + (walk.riding || 0))),
+        h('td', { class: 'table__num' }, walk.passingSeconds === null ? 'not entered' : formatDuration(walk.passingSeconds)),
+        h('td', { class: fits.state === 'no' || fits.state === 'failed' ? 'mov-groups__late' : 'mov-travel__fits', data: { fits: fits.state } }, fits.text));
+    })));
+}
+
 export function tablesPanel(env) {
   const pickId = uid('travel-pick');
   const pick = h('select', { class: 'field__input mov-ctl__select mov-travel__pick', id: pickId, data: { travel: 'pick' } });
@@ -378,7 +406,10 @@ export function tablesPanel(env) {
     bellsId: last.picture.choice.bellsId,
     movement: { project: last.project, results: last.results, graph: last.graph },
   });
-  const tables = h('div', { class: 'mov-travel__tables' }, h('div', { class: 'mov-export__buttons' }, print), oneTitle, picker, oneLine, one, oneRest, dayTitle, whole);
+  const printBox = h('div', { class: 'mov-export__buttons' }, print);
+  // a teacher's walks: one table and the notes under it (hidden except for a teacher)
+  const teacherNotes = h('p', { class: 'mov-panel__note', hidden: true, data: { travel: 'teacher-notes' } });
+  const tables = h('div', { class: 'mov-travel__tables' }, printBox, oneTitle, picker, oneLine, one, oneRest, dayTitle, whole, teacherNotes);
   const element = h('div', { class: 'mov-panel', data: { panel: 'tables' } },
     h('h2', { class: 'mov-panel__title' }, 'Travel time'),
     lead, tables);
@@ -388,10 +419,57 @@ export function tablesPanel(env) {
   let mapTransition = null;
   let pickKey = '';
 
+  function drawTeacher(state) {
+    const project = state.project;
+    const picture = state.picture;
+    const name = picture.teacher.teacher.name;
+    for (const part of [printBox, oneTitle, picker, oneLine, one, oneRest]) part.hidden = true;
+    dayTitle.hidden = false;
+    whole.hidden = false;
+    tables.hidden = false;
+    element.dataset.day = picture.dayTypeId;
+    const trail = picture.trail;
+    const notes = trail ? trail.notes : [];
+    teacherNotes.replaceChildren(...notes.flatMap((note, index) => [index > 0 ? ' ' : null, ...note.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text))]));
+    teacherNotes.hidden = notes.length === 0;
+    dayTitle.replaceChildren(h('bdi', null, name), '\u2019s walks');
+    if (!state.results) {
+      lead.textContent = 'Working out the routes.';
+      whole.replaceChildren();
+      whole.hidden = true;
+      dayTitle.hidden = true;
+      return;
+    }
+    if (nothingMeets(project, picture.bellsId)) {
+      lead.replaceChildren(...nothingMeetsParts(project, picture.bellsId).map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
+      whole.hidden = true;
+      dayTitle.hidden = true;
+      return;
+    }
+    if (!trail || trail.walks.length === 0) {
+      lead.replaceChildren(h('bdi', null, name), ' has no walk between rooms on ', h('bdi', null, picture.dayTypeName), ', so there is no table.');
+      whole.replaceChildren();
+      whole.hidden = true;
+      dayTitle.hidden = true;
+      return;
+    }
+    lead.replaceChildren(h('bdi', null, name), '\u2019s walks on ', h('bdi', null, picture.dayTypeName), ', in the order they are made. Walking is the time in an empty corridor: the crowd is not counted. A walk with a free period between is never late.');
+    whole.setAttribute('aria-label', name + '\u2019s walks on ' + picture.dayTypeName);
+    whole.replaceChildren(teacherTable(project, picture));
+  }
+
   function draw(state) {
     const project = state.project;
     const picture = state.picture;
     const results = state.results;
+    if (picture.mode === 'teacher') {
+      drawTeacher(state);
+      return;
+    }
+    // back from a teacher's day: what that took away is put back, and the whole-day title is the table's own again
+    printBox.hidden = false;
+    teacherNotes.hidden = true;
+    dayTitle.textContent = 'The whole day';
     // the bells, the walks and the name all from the one day type that answers for the one chosen
     const day = travelDay(project, picture.choice.dayTypeId, picture.choice.bellsId);
     const transitions = transitionsOf(project, day.id, day.bellsId);
@@ -487,6 +565,12 @@ export function tablesPanel(env) {
     update(state) {
       last = state;
       draw(state);
+    },
+    // "Show me" for a teacher's walk that does not fit: the table it is in
+    focusTable() {
+      const target = last && last.picture.mode === 'teacher' ? whole : one;
+      target.scrollIntoView({ block: 'start' });
+      target.focus();
     },
   };
 }

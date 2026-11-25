@@ -3,7 +3,7 @@
 // transition, the two drawing options and Clear. Every change applies at
 // once; nothing here is staged.
 //
-//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe(), folded, fold(folded) })
+//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe(tab), folded, fold(folded) })
 //     -> { element, update(project, picture, sentence), folded, setFolded(folded) }
 //
 // The pieces are built once and filled in on update, so a control keeps the
@@ -21,8 +21,15 @@ import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { formatDuration } from '../../engine/findings.js';
 import { describeDayType } from '../../engine/day-types.js';
-import { bellSchedulesOf } from '../../engine/schema.js';
-import { COMPARE_LIMIT, COMPARE_REASON, compareFull, gradesOf } from './model.js';
+import { bellSchedulesOf, findById, findRoom, nameOfRoom } from '../../engine/schema.js';
+import { COMPARE_LIMIT, COMPARE_REASON, compareFull, gradesOf, teacherColourOf } from './model.js';
+
+// "Room 204" in the order the building's numbers sort ("2" before "10", "1A" with the ones)
+const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+// Subject select values: the three ways a subject filter is not a subject's id
+const ANY_SUBJECT = '-any';
+const NO_SUBJECT = '-none';
 
 function label(text, id) {
   return h('span', { class: 'mov-ctl__label', id }, text);
@@ -34,7 +41,10 @@ export function controls(options) {
 
   // ---- the sentence
   const words = h('span', { class: 'mov-line__words' });
-  const showMe = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'show-me' }, on: { click: () => options.showMe() } }, 'Show me');
+  let showTab = 'summary';
+  const showMe = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'show-me' }, on: { click: () => options.showMe(showTab) } }, 'Show me');
+  // a filter that matches nothing: the one way out, beside the sentence that says so
+  const clearFilter = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'clear-filter' }, on: { click: () => options.change({ toRoomId: null, subjectId: null }) } }, 'Clear the filter');
   const boxId = uid('mov-controls');
   let folded = options.folded === true;
   const changeButton = h('button', { type: 'button', class: 'mov-link mov-change', 'aria-expanded': String(!folded), 'aria-controls': boxId, data: { action: 'change' } }, 'Change');
@@ -42,7 +52,7 @@ export function controls(options) {
     setFolded(!folded);
     if (options.fold) options.fold(folded);
   });
-  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', changeButton);
+  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', changeButton);
 
   // ---- who
   const whoId = uid('mov-who');
@@ -51,7 +61,7 @@ export function controls(options) {
     labelledBy: whoId,
     value: 'all',
     onChange: (value) => options.change({ who: value }),
-    options: [{ value: 'all', label: 'Every group' }, { value: 'grade', label: 'A grade' }, { value: 'groups', label: 'Chosen groups' }],
+    options: [{ value: 'all', label: 'Every group' }, { value: 'grade', label: 'A grade' }, { value: 'groups', label: 'Chosen groups' }, { value: 'teacher', label: 'A teacher' }],
   });
   const gradeSelect = h('select', { class: 'field__input mov-ctl__select', 'aria-label': 'Grade', data: { control: 'grade' }, on: { change: () => options.change({ grade: gradeSelect.value }) } });
   const gradeBox = h('div', { class: 'mov-ctl__more', hidden: true }, gradeSelect);
@@ -70,7 +80,52 @@ export function controls(options) {
   pick.input.setAttribute('aria-label', 'Add a group to compare');
   pick.input.dataset.control = 'add-group';
   const groupsBox = h('div', { class: 'mov-ctl__more mov-ctl__more--groups', hidden: true }, chips, pick.element, reason);
-  const whoBox = h('div', { class: 'mov-ctl', data: { control: 'who' } }, label('Who', whoId), who.element, gradeBox, groupsBox);
+
+  // ---- a teacher: the general picker, the one chosen above it ("Ms. Okafor · Mathematics · 204")
+  const teacherChip = h('ul', { class: 'chips mov-chips', 'aria-label': 'Teacher shown', hidden: true, data: { control: 'teacher-chip' } });
+  const teacherPick = picker({
+    listLabel: 'Teachers',
+    placeholder: 'Choose a teacher',
+    emptyText: 'No teacher to choose.',
+    options: () => (project ? project.teachers.map((teacher) => ({ id: teacher.id, label: teacher.name, detail: teacherDetail(teacher) })) : []),
+    onPick: (option) => options.change({ who: 'teacher', teacherId: option.id }),
+  });
+  teacherPick.input.setAttribute('aria-label', 'Choose a teacher');
+  teacherPick.input.dataset.control = 'teacher';
+  const teacherBox = h('div', { class: 'mov-ctl__more mov-ctl__more--teacher', hidden: true }, teacherChip, teacherPick.element);
+  const whoBox = h('div', { class: 'mov-ctl', data: { control: 'who' } }, label('Who', whoId), who.element, gradeBox, groupsBox, teacherBox);
+
+  function teacherDetail(teacher) {
+    const subject = typeof teacher.subjectId === 'string' ? findById(Array.isArray(project.subjects) ? project.subjects : [], teacher.subjectId) : null;
+    const rooms = (Array.isArray(teacher.roomIds) ? teacher.roomIds : []).map((id) => findRoom(project, id)).filter(Boolean).map((room) => (typeof room.number === 'string' && room.number.trim() !== '' ? room.number : nameOfRoom(room, false)));
+    return [subject ? subject.name : null, rooms.length > 0 ? rooms.join(', ') : null].filter((part) => part !== null).join(' \u00b7 ');
+  }
+
+  // ---- Going to and Rooms of subject (DESIGN 17.3, 17.7 item 15): the walks into a room, or into rooms of a subject
+  const roomChip = h('ul', { class: 'chips mov-chips', 'aria-label': 'Room walked into', hidden: true, data: { control: 'room-chip' } });
+  const roomPick = picker({
+    listLabel: 'Rooms',
+    placeholder: 'Any room',
+    emptyText: 'No room matches.',
+    options: () => {
+      if (!project) return [];
+      const rooms = project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room').map((room) => ({ room, floor })));
+      rooms.sort((a, b) => collator.compare(a.room.number, b.room.number));
+      return [{ id: '', label: 'Any room' }, ...rooms.map(({ room, floor }) => ({ id: room.id, label: nameOfRoom(room, false), detail: floor.name }))];
+    },
+    onPick: (option) => options.change({ toRoomId: option.id === '' ? null : option.id }),
+  });
+  roomPick.input.setAttribute('aria-label', 'Going to: choose a room');
+  roomPick.input.dataset.control = 'going-to';
+  const subjectId = uid('mov-subject');
+  const subjectHint = uid('mov-subject-hint');
+  const subjectSelect = h('select', { class: 'field__input mov-ctl__select', id: subjectId, 'aria-describedby': subjectHint, data: { control: 'subject' }, on: { change: () => options.change({ subjectId: subjectSelect.value === ANY_SUBJECT ? null : subjectSelect.value === NO_SUBJECT ? '' : subjectSelect.value }) } });
+  const filtersBox = h('div', { class: 'mov-ctl mov-ctl--filters', data: { control: 'filters' } },
+    h('span', { class: 'mov-ctl__label', id: uid('mov-going') }, 'Going to'),
+    h('div', { class: 'mov-ctl__more mov-ctl__more--room' }, roomChip, roomPick.element),
+    h('label', { class: 'mov-ctl__label', for: subjectId }, 'Rooms of subject'),
+    subjectSelect,
+    h('p', { class: 'mov-ctl__hint', id: subjectHint }, 'By the room\u2019s subject, not the class\u2019s.'));
 
   // ---- which day type
   const dayId = uid('mov-day');
@@ -117,7 +172,7 @@ export function controls(options) {
   const clear = h('button', { type: 'button', class: 'btn mov-clear', data: { action: 'clear' }, on: { click: () => options.clear() } }, 'Clear');
   const optionsBox = h('div', { class: 'mov-ctl mov-ctl--options' }, label('Show', null), h('div', { class: 'mov-ctl__checks' }, labels.element, constant.element), clear);
 
-  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, dayBox, bellsBox, stripBox, optionsBox);
+  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, filtersBox, dayBox, bellsBox, stripBox, optionsBox);
   const element = h('div', { class: 'mov-top', data: { folded: String(folded) } }, line, box);
 
   function setFolded(next) {
@@ -166,6 +221,38 @@ export function controls(options) {
     if (focused && !chips.contains(document.activeElement)) pick.input.focus();
   }
 
+  function drawTeacher() {
+    const choice = picture.choice;
+    teacherBox.hidden = choice.who !== 'teacher';
+    filtersBox.hidden = choice.who === 'teacher';
+    const teacher = choice.teacherId === null ? null : findById(project.teachers, choice.teacherId);
+    teacherChip.hidden = !teacher;
+    teacherChip.replaceChildren(...(teacher ? [h('li', { class: 'chip', data: { teacher: teacher.id } },
+      h('span', { class: 'mov-swatch', style: 'background:' + (teacherColourOf(project, teacher) || 'var(--ink)') }),
+      h('bdi', null, teacher.name))] : []));
+    teacherPick.input.placeholder = teacher ? 'Choose another teacher' : project.teachers.length === 0 ? 'No teachers yet' : 'Choose a teacher';
+  }
+
+  function drawFilters() {
+    const choice = picture.choice;
+    const room = choice.toRoomId === null ? null : findRoom(project, choice.toRoomId);
+    const focused = roomChip.contains(document.activeElement);
+    roomChip.hidden = !room;
+    roomChip.replaceChildren(...(room ? [h('li', { class: 'chip', data: { room: room.id } },
+      h('bdi', null, nameOfRoom(room, false)),
+      h('button', {
+        type: 'button',
+        class: 'chip__remove',
+        'aria-label': 'Stop showing only walks into ' + nameOfRoom(room, false),
+        title: 'Any room',
+        on: { click: () => options.change({ toRoomId: null }) },
+      }, icon('close', 14)))] : []));
+    // a chip that was taken off took the focus with it
+    if (focused && !roomChip.contains(document.activeElement)) roomPick.input.focus();
+    const subjects = Array.isArray(project.subjects) ? project.subjects : [];
+    fill(subjectSelect, [[ANY_SUBJECT, 'Any subject'], ...subjects.map((subject) => [subject.id, subject.name]), [NO_SUBJECT, 'No subject']], choice.subjectId === null ? ANY_SUBJECT : choice.subjectId === '' ? NO_SUBJECT : choice.subjectId);
+  }
+
   function drawStrip() {
     const key = JSON.stringify(picture.transitions.map((each) => [each.short, each.times, each.name, each.seconds]));
     if (key !== stripKey) {
@@ -206,12 +293,16 @@ export function controls(options) {
       const choice = picture.choice;
       words.replaceChildren(...sentence.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
       showMe.hidden = !sentence.showMe;
+      showTab = sentence.showTab || 'summary';
+      clearFilter.hidden = sentence.clearFilter !== true;
       who.set(choice.who);
       const grades = gradesOf(project);
       gradeBox.hidden = choice.who !== 'grade';
       fill(gradeSelect, grades.map((grade) => [grade, grade === '' ? 'No grade' : 'Grade ' + grade]), choice.grade);
       groupsBox.hidden = choice.who !== 'groups';
       drawChips();
+      drawTeacher();
+      drawFilters();
       // a day type that is the same as another says so: "C Day (same as A Day)"
       fill(daySelect, project.dayTypes.map((dayType) => {
         const follows = describeDayType(project, dayType.id).follows;

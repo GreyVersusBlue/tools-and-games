@@ -21,6 +21,12 @@
 // are still the old scale's; the toggle shows what was just chosen.
 //
 // With one group on screen there is no load colouring, and the card says so.
+// So with a teacher: the line is the teacher's subject colour, ink with none,
+// and a dashed one is a walk with a free period between (DESIGN 17.2).
+//
+// With Going to or Rooms of subject set the card says whose walks it counts
+// ("Load of walks into Room 204") and that the relative scale is of those
+// walks only, with a link to the absolute scale (DESIGN 17.7 item 13).
 
 import { h, uid } from '../components/dom.js';
 import { choice as segmented } from '../components/choice.js';
@@ -42,13 +48,25 @@ const BAND_NAMES = ['quiet', '', '', '', 'busy'];
 // 177 · Relative". With one group there is no load colouring to give.
 export function lineText(picture) {
   if (!picture || picture.mode === 'empty') return '';
+  if (picture.mode === 'teacher') return 'One teacher \u00b7 dashed: with a free period between';
   if (picture.mode === 'single') return 'One group · its own colour';
   const load = picture.load;
   if (!load) return 'Load';
+  if (picture.filter) {
+    const first = load.edges[0];
+    const last = load.edges[load.edges.length - 1];
+    const range = !(load.max > 0) && load.mode !== 'absolute' ? 'nobody crosses' : first.from + ' to ' + (last.to === null ? last.from + ' or more' : last.to);
+    return loadTitle(picture) + ' \u00b7 ' + range + ' \u00b7 ' + (load.mode === 'absolute' ? 'Absolute' : 'Relative to these walks');
+  }
   const first = load.edges[0];
   const last = load.edges[load.edges.length - 1];
   const range = !(load.max > 0) && load.mode !== 'absolute' ? 'nobody crosses' : first.from + ' to ' + (last.to === null ? last.from + ' or more' : last.to);
   return 'Load · ' + range + ' · ' + (load.mode === 'absolute' ? 'Absolute' : 'Relative');
+}
+
+// "Load of walks into Room 204" with a filter set, else "Load".
+export function loadTitle(picture) {
+  return picture && picture.filter ? 'Load of walks ' + picture.filter.words.map((part) => part.text).join('') : 'Load';
 }
 
 export function legend(options) {
@@ -75,8 +93,10 @@ export function legend(options) {
   });
   const scaleBox = h('div', { class: 'mov-legend__row' }, h('span', { class: 'vh', id: scaleId }, 'The colour scale'), scale.element);
   const scaleNote = h('p', { class: 'mov-legend__note', data: { legend: 'scale' } });
+  // with a filter set and the relative scale: the way to the scale that compares
+  const scaleLink = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'use-absolute' }, on: { click: () => options.scale('absolute') } }, 'Use the absolute scale');
   const zones = h('p', { class: 'mov-legend__note', data: { legend: 'zones' } });
-  const body = h('div', { class: 'mov-legend__body' }, what, bands, measureBox, scaleBox, scaleNote, zones);
+  const body = h('div', { class: 'mov-legend__body' }, what, bands, measureBox, scaleBox, scaleNote, scaleLink, zones);
   const single = h('p', { class: 'mov-legend__what', hidden: true, data: { legend: 'single' } });
   // the card can be folded to its title, to see the map under it; docked, the
   // same button puts the card away and leaves the line
@@ -158,9 +178,14 @@ export function legend(options) {
       draw();
       if (picture.mode === 'empty') return;
       const group = picture.mode === 'single' ? picture.groups[0] : null;
-      body.hidden = Boolean(group) || !picture.load;
-      single.hidden = !group;
-      title.textContent = group ? 'One group' : 'Load';
+      const teacher = picture.mode === 'teacher' ? picture.teacher : null;
+      body.hidden = Boolean(group) || Boolean(teacher) || !picture.load;
+      single.hidden = !group && !teacher;
+      title.textContent = teacher ? 'One teacher' : group ? 'One group' : loadTitle(picture);
+      if (teacher) {
+        single.replaceChildren(h('span', { class: 'mov-swatch', style: 'background:' + (teacher.colour || 'var(--ink)') }), ' ', h('bdi', null, teacher.teacher.name), ': the line is ', teacher.colour ? 'the teacher\u2019s subject colour' : 'ink, since the teacher has no subject', '. A dashed line is a walk with a free period between. Corridors are not coloured by load.');
+        return;
+      }
       if (group) {
         single.replaceChildren(h('span', { class: 'mov-swatch', style: 'background:' + group.colour }), ' ', h('bdi', null, group.name), ': the line is the group’s own colour. Corridors are coloured by load when more than one group is shown.');
         return;
@@ -183,9 +208,12 @@ export function legend(options) {
       measureBox.hidden = load.measure === 'transition';
       measure.set(load.measure === 'total' ? 'total' : 'busiest');
       scale.set(chosen && (chosen.mode === 'absolute' || chosen.mode === 'relative') ? chosen.mode : load.mode);
+      const only = picture.filter ? 'Relative to ' + 'walks ' + picture.filter.words.map((part) => part.text).join('') + ' only' : null;
       scaleNote.textContent = load.mode === 'absolute'
         ? 'Absolute: fixed loads, set in Project, so two pictures compare.'
-        : load.max > 0 ? 'Relative: fifths of the busiest cell on screen, ' + load.max + '.' : 'Relative: fifths of the busiest cell on screen. Nobody crosses a corridor here.';
+        : only !== null ? only + (load.max > 0 ? ': fifths of the busiest cell, ' + load.max + '.' : '. Nobody crosses a corridor here.')
+          : load.max > 0 ? 'Relative: fifths of the busiest cell on screen, ' + load.max + '.' : 'Relative: fifths of the busiest cell on screen. Nobody crosses a corridor here.';
+      scaleLink.hidden = !(picture.filter && load.mode !== 'absolute');
       zones.textContent = load.zones === 0
         ? 'No exclusion zones.'
         : count(load.zones, 'exclusion zone') + (load.zones === 1 ? ' is' : ' are') + ' left out of the scale.';

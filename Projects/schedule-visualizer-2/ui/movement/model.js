@@ -624,6 +624,14 @@ function roomPartsOf(room) {
   return named === 'Room ' + number ? [{ text: 'Room ' }, { text: number, name: true }] : [{ text: number, name: true }];
 }
 
+// A room's card for a tap on one of its cells (a room is not a corridor, so cellCard has none): { roomId, parts, floorName },
+// or null for a cell that is no room's.
+export function roomCard(project, floorId, cell) {
+  const floor = project.building.floors.find((each) => each.id === floorId);
+  const space = floor ? floor.spaces.find((each) => each.kind === 'room' && each.cells.includes(cell)) : null;
+  return space ? { roomId: space.id, parts: roomPartsOf(space), floorName: floor.name } : null;
+}
+
 function roomPartsById(project, roomId) {
   const room = findRoom(project, roomId);
   return room ? roomPartsOf(room) : [{ text: 'a room that is not in the building' }];

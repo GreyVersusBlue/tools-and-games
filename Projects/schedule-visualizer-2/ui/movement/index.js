@@ -68,7 +68,8 @@ import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash, openAddress } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
 import { findBellSchedule } from '../../engine/bells.js';
-import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, createAsker } from './model.js';
+import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, roomCard, standingOf, failedSentence, createAsker, teacherColourOf } from './model.js';
+import { readMovementAddress } from './address.js';
 import { slotAt, placeOf, FIT_MARGIN } from '../surface/plan-layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
@@ -114,6 +115,14 @@ export const CONTROLS_OPEN_FROM = '(min-width: 900px)';
 export const PHONE = '(max-width: 640px)';
 export const REFUSED_CHOICE = 'This browser did not keep that choice: it lasts until the page is closed.';
 
+// An address's choice laid over the one the view had (ARCHITECTURE 23.12). A teacher's address says a whole
+// day or one transition (none when it names none); a room's leaves a teacher's day for the groups it filters.
+export function withAddress(base, named) {
+  if (!named) return base;
+  if (named.who === 'teacher') return { ...base, ...named, transition: named.transition === undefined ? null : named.transition };
+  return { ...base, ...named, who: base.who === 'teacher' ? 'all' : base.who };
+}
+
 function first(project) {
   const one = periodWords(project.settings).one;
   const then = figures(project).rooms === 0 ? 'Draw the building and its rooms first.' : 'Add a group and give it its rooms first.';
@@ -145,10 +154,13 @@ export const section = {
     // Present (P) and the keys of presentation mode, which ./present.js answers
     for (const key of PRESENT_KEYS) ctx.shortcuts.add({ id: key.id, group: key.group, does: key.does, shown: key.shown });
   },
-  mount(ctx) {
+  mount(ctx, rest) {
     const store = ctx.store;
     if (memory.projectId !== store.project.id) memory.parked = null;
-    const remembered = memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project);
+    // an address that names a choice (a teacher's day, walks into a room: ./address.js) lays it over the choice the view had
+    const named = readMovementAddress(store.project, rest);
+    const had = memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project);
+    const remembered = withAddress(had, named);
     let choice = settleChoice(store.project, remembered);
     noticeBells(remembered.bellsId);
     // the last answer, the project it was worked out for, and that project's graph
@@ -186,7 +198,7 @@ export const section = {
       }),
     });
     const { view, canvas, layer, stage } = plan;
-    const card = cellCardView();
+    const card = cellCardView({ showInto: (roomId) => showWalksInto(roomId) });
 
     const env = {
       ctx,
@@ -247,14 +259,18 @@ export const section = {
       },
       remove: (groupId) => change({ groupIds: choice.groupIds.filter((id) => id !== groupId) }),
       clear() {
-        change({ who: 'groups', groupIds: [], transition: null });
+        // Clear empties the view: the filters and a teacher go with the groups (spec 7.1)
+        change({ who: 'groups', groupIds: [], transition: null, teacherId: null, toRoomId: null, subjectId: null });
         ctx.announce('Cleared: nothing is shown.');
       },
-      showMe() {
-        inspector.select('summary');
-        memory.tab = 'summary';
+      showMe(tab) {
+        // a teacher's walk that does not fit is shown in Travel time, a failed route in Summary
+        const to = tab === 'tables' ? 'tables' : 'summary';
+        inspector.select(to);
+        memory.tab = to;
         drawPanel();
-        panels.summary.focusHealth();
+        if (to === 'summary') panels.summary.focusHealth();
+        else panels.tables.focusTable();
       },
     });
     const key = legend({
@@ -369,6 +385,13 @@ export const section = {
       clearPoint();
       refresh();
       reopen(held);
+    }
+
+    // the card's "Show walks into Room 204": the filter, nothing else changed
+    function showWalksInto(roomId) {
+      change({ toRoomId: roomId });
+      const room = store.project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === roomId);
+      ctx.announce('Showing walks into ' + (room && typeof room.number === 'string' && room.number.trim() !== '' ? 'room ' + room.number : 'that room') + '.');
     }
 
     // A card the reader tapped open, and putting it back on its cell after
@@ -534,7 +557,10 @@ export const section = {
       let colour = lineColours.get(groupId);
       if (!colour) {
         const group = state.project.groups.find((each) => each.id === groupId);
-        colour = group && parse(group.colour) ? readable(group.colour, theme.corridor, 3) : theme.ink2;
+        // a teacher's walks are in the teacher's subject colour, else in ink
+        const teacher = !group && picture && picture.teacher && picture.teacher.teacher.id === groupId ? picture.teacher : null;
+        if (teacher) colour = teacher.colour && parse(teacher.colour) ? readable(teacher.colour, theme.corridor, 3) : theme.ink;
+        else colour = group && parse(group.colour) ? readable(group.colour, theme.corridor, 3) : theme.ink2;
         lineColours.set(groupId, colour);
       }
       return colour;
@@ -547,7 +573,7 @@ export const section = {
       if (!picture || !state) return;
       const theme = given.theme;
       themeColours(theme);
-      const alone = picture.groups.length === 1 ? lineColour(picture.groups[0].id, theme) : null;
+      const alone = picture.mode === 'teacher' ? lineColour(picture.teacher.teacher.id, theme) : picture.groups.length === 1 ? lineColour(picture.groups[0].id, theme) : null;
       const linkWidth = Math.max(2, Math.min(4, view.size * 0.14));
       for (const link of picture.links) {
         const a = given.point(link.a.floorId, link.a.cell);
@@ -578,6 +604,18 @@ export const section = {
       const found = world ? slotAt(world, x, y) : null;
       const info = found && state ? cellCard(state.project, state.results, state.graph, picture, found.slot.floor.id, found.cell) : null;
       if (!info) {
+        // a tapped room offers the one button that shows walks into it (not for a teacher: no filter there)
+        const room = source === 'tap' && found && state && picture.mode !== 'teacher' ? roomCard(state.project, found.slot.floor.id, found.cell) : null;
+        if (room) {
+          point = { floorId: found.slot.floor.id, cell: found.cell, source, picture };
+          plan.hover(point.floorId, point.cell);
+          const at = view.toScreen(x, y);
+          card.showRoom(room, { x: at.x, y: at.y, size: view.size });
+          card.element.dataset.floor = point.floorId;
+          card.element.dataset.cell = String(point.cell);
+          plan.paint();
+          return { found, info: null, room };
+        }
         clearPoint();
         return { found, info: null };
       }
@@ -685,6 +723,14 @@ export const section = {
       element,
       // where the shell's "to the surface" goes: the map
       focus: () => plan.focus(),
+      // the same section at another address (`#movement/teacher/…`, `#movement/to/…`): the choice it names is made
+      // here, nothing is mounted again, and Back goes to where the link was followed from. An address that names
+      // nothing (`#movement`, or something the project no longer has) leaves the view as it is.
+      route(next) {
+        const named = readMovementAddress(store.project, next);
+        if (named) change(withAddress(choice, named));
+        return true;
+      },
       update() {
         ask();
         refresh();

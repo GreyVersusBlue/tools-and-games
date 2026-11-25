@@ -101,6 +101,8 @@ export function lateList(names) {
 }
 
 export const REFUSED_TOAST = 'This browser did not keep the playback settings: they last until the page is closed.';
+// Teacher mode has no playback (DECISIONS 2026-11-24): the bar stays, Play is off, and this is said in its place.
+export const TEACHER_LINE = 'Playback is for groups. A teacher\u2019s walks are on the map.';
 export const REDUCED_LINE = 'Reduced motion is on, so nothing moves by itself: move the scrubber to walk the groups.';
 
 export const HINT = 'Playback walks one transition at a time. Press Play for the first, or choose one above.';
@@ -282,6 +284,7 @@ export function playbackBar(env) {
     const picture = state.picture;
     const period = picture.choice.transition;
     const results = state.results;
+    if (picture.mode === 'teacher') return null;
     if (period === null || !picture.transition || !results || !state.graph) return null;
     const run = runOf(results, picture.dayTypeId, picture.bellsId);
     const crowdDay = run.crowd;
@@ -590,6 +593,7 @@ export function playbackBar(env) {
   function noteText() {
     if (!state) return '';
     if (nothingMeets(state.project, state.picture.bellsId)) return nothingMeetsParts(state.project, state.picture.bellsId).map((part) => part.text).join('');
+    if (state.picture.mode === 'teacher') return TEACHER_LINE;
     if (count() === 0) return 'There is nothing to play: the day has one ' + periodWords(state.project.settings).one + '.';
     if (!state.results) return 'Working out the routes.';
     // how to start: said until it has been done once on this device
@@ -609,7 +613,7 @@ export function playbackBar(env) {
     element.dataset.reduced = String(reduce.matches);
 
     setText(playButton, playing ? 'Pause' : 'Play');
-    const ready = Boolean(state && state.results) && count() > 0;
+    const ready = Boolean(state && state.results) && count() > 0 && state.picture.mode !== 'teacher';
     able(playButton, ready && !reduce.matches, reduce.matches ? 'Reduced motion is on: use the scrubber.' : null);
     const at = ready ? positionOf(state.picture.transitions, chosen()) : -1;
     able(previous, ready && at > 0);
