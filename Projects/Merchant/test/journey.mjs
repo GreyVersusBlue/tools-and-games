@@ -2231,7 +2231,9 @@ try {
         eq(await texts(page, '#panel-ledger h3'), ['Money', 'Warehouse', 'Out on the road', 'People']);
         eq(await texts(page, '#ledger-have'), [`The house has ${withCommas(book.money)} dinars.`]);
         eq(await texts(page, '#ledger-loans li'), ['Owes 100 dinars to Nell, due Autumn 1325.']);
-        eq(await texts(page, '#ledger-trail li'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
+        eq(await texts(page, '#ledger-trail li[data-change]'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
+        // MER-145: the engine's own game logged what moved the house's worth without a paper, and the ledger prints each line
+        eq((await texts(page, '#ledger-trail li.ledger-worth')).sort(), book.log.filter(e => e.kind === 'worth' && (eng.view(book, nodeContent).trail.some(t => t.at === e.at) || e.at > Math.max(...book.log.filter(x => x.kind === 'season').map(x => x.at)))).map(e => e.text).sort(), 'the worth lines of the log, for the seasons the ledger shows and the one still open');
         eq(await page.$$eval('#ledger-trail li', es => es.map(e => e.dataset.change)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, each as the log wrote it');
         ok((await texts(page, '#ledger-trail li')).every(t => /[+−]\d+ dinars$/.test(t)), 'signed with a real minus');
       });
@@ -3458,7 +3460,7 @@ try {
       eq(await page.$eval('.sheet', e => e.dataset.kind), 'lost');
       const order = await page.$eval('.sheet', e => [...e.children].map(c => c.className.split(' ')[0]));
       ok(order.indexOf('picture-slot') > order.indexOf('sheet-head') && order.indexOf('picture-slot') < order.indexOf('sheet-title'), order.join(' '));
-      eq(await page.$eval('.picture-slot', e => e.getAttribute('aria-hidden')), 'true');
+      eq(await page.$eval('.picture-slot .picture-frame', e => e.getAttribute('aria-hidden')), 'true');   // MER-145: the picture is hidden, its caption is not
       eq(await labelsOf(), eng.paperChoices(lost, content80, 'p80-0').map(c => c.label));
       eq(await page.$('#btn-next'), null);
     });
@@ -4890,7 +4892,7 @@ try {
         eq(await page.evaluate(() => window.__merchant.state.agents.ali.hired), true);
       });
       await test('MER-145 board: the ledger prints worth lines under their season and each season\'s change in worth, from the engine\'s trail', async () => {
-        const st = stocked();
+        const st = modelSeason(firstDone3()); st.stock = { copper: 100, linen: 4, salt: 2 };
         const seasons = st.log.filter(e => e.kind === 'season');
         const last = seasons.at(-1);
         // the season with a 309 return: the money moved +1, the worth +309 (the play's problem 8)
