@@ -842,7 +842,7 @@ export function teacherWalks(project, graph, options) {
   return walks;
 }
 
-function groupWalks(days) {
+export function groupWalks(days) {
   const groups = [];
   for (const day of days) {
     for (const transition of day.transitions) {
