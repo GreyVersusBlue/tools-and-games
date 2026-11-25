@@ -335,7 +335,7 @@ export function createMap(app, nav) {
       taken.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom, piece: true });
       if (Number(tokens[i].dataset.count) > 1) taken.push({ left: r.right - 16, right: r.right + 10, top: r.top - 10, bottom: r.top + 16, piece: false, badge: true });
     });
-    const squeezed = [];         // MER-145: captions that found no clear place, with the place that covers least
+    const squeezed = [], chosen = [];   // MER-145: the captions that found no clear place; MER-147: every caption's place, for the second pass
     const placeCaptions = () => tokens.forEach((t, i) => {
       const cap = qs('.token-label', t);
       if (!cap.offsetWidth) return;                      // this frame shows no captions
@@ -383,10 +383,12 @@ export function createMap(app, nav) {
           if (cost < best) { best = cost; won = { name, r }; }
         }
       }
-      if (!clearlyFound) {
-        // the labels are placed again round this caption and round its leader, so the leader runs over none of them (a stack's crossed Damascus's)
+      {
+        // every caption's box and leader are kept: if any caption had to lie over something, the labels are placed again round all of them, so no label
+        // takes a place another caption was counting on (a stack's leader crossed Damascus's label; Tunis's label lay under Yusuf's caption)
         const px = Math.max(won.r.left, Math.min(cx, won.r.right)), py = Math.max(won.r.top, Math.min(cy, won.r.bottom)), n = won.name.includes('+') ? Math.ceil(Math.hypot(px - cx, py - cy) / 6) : 0;
-        squeezed.push({ i, r: won.r, lead: Array.from({ length: n + 1 }, (_, j) => { const x = cx + (px - cx) * j / Math.max(n, 1), y = cy + (py - cy) * j / Math.max(n, 1); return { left: x - 3, right: x + 3, top: y - 3, bottom: y + 3 }; }).slice(n ? 0 : 1) });
+        chosen.push({ i, r: won.r, lead: Array.from({ length: n + 1 }, (_, j) => { const x = cx + (px - cx) * j / Math.max(n, 1), y = cy + (py - cy) * j / Math.max(n, 1); return { left: x - 3, right: x + 3, top: y - 3, bottom: y + 3 }; }).slice(n ? 0 : 1) });
+        if (!clearlyFound) squeezed.push(i);
       }
       t.dataset.side = won.name;
       // the token is drawn at 1/k of the layer's scale, so a screen distance is k times as many of its own px
@@ -423,9 +425,10 @@ export function createMap(app, nav) {
       // label except in Cairo's last two tiers. MER-147: Cairo's label alone may reach half as far again off a phone, and alone has a last resort that
       // covers a dot (it is never hidden: play a092 had a token on it once two trips were out)
       const keep = !!m.p.label.dataset.keep, wideFrame = !small();
-      const tiers = [{ dots: false, cover: 'all' }, { dots: false, cover: 'core' }, { dots: false, cover: 'pieces' }, { dots: false, cover: 'any' },
-        ...(keep ? [...(wideFrame ? [{ dots: false, cover: 'core', reach: 1.5 }] : []), { dots: false, cover: 'any', badge: true }, { dots: true, cover: 'any', badge: true }]
-          : [{ dots: true, cover: 'pieces' }, { dots: true, cover: 'any' }])];
+      const tiers = keep
+        ? [{ dots: false, cover: 'all' }, { dots: false, cover: 'core' }, { dots: false, cover: 'pieces' }, ...(wideFrame ? [{ dots: false, cover: 'core', reach: 1.5 }] : []),
+          { dots: false, cover: 'any' }, { dots: false, cover: 'any', badge: true }, { dots: true, cover: 'any', badge: true }]
+        : [{ dots: false, cover: 'all' }, { dots: false, cover: 'core' }, { dots: false, cover: 'pieces' }, { dots: true, cover: 'pieces' }];   // a stop's label never lies over a caption: it is hidden first (the dot keeps the name)
       const mid = q => { const k = (q.right - q.left) / 4; return { left: q.left + k, right: q.right - k, top: q.top + k, bottom: q.bottom - k }; };
       for (const { dots: overDots, cover, reach = 1, badge = false } of tiers) {
         let fewest = Infinity;      // a tier that may cover dots takes the cheapest side, not the first
@@ -461,10 +464,10 @@ export function createMap(app, nav) {
     const run = reserved => {
       taken.length = 0; taken.push(...base, ...reserved); placed.length = 0;
       for (const m of marks) placeLabel(m);
-      squeezed.length = 0; placeCaptions();
+      squeezed.length = 0; chosen.length = 0; placeCaptions();
     };
     run([]);
-    if (squeezed.length) run(squeezed.flatMap(q => [{ ...q.r, piece: false, owner: q.i }, ...q.lead.map(b => ({ ...b, piece: false, owner: q.i, lead: true }))]));
+    if (squeezed.length) run(chosen.flatMap(q => [{ ...q.r, piece: false, owner: q.i }, ...q.lead.map(b => ({ ...b, piece: false, owner: q.i, lead: true }))]));
   }
 
   // ---- a press on the picture goes to the nearest stop within 48 px

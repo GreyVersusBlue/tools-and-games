@@ -300,6 +300,7 @@ async function mer147() {
       far: trips([['yusuf', 'cairo-gao', 3, 1], ['ali', 'cairo-walata', 2, 1], ['samir', 'cairo-aden', 3, 1]]),
       back: trips([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-qus', 1, 1], ['samir', 'cairo-tuat', 1, 1]]),
       // the two states MER-131's older case reads (a caption never covers a stop's dot): two parties leaving Cairo with a Tuat road in it, and two on Qus and Quseir
+      twoBack: trips([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-aydhab', 1, 1]]),   // layout's map-two-back: a label lay over Yusuf's caption at 1366 and 1280
       crowd: trips([['yusuf', 'cairo-alexandria', 0, 1], ['ali', 'cairo-tuat', 0, 2]]),
       merged: trips([['yusuf', 'cairo-qus', 0, 1], ['ali', 'cairo-quseir', 0, 1]]),
     };
@@ -312,6 +313,7 @@ async function mer147() {
           for (const t of m.tokens) {
             ok(t.cap, `${name}: the caption of ${t.ids} is not shown`);
             for (const d of m.dots) ok(!meets(t.cap, d.r), `${name}: the caption of ${t.ids} covers the dot of ${d.id}`);
+            for (const l of labels) ok(!meets(t.cap, l.r), `${name}: the caption of ${t.ids} lies under the label of ${l.id}`);
             const away = gap(t.cap, t.piece);
             ok(away <= 90.5, `${name}: the caption of ${t.ids} is ${away.toFixed(0)} px from its piece`);
             if (t.leader) {
