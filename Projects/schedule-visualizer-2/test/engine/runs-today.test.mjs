@@ -100,17 +100,19 @@ function scenarioSchool() {
 // schedule's findings did not move; the other five cases are the old hashes.
 // SV2-135b moved the same five again: Floor 3's east stub serves the doorless Plant Room (DECISIONS 2026-11-20),
 // so its warning went, and the dead ends' sentences name the spaces they serve. Nothing else moved.
+// SV2-149 moved the eight that hold a crowd result: the crowd's transitions gained `slotDelay`, the seconds of waiting by the lane
+// they were charged to (ARCHITECTURE 23.12). No figure moved; `scenario lane and comparison` and `suggestions` hold none.
 const RECORDED = {
-  'sample school: pipeline': '32be171054c1ecd6a4fefc117e96c2d6b8ad81f14ae6e340fdaaa49e52e43410',
-  'sample school: engines one by one': '6f02c8f356ab12d008203c5edd9632326e91b6dcd393260b2d379688e0552587',
-  'sample school: one transition and one day': '16099535543cb3c911be672a5e9365a46549db860e883e94b1d1163855a27138',
-  'sample school: a one-slot edit kept and packed': '5e2b710c8fb20831e9b3de4bf4a47af898741527fd1bb219b9bf0403e9e58d5d',
-  'sample school: passing time, head count and margin edits kept and packed': '60193c31e1449584637cc0233165e3ef9c4054cd17458830e1acfa2bf079038b',
+  'sample school: pipeline': '4fe5d532faaec4f55381885aea6d3a951ef9a79ce8c16f92bb08c81ec32baf9d',
+  'sample school: engines one by one': 'a0eead0ffe12c7aea4a77b5e814faf4860f637868d984205e77a72ffb25e8e23',
+  'sample school: one transition and one day': 'c6ca8129913e3f03dd6ce7c0bf9821e25848f98213233ffcd7ee7a8053adc54c',
+  'sample school: a one-slot edit kept and packed': '2ede04c875d4542afacfca5717070bed89e86018436ba16e06a0c343e166ed98',
+  'sample school: passing time, head count and margin edits kept and packed': '92e305ebe6a39aa1652e96bc2c70aad536fb6589e6a490a39f64972bbc0b8763',
   'sample school: scenario lane and comparison': 'e205ecbb5d5caf96ae0d43e17f6ce08d0f32e5d2e3331c2f2afc69b6bbb5b9aa',
   'sample school: suggestions for the double booking and the long walk': 'ad893b0e9a33abf9fc109dce9cc3761bb88714df3aba3bebcd2a3aeaa5033f1d',
-  'B Day same as A Day, as an older file says it: pipeline': '07d6fb4483f39b527355ebec8d1a16a80917631141990fc701c0d72a1cf853cc',
-  'one teacher walking with 7A: pipeline': '918747255db8e3a38ab727e0a6b17726b40f807157c22515497b069272c4578a',
-  'the 3.13 fixture: pipeline': '2a90267044e9a1fb28c426e67fd48620c43e2d0d58d5034ff352200d5f65be78',
+  'B Day same as A Day, as an older file says it: pipeline': '384968a0e8100bc2711d85382fced6dec7c0b4f2608f3d46031ada65b691225d',
+  'one teacher walking with 7A: pipeline': 'c11019e697610563439931062e55a186c8f6377587626064c6a8f0c1a203c1c0',
+  'the 3.13 fixture: pipeline': 'f77ac9b7dc3409c9485746266fac9325c8a4dfea8e5502a244291e014f721c06',
 };
 
 const seen = {};
