@@ -74,6 +74,7 @@ export const GROUPS = {
     'engine/load.test.mjs', // SV2-15
     'engine/places.test.mjs', // SV2-15
     'engine/crowd.test.mjs', // SV2-15
+    'engine/crowd-routes.test.mjs', // SV2-149
     'engine/import-groups.test.mjs', // SV2-10
     'engine/exports.test.mjs', // SV2-10
     'engine/project-file.test.mjs', // SV2-10
@@ -252,6 +253,7 @@ export const GROUPS = {
   timing: [
     'timing/routing.mjs', // SV2-05
     'timing/crowd.mjs', // SV2-15
+    'timing/crowd-routes.mjs', // SV2-149
     'timing/pipeline.mjs', // SV2-16
     'timing/movement.mjs', // SV2-39
     'timing/playback.mjs', // SV2-44

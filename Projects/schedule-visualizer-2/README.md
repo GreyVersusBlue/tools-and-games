@@ -67,6 +67,7 @@ are built and tested and wait for their screens.
 | `engine/routing.js`, `engine/directions.js` | The route between two rooms, and the same route in words |
 | `engine/load.js`, `engine/places.js` | How many cross each corridor cell, and what each stretch of corridor is called |
 | `engine/crowd.js` | The crowd model: how long each walk takes with everybody else in the corridor |
+| `engine/crowd-routes.js` | Crowd-aware routes: a what-if for Movement, where groups that wait in a jam try a slightly longer way (never used by the checks) |
 | `engine/teacher-day.js` | The one rule for what a teacher is doing in each period |
 | `engine/checks.js` | The schedule checks: double-bookings, walks that do not fit, and the rest |
 | `engine/findings.js` | What every check shares: severities, how a finding's id is built, the words of a sentence |
@@ -188,6 +189,7 @@ row names a file it does not run.
 | `test/engine/load.test.mjs` | What each group adds to the cells it crosses |
 | `test/engine/places.test.mjs` | Stretches of corridor, their names, the hotspot ranking |
 | `test/engine/crowd.test.mjs` | The crowd model, rule by rule |
+| `test/engine/crowd-routes.test.mjs` | Crowd-aware routes (SV2-149): the crowd result's `slotDelay` summing to `cellDelay` per node and charged to the lane the jam was in; every crowd figure and every teacher walk byte-identical after `teacherRoute` was pulled out (digests, with walks really there); on the two-halls fixture the rule moves groups and waiting falls, each transition re-simulated to the kept routes; a plan with no spare corridor moves nothing (the main lane's objects, by identity); a detour over the limit refused, at the limit taken; a step-free group stays step-free; reversed groups the same answer; a follower day type uses its base's run; a bells run and a period that does not meet; a transition with nobody waiting 10 s the main lane's own object; the sample finding nothing; a round kept only when the total falls |
 | `test/engine/import-groups.test.mjs` | Groups from CSV: the column guess, the preview, a name clash |
 | `test/engine/exports.test.mjs` | Every CSV and JSON export, and the file names |
 | `test/engine/project-file.test.mjs` | The project, building and schedule files, written and read back |
@@ -357,6 +359,7 @@ row names a file it does not run.
 | `test/a11y/staff-axe.mjs` | The staff browser's accessibility sweep, light and dark, at 1280 by 900 and at 390 by 844 with touch: every view's address in staff/views.js (a test fails when a view has none) on a current copy, an old copy with its band, a copy older than one the device has opened, with a reader chosen and notes kept, and with "Not right?" open, each file with a calendar and an Early Release schedule; the unlock screen, a wrong passcode, a newer format, a damaged file, no schedule and a browser that keeps nothing; axe inside the planner's preview frame, fed, at the phone and desktop widths and at its passcode screen; a published file frozen at sv2-m4 (test/publish/frozen/) opening in its own code and its schedule read by today's staff browser |
 | `test/timing/routing.mjs` | Routing under its budget at the promised size |
 | `test/timing/crowd.mjs` | The crowd model under its budget |
+| `test/timing/crowd-routes.mjs` | Crowd-aware routes on the twelve runs of the grown fixture and a step-free group: 300 ms a run, failing at 600, searches printed |
 | `test/timing/pipeline.mjs` | The derived pipeline end to end under its budget |
 | `test/timing/movement.mjs` | The movement view's main-thread work under its budget |
 | `test/timing/playback.mjs` | One frame of playback under its budget |
