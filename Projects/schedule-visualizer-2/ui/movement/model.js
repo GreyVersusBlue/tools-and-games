@@ -1032,25 +1032,21 @@ function teacherSentence(project, picture) {
   if (between.length > 0) words.push(walkCount(between.length) + ' between classes' + (sums > 0 || pending === 0 ? ', ' + formatDuration(sums) + ' (walking alone, not slowed by the crowd)' : ''));
   if (across.length > 0) words.push(walkCount(across.length) + ' with a free period between');
   if (words.length === 0) words.push('no walk between classes');
-  parts.push({ text: words.length === 2 ? words[0] + ', and ' + words[1] : words[0] });
-  parts.push({ text: '. ' });
-  if (pending > 0) parts.push({ text: pending === 1 ? 'One walk is not worked out yet. ' : pending + ' walks are not worked out yet. ' });
+  parts.push({ text: (words.length === 2 ? words[0] + ', and ' + words[1] : words[0]) + '.' });
+  if (pending > 0) parts.push({ text: pending === 1 ? ' One walk is not worked out yet.' : ' ' + pending + ' walks are not worked out yet.' });
   const failed = picture.failed;
   const over = walks.filter((walk) => walk.late === true && walk.failed !== true);
   if (failed.length > 0) {
-    parts.push({ text: plural(failed.length, 'walk') + (failed.length === 1 ? ' has no route: ' : ' have no route. The first: ') });
-    parts.push(...failureParts(project, { ...failed[0], dayTypeId: picture.dayTypeId }, false), { text: '. ' });
+    parts.push({ text: ' ' + plural(failed.length, 'walk') + (failed.length === 1 ? ' has no route: ' : ' have no route. The first: ') });
+    parts.push(...failureParts(project, { ...failed[0], dayTypeId: picture.dayTypeId }, false), { text: '.' });
   }
   if (over.length > 0) {
     const walk = over[0];
-    parts.push({ text: over.length === 1 ? '1 does not fit: ' : over.length + ' do not fit. The first: ' }, { text: walkWords(settings, walk.period, walk.toPeriod) + ', ' });
+    parts.push({ text: over.length === 1 ? ' 1 does not fit: ' : ' ' + over.length + ' do not fit. The first: ' }, { text: walkWords(settings, walk.period, walk.toPeriod) + ', ' });
     parts.push(...roomPartsById(project, walk.fromRoomId), { text: ' to ' }, ...roomPartsById(project, walk.toRoomId));
     parts.push({ text: ', ' + formatDuration(walk.walking + (walk.riding || 0)) + ' for a ' + formatDuration(walk.passingSeconds) + ' passing time.' });
   }
   tail();
-  // trailing spaces tidied
-  const lastPart = parts[parts.length - 1];
-  if (lastPart && !lastPart.name) lastPart.text = lastPart.text.replace(/ +$/, '');
   return { parts, showMe: failed.length > 0 || over.length > 0, showTab: failed.length > 0 ? 'summary' : 'tables' };
 }
 

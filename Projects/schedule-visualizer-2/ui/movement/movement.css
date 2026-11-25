@@ -160,9 +160,12 @@
 }
 
 .mov-ctl__more--groups .picker,
-.mov-ctl__more--teacher .picker,
 .mov-ctl__more--room .picker {
   width: 11rem;
+}
+
+.mov-ctl__more--teacher .picker {
+  width: 13rem;
 }
 
 /* Going to and Rooms of subject: under Who, hidden for a teacher (DESIGN 17.3) */

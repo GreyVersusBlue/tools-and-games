@@ -230,7 +230,7 @@ export function controls(options) {
     teacherChip.replaceChildren(...(teacher ? [h('li', { class: 'chip', data: { teacher: teacher.id } },
       h('span', { class: 'mov-swatch', style: 'background:' + (teacherColourOf(project, teacher) || 'var(--ink)') }),
       h('bdi', null, teacher.name))] : []));
-    teacherPick.input.placeholder = teacher ? 'Choose another teacher' : project.teachers.length === 0 ? 'No teachers yet' : 'Choose a teacher';
+    teacherPick.input.placeholder = teacher ? 'Change teacher' : project.teachers.length === 0 ? 'No teachers yet' : 'Choose a teacher';
   }
 
   function drawFilters() {
