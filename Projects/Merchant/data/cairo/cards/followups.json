@@ -330,8 +330,8 @@
       },
       {
         "id": "hold",
-        "label": "Hold the gold",
-        "hint": "The gold stays in your warehouse, worth whatever Cairo pays for it. Nothing comes to you now.",
+        "label": "Hold on to the gold",
+        "hint": "Any gold in your warehouse stays there, worth whatever Cairo pays for it. Nothing comes to you now.",
         "now": [],
         "later": [
           {
@@ -1223,7 +1223,7 @@
       {
         "id": "wage",
         "label": "Keep him on a wage",
-        "hint": "It costs less. He may not stay.",
+        "hint": "You keep the whole profit, and the house gains 3 coins in two seasons. He may not stay.",
         "now": [
           {
             "trust": "samir",

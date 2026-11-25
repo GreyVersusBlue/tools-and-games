@@ -697,4 +697,18 @@ test('MER-134: Ali\'s offer does not count the agents (a second, one at a time);
   ok(papers.when.all.some(c => c.trip?.is === 'ready'), 'Send two loads under his papers needs an agent ready to go');
 });
 
+test('MER-140 rule 18: no sum the house keeps, no label that has the house travel, no cost with no figure; each of the second play\'s slips is fixed in the card', () => {
+  eq(rulesOf(cairo).filter(r => r === 18), [], 'the content as it stands');
+  const find = (cid, chid) => cardOf(cairo, cid).choices.find(x => x.id === chid);
+  ok(!/\d+ dinars/.test(find('sugar-pots', 'pass').hint), 'Amina\'s pass does not name 140 for a house that may hold 130');
+  ok(!/^Go with/.test(find('broker-bales', 'look').label) && !/^Hold the gold$/.test(find('gold-price-falls', 'hold').label), 'no travelling house, no gold held that may not be there');
+  ok(/warehouse/.test(find('gold-price-falls', 'hold').hint) && /^Any gold/.test(find('gold-price-falls', 'hold').hint), 'the gold hint speaks of any gold in the warehouse, since the house plan may have sent it with an agent');
+  ok(/2 dinars/.test(find('karimi-papers', 'alone').hint) && find('karimi-papers', 'alone').later[0].do.some(e => e.money === -2), 'going without papers names its 2 dinars, the sum its later effect takes');
+  // broken on purpose, each against its own phrase
+  const edit = (cid, chid, key, text) => cairoEdit(c => { cardOf(c, cid).choices.find(x => x.id === chid)[key] = text; });
+  eq(rulesOf(edit('sugar-pots', 'pass', 'hint', 'You keep your 140 dinars. Amina will find another buyer.')).filter(r => r === 18), [18], 'a named purse');
+  eq(rulesOf(edit('broker-bales', 'look', 'label', 'Go with him and look at every bale')).filter(r => r === 18), [18], 'the house travelling');
+  eq(rulesOf(edit('karimi-papers', 'alone', 'hint', 'It costs less. Nabil may feel left out.')).filter(r => r === 18), [18], 'a cost with no figure');
+});
+
 await done();

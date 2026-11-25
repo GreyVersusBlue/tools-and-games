@@ -2029,7 +2029,7 @@ function changesOf(content, q, s, shorts = []) {
     if ('money' in e) {
       const short = shorts.find(x => x.effect === e);
       const moved = short ? -short.paid : e.money;   // a fee larger than the money took what there was (MER-141)
-      if (moved) out.push(`${sign(moved)} ${cityOf(content, 'accounts').currency ?? 'coins'}`);
+      if (moved) { const cur = cityOf(content, 'accounts').currency ?? 'coins'; out.push(`${sign(moved)} ${Math.abs(moved) === 1 && cur.endsWith('s') ? cur.slice(0, -1) : cur}`); }   // "+1 dinar", as `coins` says it (MER-140, play problem 11)
     }
     else if ('stock' in e) out.push(`${sign(e.by)} ${goodName(content, e.stock)}`);
     else if ('rep' in e) { if (reps.has(e.rep)) { const w = repSentence(e.rep, reps.get(e.rep)); reps.delete(e.rep); if (w) out.push(w); } }

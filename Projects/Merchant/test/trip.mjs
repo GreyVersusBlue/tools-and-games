@@ -491,6 +491,11 @@ test('MER-140 (1) the years-pass page and the paper give a settled trip\'s lengt
   ok(quoted >= 6 && home >= 1, `${quoted} settled by quotes and ${home} home before the years passed were compared`);
 });
 
+test('MER-140 (3) the Accounts paper says "+1 coin" and "\u22121 coin" for one, and "coins" for the rest', () => {
+  const says = n => accountItem(game(), calm, { do: [{ money: n }], from: 'x/y' }).changes;
+  eq([says(1), says(-1), says(2), says(-12)], [['+1 coin'], ['\u22121 coin'], ['+2 coins'], ['\u221212 coins']]);
+});
+
 test('MER-125 (3) the money the house carries into the next years is the money on the first desk after the jump, over every calendar and seed that settles a trip', () => {
   let seen = 0;
   for (const end of [1, 2, 3, 4, 5, 6, 7, 8]) for (const seed of [7, 1, 2, 3, 4, 5, 6, 8]) {
