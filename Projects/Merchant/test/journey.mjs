@@ -2234,7 +2234,8 @@ try {
           return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`;
         });
         ok(want.length >= 2, 'the saved game holds at least two goods');
-        eq(await texts(page, '#ledger-stock li'), want);
+        // MER-138: each row also holds the Sell button's stepper and quote line (their own cases are further down): the row's own words are its first two parts
+        eq(await page.$$eval('#ledger-stock li', ls => ls.map(l => [l.querySelector(':scope > strong'), l.querySelector(':scope > span')].map(e => e.textContent).join(' '))), want);
       });
 
       await test(`${how}: the ledger's road and people sections name where each is, when due, the traits and trust in words, and the four reputations with numbers`, async () => {
