@@ -382,7 +382,7 @@
       {
         "id": "share",
         "label": "Give her a third of the profit",
-        "hint": "She carries the risk of her work, and you the loss.",
+        "hint": "It costs 5 dinars in four seasons. She carries the risk of her work, and you the loss.",
         "now": [
           {
             "hire": "mariam"
@@ -437,7 +437,7 @@
       {
         "id": "wait",
         "label": "Ask her to come back later",
-        "hint": "She will wait a little.",
+        "hint": "She will wait a little, and you gain 3 dinars in two seasons.",
         "now": [
           {
             "flag": "mariam-waits",
@@ -558,7 +558,7 @@
       {
         "id": "letter",
         "label": "Ask him to bring a letter from someone you know",
-        "hint": "He will come back, or he will not.",
+        "hint": "He will come back, or he will not. If he does, 3 dinars come in three seasons.",
         "now": [
           {
             "flag": "matteo-asked-for-letter",

@@ -80,6 +80,33 @@ export function notePurchase(state, content, stopId, goodId, q) {
 }
 const round4 = n => Math.round(n * 1e4) / 1e4;
 
+/** The broker's cut when the house sells from its warehouse at home: 15 in every hundred of each load's price, rounded per load (sell.js says why 15). It is
+    here and not in sell.js because what the house's goods are worth is what this selling pays (MER-148, M4f play problem 1): the estimate, the return
+    account and the worth bar all read `houseSale`, and the Sell button reads the same run. */
+export const BROKER_CUT = 0.15;
+
+/** What `loads` loads of `good` fetch for the house at `stop` on the market in `state`, sold one after another the way the Sell button sells them: each
+    load is priced after the one before it (market.js `noteSale`), the broker's cut comes off each and is rounded per load. `ahead` loads are sold first and not
+    counted, so the figure is what these loads add to a warehouse already holding `ahead` of the good. The state is not changed (one entry is copied).
+    { gross, got, first, last, after }: what the market would pay, what the house keeps, the first and last load's part, and the price once all are sold. */
+export function houseSale(state, content, stopId, goodId, loads, ahead = 0) {
+  const e = state.market?.[stopId]?.[goodId];
+  const out = { gross: 0, got: 0, first: null, last: null, after: null };
+  if (!e) return out;
+  const m = { t: state.t, length: state.length, seed: state.seed, market: { [stopId]: { [goodId]: { ...e } } } };   // only what truePrice and noteSale read
+  for (let i = 0; i < ahead; i++) noteSale(m, content, stopId, goodId, 1);
+  for (let i = 0; i < loads; i++) {
+    const price = sellPrice(m, content, stopId, goodId);
+    const net = Math.max(1, Math.round(price * (1 - BROKER_CUT)));
+    out.gross += price; out.got += net;
+    if (out.first === null) out.first = net;
+    out.last = net;
+    noteSale(m, content, stopId, goodId, 1);
+  }
+  out.after = sellPrice(m, content, stopId, goodId);
+  return out;
+}
+
 /** Seasons from home to a stop along the shortest route that reaches it, summing the legs
     out. Home is 0, an unreachable stop is null. Never below 1 for anywhere else. */
 export function lagOf(content, stopId) {

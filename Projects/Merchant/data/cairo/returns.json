@@ -771,7 +771,7 @@
       {
         "id": "share",
         "label": "Ask the partners to help carry the loss",
-        "hint": "They may agree. They will not like being asked.",
+        "hint": "They may agree and pay 30 in two seasons. They will not like being asked.",
         "now": [
           {
             "rep": "partners",
@@ -874,7 +874,7 @@
       {
         "id": "share",
         "label": "Ask the partners to help carry the loss",
-        "hint": "They may agree. They will not like being asked.",
+        "hint": "They may agree and pay 30 in two seasons. They will not like being asked.",
         "now": [
           {
             "rep": "partners",
@@ -944,7 +944,7 @@
       {
         "id": "share",
         "label": "Ask the partners to help carry the loss",
-        "hint": "They may agree. They will not like being asked.",
+        "hint": "They may agree and pay 30 in two seasons. They will not like being asked.",
         "now": [
           {
             "rep": "partners",
@@ -1051,7 +1051,7 @@
       {
         "id": "share",
         "label": "Ask the partners to help carry the loss",
-        "hint": "They may agree. They will not like being asked.",
+        "hint": "They may agree and pay 30 in two seasons. They will not like being asked.",
         "now": [
           {
             "rep": "partners",
@@ -1124,7 +1124,7 @@
       {
         "id": "share",
         "label": "Ask the partners to help carry the loss",
-        "hint": "They may agree. They will not like being asked.",
+        "hint": "They may agree and pay 30 in two seasons. They will not like being asked.",
         "now": [
           {
             "rep": "partners",
@@ -1230,7 +1230,7 @@
       {
         "id": "share",
         "label": "Ask the partners to help carry the loss",
-        "hint": "They may agree. They will not like being asked.",
+        "hint": "They may agree and pay 30 in two seasons. They will not like being asked.",
         "now": [
           {
             "rep": "partners",

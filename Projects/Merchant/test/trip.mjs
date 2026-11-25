@@ -10,7 +10,7 @@ import { apply } from '../js/engine/effects.js';
 import { lintContent, tripFailures } from '../tools/lint-content.mjs';
 import { destinations, risk, accountItem, repSentence, estimate } from '../js/engine/routes.js';
 import { moneyTrail, jumpWords } from '../js/ui/screens/ledger.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view, sellHomeQuote } from '../js/engine/index.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import { cityOf } from '../js/engine/state.js';
 import * as M from '../js/engine/market.js';
@@ -365,6 +365,8 @@ function jumpedTrip(want, { seeds = [7, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12], hop
     // cause of its own and its why never names one; the sentences below are about the cases where the hope was off.
     if (hopedHigh) for (const x of s.expeditions) {
       x.hope.home.salt = Math.round(x.hope.home.salt * 1.4);
+      const was = x.hope.homeValue.salt; x.hope.homeValue.salt = Math.round(was * 1.4);   // the dinars the sheet hoped the loads would count for (MER-148), which the gap is read from
+      x.hope.net += x.hope.homeValue.salt - was; x.hoped = x.hope.net;   // and the net it hoped is that much higher
     }
     let before = s;
     for (let i = 0; i < 20 && s.phase !== 'interlude' && s.phase !== 'recall'; i++) { before = s; s = step(s, c); }
@@ -400,7 +402,7 @@ test('MER-119 (2) a party home before the years passed: its why names the price 
   ok(new RegExp(`^Salt fetched ${then} at home in ${writeSeason(j.c, from)}, when Mira was back, `).test(d.why), `${d.why} (it was ${then} then and ${after} after the jump)`);
   ok(!/by the time/.test(d.why), d.why);
 });
-test('MER-121b a return the jump settles is worth home\'s price after the jump\'s market reset, the price the ledger shows that season, quoted or not', () => {
+test('MER-121b a return the jump settles is worth what Sell pays for it on the market the jump\'s reset leaves, the one the ledger shows that season, quoted or not', () => {
   // `jump` settles a party before it resets the markets (step 4), so a return valued at the market as it stood read the price of the
   // closing before: 33 of 33 jump returns were off from the ledger, 29 of 29 ordinary ones right (MER-121b). The paper's "worth" and
   // its cargo value are the goods at the price the new act opens with, which is the price the ledger writes for that season.
@@ -409,16 +411,17 @@ test('MER-121b a return the jump settles is worth home\'s price after the jump\'
     const j = jumpedTrip(l => l.quoted === quoted, { seeds: [seed] });
     if (!j || !Object.keys(j.paper.data.goodsBack).length) continue;
     const home = cityOf(j.c, 'market').home, to = j.s.log.findLast(e => e.kind === 'jump').to;
-    // the season the act opens in: play it to its close and read the price the ledger wrote for it
     const worth = j.paper.data.cargoValue;
-    const after = step(openSeason(j.s, j.c), j.c);
+    // the season the act opens in: the house opened on the desk the reset market gives, and Sell in the warehouse quotes the loads there. What the paper counts them at
+    // is what Sell would pay for them (MER-148, M4f play problem 1): the run, each load behind the one before and the broker's cut off, behind what the warehouse held of the good.
+    const opened = openSeason(j.s, j.c);
     let ledger = 0;
     for (const [g, n] of Object.entries(j.paper.data.goodsBack)) {
-      const p = M.priceAt(after, home, g, to);
-      ok(Number.isFinite(p), `${g} has no ledger price for season ${to}`);
-      ledger += n * p;
+      const held = opened.stock[g] ?? 0;
+      ok(held >= n, `${g}: the warehouse holds the ${n} loads that came home (${held})`);
+      ledger += sellHomeQuote(opened, j.c, g, held).got - (held > n ? sellHomeQuote(opened, j.c, g, held - n).got : 0);
     }
-    eq(worth, ledger, `seed ${seed}, calendar ending ${j.end}, quoted ${quoted}: the paper says worth ${worth}, the ledger's price that season makes ${ledger}`);
+    eq(worth, ledger, `seed ${seed}, calendar ending ${j.end}, quoted ${quoted}: the paper says worth ${worth}, what Sell pays for them that season is ${ledger}`);
     compared++;
   }
   ok(compared >= 3, `${compared} jump returns with goods were compared`);
@@ -519,8 +522,8 @@ test('MER-125 (4) the ledger shows the jump as one line after the season it foll
   eq([last.at, last.after.years, last.after.net, last.after.trips, last.after.change], [jump.from, jump.years, jump.net, jump.trips, jump.change], 'right after the jump the last row carries it');
   eq(jump.net, jump.settled.reduce((n, l) => n + l.houseNet, 0), 'the figure is what the page between the acts adds up');
   eq(last.change + last.after.change, at.change, 'the season and the jump add up to what the book wrote');
-  ok(jump.net > 0 && last.change === at.change - jump.change, 'the trips made money for the house and the jump\'s change is out of the season');
-  ok(jumpWords(last.after).startsWith(`${jump.years === 1 ? 'A year' : `${jump.years} years`} passed. The trips made ${jump.net} dinars for the house.`), jumpWords(last.after));
+  ok(jump.net !== 0 && last.change === at.change - jump.change, 'the trips made or cost the house something and the jump\'s change is out of the season');   // goods count at what Sell would pay (MER-148), which can leave this small trip a loss
+  ok(jumpWords(last.after).startsWith(`${jump.years === 1 ? 'A year' : `${jump.years} years`} passed. ${jump.net > 0 ? `The trips made ${jump.net} dinars for the house.` : `The trips cost the house ${-jump.net} dinars.`}`), jumpWords(last.after));
   // the new act's seasons arrive as they close, and the jump line stays between the old season and the new
   const next = step(step(j.s, j.c), j.c);
   const t2 = moneyTrail(j.c, next.log);

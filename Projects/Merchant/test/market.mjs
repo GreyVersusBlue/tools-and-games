@@ -11,6 +11,8 @@ import * as M from '../js/engine/market.js';
 import { newGame, openSeason, endSeason, view, paperChoices, choose, outfit, sellHome, sellHomeQuote, BROKER_CUT } from '../js/engine/index.js';
 import { steps } from '../js/engine/turn.js';
 import { worthOf, NOTE } from '../js/engine/worth.js';
+import { netWealth } from '../js/engine/score.js';
+import { estimate } from '../js/engine/routes.js';
 
 const CITIES = {
   testport: { content: await loadContent('testport', { fs }), house: 'plain', stop: 'saltmarsh', good: 'lamps', far: 'hilltown', farLag: 2, nearLag: 1, foldAt: 2 },
@@ -500,15 +502,16 @@ test('(MER-146, 7) every move of worth of 10 dinars or more in a closing step wi
 test('(MER-146, 7) the warehouse rising in price writes the line the ledger prints, with the dinars it moved worth by', () => {
   let s = newGame(C, { seed: 4, length: 'full', house: 'spice' });
   s.stock = { pepper: 7 };
-  const held = s.known.cairo.pepper.p;
   s.market.cairo.pepper.f = 1.4;
-  s = endSeason(answer(s, C), C);   // the closing's drift moves the price, the next opening reads it
+  s = answer(s, C);
+  const held = sellHomeQuote(s, C, 'pepper', 7).got;   // what Sell pays for the seven loads before the closing
+  const closing = s.t;
+  s = endSeason(s, C);   // the closing's drift moves the price
   const line = s.log.find(e => e.kind === 'worth' && e.cause === 'prices' && e.part === 'warehouse');
   ok(line, 'a price line for the warehouse');
-  const now = s.known.cairo.pepper.p;
-  eq(line.change, Math.round(7 * (now - held)), 'the line says what seven loads moved by');
+  eq(line.change, sellHomeQuote(s, C, 'pepper', 7).got - held, 'the line says what the seven loads would fetch now, less what they would have fetched');
   ok(/^The goods in the warehouse (rose|fell) in price: [+\u2212]\d+\.$/.test(line.text), line.text);
-  eq(line.at, s.t, 'it belongs to the season whose desk shows the new figure');
+  eq(line.at, closing, 'it belongs to the season whose closing moved the price: that season\'s figure holds it');
 });
 
 // ---- MER-146 (M4e play problem 8): the ledger's last four seasons give each season's true change
@@ -558,6 +561,96 @@ test('(MER-146, 8) the trail follows the log across the jump: each season keeps 
   const opened = openSeason(s, C);
   eq(view(opened, C).trail.at(-1).at, jump.from, 'on the first desk after the years the trail still ends with that season and its jump line');
   ok(at > 0);
+});
+
+// ---- MER-148 (M4f play problem 1): goods are worth what Sell in Cairo would pay for them
+
+/** Cairo with no drift and no loss on the road, so the arithmetic is the rule alone. */
+const CALM = (() => { const c = structuredClone(C); for (const g of c.goods) g.sigma = 0; for (const r of c.routes) for (const l of r.legs) l.risk = 0; return c; })();
+/** Yusuf takes two loads of pepper to Damascus with 300 dinars and brings sugar back; the state at the opening the return paper is on the desk, and the paper. */
+function sugarTrip(content = CALM) {
+  let s = newGame(content, { seed: 7, length: 'full', house: 'spice' });
+  const plan = { agent: 'yusuf', route: 'cairo-damascus', cargo: { pepper: 2 }, purse: 300, contract: 'own', sell: ['pepper'], buy: ['sugar'] };
+  const hoped = estimate(s, content, plan);
+  s = outfit(s, content, plan);
+  for (let i = 0; i < 8 && !s.desk.some(p => p.kind === 'return'); i++) s = endSeason(answer(s, content), content);
+  return { s, paper: s.desk.find(p => p.kind === 'return'), hoped };
+}
+
+test('(MER-148, 1) the loads a trip brings home count at what Sell in Cairo pays for those loads, not at the first load\'s price times the loads', () => {
+  const { s, paper } = sugarTrip();
+  const n = s.stock.sugar;
+  ok(n >= 5, `setup: ${n} loads of sugar came home`);
+  const quote = sellHomeQuote(s, CALM, 'sugar', n);
+  eq(paper.data.cargoValue, quote.got, 'the paper counts the sugar at what Sell would pay for all of it');
+  ok(quote.got < n * M.truePrice(s, CALM, 'cairo', 'sugar'), `${quote.got} is less than ${n} loads at one load's price`);
+  const back = paper.data.account.find(r => r.label === 'Back home');
+  eq(back.amount, quote.got + paper.data.moneyBack, 'the account\'s back home is the loads at that figure and the money');
+  ok(back.text.includes(`Cairo would pay ${quote.got} dinars for them now, after the broker's cut`), back.text);
+  eq(paper.data.houseNet, back.amount + paper.data.account.filter(r => r.amount && !r.detail && r.label !== 'Back home' && r.label !== 'Profit' && r.label !== 'Loss').reduce((a, r) => a + r.amount, 0), 'and the profit row is that account added up');
+});
+
+test('(MER-148, 1) the house\'s worth does not fall when the loads a trip brought home are sold: worth counts them at what selling them fetches', () => {
+  const { s } = sugarTrip();
+  const n = s.stock.sugar, w0 = worthOf(s, CALM);
+  const sold = sellHome(s, CALM, 'sugar', n);
+  eq(worthOf(sold, CALM), w0, `worth is ${w0} before and after the ${n} loads are sold`);
+  // in two sales as well: the second sells loads the first has already marked the market for
+  const two = sellHome(sellHome(s, CALM, 'sugar', 3), CALM, 'sugar', n - 3);
+  eq(worthOf(two, CALM), w0, 'sold in two parts, worth stays where it was');
+  const flat = s.money + Object.entries(s.stock).reduce((a, [g, q]) => a + q * M.truePrice(s, CALM, 'cairo', g), 0);
+  ok(netWealth(s, CALM).net < flat, 'and it is less than the flat count of every load at its first price');
+});
+
+test('(MER-148, 1) the estimate under Send counts the goods coming home the way the return counts them, to the dinar on a calm road', () => {
+  const { s, paper, hoped } = sugarTrip();
+  const sum = Object.values(hoped.homeValue).reduce((a, v) => a + v, 0);
+  eq(paper.data.cargoValue, sum, 'the estimate\'s value of what comes home is the paper\'s');
+  eq(paper.data.hoped, hoped.net, 'and so the profit hoped for and the profit made differ only by what the road changed');
+  eq(paper.data.houseNet, hoped.net, 'which on a calm road is nothing');
+  void s;
+});
+
+// ---- MER-148 (M4f play problem 8): a season's worth lines add up to that season's figure
+
+test('(MER-148, 8) over played seasons, the lines of a season and the small moves left over add up to its figure, and nothing of 10 dinars or more is left over', () => {
+  let seasons = 0, worst = 0;
+  const loose = [];
+  for (const [house, seeds] of [['spice', [1, 2, 3, 4]], ['cloth', [1, 2]]]) for (const seed of seeds) {
+    let s = newGame(C, { seed, length: 'acts', house });
+    for (let g = 0; g < 60 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+      s = answer(s, C);
+      const v = view(s, C).venture;
+      if (v) { try { s = outfit(s, C, v.plan); } catch { /* did not fit */ } }
+      s = endSeason(s, C);
+      const row = view(s, C).trail.at(-1);
+      if (!row || row.rest === null) continue;
+      seasons++;
+      eq(row.lines + row.rest, row.change, `${house}/${seed} ${row.season}: the lines (${row.lines}) and what is left (${row.rest}) are the season's ${row.change}`);
+      worst = Math.max(worst, Math.abs(row.rest));
+      if (Math.abs(row.rest) >= 3 * NOTE) loose.push([house, seed, row.season, row.change, row.lines, row.rest]);
+      ok(row.rest === 0 ? row.restWords === null : /^[+\u2212]\d+ from moves too small/.test(row.restWords), row.restWords);
+    }
+  }
+  ok(seasons >= 100, `${seasons} closed seasons were read`);
+  eq(loose, [], `seasons whose figure the lines leave ${3 * NOTE} dinars or more short of: ${JSON.stringify(loose.slice(0, 3))}`);
+});
+
+test('(MER-148, 8) a trip coming home, a paper answered and the letters of a season each write a worth line of their own when they move worth by 10 or more', () => {
+  let trips = 0, answers = 0, letters = 0;
+  for (const seed of [1, 2, 3, 4, 5]) {
+    let s = newGame(C, { seed, length: 'acts', house: 'spice' });
+    for (let g = 0; g < 30 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+      s = answer(s, C);
+      const v = view(s, C).venture;
+      if (v) { try { s = outfit(s, C, v.plan); } catch { /* did not fit */ } }
+      s = endSeason(s, C);
+    }
+    for (const e of s.log) if (e.kind === 'worth') { if (e.cause === 'trip') trips++; if (e.cause === 'answer') answers++; if (e.cause === 'letter') letters++; }
+  }
+  ok(trips >= 5 && answers >= 3, `trip lines ${trips}, answer lines ${answers}, letter lines ${letters}`);
 });
 
 done();

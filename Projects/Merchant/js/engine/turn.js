@@ -23,23 +23,31 @@ export const RECENT = 6; // a card is not drawn again within this many seasons
 /** Pool cards a season may draw while the house has a trip out or home (DESIGN 2.1 rule 1). */
 export const POOL_WITH_TRIP = 2;
 
+/** A step whose move of worth gets a line of its own when nothing it wrote says it (MER-148, M4f play problem 8): a move of 10 dinars or more is never left to
+    the season's figure alone. */
+const said = (cause, text, fn) => (s, content, ...rest) => {
+  const w0 = W.worthOf(s, content), n0 = s.log.length;
+  const out = fn(s, content, ...rest);
+  W.rest(s, content, cause, w0, n0, text);
+  return out;
+};
+const signed = W.signed;
+
 export const steps = {
   // opening a season
-  agents(s, content) { agents.opening(s, content); },
+  agents: said('wages', c => `Wages and new hires moved the house's worth: ${signed(c)}.`, (s, content) => { agents.opening(s, content); }),
   settle(s) { agents.settle(s); },
   returns(s, content) { routes.returns(s, content); },
-  letters(s, content) { letters.letters(s, content); },
+  letters: said('letter', c => `The letters that came this season moved the house's worth: ${signed(c)}.`, (s, content) => { letters.letters(s, content); }),
   news(s, content) {
     // city.json's priceNews (default true) turns price letters off for a city
     if (content.city?.priceNews === false) return;
-    // home's price is always current at an opening, so the goods the house holds are worth what the new price says: the move is a line
-    // in the log, "The goods in the warehouse rose in price: +81" (MER-146, M4e play problem 7)
-    const was = W.homePrices(s, content), held = W.heldLoads(s);
     market.news(s, content);
-    for (const l of W.priceLines(s, content, was, held)) s.log.push({ at: seasonIndex(s, content), kind: 'worth', cause: 'prices', part: l.part, change: l.change, text: `${l.text}.` });
   },
   events(s, content) {
     const idx = seasonIndex(s, content);
+    const w0 = W.worthOf(s, content), n0 = s.log.length;
+    const was = W.holdings(s, content);   // a price event moves what the goods held are worth: the move is a line in the log (MER-146)
     for (const ev of content.events ?? []) {
       // an event with `between` belongs to the gap between acts: the jump fires it, never its season
       if (ev.at !== idx || s.seen[`event:${ev.id}`] || (ev.between && s.length === 'acts')) continue;
@@ -49,14 +57,22 @@ export const steps = {
       // A notice with no room on a full desk is not shown; the event's effects stand (MER-07).
       s.log.push({ at: idx, kind: 'event', ref: ev.id, ...(shown ? {} : { dropped: 'notice' }) });
     }
+    for (const l of W.priceLines(s, content, was)) s.log.push({ at: idx, kind: 'worth', cause: 'prices', part: l.part, change: l.change, text: `${l.text}.` });
+    W.rest(s, content, 'event', w0, n0, c => `What happened this season moved the house's worth: ${signed(c)}.`);
   },
   drawCards(s, content) { drawCards(s, content); },
   // closing a season
-  move(s, content) { routes.move(s, content); },
-  risk(s, content) { routes.risk(s, content); },
-  tolls(s, content) { routes.tolls(s, content); },
-  drift(s, content) { market.drift(s, content); },
-  fireDue(s, content) { fireDue(s, content); },
+  move: said('trade', c => `The parties on the road moved the house's worth: ${signed(c)}.`, (s, content) => { routes.move(s, content); }),
+  risk: said('loss', c => `What the road took this season moved the house's worth: ${signed(c)}.`, (s, content) => { routes.risk(s, content); }),
+  tolls: said('trade', c => `Tolls and waiting on the road moved the house's worth: ${signed(c)}.`, (s, content) => { routes.tolls(s, content); }),
+  drift(s, content) {
+    // the home market moves as the season closes (the goods held are worth what selling them fetches, and that is what the market says): the move is a line in
+    // the season it closes, "The goods in the warehouse rose in price: +81" (MER-146, M4e play problem 7; MER-148 reads the market, not the last news)
+    const was = W.holdings(s, content), at = seasonIndex(s, content);
+    market.drift(s, content);
+    for (const l of W.priceLines(s, content, was)) s.log.push({ at, kind: 'worth', cause: 'prices', part: l.part, change: l.change, text: `${l.text}.` });
+  },
+  fireDue: said('later', c => `Effects of earlier answers came due and moved the house's worth: ${signed(c)}.`, (s, content) => { fireDue(s, content); }),
   advance(s, content) {
     const moved = s.t + 1 < playedSeasons(content.calendar, s.length).length;
     if (moved) s.t += 1;
@@ -292,6 +308,8 @@ export function choose(state, content, paperId, choiceId) {
   if (!paper) throw new Error(`choose: no paper "${paperId}" on the desk`);
   if (paper.state !== 'open') throw new Error(`choose: paper "${paperId}" is already answered`);
   const idx = seasonIndex(s, content);
+  const w0 = W.worthOf(s, content), n0 = s.log.length;   // an answer that moves the house's worth by 10 dinars or more writes a line (MER-148)
+  let title = null;
 
   const info = paper.kind in INFO, list = listOf(content, paper);
   // "ok" answers any notice, and a return or loss paper whether or not it offers choices (a screen that does not show them yet)
@@ -309,6 +327,7 @@ export function choose(state, content, paperId, choiceId) {
     // and not '{agent} is home' (MER-109). A return or loss paper's ask and choices are filled already.
     const seen = paper.kind === 'card' ? describeTrips(s, content)[paper.id] : null;
     const via = { from: `${paper.kind === 'return' || paper.kind === 'lost' ? (paper.data?.entry ?? paper.ref) : card.id}/${choice.id}`, card: (paper.kind === 'return' || paper.kind === 'lost' ? paper.data?.ask?.title : (seen?.title ?? card.title)) ?? null, choice: (seen?.choices[choice.id]?.label ?? choice.label) ?? null };
+    title = via.card;
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
     const ctx = { agent: paper.agent, expedition: paper.expedition };
     const nowCtx = { ...ctx, strict: true };   // a choice's `now` takes only money the house holds (MER-141)
@@ -342,6 +361,7 @@ export function choose(state, content, paperId, choiceId) {
     for (const e of card.unlocks ?? []) if (!s.notebook.includes(e)) s.notebook.push(e);
   }
   paper.state = 'done';
+  W.rest(s, content, 'answer', w0, n0, c => `${title ? `Your answer to "${title}"` : 'Your answer'} moved the house's worth: ${signed(c)}.`);
   letters.refitReturns(s, content);   // an answer may have moved goods out of the warehouse; the return papers still open are fitted to what is left (MER-146)
   paper.choice = choiceId;
   s.done.push({ id: paper.id, ref: paper.ref, choice: choiceId });
@@ -393,7 +413,7 @@ function logSeason(s, content, moneyAtClose, at, firstSeason) {
   // not a loss (the money went out and the goods are counted on the road) and one come home is not a gain beyond its profit, so the
   // true change of a season is this one (MER-146, M4e play problem 8: +1 for the season a trip brought 309 home and the house sent 288 out again)
   const worth = W.worthOf(s, content);
-  const startWorth = start + Object.entries(house?.stock ?? {}).reduce((n, [g, q]) => n + q * (market.baseOf(s, content, cityOf(content, 'ledger').home, g) ?? 0), 0);
+  const startWorth = W.worthOf({ ...s, money: start, stock: { ...(house?.stock ?? {}) }, expeditions: [], loans: [], market: Object.fromEntries(Object.entries(s.market).map(([stop, byGood]) => [stop, Object.fromEntries(Object.entries(byGood).map(([g, m]) => [g, { ...m, f: 1, glut: 0 }]))])) }, content);   // the first season starts from the house's own goods at the opening prices, valued as every season's worth is (MER-148)
   const fromWorth = Number.isInteger(last?.worth) ? last.worth : (firstSeason ? startWorth : null);
   s.log.push({ at, kind: 'season', change: s.money - from, money: s.money, worth, ...(fromWorth === null ? {} : { worthChange: worth - fromWorth }) });
 }
@@ -408,7 +428,12 @@ export function trail(state, content) {
     const j = jumps.find(x => x.from === e.at);
     const jw = j && Number.isInteger(j.worthChange) ? j.worthChange : null, jc = j && Number.isInteger(j.change) ? j.change : null;
     const change = Number.isInteger(e.worthChange) ? e.worthChange - (jw ?? 0) : e.change - (jc ?? 0);
-    return { at: e.at, season: market.writeSeason(content, e.at), change, cash: e.change - (jc ?? 0),
+    // MER-148 (M4f play problem 8): the lines the log holds for the season (worth entries; the jump's reset lines belong to the years, not to the season) and what is left of the
+    // figure after them. Every move of NOTE dinars or more has a line, so `rest` is the small moves that have none; the ledger says it in `restWords`.
+    const lines = (state.log ?? []).filter(x => x.kind === 'worth' && x.at === e.at && x.cause !== 'reset').reduce((n, x) => n + x.change, 0);
+    const rest = Number.isInteger(e.worthChange) ? change - lines : null;
+    return { at: e.at, season: market.writeSeason(content, e.at), change, cash: e.change - (jc ?? 0), lines, rest,
+      restWords: rest ? `${W.signed(rest)} from moves too small to have a line of their own` : null,
       after: j ? { years: j.years, change: jw ?? jc, ...(Number.isInteger(j.trips) ? { trips: j.trips, net: j.net } : {}) } : null };
   });
 }

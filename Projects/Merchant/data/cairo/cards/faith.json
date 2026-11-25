@@ -133,7 +133,7 @@
       {
         "id": "wait",
         "label": "Ask for a letter from someone you know",
-        "hint": "It costs nothing. He starts with a small order.",
+        "hint": "It costs nothing now and brings 4 dinars in three seasons. He starts with a small order.",
         "now": [],
         "later": [
           {

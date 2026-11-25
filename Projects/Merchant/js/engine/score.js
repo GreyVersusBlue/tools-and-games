@@ -3,6 +3,7 @@
 // multiplier on their sum, then a rank word from the city's `ranks`. The wealth scale and
 // the ranks are the city's (city.json `score`); the other rates are the game's, below.
 import { REP_GROUPS, cityOf, find } from './state.js';
+import * as M from './market.js';
 
 export const REP_GROUP_POINTS = 2;   // most a group of reputation earns; counted from the middle (DESIGN 2.2 rule 6)
 export const HOME_POINTS = 10;      // per agent who made a trip for the house and is alive and home
@@ -25,8 +26,34 @@ export function scaled(scale, net) {
 
 const fmt = n => Math.round(n).toLocaleString('en-US');   // 2453 -> "2,453"; fixed locale, so no machine's settings change a page
 
-/** What the house holds at the end, in the city's money, with its pieces: cash, plus stock at the last
-    known price at home (a good with no known price counts for nothing, and `unpriced` counts its loads),
+/** What `loads` loads of `good` are worth to the house at home now: what selling them in the warehouse would fetch, the broker's cut off every load and each
+    load priced after the one before it (market.js `houseSale`, the run the Sell button makes), not the price of one load times the loads (MER-148, M4f play
+    problem 1: 43 loads of copper counted 375 and fetched 580 less than that). A good the home market does not trade has no such price: the last known
+    price at home is the old flat count, and a good with neither is null. */
+export function loadsWorth(state, content, good, loads, ahead = 0) {
+  const home = cityOf(content, 'score').home;
+  if (state.market?.[home]?.[good]) return M.houseSale(state, content, home, good, loads, ahead).got;
+  const price = state.known?.[home]?.[good]?.p;
+  return price === undefined ? null : loads * price;
+}
+
+/** What every load the house holds is worth, the warehouse's and each expedition's cargo (`cargos`, a list of { good: loads }), with the loads of one good
+    sold one after another in a single run: the warehouse's first, then each cargo in the list's order, each behind the loads before it. { stock: { good: value }, road: [
+    { good: value } ] }, a value null where the good has no price at home. One run, not one for each place the loads sit, so that moving three loads from
+    the warehouse onto the road, or a trip's goods into the warehouse, moves nothing: the sum is the same run cut in other places (MER-148). */
+export function poolWorth(state, content, stock, cargos) {
+  const out = { stock: {}, road: cargos.map(() => ({})) };
+  for (const g of new Set([...Object.keys(stock), ...cargos.flatMap(c => Object.keys(c))])) {
+    let ahead = 0;
+    const take = n => { const v = loadsWorth(state, content, g, n, ahead); ahead += n; return v; };
+    if (stock[g] > 0) out.stock[g] = take(stock[g]);
+    cargos.forEach((c, i) => { if (c[g] > 0) out.road[i][g] = take(c[g]); });
+  }
+  return out;
+}
+
+/** What the house holds at the end, in the city's money, with its pieces: cash, plus stock at what selling it
+    at home would fetch now (`loadsWorth`; a good with no price counts for nothing, and `unpriced` counts its loads),
     less what is owed. `brought` is the part of the cash that recall returns put in at the end (the
     recall log's `brought`), for the page to say. `money`, `stock` (its value), `owed` and `net` stay as
     they were for the bots. */
@@ -34,30 +61,34 @@ export function netWealth(state, content) {
   const home = cityOf(content, 'score').home;
   let stock = 0, loads = 0, unpriced = 0;
   const goods = [];
+  const exps = state.expeditions ?? [];
+  const pooled = poolWorth(state, content, state.stock ?? {}, exps.map(x => x.cargo ?? {}));
   for (const [g, n] of Object.entries(state.stock ?? {})) {
     if (!(n > 0)) continue;
     const price = state.known?.[home]?.[g]?.p;
-    goods.push({ good: g, loads: n, price: price ?? null });
+    const value = pooled.stock[g];
+    goods.push({ good: g, loads: n, price: price ?? null, value });
     loads += n;
-    if (price === undefined) unpriced += n; else stock += n * price;
+    if (value === null) unpriced += n; else stock += value;
   }
-  // On the road (MER-113, MER-113b): what every expedition still out carries, at the same home prices, and the money sent
+  // On the road (MER-113, MER-113b): what every expedition still out carries, valued the same way, and the money sent
   // with it, counted at the house's share only. A qirad's partners put in part of the purse and of the goods, and the house
   // paid only the rest (routes.js: purse - partners), so each sum is scaled by house / (house + partners); with no partners
   // the share is the whole. `loads` and `unpriced` stay whole counts of what is aboard. The bar adds this to `net`; `net`
   // and the score do not, so a venture sent costs nothing on the bar.
   const road = { loads: 0, value: 0, unpriced: 0, money: 0, goods: [] };
-  for (const x of state.expeditions ?? []) {
+  for (const [k, x] of exps.entries()) {
     const house = x.staked?.house ?? 0, partners = x.staked?.partners ?? 0;
     const share = partners > 0 && house + partners > 0 ? house / (house + partners) : 1;
     road.money += (x.purse ?? 0) * share;
     for (const [g, n] of Object.entries(x.cargo ?? {})) {
       if (!(n > 0)) continue;
       const price = state.known?.[home]?.[g]?.p;
+      const value = pooled.road[k][g];
       const row = road.goods.find(r => r.good === g);
       if (row) row.loads += n; else road.goods.push({ good: g, loads: n, price: price ?? null });
       road.loads += n;
-      if (price === undefined) road.unpriced += n; else road.value += n * price * share;
+      if (value === null) road.unpriced += n; else road.value += value * share;
     }
   }
   road.money = Math.round(road.money); road.value = Math.round(road.value);
@@ -73,12 +104,12 @@ export function netWealth(state, content) {
     known at home, less 147 owed." Nothing is left out that moves the figure. */
 export function wealthReason(w, money) {
   const bits = [`${fmt(w.cash)} in cash${w.brought ? ` (${fmt(w.brought)} of it brought home by a recall)` : ''}`];
-  bits.push(w.stockLoads ? `${fmt(w.stock)} in ${plural(w.stockLoads, 'load', 'loads')} of stock at the last prices known at home${w.unpriced ? `, ${plural(w.unpriced, 'load', 'loads')} of it with no known price and counted for nothing` : ''}` : 'no stock');
+  bits.push(w.stockLoads ? `${fmt(w.stock)} in ${plural(w.stockLoads, 'load', 'loads')} of stock at what selling it at home would fetch now${w.unpriced ? `, ${plural(w.unpriced, 'load', 'loads')} of it with no known price and counted for nothing` : ''}` : 'no stock');
   // What is out with the agents: loads (priced and not) and money, said wherever there is any, so a money-only trip and
   // an unpriced load are named too (MER-113b). The bar shows this figure, so the line says what the figure holds.
   const out = w.onRoad ?? {};
   const outBits = [];
-  if (out.loads) outBits.push(`${plural(out.loads, 'load', 'loads')} of goods${out.value ? ` worth ${fmt(out.value)} at those prices` : ''}${out.unpriced ? `${out.value ? ', with ' : ', '}${plural(out.unpriced, 'load', 'loads')} of it with no known price and counted for nothing` : ''}`);
+  if (out.loads) outBits.push(`${plural(out.loads, 'load', 'loads')} of goods${out.value ? ` worth ${fmt(out.value)} at what selling them at home would fetch` : ''}${out.unpriced ? `${out.value ? ', with ' : ', '}${plural(out.unpriced, 'load', 'loads')} of it with no known price and counted for nothing` : ''}`);
   if (out.money) outBits.push(`${fmt(out.money)} in money sent to buy with`);
   const road = outBits.length ? ` On the road, and counted on the top bar but not here: ${outBits.join(' and ')}, the house's share only.` : '';
   return `The house holds ${fmt(w.net)} ${money}: ${bits.join(', ')}, ${w.owed ? `less ${fmt(w.owed)} owed` : 'and owes nothing'}.${road}`;

@@ -16,7 +16,7 @@
       {
         "id": "lend",
         "label": "Lend him the money",
-        "hint": "Ships are often late. Some never come.",
+        "hint": "It costs 5 now and pays 4 in two seasons. Ships are often late. Some never come.",
         "requires": {
           "money": {
             "gte": 5
@@ -95,7 +95,7 @@
       {
         "id": "lend",
         "label": "Lend him 7 dinars",
-        "hint": "He may not repay it all. He will remember.",
+        "hint": "It costs 7 dinars now and 4 come back in three seasons. He may not repay it all. He will remember.",
         "requires": {
           "money": {
             "gte": 7
@@ -274,7 +274,7 @@
       {
         "id": "partner",
         "label": "Put in 5 dinars as her partner",
-        "hint": "It costs now. You would take a share of the profit, and the whole market would see the partnership.",
+        "hint": "It costs 5 dinars now and brings 4 in four seasons. You would take a share of the profit, and the whole market would see the partnership.",
         "requires": {
           "money": {
             "gte": 5
@@ -303,7 +303,7 @@
       {
         "id": "small",
         "label": "Lend her 3 dinars as a kindness",
-        "hint": "A small help. She will repay it, and the street will hear of the kindness.",
+        "hint": "A small help of 3 dinars now, and 3 come back in three seasons. She will repay it, and the street will hear of the kindness.",
         "now": [
           {
             "money": -3
@@ -327,7 +327,7 @@
       {
         "id": "keep",
         "label": "Keep your money for your own trade",
-        "hint": "It stays free to work, and the court likes a careful house. Dalal may be hurt.",
+        "hint": "It stays free to work and gains 2 dinars in two seasons, and the court likes a careful house. Dalal may be hurt.",
         "now": [],
         "later": [
           {

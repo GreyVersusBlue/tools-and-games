@@ -29,6 +29,9 @@
 // 18 a choice's words are true of every house that can read them (MER-140, the second play): no "You keep your 140 dinars"
 //   (the purse is not 140), no label that sends the house itself along with an agent (it never travels), and no "It costs less"
 //   with no figure
+// 19 a sum that lands later is named on the paper that chose it (MER-148, the M4f play, problem 6): a choice with a later money effect
+//   says each sum in its hint, and a report whose `happened` moves money says the sum in its body ('You did right' on the camel letter hid
+//   25 dinars that showed on the next Accounts paper, and 'You win nothing back' came back as 2)
 // 17 a money cost that could be a paper's only open choice says so (MER-141): the engine never lets a choice take money the
 //   house does not hold (it is shown closed, in words, and a card with none open is not dealt), so the content must name
 //   the sum in `requires` for any choice that takes money now and has no sibling open whatever the house holds
@@ -69,6 +72,7 @@ export const RULES = {
   14: 'a wait to blame',
   17: 'a money cost that could be the only open choice says so',
   18: 'a choice says only what is true of any house',
+  19: 'a sum that lands later is named on the paper that chose it',
 };
 
 // Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
@@ -167,6 +171,23 @@ export function lastWayFailures(content) {
         out.push({ rule: 17, path: `${kind}[${c.id}].choices[${ch.id}]`, message: `takes ${loss(ch.now)} now and could be the only open choice, but requires ${needs(ch.requires)}; require the money so it shows closed when the house is short` });
       }
     }
+  }
+  return out;
+}
+
+/** Rule 19: a sum the house pays or gets later is on the paper that chose it. Each `later` money effect of a choice has its figure, as a whole word,
+    in the choice's hint; each money effect of a report's `happened` has its figure in the report's body. */
+export function namedSumFailures(content) {
+  const out = [];
+  const says = (text, n) => new RegExp(`(^|[^0-9,.])${Math.abs(n)}([^0-9]|$)`).test(text ?? '');
+  const sums = es => (es ?? []).filter(e => e && typeof e.money === 'number').map(e => e.money);
+  for (const kind of ['cards', 'letters', 'returns']) for (const c of content[kind] ?? []) for (const ch of c.choices ?? []) {
+    for (const n of (ch.later ?? []).flatMap(l => sums(l.do))) {
+      if (!says(ch.hint, n)) out.push({ rule: 19, path: `${kind}[${c.id}].choices[${ch.id}]`, message: `a later effect moves ${n} dinars and the hint "${ch.hint ?? ''}" does not say ${Math.abs(n)}; name the sum on the choice that sets it` });
+    }
+  }
+  for (const l of content.letters ?? []) for (const n of sums(l.happened)) {
+    if (!says(l.body, n)) out.push({ rule: 19, path: `letters[${l.id}]`, message: `its report moves ${n} dinars as it arrives and the body does not say ${Math.abs(n)}; name the sum in the letter` });
   }
   return out;
 }
@@ -445,7 +466,7 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
 
   // rules 11 to 14 (MER-123)
   // Cairo only: Testport is the suites' fixture, written before these rules, and its cards are test inputs
-  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...lastWayFailures(content), ...bonusFailures(content), ...waitFailures(content), ...gainFailures(content), ...bonusOnceFailures(content), ...wordingFailures(content));
+  if (content.cityId === 'cairo') out.push(...offerFailures(content), ...feeFailures(content), ...lastWayFailures(content), ...namedSumFailures(content), ...bonusFailures(content), ...waitFailures(content), ...gainFailures(content), ...bonusOnceFailures(content), ...wordingFailures(content));
 
   // rule 8
   for (const [i, g] of (content.city?.gradients ?? []).entries()) {
