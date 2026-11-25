@@ -35,7 +35,7 @@ export function note(s, content, cause, before, text, { at = seasonIndex(s, cont
 
 /** The price of each good at home as the house knows it (the figure worth uses), by good. */
 export function homePrices(s, content) {
-  const home = cityOf(content, 'worth').home;
+  const home = cityOf(content, 'market').home;
   return Object.fromEntries(Object.entries(s.known?.[home] ?? {}).map(([g, k]) => [g, k.p]));
 }
 
