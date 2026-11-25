@@ -52,7 +52,13 @@ export const DEFAULT_RECALL = {
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const stopOf = (content, id) => (content.stops ?? []).find(x => x.id === id);
-const goodOf = (content, id) => (content.goods ?? []).find(g => g.id === id);
+const GOODS = new WeakMap();   // the goods list as an id map, kept per list (a search asks for a good many thousand times: MER-149)
+const goodOf = (content, id) => {
+  const list = content.goods ?? [];
+  let m = GOODS.get(list);
+  if (!m) { m = new Map(); for (const g of list) if (!m.has(g.id)) m.set(g.id, g); GOODS.set(list, m); }
+  return m.get(id);
+};
 const agentOf = (content, id) => (content.agents ?? []).find(a => a.id === id);
 const routeOf = (content, id) => (content.routes ?? []).find(r => r.id === id);
 const homeOf = content => cityOf(content, 'expeditions').home;
@@ -948,11 +954,11 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   const priced = new Map();   // the search meets the same plan again on each pass
   const worth = p => {
     const key = JSON.stringify([p.buy, p.cargo, p.purse, p.partners]);
-    if (!priced.has(key)) priced.set(key, estimate(state, content, p, memo)?.net ?? -Infinity);
+    if (!priced.has(key)) priced.set(key, estimate(state, content, p, memo, { lean: true })?.net ?? -Infinity);
     return priced.get(key);
   };
   // a plan the house can pay for out of the share of its money the sheet stakes, goods bought now priced load by load as `build` does
-  const costOf = p => homeStake(state, content, p.cargo).buyCost + (p.purse ?? 0) - (p.partners ?? 0);
+  const costOf = p => homeStake(state, content, p.cargo, memo).buyCost + (p.purse ?? 0) - (p.partners ?? 0);
   // what the plan puts at risk on the road: the estimate's stake, the goods in the warehouse at today's price and the money and goods bought
   const stakeOf = p => planStake(state, content, p);
   const hazard = roadRisk(content, a, r, proj.legs[0]?.startIdx);   // the chance of some loss on the road, which the estimate leaves out by design
@@ -1121,23 +1127,11 @@ function farMarket(s, content, stop, good, closings) {
 
 /** What `n` more loads of a good fetch from a market `m` (from marketAt) for an agent who gets `cut` of it: each load is priced
     after the one before it, as `tradeAt` sells them, so the last loads fetch least. `m` ends up with the loads sold. */
-const saleRevenue = (m, content, stop, good, cut, n) => {
-  let got = 0;
-  for (let k = 0; k < n; k++) { got += Math.round(M.sellPrice(m, content, stop, good) * cut); M.noteSale(m, content, stop, good, 1); }
-  return got;
-};
+const saleRevenue = (m, content, stop, good, cut, n) => M.saleRun(m, content, stop, good, cut, n);
 
 /** How many loads `budget` buys from market `m` (from marketAt), each priced after the one before it as `tradeAt` buys them,
     and what they cost: { q, spent }. `m` ends up with the loads bought. */
-function buyRun(m, content, stop, good, cut, budget) {
-  let spent = 0, q = 0;
-  for (;;) {
-    const price = Math.max(1, Math.round(M.buyPrice(m, content, stop, good) * cut));
-    if (spent + price > budget) return { q, spent };
-    spent += price; q++;
-    M.notePurchase(m, content, stop, good, 1);
-  }
-}
+const buyRun = (m, content, stop, good, cut, budget) => M.purchaseRun(m, content, stop, good, cut, budget);
 
 /** A copy of one city's market that `notePurchase` can move without moving the state's, for `goods` (all by default): it changes only
     an entry's `glut`, so those entries are copied one level deep (the price history inside is shared) and the rest are read through
@@ -1160,16 +1154,25 @@ function stockWorth(s, content, good, have, k) {
 /** Loads of each good in `cargo` with their price at home now, the part drawn from the warehouse and the part to buy:
     { stockValue, buyCost, market }, the second priced load by load as `build` prices it, `market` home's market once it is bought
     (what `build` leaves there). */
-function homeStake(s, content, cargo) {
+function homeStake(s, content, cargo, memo = null) {
   const home = homeOf(content);
-  const sim = { ...s, market: { [home]: thin(s.market[home], Object.keys(cargo)) } };   // only home's prices move here
+  // the same cargo is asked about again and again by one search (the estimate and the cost of a step both ask), and the state does not change inside it
+  const key = memo ? `stake|${Object.keys(cargo).sort().map(g => `${g}:${cargo[g]}`).join(',')}` : null;
+  if (key && memo.has(key)) return memo.get(key);
+  const market = thin(s.market[home], Object.keys(cargo));   // only home's prices move here
   let stockValue = 0, buyCost = 0;
   for (const [g, n] of Object.entries(cargo)) {
     const fromStock = Math.min(s.stock[g] ?? 0, n);
     stockValue += stockWorth(s, content, g, s.stock[g] ?? 0, fromStock);
-    for (let i = fromStock; i < n; i++) { buyCost += M.buyPrice(sim, content, home, g); M.notePurchase(sim, content, home, g, 1); }
+    if (n > fromStock) {   // the loads to buy are priced one after another (`houseBuy` is that run, laid out once for the market's numbers)
+      const run = M.houseBuy(s, content, home, g, n - fromStock);
+      buyCost += run.cost;
+      market[g].glut = run.glut;
+    }
   }
-  return { stockValue, buyCost, market: sim.market[home] };
+  const out = { stockValue, buyCost, market };
+  if (key) memo.set(key, out);
+  return out;
 }
 
 /** What the house's own market at home will fetch for `good` when a party back `closings` closings from now sells or values it:
@@ -1179,9 +1182,19 @@ function homeStake(s, content, cargo) {
     jump into the next act is valued as `jump` values it:
     the closing into the next act is the jump, which settles every party still out at home's price as it stands after that closing
     (`jump` resets the markets after it), so the carry stops there. */
-function homeSimAt(s, content, good, closings, market = s.market[homeOf(content)]) {
+function homeSimAt(s, content, good, closings, market = s.market[homeOf(content)], memo = null) {
   const home = homeOf(content), e = market?.[good];
   if (!e) return null;
+  // The carry is a function of the good, the closings and the market entry it starts from (the noise is seeded, not drawn), and the sim it returns is only ever read
+  // (`sellPrice`, `houseSale`), so the plans one `proposePlan` call prices share it: a game's two greedy bots asked for it 115,188 times for 1,088 different answers (MER-149).
+  const key = memo ? `home|${good}|${closings}|${e.f}|${e.glut}` : null;
+  if (key && memo.has(key)) return memo.get(key);
+  const sim = homeSimRun(s, content, good, closings, e);
+  if (key) memo.set(key, sim);
+  return sim;
+}
+function homeSimRun(s, content, good, closings, e) {
+  const home = homeOf(content);
   const played = playedSeasons(content.calendar, s.length);
   const sim = { t: s.t, length: s.length, seed: s.seed, market: { [home]: { [good]: { f: e.f, glut: e.glut, h: [] } } } };
   const world = quiet(content, good);
@@ -1196,8 +1209,8 @@ function homeSimAt(s, content, good, closings, market = s.market[homeOf(content)
   }
   return sim;
 }
-function homePriceAt(s, content, good, closings, market = s.market[homeOf(content)]) {
-  const sim = homeSimAt(s, content, good, closings, market);
+function homePriceAt(s, content, good, closings, market = s.market[homeOf(content)], memo = null) {
+  const sim = homeSimAt(s, content, good, closings, market, memo);
   return sim ? M.sellPrice(sim, content, homeOf(content), good) : null;
 }
 
@@ -1213,11 +1226,14 @@ function homePriceAt(s, content, good, closings, market = s.market[homeOf(conten
     road or agent that holds. `net` is the dinars the house ends up ahead, after its own stake (the number the return
     paper's "hoped" is kept as). `memo` is a Map a caller that prices many plans on one unchanged state (`proposePlan`) passes
     so the far markets are carried to arrival once, not once a plan. */
-export function estimate(state, content, plan, memo = null) {
+export function estimate(state, content, plan, memo = null, { lean = false } = {}) {
   if (!plan || typeof plan !== 'object') return null;
   const agent = agentOf(content, plan.agent), route = routeOf(content, plan.route);
   if (!agent || !route) return null;
-  const proj = project(state, content, route, agent);
+  // the road and the wage count are the same for every plan of one agent on one road, and a search prices thousands of them on a state that does not change (MER-149)
+  const pkey = memo ? `proj|${agent.id}|${route.id}` : null;
+  let proj = pkey ? memo.get(pkey) : undefined;
+  if (!proj) { proj = project(state, content, route, agent); if (pkey) memo.set(pkey, proj); }
   if (!proj.ok) return null;
   const dest = stopOf(content, route.to), home = homeOf(content);
   const cargo = Object.fromEntries(Object.entries(plan.cargo ?? {}).filter(([g, n]) => goodOf(content, g) && n > 0));
@@ -1226,7 +1242,7 @@ export function estimate(state, content, plan, memo = null) {
   const partners = kind === 'qirad' ? (plan.partners ?? plan.contract?.partners ?? 0) : 0;
   const sell = (plan.sell ?? Object.keys(cargo).filter(g => dest.sells?.[g])).filter(g => cargo[g] && dest.sells?.[g]);
   const buy = (plan.buy ?? []).filter(g => dest.sells?.[g]);
-  const { stockValue, buyCost, market: homeAfter } = homeStake(state, content, cargo);
+  const { stockValue, buyCost, market: homeAfter } = homeStake(state, content, cargo, memo);
   const stakedHouse = stockValue + buyCost + purse - partners;
   const far = outEnd(route);
   let ages = [], guessed = false;
@@ -1237,7 +1253,9 @@ export function estimate(state, content, plan, memo = null) {
   const newsOf = g => { const k = farPrice(state, content, dest.id, g); ageOf[g] = k ? k.age : null; if (k) ages.push(k.age); };
   // a road that cannot come home inside its act is settled by `jump` (MER-116): at the prices the party left with, if it has not
   // yet reached the far end when the act ends (a party past it traded in play, and only its way home is settled)
-  const count = wageCount(state, content, route, agent, proj);
+  const ckey = memo ? `count|${agent.id}|${route.id}` : null;
+  let count = ckey ? memo.get(ckey) : undefined;
+  if (!count) { count = wageCount(state, content, route, agent, proj); if (ckey) memo.set(ckey, count); }
   const atQuote = count.settled && count.leg <= far;
   // at the far end: sell, then buy with the purse and the proceeds, less the tolls that came first
   const tollsBefore = route.legs.slice(0, atQuote ? count.leg : far).reduce((n, l) => n + l.toll, 0);
@@ -1312,7 +1330,7 @@ export function estimate(state, content, plan, memo = null) {
   const homeValue = {};   // what each good that comes home is worth to the house, the figure `bringHome` counts it at
   const homeSim = {}, aheadOf = {};
   for (const [g, n] of Object.entries(goodsBack)) {
-    const sim = homeSimAt(state, content, g, proj.seasons, homeAfter);
+    const sim = homeSimAt(state, content, g, proj.seasons, homeAfter, memo);
     homeSim[g] = sim;
     pricesHome[g] = sim ? M.sellPrice(sim, content, home, g) : 0;
     const ahead = aheadOf[g] = Math.max(0, (state.stock[g] ?? 0) - (cargo[g] ?? 0));
@@ -1326,7 +1344,7 @@ export function estimate(state, content, plan, memo = null) {
   const after = tollsAll - tollsBefore, fromMoney = Math.min(Math.max(0, money), after);
   let owed = after - fromMoney, lost = 0, change = 0;
   if (owed > 0 && Object.keys(goodsBack).length) {
-    const dayPrice = Object.fromEntries(Object.keys(goodsBack).map(g => [g, count.settled ? (homePriceAt(state, content, g, Math.max(0, proj.seasons - 1), homeAfter) ?? 0) : pricesHome[g]]));
+    const dayPrice = Object.fromEntries(Object.keys(goodsBack).map(g => [g, count.settled ? (homePriceAt(state, content, g, Math.max(0, proj.seasons - 1), homeAfter, memo) ?? 0) : pricesHome[g]]));
     const credit = g => Math.max(1, Math.round(dayPrice[g] * (1 - M.BROKER_CUT)));
     for (const g of Object.keys(goodsBack).sort((a, b) => credit(a) - credit(b) || (a < b ? -1 : 1))) {
       if (!homeSim[g]) continue;
@@ -1347,6 +1365,7 @@ export function estimate(state, content, plan, memo = null) {
   const shares = split({ kind, agentShare: share[0], of: share[1] }, { house: stakedHouse, partners }, gross);
   const wage = kind === 'own' ? tripWage(agent, count) : 0;
   const net = shares.house - stakedHouse - wage;
+  if (lean) return { ok: true, net };   // a search that ranks plans reads the net alone: the words, the age and the risk are built for the one plan that is shown
   const age = ages.length ? Math.max(...ages) : null;
   const ageWords = guessed || age === null ? 'no news' : M.ageWords(age);
   const chance = roadRisk(content, agent, route, proj.legs[0]?.startIdx);

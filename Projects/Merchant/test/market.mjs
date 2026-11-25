@@ -8,7 +8,7 @@ import { holds } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import * as M from '../js/engine/market.js';
-import { newGame, openSeason, endSeason, view, paperChoices, choose, outfit, sellHome, sellHomeQuote, BROKER_CUT } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, view, paperChoices, choose, outfit, sellHome, sellHomeQuote, BROKER_CUT, destinations, proposePlan } from '../js/engine/index.js';
 import { steps } from '../js/engine/turn.js';
 import { worthOf, NOTE } from '../js/engine/worth.js';
 import { netWealth } from '../js/engine/score.js';
@@ -651,6 +651,97 @@ test('(MER-148, 8) a trip coming home, a paper answered and the letters of a sea
     for (const e of s.log) if (e.kind === 'worth') { if (e.cause === 'trip') trips++; if (e.cause === 'answer') answers++; if (e.cause === 'letter') letters++; }
   }
   ok(trips >= 5 && answers >= 3, `trip lines ${trips}, answer lines ${answers}, letter lines ${letters}`);
+});
+
+// ---- MER-149, 4: the engine's search got fast by laying each run of loads out once; each fast path is held to the per-load run it replaces, over played states
+/** The states a game passes through, one a season at the desk, for a few seeded games (the first papers answered, the sheet's own venture sent). */
+function playedStates(houses, seeds, each) {
+  for (const house of houses) for (const seed of seeds) {
+    let s = newGame(C, { seed, length: 'acts', house });
+    for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+      each(s);
+      for (const p of s.desk.filter(q => q.state === 'open')) { const ch = paperChoices(s, C, p.id); for (const c of ch) { try { s = choose(s, C, p.id, c.id); break; } catch { /* closed */ } } }
+      const v = view(s, C).venture;
+      if (v) { try { s = outfit(s, C, v.plan); } catch { /* did not fit */ } }
+      s = endSeason(s, C);
+    }
+  }
+}
+const HOME = 'cairo';
+const RUNS = [[0, 0], [1, 0], [5, 0], [5, 3], [40, 0], [25, 30], [1, 70], [12, 12]];   // [loads, ahead]: a run, one load, behind a few, past the glut cap (30 deep, ahead 70)
+
+test('(MER-149, 4) houseSale, laid out once for a market\'s numbers, equals the per-load run over played states', () => {
+  let looked = 0;
+  playedStates(['spice', 'cloth'], [1, 2, 3], s => {
+    for (const good of Object.keys(s.market[HOME])) for (const [loads, ahead] of RUNS) {
+      eq(M.houseSale(s, C, HOME, good, loads, ahead), M.houseSaleByLoad(s, C, HOME, good, loads, ahead), `${good} ${loads} behind ${ahead}`);
+      looked++;
+    }
+  });
+  ok(looked >= 1500, `${looked} runs compared`);
+});
+
+test('(MER-149, 4) houseBuy equals buying the loads one after another with buyPrice and notePurchase', () => {
+  let looked = 0;
+  playedStates(['spice', 'cloth'], [1, 2], s => {
+    for (const good of Object.keys(s.market[HOME])) for (const loads of [0, 1, 4, 9, 30, 80]) {
+      const sim = { ...s, market: { [HOME]: { [good]: { ...s.market[HOME][good] } } } };
+      let cost = 0;
+      for (let i = 0; i < loads; i++) { cost += M.buyPrice(sim, C, HOME, good); M.notePurchase(sim, C, HOME, good, 1); }
+      eq(M.houseBuy(s, C, HOME, good, loads), { cost, glut: sim.market[HOME][good].glut }, `${good} ${loads}`);
+      looked++;
+    }
+  });
+  ok(looked >= 700, `${looked} runs compared`);
+});
+
+test('(MER-149, 4) saleRun and purchaseRun equal the per-load runs at the far end, and leave the same glut, for the cuts an agent gets', () => {
+  let looked = 0;
+  playedStates(['spice', 'cloth'], [1, 2], s => {
+    for (const stop of ['damascus', 'aden']) for (const good of Object.keys(s.market[stop] ?? {})) for (const cut of [1, 0.9, 0.85, 1.1]) {
+      for (const n of [0, 1, 6, 25, 60]) {
+        const a = { ...s, market: { [stop]: { [good]: { ...s.market[stop][good] } } } }, b = { ...s, market: { [stop]: { [good]: { ...s.market[stop][good] } } } };
+        let got = 0;
+        for (let i = 0; i < n; i++) { got += Math.round(M.sellPrice(a, C, stop, good) * cut); M.noteSale(a, C, stop, good, 1); }
+        eq(M.saleRun(b, C, stop, good, cut, n), got, `sell ${n} ${good} at ${stop} cut ${cut}`);
+        eq(b.market[stop][good].glut, a.market[stop][good].glut, 'the glut the sale leaves');
+      }
+      for (const budget of [0, 5, 80, 400, 3000]) {
+        const a = { ...s, market: { [stop]: { [good]: { ...s.market[stop][good] } } } }, b = { ...s, market: { [stop]: { [good]: { ...s.market[stop][good] } } } };
+        let spent = 0, q = 0;
+        for (;;) {
+          const price = Math.max(1, Math.round(M.buyPrice(a, C, stop, good) * cut));
+          if (spent + price > budget) break;
+          spent += price; q++; M.notePurchase(a, C, stop, good, 1);
+        }
+        eq(M.purchaseRun(b, C, stop, good, cut, budget), { q, spent }, `buy with ${budget} ${good} at ${stop} cut ${cut}`);
+        eq(b.market[stop][good].glut, a.market[stop][good].glut, 'the glut the purchase leaves');
+      }
+      looked++;
+    }
+  });
+  ok(looked >= 400, `${looked} markets compared`);
+});
+
+test('(MER-149, 4) a search that shares one memo and asks for the net alone prices every plan as the sheet\'s own estimate does, over played states', () => {
+  let looked = 0;
+  playedStates(['spice', 'cloth'], [1, 2, 3], s => {
+    const memo = new Map();
+    for (const d of destinations(s, C)) {
+      const agent = C.agents.find(a => s.agents[a.id]?.hired);
+      if (!agent) continue;
+      for (const share of [0.2, 0.5]) {
+        const plan = proposePlan(s, C, agent, d.route, { check: false, share });
+        if (!plan) continue;
+        const full = estimate(s, C, plan), shared = estimate(s, C, plan, memo), lean = estimate(s, C, plan, memo, { lean: true });
+        eq(shared, full, `${d.route} at ${share}: a shared memo changes nothing`);
+        eq(lean?.net, full?.net, `${d.route} at ${share}: the lean net is the net`);
+        looked++;
+      }
+    }
+  });
+  ok(looked >= 150, `${looked} plans compared`);
 });
 
 done();

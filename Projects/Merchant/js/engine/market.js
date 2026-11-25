@@ -93,22 +93,122 @@ export function houseSale(state, content, stopId, goodId, loads, ahead = 0) {
   const e = state.market?.[stopId]?.[goodId];
   const out = { gross: 0, got: 0, first: null, last: null, after: null };
   if (!e) return out;
-  // The same arithmetic as `sellPrice` and `noteSale`, load by load, with the base price and the depth read once (the loop is run many times a season: the worth bar,
-  // the estimate and every worth line read it, and reading the base for every load was most of what a game cost). test/market.mjs holds it to `sellHome`, which sells with the two.
+  // The run is a function of four numbers, the base price, the factor, the glut it starts from and the depth, and of nothing else: its first `n` loads are the same
+  // whatever `n` is. So the run is laid out once for those four (`saleTable`, a prefix sum of the gross and the net of each load) and a sale of `loads` loads behind
+  // `ahead` is a difference of two entries. The estimate asked for 333,059 sales of 2,159,388 loads in two games (MER-149); `houseSaleByLoad` is the run
+  // itself, and test/market.mjs holds this to it over played states.
+  const t = saleTable(baseOf(state, content, stopId, goodId), e.f, e.glut, depthOf(content, stopId, goodId), ahead + loads);
+  const lo = ahead, hi = ahead + loads;
+  out.gross = t.gross[hi] - t.gross[lo];
+  out.got = t.net[hi] - t.net[lo];
+  if (loads > 0) { out.first = t.nets[lo]; out.last = t.nets[hi - 1]; }
+  out.after = Math.max(1, Math.round(baseOf(state, content, stopId, goodId) * e.f * (1 - t.glutAt[hi])));
+  return out;
+}
+
+const TABLES = new Map();
+const TABLES_MAX = 4096;
+/** The run of sales from a market (base, f, starting glut, depth), laid out as far as `upTo` loads: prices[i] is the price of the i-th load (before the cut), nets[i] what
+    the house keeps of it, glutAt[i] the glut before it, gross and net the running sums (entry i is the sum of the first i loads). The table is extended, never rebuilt, when a longer run is asked. */
+function saleTable(base, f, glut0, depth, upTo) {
+  const key = `${base}|${f}|${glut0}|${depth}`;
+  let t = TABLES.get(key);
+  if (!t) {
+    if (TABLES.size >= TABLES_MAX) TABLES.clear();
+    t = { n: 0, glutAt: [glut0], prices: [], nets: [], gross: [0], net: [0] };
+    TABLES.set(key, t);
+  }
+  while (t.n < upTo) {
+    const p = Math.max(1, Math.round(base * f * (1 - t.glutAt[t.n])));
+    const net = Math.max(1, Math.round(p * (1 - BROKER_CUT)));
+    t.prices.push(p); t.nets.push(net);
+    t.gross.push(t.gross[t.n] + p); t.net.push(t.net[t.n] + net);
+    t.glutAt.push(Math.min(GLUT_MAX, round4(t.glutAt[t.n] + 1 / depth)));
+    t.n++;
+  }
+  return t;
+}
+
+/** What buying `loads` loads of `good` at `stopId` one after another costs from the market in `state`, each load priced after the one before it (`buyPrice`, then
+    `notePurchase`), as `build` buys them: { cost, glut }, the dinars and the glut the entry is left with. The state is not changed. The same prefix table as `houseSale`'s,
+    for the buying run: it depends on the base, the factor, the glut it starts from and the depth, and a longer run begins as a shorter one does (MER-149). */
+export function houseBuy(state, content, stopId, goodId, loads) {
+  const e = state.market?.[stopId]?.[goodId];
+  if (!e) throw new Error(`stop "${stopId}" does not trade "${goodId}"`);
+  const t = buyTable(baseOf(state, content, stopId, goodId), e.f, e.glut, depthOf(content, stopId, goodId), whole(loads));
+  return { cost: t.cost[loads], glut: t.glutAt[loads] };
+}
+
+const BUYS = new Map();
+function buyTable(base, f, glut0, depth, upTo) {
+  const key = `${base}|${f}|${glut0}|${depth}`;
+  let t = BUYS.get(key);
+  if (!t) {
+    if (BUYS.size >= TABLES_MAX) BUYS.clear();
+    t = { n: 0, glutAt: [glut0], cost: [0] };
+    BUYS.set(key, t);
+  }
+  while (t.n < upTo) {
+    t.cost.push(t.cost[t.n] + Math.max(1, Math.round(base * f * (1 - t.glutAt[t.n]))));
+    t.glutAt.push(Math.max(GLUT_MIN, round4(t.glutAt[t.n] - 1 / depth)));
+    t.n++;
+  }
+  return t;
+}
+
+/** What `n` loads sell for at a market the house deals with through an agent who gets `cut` of the price (`sale`: each load is `sellPrice` times `cut`, rounded, then the
+    price falls by `noteSale`), and how many loads `budget` buys when each is `buyPrice` times `cut` (rounded, at least 1) and the price rises by `notePurchase` (`purchase`).
+    Both leave the entry's glut where the run leaves it, as the loads sold or bought one at a time would. The far market of an estimate is run with these (MER-149). */
+export function saleRun(state, content, stopId, goodId, cut, n) {
+  const e = entry(state, stopId, goodId);
+  const t = tradeTable(0, baseOf(state, content, stopId, goodId), e.f, e.glut, depthOf(content, stopId, goodId), cut, whole(n));
+  e.glut = t.glutAt[n];
+  return t.sum[n];
+}
+export function purchaseRun(state, content, stopId, goodId, cut, budget) {
+  const e = entry(state, stopId, goodId);
   const base = baseOf(state, content, stopId, goodId), depth = depthOf(content, stopId, goodId);
-  let glut = e.glut;
-  const price = () => Math.max(1, Math.round(base * e.f * (1 - glut)));
-  const sold = () => { glut = Math.min(GLUT_MAX, round4(glut + 1 / depth)); };
-  for (let i = 0; i < ahead; i++) sold();
+  let t = tradeTable(1, base, e.f, e.glut, depth, cut, 1);
+  while (t.sum[t.n] <= budget) t = tradeTable(1, base, e.f, e.glut, depth, cut, t.n + 1);   // laid out to past the first load the budget cannot pay for (it may have been laid out further by an earlier run)
+  let lo = 0, hi = t.n;   // the most loads whose running cost is within the budget (the cost never falls as loads are added)
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (t.sum[mid] <= budget) lo = mid; else hi = mid - 1; }
+  const q = lo;
+  e.glut = t.glutAt[q];
+  return { q, spent: t.sum[q] };
+}
+const TRADES = new Map();
+function tradeTable(kind, base, f, glut0, depth, cut, upTo) {
+  const key = `${kind}|${base}|${f}|${glut0}|${depth}|${cut}`;
+  let t = TRADES.get(key);
+  if (!t) {
+    if (TRADES.size >= TABLES_MAX) TRADES.clear();
+    t = { n: 0, glutAt: [glut0], sum: [0] };
+    TRADES.set(key, t);
+  }
+  while (t.n < upTo) {
+    const price = Math.max(1, Math.round(base * f * (1 - t.glutAt[t.n])));
+    t.sum.push(t.sum[t.n] + (kind === 0 ? Math.round(price * cut) : Math.max(1, Math.round(price * cut))));
+    t.glutAt.push(kind === 0 ? Math.min(GLUT_MAX, round4(t.glutAt[t.n] + 1 / depth)) : Math.max(GLUT_MIN, round4(t.glutAt[t.n] - 1 / depth)));
+    t.n++;
+  }
+  return t;
+}
+
+/** `houseSale` the long way: each load priced with `sellPrice` and moved with `noteSale` on a copy of the one entry, the way `sellHome` sells them. The reference the table is held to. */
+export function houseSaleByLoad(state, content, stopId, goodId, loads, ahead = 0) {
+  const out = { gross: 0, got: 0, first: null, last: null, after: null };
+  if (!state.market?.[stopId]?.[goodId]) return out;
+  const sim = { ...state, market: { [stopId]: { [goodId]: { ...state.market[stopId][goodId] } } } };
+  for (let i = 0; i < ahead; i++) noteSale(sim, content, stopId, goodId, 1);
   for (let i = 0; i < loads; i++) {
-    const p = price();
+    const p = sellPrice(sim, content, stopId, goodId);
     const net = Math.max(1, Math.round(p * (1 - BROKER_CUT)));
     out.gross += p; out.got += net;
     if (out.first === null) out.first = net;
     out.last = net;
-    sold();
+    noteSale(sim, content, stopId, goodId, 1);
   }
-  out.after = price();
+  out.after = sellPrice(sim, content, stopId, goodId);
   return out;
 }
 
