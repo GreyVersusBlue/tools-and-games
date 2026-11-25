@@ -749,6 +749,16 @@ export function suggestPlan(state, content, stopId) {
 
 export const STRETCH_RETURN = 0.10;   // the sheet's default plan stakes more than its share of the money only for a step that earns its own stake: the net it adds, less the road's risk times the stake it adds, is at least this share of that stake. A tenth: a trip is a few seasons out and back, and a house that puts money on a road wants about what a season's patience pays, the estimate leaves the road's loss out by design, and the share is small enough that a safe road's good step still passes (MER-133b)
 export const EXTRA_FLOOR = 0.9;     // the stretch tries a good the news does not make dearer at the far end only if it is within this share of home's price there (the estimate carries both prices to arrival, and a near-par good can cross) (MER-133)
+export const STAKE_CEILING = 0.6;   // the most of the house's money a plan with no named share puts up on one trip (MER-144: the M4e play staked 641 of 700, 1,191 of 1,258, 646 of 662 and 1,468 of 1,500, and one lost caravan took 1,232 of 1,258)
+export const STAKE_WITH_AGENT_HOME = 0.5;   // and the most while another hired agent is at home with no trip, who would be left the rest to carry (MER-144)
+/** The most dinars of the house's money a plan with no named share puts up for `agentId`'s trip now: 60 percent of the money, half while another
+    hired agent is at home and free to be sent. What counts is what `proposePlan` calls the cost of a plan: the goods bought now at home, each load
+    dearer than the last, and the purse, less the partners' money. Goods already in the warehouse cost nothing now and do not count. */
+export function stakeCeiling(state, content, agentId) {
+  const home = homeOf(content);
+  const another = (content.agents ?? []).some(a => a.id !== agentId && state.agents[a.id]?.hired && state.agents[a.id].where === home && !state.expeditions.some(x => x.agent === a.id));
+  return Math.floor(state.money * (another ? STAKE_WITH_AGENT_HOME : STAKE_CEILING));
+}
 export const DEPTH_SHARE = 0.5;   // a default plan trades no more than this share of a market's depth in one good, which would move the price against it
 export const RISK_WORDS = [[0.10, 'safe'], [0.25, 'uncertain'], [0.45, 'risky'], [Infinity, 'dangerous']];   // by the chance of some loss on the whole road
 
@@ -877,7 +887,10 @@ export function proposePlan(state, content, agent, route, { check = true, share 
   const stakeOf = p => { const h = homeStake(state, content, p.cargo); return h.stockValue + h.buyCost + (p.purse ?? 0) - (p.partners ?? 0); };
   const hazard = roadRisk(content, a, r, proj.legs[0]?.startIdx);   // the chance of some loss on the road, which the estimate leaves out by design
   // past the share the house keeps the trip's wage in hand (a wage plan pays it at the round count the sheet and the return use, `wageCount`)
-  const ceiling = state.money - (qirad ? 0 : tripWage(a, wageCount(state, content, r, a, proj)));
+  // and the house's own plan never bets the house (MER-144): with no share named, what it puts up (the goods bought now and the purse, less the
+  // partners' money; the warehouse's own goods are not counted) stays within STAKE_CEILING of the money, and within STAKE_WITH_AGENT_HOME of it
+  // while another hired agent is at home and free to be sent, so that agent has something to carry
+  const ceiling = Math.min(state.money - (qirad ? 0 : tripWage(a, wageCount(state, content, r, a, proj))), share === null ? stakeCeiling(state, content, a.id) : Infinity);
   // the stretch: past the share, a move that puts more at risk is taken only if it earns that stake: the net it adds, less `hazard` times the
   // stake it adds, is at least STRETCH_RETURN of that stake, however small the step (MER-133b; MER-133 took any step over 8 percent of the plan's net)
   // DESIGN 2.2 rule 1 (MER-98): only a plan that pays. Each good goes out only if it adds to the estimate after tolls, in the

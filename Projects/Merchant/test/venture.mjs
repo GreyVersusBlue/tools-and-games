@@ -1281,6 +1281,8 @@ test('MER-133 (1) the sheet\'s plan leaves nothing on the table: no single plus 
   // the plan's net AND a return on the stake it adds, risk taken off. Over the desks of
   // six seeded games, every other desk. The old plan (stopping at half the money) failed the line in 242 of 413 states, 58.6 percent, before the
   // rule above was added to the line; broken once by switching the stretch off, the case fails on its own line with the count.
+  // MER-144 re-fitted the line again: the plan now stops at 60 percent of the money (half with another agent home), so a plus counts only if it
+  // stays inside that ceiling too. The same pluses, with the ceiling taken off the line, are the plan's own deliberate stop, not something left on the table.
   let states = 0; const bad = [];
   let n = 0;
   played(C, (s, at) => {
@@ -1296,6 +1298,7 @@ test('MER-133 (1) the sheet\'s plan leaves nothing on the table: no single plus 
         if (!c.ok || c.cost.total > s.money - (p.contract === 'qirad' ? 0 : c.cost.later.wage)) return;
         const e = estimate(s, C, p), gain = e.net - base, add = e.stake - held.stake;
         if (add > 0 && gain - held.risk * add < R.STRETCH_RETURN * add) return;   // a plus the stretch rule would refuse is not one left on the table (MER-133b)
+        if (staked(s, C, p) > ceilingOf(s, C, plan.agent)) return;   // MER-144: nor is a plus the ceiling refuses (60 percent of the money, half with another agent home): a plus counts only if the house's own plan could have taken it
         if (!best || gain > best.gain) best = { label, gain };
       };
       for (const g of Object.keys(dest.sells ?? {})) if (home.sells?.[g]) trial(`one more ${g}`, { ...plan, cargo: { ...plan.cargo, [g]: (plan.cargo[g] ?? 0) + 1 }, sell: [...new Set([...plan.sell, g])] });
@@ -1512,6 +1515,101 @@ test('MER-133b (5) one wage count: the sheet\'s later wage, the prepay, and the 
     }
   });
   ok(rows >= 150 && longer >= 5, `${rows} plans, ${longer} on a jump-settled road whose wage count is not the projection's seasons`);
+});
+
+// ---- MER-144: the house's own plan never bets the house
+
+/** What a plan puts up now, from the engine's own cost sheet: the goods bought at home, the purse, less the partners' money. The warehouse's goods are not in it. */
+const staked = (s, c, plan) => { const k = checkPlan(s, c, plan).cost; return k.bought + k.purse - k.partners; };
+/** The ceiling as the decision words it, written here from the money and the agents alone and not read from the engine: 60 percent of the money, half while another hired agent is at home with no trip. */
+const ceilingOf = (s, c, agent) => Math.floor(s.money * (c.agents.some(a => a.id !== agent && s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id)) ? 0.5 : 0.6));
+
+test('MER-144 (1) no default plan stakes more than 60 percent of the house\'s money, or half while another agent is home and free: every road, every free agent, over the played desks', () => {
+  // The M4e play: 641 of 700, 1,191 of 1,258, 646 of 662 and 1,468 of 1,500 on one trip each; one lost caravan took 1,232 of 1,258 and the second
+  // agent sat home six seasons of nine. The plan has no named share here, as the sheet, the first sheet and the map's line have none.
+  let plans = 0, half = 0, states = 0, over60 = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) for (const a of C.agents) {
+      if (!s.agents[a.id]?.hired || s.agents[a.id].where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+      states++;   // a state is a played desk, a road and a free agent, as in MER-133 (1)
+      const plan = proposePlan(s, C, a.id, d.route);
+      if (!plan || plan.why) continue;
+      const out = staked(s, C, plan), cap = ceilingOf(s, C, a.id);
+      ok(out <= cap, `${at} ${d.route} ${a.id}: stakes ${out} of ${s.money}, the ceiling is ${cap}`);
+      plans++; if (cap === Math.floor(s.money * 0.5)) half++;
+      if (out > 0.5 * s.money) over60++;
+    }
+  });
+  ok(states >= 200, `${states} played states (desk, road, free agent)`);
+  ok(plans >= 400, `${plans} plans`);
+  ok(half >= 100, `${half} plans made while another agent was at home (the half rule)`);
+  ok(over60 >= 20, `${over60} plans stake past half the money while no other agent is free: the 60 percent room is used, not just kept (a ceiling that every plan stays under by never stretching proves nothing)`);
+});
+
+test('MER-144 (2) the half case: with a second agent at home the plan stakes at most half the money, and the same state with the second agent away may stake more', () => {
+  let cases = 0, more = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) {
+      const free = C.agents.filter(a => s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id));
+      if (free.length < 2) continue;
+      const a = free[0].id, plan = proposePlan(s, C, a, d.route);
+      if (!plan || plan.why) continue;
+      ok(staked(s, C, plan) <= Math.floor(s.money / 2), `${at} ${d.route} ${a}: stakes ${staked(s, C, plan)} of ${s.money} with ${free.length - 1} more at home`);
+      // the same house with the others on the road: nobody else is free to be sent, so the 60 percent applies
+      const alone = structuredClone(s);
+      for (const o of free.slice(1)) alone.agents[o.id].where = 'road';
+      const solo = proposePlan(alone, C, a, d.route);
+      if (solo && !solo.why) { ok(staked(alone, C, solo) <= Math.floor(alone.money * 0.6), `${at} ${d.route}: alone it stakes ${staked(alone, C, solo)} of ${alone.money}`); if (staked(alone, C, solo) > staked(s, C, plan)) more++; }
+      cases++;
+    }
+  });
+  ok(cases >= 100, `${cases} states with two agents at home`);
+  ok(more >= 5, `${more} of them stake more once the second agent is away`);
+});
+
+test('MER-144 (3) the first sheet (suggestPlan, the opening card) obeys the same ceiling for what it buys, and the opening good\'s ten linen from the warehouse still go', () => {
+  let cards = 0, bought = 0, linen = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) {
+      const plan = R.suggestPlan(s, C, d.stop);
+      if (!plan) continue;
+      ok(checkPlan(s, C, plan).ok, `${at} ${d.stop}: the card's plan is one the engine takes`);
+      const out = staked(s, C, plan), cap = ceilingOf(s, C, plan.agent);
+      ok(out <= cap, `${at} ${d.stop} ${plan.agent}: the first sheet stakes ${out} of ${s.money}, the ceiling is ${cap}`);
+      cards++; if (out > 0) bought++;
+    }
+  });
+  ok(cards >= 200 && bought >= 50, `${cards} first sheets, ${bought} of them buying something`);
+  // the house's own start: ten linen in the warehouse and a purse; the plan may carry the linen whole, it costs nothing now
+  const s = newGame(C, { seed: 3, length: 'acts', house: C.houses[0].id });
+  for (const d of R.destinations(s, C)) {
+    const plan = R.suggestPlan(s, C, d.stop);
+    if (!plan) continue;
+    ok(staked(s, C, plan) <= ceilingOf(s, C, plan.agent), `new game ${d.stop}: ${staked(s, C, plan)} of ${s.money}`);
+    if ((plan.cargo.linen ?? 0) >= 5) linen++;
+  }
+  ok(linen >= 1, 'the opening linen goes on at least one road');
+});
+
+test('MER-144 (4) a named share is the bot\'s own and the player can still raise the stakes by hand: the share 0.95 plan is not held to the ceiling, a hand-made plan up to what the house can pay is accepted', () => {
+  let named = 0, past = 0, hand = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) for (const a of C.agents) {
+      if (!s.agents[a.id]?.hired || s.agents[a.id].where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+      const plan = proposePlan(s, C, a.id, d.route, { share: 0.95 });
+      if (!plan || plan.why) continue;
+      named++; if (staked(s, C, plan) > ceilingOf(s, C, a.id)) past++;
+      // by hand: all of the house's money into goods and purse is the player's choice, as long as the house can pay it
+      const big = proposePlan(s, C, a.id, d.route);
+      if (big && !big.why && big.buy.length) {
+        const extra = { ...big, purse: big.purse + Math.max(0, s.money - checkPlan(s, C, big).cost.total - (big.contract === 'qirad' ? 0 : checkPlan(s, C, big).cost.later.wage)) };
+        const k = checkPlan(s, C, extra);
+        if (k.ok && staked(s, C, extra) > ceilingOf(s, C, a.id)) hand++;
+      }
+    }
+  });
+  ok(named >= 100 && past >= 10, `${named} plans with a named share, ${past} of them past the ceiling: the named share is unchanged`);
+  ok(hand >= 10, `${hand} hand-raised plans past the ceiling that the engine takes`);
 });
 
 await done();
