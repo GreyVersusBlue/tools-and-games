@@ -200,8 +200,10 @@ html.large-text .title-what { display: none; }
 .ask { margin-top: var(--s3); }
 .ask-title { font-size: var(--step-1); margin: 0 0 var(--s1); }
 .ask-title:focus-visible { outline: 2px solid var(--brass-dark); }
-.picture-slot { margin: 0 0 var(--s3); aspect-ratio: 16 / 5; max-height: clamp(4rem, 13vh, 11rem); width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
-.picture-slot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.picture-slot { margin: 0 0 var(--s3); width: 100%; }
+.picture-frame { aspect-ratio: 16 / 5; max-height: clamp(4rem, 13vh, 11rem); width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
+.picture-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.picture-words { margin: var(--s1) 0 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
 /* The page between the acts is long and its one button is last: the button stays at the foot of the visible
    paper while the page scrolls under it (MER-87, finding 7), on a paper-coloured bar so no line shows through. */
 .kind-phase #btn-open-house { position: sticky; bottom: 0; box-shadow: 0 0 0 var(--s2) var(--paper); }
@@ -255,7 +257,7 @@ html.large-text .title-what { display: none; }
   .desk-screen:has(.desk-still.placeholder:last-child) { padding-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }
   .desk-screen:has(.desk-still.placeholder:last-child) .desk-stills { display: none; }   /* MER-132: the picture now in the band, not one still fading out of it: a final picture shows again the season after a placeholder one */
   /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
-  .sheet-title { scroll-margin-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }   /* the bar is two rows, 75 px (MER-105); desk.js keeps --bar-h at its measured height (MER-124) */
+  .sheet-title, .sheet-head { scroll-margin-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }   /* the bar is two rows, 75 px (MER-105); desk.js keeps --bar-h at its measured height (MER-124) */
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
   /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
@@ -272,8 +274,10 @@ html.large-text .title-what { display: none; }
   .sheet { padding: var(--s3); }
   .choices .choice { min-height: 56px; }
   .end-row { position: sticky; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
-    background: var(--night); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }   /* opaque: at .9 the next paper's lines showed behind End the season (MER-105) */
-  .end-reason { text-align: center; }
+    background: var(--night); flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s2); margin: auto -.5rem 0; }   /* opaque: at .9 the next paper's lines showed behind End the season (MER-105) */
+  /* MER-145 (play c015b): the bar was a column, the reason over the button, 110 px of 844, and a letter's second choice sat behind it. The reason and the button share one row (about 60 px). */
+  .end-reason { flex: 1 1 0; min-width: 0; text-align: left; padding: 0; background: none; font-size: var(--step--1); line-height: 1.3; }
+  .end-season { flex: 0 0 auto; }
 }
 
 /* Phone on its side (DESIGN 5.2): 44 px bar, choices pinned to the foot of the paper, edges as a column */
@@ -315,7 +319,11 @@ html.large-text .title-what { display: none; }
 .map-bar .date { font-family: var(--font-paper); font-weight: 700; font-size: var(--step-1); line-height: 1.1; }
 .map-bar .money { font-weight: 600; font-variant-numeric: tabular-nums; }
 .map-stage { position: relative; container-type: size; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; }
-.map-frame { position: relative; width: min(100cqw, 100cqh * 16 / 9); aspect-ratio: 16 / 9; overflow: hidden; background: var(--night); cursor: pointer; }
+/* MER-145 (play a005): at 1920 x 1080 the picture filled 1,286 x 723 of a 1,286 x 1,080 pane, with blurred wood above and below. It is shown --crop times larger than
+   the pane's fit and the pane clips it: the stops lie between 9 and 91 percent across and 19 and 79 percent down, so 1.16 keeps every one of them in view.
+   A grid item wider than its area starts at the area's edge instead of centring, so the overflow is split by hand. */
+.map-frame { --fw: calc(min(100cqw, 100cqh * 16 / 9) * var(--crop, 1.16)); position: relative; width: var(--fw); aspect-ratio: 16 / 9;
+  left: min(0px, calc((100cqw - var(--fw)) / 2)); top: min(0px, calc((100cqh - var(--fw) * 9 / 16) / 2)); overflow: hidden; background: var(--night); cursor: pointer; }
 .map-img, .map-roads { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .map-img { object-fit: contain; }
 .map-roads, .map-layer { transform-origin: 0 0; }
@@ -398,11 +406,11 @@ html.large-text .title-what { display: none; }
 .board-actions { flex: none; display: grid; gap: var(--s2); padding: var(--s2) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); background: var(--paper); box-shadow: 0 -1px 0 var(--paper-shade); }
 .board-actions .reason { margin: 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--madder); }
 .board-actions .reason[hidden] { display: none; }
-@media (min-width: 1600px) { .map-screen { --token: 80px; } }
+@media (min-width: 1600px) { .map-screen { --token: 80px; grid-template-columns: minmax(0, 1fr) minmax(24rem, 28%); } }   /* MER-145: the board needs 28 percent at 1920, and the picture the rest */
 
 /* Phone on its side (DESIGN 5.2): the picture at full height on the left, the list and the board in the column on the right */
 @media (max-height: 500px) {
-  .map-screen { grid-template-columns: minmax(0, 1fr) minmax(14rem, 240px); --token: 48px; }
+  .map-screen { grid-template-columns: minmax(0, 1fr) minmax(14rem, 240px); --token: 48px; --crop: 1; }
   .map-bar { min-height: 44px; height: 44px; padding-top: 0; padding-bottom: 0; }
   .board-body { padding: var(--s2); gap: var(--s2); }
   .board-actions { padding: var(--s2); }
@@ -416,8 +424,14 @@ html.large-text .title-what { display: none; }
 /* Phone upright (DESIGN 5.3): the picture short at full width, the list the main control, prices in a full-screen dialog */
 @media (max-width: 700px) and (min-height: 501px) {
   .map-screen { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); --token: 32px; }
+  /* MER-145 (play c022): date and money each wrapped onto two lines beside the button on 390 px. One line each: nowrap, smaller date, a tighter button. */
+  .map-bar { gap: var(--s2); }
+  .map-bar p { white-space: nowrap; }
+  .map-bar .date { font-size: var(--step-0); }
+  .map-bar .money { font-size: var(--step--1); }
+  .map-bar .button { padding-left: var(--s2); padding-right: var(--s2); white-space: nowrap; }
   .map-stage { container-type: normal; }
-  .map-frame { width: 100%; }
+  .map-frame { width: 100%; left: 0; top: 0; }
   .board { grid-column: 1; grid-row: 3; }
   .board-body { padding: var(--s3); }
   .board-actions { padding: var(--s2) var(--s3) var(--s3); }
@@ -508,6 +522,10 @@ dialog.outfit { animation-name: arrive-fade; }
   dialog.outfit .send-row .panel-actions { margin-top: var(--s1); flex-direction: row; flex-wrap: nowrap; justify-content: stretch; }
   .send-row .panel-actions .button { flex: 0 0 auto; min-height: 48px; padding-left: var(--s3); padding-right: var(--s3); }
   .send-row .panel-actions .send { flex: 1 1 auto; min-height: 48px; }
+  /* MER-145 (play c005): a stepper's + at x 165 to 209 met Send, which began at x 180, so a thumb on the + that was a pixel low or wide pressed Send. Back keeps 11rem
+     and Send begins at x 200 or later, and a stepper's number is narrower, so the + column ends left of Send's edge at every phone width. */
+  .send-row .panel-actions .button:not(.send) { min-width: 11rem; }
+  .step-val { min-width: 4.5rem; padding: 0 var(--s1); }
 }
 /* A phone on its side: the bar was 120 of 390 px. The estimate and the two buttons share one row. */
 @media (max-height: 500px) {
@@ -522,6 +540,9 @@ dialog.outfit { animation-name: arrive-fade; }
 dialog.book { width: min(44em, calc(100% - 2rem)); max-width: none; padding: var(--s3) var(--s4); display: flex; flex-direction: column; overflow: hidden; }
 dialog.book[open] { display: flex; }
 dialog.book .panel-actions { flex: none; }
+/* MER-145 (play a106 to a109, problem 15): the notebook is as tall as it will ever be on every tab, so the dialog, centred, keeps its top in one place. Sized to its
+   content it was centred on a height that changed with the tab, and its top moved 22, 32 and 102 px between Terms, Goods and People. The tab panel scrolls inside. */
+#panel-notebook { height: min(44rem, calc(100dvh - 2rem)); }
 .ledger-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: var(--s2); }
 .ledger-sec { padding: var(--s2) 0 var(--s3); border-bottom: 1px solid var(--paper-shade); }
 .ledger-sec:last-child { border-bottom: 0; }
@@ -531,6 +552,7 @@ dialog.book .panel-actions { flex: none; }
 .ledger-list { list-style: none; margin: 0; padding: 0; }
 .ledger-list li { display: flex; flex-wrap: wrap; gap: 0 var(--s3); align-items: baseline; justify-content: space-between; padding: var(--s1) 0; border-bottom: 1px dotted var(--paper-shade); font-variant-numeric: tabular-nums; }
 .ledger-list li > span { color: var(--ink-soft); font-family: var(--font-chrome); font-size: var(--step--1); }
+.ledger-list li > small { color: var(--ink-soft); font-family: var(--font-chrome); font-size: var(--step--1); }
 .ledger-trip, .ledger-person > div { display: grid; gap: 0; }
 .ledger-trip { display: grid !important; }
 .ledger-person { justify-content: flex-start !important; align-items: center !important; flex-wrap: nowrap !important; gap: var(--s3) !important; }

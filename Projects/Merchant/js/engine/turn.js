@@ -16,6 +16,7 @@ import * as routes from './routes.js';
 import * as letters from './letters.js';
 import * as agents from './agents.js';
 import { score } from './score.js';
+import * as W from './worth.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
@@ -31,7 +32,11 @@ export const steps = {
   news(s, content) {
     // city.json's priceNews (default true) turns price letters off for a city
     if (content.city?.priceNews === false) return;
+    // home's price is always current at an opening, so the goods the house holds are worth what the new price says: the move is a line
+    // in the log, "The goods in the warehouse rose in price: +81" (MER-146, M4e play problem 7)
+    const was = W.homePrices(s, content), held = W.heldLoads(s);
     market.news(s, content);
+    for (const l of W.priceLines(s, content, was, held)) s.log.push({ at: seasonIndex(s, content), kind: 'worth', cause: 'prices', part: l.part, change: l.change, text: `${l.text}.` });
   },
   events(s, content) {
     const idx = seasonIndex(s, content);
@@ -337,6 +342,7 @@ export function choose(state, content, paperId, choiceId) {
     for (const e of card.unlocks ?? []) if (!s.notebook.includes(e)) s.notebook.push(e);
   }
   paper.state = 'done';
+  letters.refitReturns(s, content);   // an answer may have moved goods out of the warehouse; the return papers still open are fitted to what is left (MER-146)
   paper.choice = choiceId;
   s.done.push({ id: paper.id, ref: paper.ref, choice: choiceId });
   s.log.push({ at: idx, kind: info ? 'event' : 'card', ref: paper.ref, choice: choiceId });
@@ -380,9 +386,31 @@ export function endSeason(state, content) {
     holding when the season closed. */
 function logSeason(s, content, moneyAtClose, at, firstSeason) {
   const last = [...s.log].reverse().find(e => e.kind === 'season' && Number.isInteger(e.money));
-  const start = (content.houses ?? []).find(h => h.id === s.house)?.money ?? 0;
+  const house = (content.houses ?? []).find(h => h.id === s.house);
+  const start = house?.money ?? 0;
   const from = last ? last.money : (firstSeason ? start : moneyAtClose);
-  s.log.push({ at, kind: 'season', change: s.money - from, money: s.money });
+  // `change` is the season's change in the money; `worth` and `worthChange` are the figure the top bar shows and its change: a trip sent is
+  // not a loss (the money went out and the goods are counted on the road) and one come home is not a gain beyond its profit, so the
+  // true change of a season is this one (MER-146, M4e play problem 8: +1 for the season a trip brought 309 home and the house sent 288 out again)
+  const worth = W.worthOf(s, content);
+  const startWorth = start + Object.entries(house?.stock ?? {}).reduce((n, [g, q]) => n + q * (market.baseOf(s, content, cityOf(content, 'ledger').home, g) ?? 0), 0);
+  const fromWorth = Number.isInteger(last?.worth) ? last.worth : (firstSeason ? startWorth : null);
+  s.log.push({ at, kind: 'season', change: s.money - from, money: s.money, worth, ...(fromWorth === null ? {} : { worthChange: worth - fromWorth }) });
+}
+
+/** The last four closed seasons for the ledger (MER-146): { at, season, change, cash, after }, newest last. `change` is the season's true
+    change in worth with the years' own move taken out (a season that ran the act jump carries the jump as `after`: { years, change,
+    trips, net }, the jump's change in worth and in cash from the log's `jump` entry), `cash` the change in the money as the log's `change`
+    has it. A season written before worth was logged has `change` equal to its cash. */
+export function trail(state, content) {
+  const jumps = (state.log ?? []).filter(e => e.kind === 'jump' && Number.isInteger(e.years));
+  return (state.log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4).map(e => {
+    const j = jumps.find(x => x.from === e.at);
+    const jw = j && Number.isInteger(j.worthChange) ? j.worthChange : null, jc = j && Number.isInteger(j.change) ? j.change : null;
+    const change = Number.isInteger(e.worthChange) ? e.worthChange - (jw ?? 0) : e.change - (jc ?? 0);
+    return { at: e.at, season: market.writeSeason(content, e.at), change, cash: e.change - (jc ?? 0),
+      after: j ? { years: j.years, change: jw ?? jc, ...(Number.isInteger(j.trips) ? { trips: j.trips, net: j.net } : {}) } : null };
+  });
 }
 
 /** The ending's last choice (ARCHITECTURE 4.9): routes.js rolls each expedition and each agent at home. */
@@ -424,5 +452,6 @@ export function view(state, content) {
     cards: describeTrips(state, content),   // filled words of the cards that tell of a trip, by paper id
     ...agents.standing(state, content),
     interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,
+    trail: trail(state, content),   // the ledger's last four seasons: each season's true change in worth (MER-146)
   };
 }

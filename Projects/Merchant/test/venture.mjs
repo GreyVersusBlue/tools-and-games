@@ -1281,6 +1281,8 @@ test('MER-133 (1) the sheet\'s plan leaves nothing on the table: no single plus 
   // the plan's net AND a return on the stake it adds, risk taken off. Over the desks of
   // six seeded games, every other desk. The old plan (stopping at half the money) failed the line in 242 of 413 states, 58.6 percent, before the
   // rule above was added to the line; broken once by switching the stretch off, the case fails on its own line with the count.
+  // MER-144 re-fitted the line again: the plan now stops at 60 percent of the money (half with another agent home), so a plus counts only if it
+  // stays inside that ceiling too. The same pluses, with the ceiling taken off the line, are the plan's own deliberate stop, not something left on the table.
   let states = 0; const bad = [];
   let n = 0;
   played(C, (s, at) => {
@@ -1296,6 +1298,7 @@ test('MER-133 (1) the sheet\'s plan leaves nothing on the table: no single plus 
         if (!c.ok || c.cost.total > s.money - (p.contract === 'qirad' ? 0 : c.cost.later.wage)) return;
         const e = estimate(s, C, p), gain = e.net - base, add = e.stake - held.stake;
         if (add > 0 && gain - held.risk * add < R.STRETCH_RETURN * add) return;   // a plus the stretch rule would refuse is not one left on the table (MER-133b)
+        if (staked(s, C, p) > ceilingOf(s, C, plan.agent)) return;   // MER-144: nor is a plus the ceiling refuses (60 percent of the money, half with another agent home): a plus counts only if the house's own plan could have taken it
         if (!best || gain > best.gain) best = { label, gain };
       };
       for (const g of Object.keys(dest.sells ?? {})) if (home.sells?.[g]) trial(`one more ${g}`, { ...plan, cargo: { ...plan.cargo, [g]: (plan.cargo[g] ?? 0) + 1 }, sell: [...new Set([...plan.sell, g])] });
@@ -1512,6 +1515,171 @@ test('MER-133b (5) one wage count: the sheet\'s later wage, the prepay, and the 
     }
   });
   ok(rows >= 150 && longer >= 5, `${rows} plans, ${longer} on a jump-settled road whose wage count is not the projection's seasons`);
+});
+
+// ---- MER-144: the house's own plan never bets the house
+
+/** What a plan puts up now, from the engine's own cost sheet: the goods bought at home, the purse, less the partners' money. The warehouse's goods are not in it. */
+const staked = (s, c, plan) => { const k = checkPlan(s, c, plan).cost; return k.bought + k.purse - k.partners; };
+/** The ceiling as the decision words it, written here from the money and the agents alone and not read from the engine: 60 percent of the money, half while another hired agent is at home with no trip. */
+const ceilingOf = (s, c, agent) => Math.floor(s.money * (c.agents.some(a => a.id !== agent && s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id)) ? 0.5 : 0.6));
+
+test('MER-144 (1) no default plan stakes more than 60 percent of the house\'s money, or half while another agent is home and free: every road, every free agent, over the played desks', () => {
+  // The M4e play: 641 of 700, 1,191 of 1,258, 646 of 662 and 1,468 of 1,500 on one trip each; one lost caravan took 1,232 of 1,258 and the second
+  // agent sat home six seasons of nine. The plan has no named share here, as the sheet, the first sheet and the map's line have none.
+  let plans = 0, half = 0, states = 0, over60 = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) for (const a of C.agents) {
+      if (!s.agents[a.id]?.hired || s.agents[a.id].where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+      states++;   // a state is a played desk, a road and a free agent, as in MER-133 (1)
+      const plan = proposePlan(s, C, a.id, d.route);
+      if (!plan || plan.why) continue;
+      const out = staked(s, C, plan), cap = ceilingOf(s, C, a.id);
+      ok(out <= cap, `${at} ${d.route} ${a.id}: stakes ${out} of ${s.money}, the ceiling is ${cap}`);
+      plans++; if (cap === Math.floor(s.money * 0.5)) half++;
+      if (out > 0.5 * s.money) over60++;
+    }
+  });
+  ok(states >= 200, `${states} played states (desk, road, free agent)`);
+  ok(plans >= 400, `${plans} plans`);
+  ok(half >= 100, `${half} plans made while another agent was at home (the half rule)`);
+  ok(over60 >= 20, `${over60} plans stake past half the money while no other agent is free: the 60 percent room is used, not just kept (a ceiling that every plan stays under by never stretching proves nothing)`);
+});
+
+test('MER-144 (2) the half case: with a second agent at home the plan stakes at most half the money, and the same state with the second agent away may stake more', () => {
+  let cases = 0, more = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) {
+      const free = C.agents.filter(a => s.agents[a.id]?.hired && s.agents[a.id].where === 'cairo' && !s.expeditions.some(x => x.agent === a.id));
+      if (free.length < 2) continue;
+      const a = free[0].id, plan = proposePlan(s, C, a, d.route);
+      if (!plan || plan.why) continue;
+      ok(staked(s, C, plan) <= Math.floor(s.money / 2), `${at} ${d.route} ${a}: stakes ${staked(s, C, plan)} of ${s.money} with ${free.length - 1} more at home`);
+      // the same house with the others on the road: nobody else is free to be sent, so the 60 percent applies
+      const alone = structuredClone(s);
+      for (const o of free.slice(1)) alone.agents[o.id].where = 'road';
+      const solo = proposePlan(alone, C, a, d.route);
+      if (solo && !solo.why) { ok(staked(alone, C, solo) <= Math.floor(alone.money * 0.6), `${at} ${d.route}: alone it stakes ${staked(alone, C, solo)} of ${alone.money}`); if (staked(alone, C, solo) > staked(s, C, plan)) more++; }
+      cases++;
+    }
+  });
+  ok(cases >= 100, `${cases} states with two agents at home`);
+  ok(more >= 5, `${more} of them stake more once the second agent is away`);
+});
+
+test('MER-144 (3) the first sheet (suggestPlan, the opening card) obeys the same ceiling for what it buys, and the opening good\'s ten linen from the warehouse still go', () => {
+  let cards = 0, bought = 0, linen = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) {
+      const plan = R.suggestPlan(s, C, d.stop);
+      if (!plan) continue;
+      ok(checkPlan(s, C, plan).ok, `${at} ${d.stop}: the card's plan is one the engine takes`);
+      const out = staked(s, C, plan), cap = ceilingOf(s, C, plan.agent);
+      ok(out <= cap, `${at} ${d.stop} ${plan.agent}: the first sheet stakes ${out} of ${s.money}, the ceiling is ${cap}`);
+      cards++; if (out > 0) bought++;
+    }
+  });
+  ok(cards >= 200 && bought >= 50, `${cards} first sheets, ${bought} of them buying something`);
+  // the house's own start: ten linen in the warehouse and a purse; the plan may carry the linen whole, it costs nothing now
+  const s = newGame(C, { seed: 3, length: 'acts', house: C.houses[0].id });
+  for (const d of R.destinations(s, C)) {
+    const plan = R.suggestPlan(s, C, d.stop);
+    if (!plan) continue;
+    ok(staked(s, C, plan) <= ceilingOf(s, C, plan.agent), `new game ${d.stop}: ${staked(s, C, plan)} of ${s.money}`);
+    if ((plan.cargo.linen ?? 0) >= 5) linen++;
+  }
+  ok(linen >= 1, 'the opening linen goes on at least one road');
+});
+
+test('MER-144 (4) a named share is the bot\'s own and the player can still raise the stakes by hand: the share 0.95 plan is not held to the ceiling, a hand-made plan up to what the house can pay is accepted', () => {
+  let named = 0, past = 0, hand = 0;
+  played(C, (s, at) => {
+    for (const d of R.destinations(s, C)) for (const a of C.agents) {
+      if (!s.agents[a.id]?.hired || s.agents[a.id].where !== 'cairo' || s.expeditions.some(x => x.agent === a.id)) continue;
+      const plan = proposePlan(s, C, a.id, d.route, { share: 0.95 });
+      if (!plan || plan.why) continue;
+      named++; if (staked(s, C, plan) > ceilingOf(s, C, a.id)) past++;
+      // by hand: all of the house's money into goods and purse is the player's choice, as long as the house can pay it
+      const big = proposePlan(s, C, a.id, d.route);
+      if (big && !big.why && big.buy.length) {
+        const extra = { ...big, purse: big.purse + Math.max(0, s.money - checkPlan(s, C, big).cost.total - (big.contract === 'qirad' ? 0 : checkPlan(s, C, big).cost.later.wage)) };
+        const k = checkPlan(s, C, extra);
+        if (k.ok && staked(s, C, extra) > ceilingOf(s, C, a.id)) hand++;
+      }
+    }
+  });
+  ok(named >= 100 && past >= 10, `${named} plans with a named share, ${past} of them past the ceiling: the named share is unchanged`);
+  ok(hand >= 10, `${hand} hand-raised plans past the ceiling that the engine takes`);
+});
+
+// ---- MER-146 (M4e play problem 16): the sheet says "the years pass before X is home" only when they do
+
+test('(MER-146, 7) estimate.yearsFirst is true only for a party still on the road when the years pass, and false for one that is home as they begin', () => {
+  const seen = { first: 0, home: 0, other: 0 };
+  for (const [house, seeds] of [['spice', [1, 2, 3, 4, 6, 8, 9, 12]], ['cloth', [3, 5, 14]]]) for (const seed of seeds) {
+    let s = newGame(C, { seed, length: 'acts', house });
+    const said = {};
+    for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+      s = answer(s, C);
+      for (let k = 0; k < 3; k++) {
+        const v = view(s, C).venture;
+        if (!v) break;
+        const e = checkPlan(s, C, v.plan).estimate;
+        let t; try { t = outfit(s, C, v.plan); } catch { break; }
+        said[t.expeditions.at(-1).id] = e;
+        s = t;
+      }
+      s = endSeason(s, C);
+      for (const entry of s.log) if (entry.kind === 'jump') for (const l of entry.settled) {
+        const e = said[l.expedition];
+        if (!e || e.done) continue;
+        e.done = true;
+        if (l.result === 'lost') continue;   // a loss is a loss; the sheet could not say
+        if (l.quoted && !e.settledAtJump) seen.other++;   // held on the road by a waiting agent or a closed leg: the sheet could not foresee it
+        else if (l.quoted) { eq(e.yearsFirst, true, `seed ${seed} ${house}: the party was on the road when the years passed, and the sheet said so`); seen.first++; }
+        else if (e.settledAtJump) { eq(e.yearsFirst, false, `seed ${seed} ${house}: the party was home as the years began, and the sheet does not say the years pass first`); seen.home++; }
+        else seen.other++;
+      }
+    }
+  }
+  ok(seen.first >= 10 && seen.home >= 1, `${seen.first} parties caught by the years and ${seen.home} home as they began were compared (${seen.other} the sheet could not foresee)`);
+});
+
+// ---- MER-146 (MER-143's engine part): one string for the wage
+
+test('(MER-146, 8) the wage words are one engine string: the sheet, the return paper and the Years pass page print the same sentence for the same trip', () => {
+  const n = { road: 0, jump: 0, paper: 0, longer: 0 };
+  for (const [house, seeds] of [['spice', [1, 2, 3, 4, 6, 8]], ['cloth', [3, 5]]]) for (const seed of seeds) {
+    let s = newGame(C, { seed, length: 'acts', house });
+    const sheet = {}, page = {};
+    for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); }
+      for (const p of s.desk.filter(q => q.kind === 'return' && q.state === 'open')) {
+        const row = p.data.account.find(r => /'s wage$/.test(r.label));
+        if (!row || sheet[p.expedition] === undefined) continue;
+        const said = sheet[p.expedition];
+        // a trip that took longer than the sheet said (a closed leg, a hold) has the same wage for the same seasons and says so in its own words
+        if (p.data.trip.seasons === said.seasons) eq(row.text, said.words, `seed ${seed} ${house}: the return paper's wage row is the sheet's sentence`);
+        else { ok(row.text.startsWith(said.words.split(',')[0]), `seed ${seed} ${house}: the wage for the same seasons ("${row.text}" against "${said.words}")`); n.longer++; continue; }
+        if (page[p.expedition]) { eq(row.text, page[p.expedition], `seed ${seed} ${house}: and the Years pass page's`); n.jump++; } else n.road++;
+        n.paper++;
+        sheet[p.expedition] = undefined;
+      }
+      s = answer(s, C);
+      for (let k = 0; k < 3; k++) {
+        const v = view(s, C).venture;
+        if (!v) break;
+        const e = checkPlan(s, C, v.plan).estimate;
+        let t; try { t = outfit(s, C, v.plan); } catch { break; }
+        if (e.wageWords) sheet[t.expeditions.at(-1).id] = { words: e.wageWords, seasons: e.seasons };
+        s = t;
+      }
+      s = endSeason(s, C);
+      for (const entry of s.log) if (entry.kind === 'jump') for (const l of entry.settled) if (l.wage) page[l.expedition] = l.wage;
+    }
+  }
+  ok(n.road >= 8 && n.jump >= 4, `${n.road} trips that came home on the road and ${n.jump} that the years settled were compared`);
 });
 
 await done();

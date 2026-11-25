@@ -14,7 +14,7 @@ import * as M from '../js/engine/market.js';
 import { steps } from '../js/engine/turn.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import { netWealth } from '../js/engine/score.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, recall, outfit, suggestPlan, checkPlan, routeFor, destinations, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, recall, outfit, suggestPlan, checkPlan, routeFor, destinations, view, sellHome } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 
 const T0 = await loadContent('testport', { fs });
@@ -158,7 +158,7 @@ test('outfit moves the cargo and the money out of the house, buys the rest at th
   ok(t.market.harbour.wool.glut < 0, 'buying makes wool scarcer at home');
   eq(x.staked, { house: 200 + paid + 40, partners: 0 }, 'the house put in the ten it held (at 20) and all it paid');
   eq([x.id, x.route, x.leg, x.left, x.sent, x.contract, x.orders], ['x1', 'harbour-hilltown', 0, 2, 0, { kind: 'own' }, []]);
-  eq(t.log.at(-1), { at: 0, kind: 'outfit', ref: 'x1', choice: 'harbour-hilltown' });
+  eq(t.log.filter(e => e.kind !== 'worth').at(-1), { at: 0, kind: 'outfit', ref: 'x1', choice: 'harbour-hilltown' });   // (a worth line may follow it: MER-146)
   eq(game().expeditions.length, 0, 'the input state is untouched');
 });
 
@@ -904,7 +904,7 @@ test('the act jump in cairo: act one to act two applies seven-paragraph material
   eq(s.phase, 'interlude');
   const p = view(s, calmC).interlude;
   eq([p.from, p.to, p.years], [1325, 1335, 9], 'winter 1325 to spring 1335');
-  eq(p.paragraphs.map(x => x.id), ['ibn-battuta-alexandria', 'aydhab-closed-1326', 'sultan-pilgrimage-1332']);
+  eq(p.paragraphs.map(x => x.id).filter(id => !/^worth-/.test(id)), ['ibn-battuta-alexandria', 'aydhab-closed-1326', 'sultan-pilgrimage-1332']);   // (the reset's worth line may follow them: MER-146)
   eq(s.flags['aydhab-shut'], undefined, 'shut in 1326, open again in 1330');
   ok(s.notebook.includes('person-ibn-battuta') && s.notebook.includes('person-al-nasir'));
   const next = openSeason(s, calmC);
@@ -1427,12 +1427,137 @@ test('a loss paper carries its cause, from the leg that struck, on the desk', ()
   }
   eq(seen, 2, 'a whole and a part loss turned up');
 });
+test('(MER-146, 9) a loss paper names its event and carries the id of the final picture that shows it, and no id where there is none', () => {
+  const manifest = JSON.parse(fsSync.readFileSync(new URL('../assets/art/manifest.json', import.meta.url), 'utf8')).assets;
+  const still = id => manifest.find(a => a.id === id);
+  eq(Object.keys(R.LOSS_EVENTS).sort(), ['desert', 'river', 'robbers', 'sea'], 'one entry for each cause causeOf gives');
+  for (const [cause, ev] of Object.entries(R.LOSS_EVENTS)) {
+    ok(ev.event && ev.words, `${cause} has its event and its words`);
+    if (ev.picture !== null) ok(still(ev.picture)?.final === true, `${cause}: "${ev.picture}" is in the manifest and final`);
+  }
+  eq([R.LOSS_EVENTS.sea.picture, R.LOSS_EVENTS.desert.picture], ['storm-sea', 'sandstorm'], 'the storm and the sandstorm are the two finals');
+  // played: a whole loss on a mule road is the desert's, a part is robbers'
+  const c = risk(T, 1);
+  const lose = (jump, seed) => {
+    const x = variant(c, y => { y.city.jump = jump; });
+    const s = outfit(game(x), x, { ...SALTED, purse: 30 });
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, x);
+    return s.desk.find(p => p.kind === 'lost');
+  };
+  const whole = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(sd => lose({ wholeLoss: 1, survivesWhole: 0 }, sd)).find(Boolean);
+  const part = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(sd => lose({ wholeLoss: 0, partial: [0.5, 0.5] }, sd)).find(Boolean);
+  ok(whole && part, 'both a whole and a part loss turned up');
+  eq([whole.data.cause, whole.data.event, whole.data.picture], ['desert', 'sandstorm', 'sandstorm']);
+  eq([part.data.cause, part.data.event, part.data.picture], ['robbers', 'robbers', null]);
+  ok(/sandstorm/i.test(whole.data.eventWords), whole.data.eventWords);
+});
 test('loss-robbers fires only for robbers: a part lost at sea, or a whole vessel, takes another entry', () => {
   const cc = variant(T, y => { y.returns = structuredClone(cairoRet); });
   const pick = facts => R.pickEntry(game(cc), cc, 'loss', facts)?.id;
   eq(pick({ by: 'caravan', cause: 'robbers', whole: false, survived: true }), 'loss-robbers');
   eq(pick({ by: 'galley', cause: 'sea', whole: false, survived: true }), 'loss-survivor', 'a part lost at sea is not robbers');
   eq(pick({ by: 'caravan', cause: 'desert', whole: true, survived: false }), 'loss-desert-gone');
+});
+
+// ---- MER-146 (M4e play problem 3): a sale made between papers is seen by the papers after it
+
+test('(MER-146, 3) a sale on the Years pass page, and one between papers, leaves no paper saying the goods are in the warehouse', () => {
+  const c = risk(T, 0);
+  let s = game(c, { length: 'acts' });
+  s = play(s, c, 1);
+  s = outfit(s, c, { ...WOOL, sell: [], buy: [] });   // the wool goes out and comes home unsold, with the years passing in between
+  s = play(s, c, 2);
+  eq(s.phase, 'interlude');
+  const claim = p => p.data.goodsBack.wool ?? 0;
+  const first = s.desk.find(p => p.kind === 'return');
+  ok(claim(first) > 0 && s.stock.wool >= claim(first), `the paper claims ${claim(first)} loads of wool, which are in the warehouse`);
+  const price = M.truePrice(s, c, 'harbour', 'wool');
+  // sold on the Years pass page: every load
+  const sold = openSeason(sellHome(s, c, 'wool', s.stock.wool), c);
+  const after = sold.desk.find(p => p.kind === 'return');
+  eq([after.data.goodsBack, after.data.cargoValue], [{}, 0], 'nothing is in the warehouse, so the paper says nothing is');
+  // sold part: the paper keeps what is left, at today's price
+  const part = openSeason(sellHome(s, c, 'wool', s.stock.wool - 3), c);
+  const left = part.desk.find(p => p.kind === 'return');
+  eq([left.data.goodsBack, left.data.cargoValue], [{ wool: 3 }, 3 * M.truePrice(part, c, 'harbour', 'wool')], 'three loads are left and valued at the price now');
+  // sold between papers, with the return open on the desk: the open paper is fitted too
+  const open = openSeason(s, c);
+  const there = open.desk.find(p => p.kind === 'return');
+  eq(claim(there), claim(first), 'before the sale the paper claims the wool');
+  const between = sellHome(open, c, 'wool', open.stock.wool);
+  eq(between.desk.find(p => p.kind === 'return').data.goodsBack, {}, 'sold with the paper open, it stops claiming the wool');
+  // and a trip sent from the warehouse takes its goods off the open paper as well
+  const sent = outfit(open, c, { ...WOOL, agent: 'mira', cargo: { wool: Math.min(5, open.stock.wool) }, sell: [], buy: [] });
+  ok(claim(sent.desk.find(p => p.kind === 'return')) <= sent.stock.wool, 'a paper never claims more than the warehouse holds');
+  ok(price > 0);
+});
+
+test('(MER-146, 3) the first Cairo paper after the Years pass asks no broker question about goods that were sold on it', () => {
+  // the first seeded game of this house whose Years pass page holds a broker's offer for goods that came home
+  let hit = null;
+  for (let seed = 1; seed <= 25 && !hit; seed++) {
+    let s = newGame(calmC, { seed, length: 'acts', house: 'spice' });
+    for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') {
+        const p = s.desk.find(q => q.kind === 'return' && Object.keys(q.data.goodsBack ?? {}).length && /^return-sell-/.test(q.data.entry ?? ''));
+        if (p) hit = { s, p };
+        break;
+      }
+      s = answer(s, calmC);
+      const v = view(s, calmC).venture;
+      if (v) { try { s = outfit(s, calmC, v.plan); } catch { /* the draft did not fit */ } }
+      s = endSeason(s, calmC);
+    }
+  }
+  ok(hit, 'a seeded game reaches the Years pass with a broker offer for goods that came home');
+  const good = Object.keys(hit.p.data.goodsBack)[0], entry = hit.p.data.entry;
+  const sold = openSeason(sellHome(hit.s, calmC, good, hit.s.stock[good]), calmC);
+  const paper = sold.desk.find(p => p.kind === 'return' && p.expedition === hit.p.expedition);
+  ok(paper.data.entry !== entry, `the ${entry} offer is not drawn for goods that are gone`);
+  ok(!/in your store/.test(paper.data.ask?.body ?? ''), 'no "in your store" for goods that are not');
+  for (const ch of paperChoices(sold, calmC, paper.id)) ok(!/stock/.test(JSON.stringify(ch.requires ?? {})) || holds(ch.requires, sold, calmC), `choice "${ch.id}" is open and does not ask for loads the house sold`);
+});
+
+// ---- MER-146 (M4e play problem 4): every return account's inside rows add up
+
+test('(MER-146, 4) in every return paper of seeded games the inside rows add to the money that came home, and the sums add to the profit', () => {
+  let papers = 0, inGoods = 0, jumped = 0;
+  for (const [house, seeds] of [['spice', 8], ['cloth', 4]]) for (let seed = 1; seed <= seeds; seed++) {
+    let s = newGame(C, { seed, length: 'acts', house });
+    for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+      if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+      for (const p of s.desk.filter(q => q.kind === 'return')) {
+        const d = p.data, rows = d.account, detail = rows.filter(r => r.detail && Number.isFinite(r.amount));
+        eq(d.purse + detail.reduce((n, r) => n + r.amount, 0), d.moneyBack, `seed ${seed} ${house}: the rows inside (${rows.map(r => `${r.label} ${r.amount ?? ''}`).join(', ')}) leave ${d.moneyBack}, with ${d.purse} sent to spend`);
+        eq(rows.filter(r => !r.detail && Number.isFinite(r.amount) && r.label !== 'Profit' && r.label !== 'Loss').reduce((n, r) => n + r.amount, 0), d.houseNet, `seed ${seed} ${house}: the sums are the profit`);
+        papers++; if (rows.some(r => r.label === 'Paid in goods')) inGoods++; if (p.data.account.some(r => r.label === 'Tolls' && /, of /.test(r.text))) jumped++;
+      }
+      s = answer(s, C);
+      const v = view(s, C).venture;
+      if (v) { try { s = outfit(s, C, v.plan); } catch { /* the draft did not fit */ } }
+      s = endSeason(s, C);
+    }
+  }
+  ok(papers >= 30, `${papers} return papers were checked`);
+  ok(inGoods >= 3 && jumped >= 1, `${inGoods} accounts had a toll paid in goods, ${jumped} of them part money and part goods`);
+});
+
+// ---- MER-146 (M4e play problem 7): the jump's reset is a line on the Years pass page
+
+test('(MER-146, 7) the years pass moves what the warehouse is worth and the Years pass page and the log say by how much', () => {
+  let s = newGame(calmC, { seed: 7, length: 'acts', house: 'spice' });
+  s.stock = { pepper: 10 };
+  while (s.phase !== 'interlude') s = step(s, calmC);
+  const line = s.log.find(e => e.kind === 'worth' && e.cause === 'reset');
+  ok(line, 'a reset line is in the log');
+  const jump = s.log.find(e => e.kind === 'jump');
+  eq(line.at, jump.to, 'it belongs to the first season of the new act');
+  const para = view(s, calmC).interlude.paragraphs.find(p => p.id === 'worth-warehouse');
+  ok(para && /^In the years that passed the goods in the warehouse (rose|fell) in price: [+\u2212]\d+\.$/.test(para.text), para?.text);
+  eq(para.text, line.text, 'the page and the ledger line say the same words');
+  const price = M.truePrice(s, calmC, 'cairo', 'pepper'), shown = s.known.cairo.pepper.p;
+  eq(shown, price, 'the price the house sees on the page is the reset price');
 });
 
 done();

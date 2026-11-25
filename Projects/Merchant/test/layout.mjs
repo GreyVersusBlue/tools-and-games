@@ -194,6 +194,20 @@ const MAP137 = {
   'map-names': { state: tripsOn([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-aleppo', 2, 1], ['samir', 'cairo-famagusta', 2, 1], ['mariam', 'cairo-aydhab', 1, 1], ['yusuf', 'cairo-quseir', 2, 1], ['ali', 'cairo-alexandria', 1, 1]]),
     tokens: 6, names: ['damascus', 'aleppo', 'famagusta', 'qus', 'quseir', 'alexandria'] },
 };
+// MER-145: two parties a piece's width apart on different roads (a stack), and a careful agent a season out on a leg that takes him one season longer
+// than the leg's own length (his token was drawn at Cairo, a038)
+const { legSeasons } = await import(pathToFileURL(path.join(MER, 'engine', 'agents.js')).href);
+const CAREFUL = (() => {
+  const yusuf = content.agents.find(a => a.id === 'yusuf');
+  for (const r of content.routes) if (legSeasons(yusuf, r.legs[0]) > r.legs[0].seasons && r.legs[0].seasons >= 2) return { route: r.id, left: legSeasons(yusuf, r.legs[0]) - 1, total: legSeasons(yusuf, r.legs[0]) };
+  throw new Error('layout.mjs: no road where a careful agent rides a longer first leg');
+})();
+const MAP145 = {
+  'map-close': { state: tripsOn([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 0, 2]]), tokens: 1, stack: 2 },
+  // Qus and Quseir are 28 px apart at 1920 wide: a party standing on each is two groups (two stops) and one stack (a piece is wider than the gap)
+  'map-near': { state: tripsOn([['yusuf', 'cairo-quseir', 1, 1], ['ali', 'cairo-quseir', 2, 1]]), tokens: 1, stack: 2 },
+  'map-careful': { state: tripsOn([['yusuf', CAREFUL.route, 0, CAREFUL.left]]), tokens: 1, careful: true },
+};
 states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
 states.report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
 const plain = s => JSON.parse(JSON.stringify(s));
@@ -210,6 +224,8 @@ const plain = s => JSON.parse(JSON.stringify(s));
       { label: 'In dinars', text: 'The house lost about 200 dinars: the goods at Cairo\'s price and the money that was aboard. It had hoped to make 120 dinars.' }, { label: 'The house lost', text: '200 dinars' }], costs: [], trip: {}, entry: entry.id,
     ask: { title: fill(entry.title), body: fill(entry.body) },
     choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
+  states.lossStorm = structuredClone(states.loss);   // MER-145 (MER-146's data.picture and data.eventWords): the same paper with a storm's picture and the words under it
+  states.lossStorm.desk[0].data.picture = 'storm-sea'; states.lossStorm.desk[0].data.eventWords = 'A storm at sea';
   states.accounts = { ...base, desk: [{ id: 'p80-1', state: 'open', kind: 'accounts', ref: 'accounts', items: [
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ['+60 dinars'], text: 'a' },
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'b' },
@@ -321,6 +337,8 @@ const SCREENS = [
     } })),
   { name: 'desk-loss',
     go: async (p, f) => { await load(p, '#desk', { state: states.loss, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
+  { name: 'desk-loss-storm',
+    go: async (p, f) => { await load(p, '#desk', { state: states.lossStorm, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
   { name: 'desk-accounts',
     go: async (p, f) => { await load(p, '#desk', { state: states.accounts, large: f.large }); await p.waitForSelector('#screen-desk .account-group'); } },
   { name: 'outfit', modal: 'dialog[open]',
@@ -378,16 +396,31 @@ const SCREENS = [
       await load(p, '#map', { state: states[st], large: f.large });
       await p.waitForSelector('#screen-map[data-ready]');
       // MER-137: two parties leaving Cairo at once are one token with a count; on their second legs they are two
-      await p.waitForFunction(n => document.querySelectorAll('.token').length >= n, {}, name === 'map-two' ? 1 : 2);
+      await p.waitForFunction(() => document.querySelectorAll('.token').length >= 1);
       await p.waitForFunction(() => document.querySelector('.stop-label'));
     } })),
   ...Object.entries(MAP137).map(([name, m]) => ({ name,
     go: async (p, f) => {
       await load(p, '#map', { state: m.state, large: f.large });
       await p.waitForSelector('#screen-map[data-ready]');
+      await p.waitForFunction(() => document.querySelectorAll('.token').length >= 1);
+      await p.waitForFunction(() => document.querySelector('.stop-label'));
+    } })),
+  ...Object.entries(MAP145).map(([name, m]) => ({ name,
+    go: async (p, f) => {
+      await load(p, '#map', { state: m.state, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
       await p.waitForFunction(n => document.querySelectorAll('.token').length >= n, {}, m.tokens);
       await p.waitForFunction(() => document.querySelector('.stop-label'));
     } })),
+  // MER-145: the notebook, opened (its top is measured on every tab below)
+  { name: 'notebook-tabs', modal: 'dialog[open]',
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states.book, large: f.large });
+      await p.waitForSelector('#btn-menu');
+      await openBook(p, 'notebook');
+      await p.waitForFunction(() => document.getElementById('panel-notebook')?.open);
+    } },
   // MER-137: the board with nothing opened, where the buttons under it once lay over the prices
   { name: 'map-board',
     go: async (p, f) => {
@@ -1041,7 +1074,7 @@ try {
               const homeLabel = [...document.querySelectorAll('.stop-label')].find(l => l.dataset.stop === 'cairo' || (l.dataset.cluster && /delta/i.test(l.dataset.cluster)));
               return { tokens: new Set(items.filter(x => x.token).map(x => x.own)).size, hits, out, home: !!homeLabel && !homeLabel.hidden, board: board.width > 0 };
             });
-            ok(got.tokens >= (screen.name === 'map-two' ? 1 : 2), `${got.tokens} tokens are drawn, the case needs ${screen.name === 'map-two' ? 'one, with a count of two' : 'two'}`);
+            ok(got.tokens >= 1, `${got.tokens} tokens are drawn`);
             ok(!got.hits.length, brief(got.hits));
             ok(!got.out.length, `a token is not whole inside the picture: ${got.out}`);
             ok(got.home, "Cairo's label (or the Delta cluster's) is hidden");
@@ -1063,7 +1096,10 @@ try {
                   onBoard: r.left < board.right && r.right > board.left && r.top < board.bottom && r.bottom > board.top };
               });
             });
-            eq(got.length, m137.tokens, 'one token for each place a party stands');
+            // MER-145: parties a piece's width apart are one token, and that distance is in px, so how many tokens a frame draws depends on the frame: at most one
+            // for each place a party stands, at least one, and every party in exactly one of them
+            ok(got.length >= 1 && got.length <= m137.tokens, `${got.length} tokens for ${m137.tokens} places`);
+            eq(got.reduce((n, t) => n + t.count, 0), m137.state.expeditions.length, 'every party is in one token');
             for (const t of got) {
               ok(t.shown, `the caption of ${t.ids} is not shown: ${t.text}`);
               ok(t.whole, `the caption of ${t.ids} is not whole inside the picture`);
@@ -1238,6 +1274,105 @@ try {
             ok(got.length >= 2, 'the sheet shows no stepper');
             const bad = got.filter(b => Math.abs(b.off) > 1.5 || Math.abs(b.v) > 3).map(b => `${b.id}: ${b.off} px across, ${b.v} px down`);
             ok(!bad.length, brief(bad));
+          });
+        }
+        // ---- MER-145
+        if (screen.name === 'desk-loss-storm' || screen.name === 'desk-loss') {
+          await test(`${tag}: the lost paper shows the picture the engine names, with its words under it, and the fixed still when it names none`, async () => {
+            const got = await page.evaluate(() => { const f = document.querySelector('.picture-slot'); return { named: f.dataset.picture ?? null, src: f.querySelector('img')?.getAttribute('src') ?? null, words: f.querySelector('figcaption')?.textContent ?? null, hidden: f.querySelector('.picture-frame')?.getAttribute('aria-hidden') }; });
+            if (screen.name === 'desk-loss-storm') {
+              eq(got.named, 'storm-sea'); ok(/storm-sea\.webp$/.test(got.src ?? ''), `the picture is ${got.src}`); eq(got.words, 'A storm at sea');
+            } else { eq(got.named, null, 'a paper with no picture named keeps the fixed still'); eq(got.words, null); }
+            eq(got.hidden, 'true', 'the picture is not read aloud');
+          });
+        }
+        const m145 = MAP145[screen.name], tokenScreen = m137 || m145;
+        if (tokenScreen && !frame.large) {
+          await test(`${tag}: no two token pieces are closer than a piece is wide, and a caption is within about 90 px of its own piece (120 where a nearer place would lie over a label)`, async () => {
+            await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
+            const got = await page.evaluate(() => {
+              const box = e => e.getBoundingClientRect();
+              const ts = [...document.querySelectorAll('.token')].map(t => ({ t, p: box(t.querySelector('.token-piece')), c: t.querySelector('.token-label') }));
+              const near = [], far = [];
+              for (let i = 0; i < ts.length; i++) for (let j = i + 1; j < ts.length; j++) {
+                const a = ts[i].p, b = ts[j].p, d = Math.hypot((a.left + a.right - b.left - b.right) / 2, (a.top + a.bottom - b.top - b.bottom) / 2);
+                if (d < a.width - 0.5) near.push(`${ts[i].t.dataset.expedition} and ${ts[j].t.dataset.expedition} ${Math.round(d)} px apart, a piece is ${Math.round(a.width)}`);
+              }
+              for (const { t, p, c } of ts) {
+                if (!c.checkVisibility()) continue;
+                const r = box(c), d = Math.hypot(Math.max(r.left - p.right, 0, p.left - r.right), Math.max(r.top - p.bottom, 0, p.top - r.bottom));
+                if (d > 125) far.push(`${t.dataset.expedition}: ${Math.round(d)} px`);
+              }
+              return { near, far, n: ts.length };
+            });
+            ok(!got.near.length, got.near.join('; '));
+            ok(!got.far.length, `a caption lies far from its piece: ${got.far}`);
+          });
+        }
+        if (m145?.stack) {
+          await test(`${tag}: parties a piece's width apart are one token with a count`, async () => {
+            const got = await page.evaluate(() => [...document.querySelectorAll('.token')].map(t => [t.dataset.count, t.dataset.expedition]));
+            eq(got.length, 1, `${got.length} tokens: ${JSON.stringify(got)}`);
+            eq(got[0][0], String(m145.stack));
+          });
+        }
+        if (m145?.careful) {
+          await test(`${tag}: a careful agent a season out is drawn along his road, not at the stop he left`, async () => {
+            const got = await page.evaluate(() => { const t = document.querySelector('.token'), d = document.querySelector('.dot.home, .dot[data-stop="cairo"], .dot.cluster'); return { start: t.dataset.start ?? null, from: t.dataset.from }; });
+            eq(got.start, null, `the token stands on ${got.from}: a leg of ${CAREFUL.total} seasons with ${CAREFUL.left} left is ${Math.round((1 - CAREFUL.left / CAREFUL.total) * 100)} percent done`);
+          });
+        }
+        if (screen.name === 'map-board' && frame.name === 'board') {
+          await test(`${tag}: the picture fills the pane's width and every stop lies inside the pane`, async () => {
+            const got = await page.evaluate(() => {
+              const st = document.querySelector('.map-stage').getBoundingClientRect(), fr = document.querySelector('.map-frame').getBoundingClientRect();
+              const out = [...document.querySelectorAll('.dot')].filter(d => { const r = d.getBoundingClientRect(); return r.left < st.left || r.right > st.right || r.top < st.top || r.bottom > st.bottom; }).map(d => d.dataset.stop ?? d.dataset.cluster);
+              return { stageW: st.width, stageH: st.height, frameW: fr.width, frameH: fr.height, out };
+            });
+            ok(got.frameW >= got.stageW * 1.1, `the picture is ${Math.round(got.frameW)} px wide in a pane ${Math.round(got.stageW)} px wide`);
+            ok(got.frameH >= got.stageH * 0.8, `the picture is ${Math.round(got.frameH)} px tall in a pane ${Math.round(got.stageH)} px tall (the bands above and below were 33 percent)`);
+            eq(got.out, [], 'a stop is outside the pane');
+          });
+        }
+        if (screen.name === 'map-board' && frame.mobile && frame.height > frame.width) {
+          await test(`${tag}: the map's top bar is one line: the date and the money each on a line of their own`, async () => {
+            const got = await page.evaluate(() => ['#map-date', '#map-money'].map(s => { const e = document.querySelector(s), lh = parseFloat(getComputedStyle(e).lineHeight) || parseFloat(getComputedStyle(e).fontSize) * 1.3; return [s, Math.round(e.getBoundingClientRect().height / lh)]; }));
+            for (const [s, n] of got) eq(n, 1, `${s} sets ${n} lines`);
+          });
+        }
+        if (screen.name === 'notebook-tabs') {
+          await test(`${tag}: the notebook keeps its top in one place on every tab`, async () => {
+            const tops = [];
+            for (const tab of ['terms', 'places', 'people', 'goods']) {
+              await page.click(`#nb-tab-${tab}`);
+              await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+              tops.push([tab, await page.$eval('#panel-notebook', e => Math.round(e.getBoundingClientRect().top * 10) / 10)]);
+            }
+            ok(tops.every(([, t]) => t === tops[0][1]), `the top moves between tabs: ${JSON.stringify(tops)}`);
+          });
+        }
+        if (screen.name === 'outfit-second-open' && frame.mobile && frame.height > frame.width && !frame.large) {
+          await test(`${tag}: no stepper's plus column reaches Send's left edge`, async () => {
+            const got = await page.evaluate(() => {
+              const send = document.querySelector('#outfit-send').getBoundingClientRect();
+              const pluses = [...document.querySelectorAll('.stepper .step-btn')].filter(b => b.id.endsWith('-plus') && b.checkVisibility()).map(b => [b.id, b.getBoundingClientRect().right]);
+              return { send: send.left, pluses };
+            });
+            ok(got.pluses.length >= 2, 'the sheet shows no stepper');
+            const bad = got.pluses.filter(([, r]) => r > got.send - 8).map(([id, r]) => `${id} ends at ${Math.round(r)}, Send begins at ${Math.round(got.send)}`);
+            ok(!bad.length, bad.join('; '));
+          });
+        }
+        if (screen.name === 'desk-papers' && frame.mobile && frame.height > frame.width && !frame.large) {
+          await test(`${tag}: the tabs of the other papers are reachable above the End bar with the page scrolled to its foot`, async () => {
+            await page.evaluate(() => new Promise(r => setTimeout(r, 450)));
+            const got = await page.evaluate(() => {
+              window.scrollTo(0, document.documentElement.scrollHeight);
+              const end = document.querySelector('.end-row').getBoundingClientRect(), tabs = [...document.querySelectorAll('.edge')].map(e => e.getBoundingClientRect());
+              return { under: tabs.filter(t => t.bottom > end.top + 0.5 && t.top < end.bottom - 0.5).length, n: tabs.length };
+            });
+            ok(got.n >= 1, 'no paper tabs');
+            eq(got.under, 0, 'a tab lies under the End bar with the page scrolled to its foot');
           });
         }
         if ((screen.name === 'desk-question' || screen.name === 'desk-report') && frame.height > frame.width && !frame.large) {

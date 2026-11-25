@@ -9,6 +9,6 @@ export function newGame(content, { seed, length, house }) {
 
 export { score, netWealth } from './score.js';
 export { validateContent } from './content.js';
-export { outfit, suggestPlan, openingGood, checkPlan, routeFor, destinations, prepayCost, proposePlan, estimate, bestTrades, mostLoads } from './routes.js';
+export { outfit, suggestPlan, openingGood, checkPlan, routeFor, destinations, prepayCost, proposePlan, estimate, bestTrades, mostLoads, stakeCeiling } from './routes.js';
 export { sellHome, sellHomeQuote, BROKER_CUT } from './sell.js';
 export { openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices, readEntry };

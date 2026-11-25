@@ -60,6 +60,28 @@ export function jumpWords(a) {
   return `${n} ${made}${cash}${other ? ` Loans and other news moved the money by ${signed(other)}.` : ''}`;
 }
 
+/** MER-145 (MER-146's `worth` log entries, M4e play problem 7: worth moved by +81 and +368 with no paper): the lines the log holds for what moved the house's
+    worth without a paper ({ at, kind: 'worth', cause, change, text }: "The goods in the warehouse rose in price: +81."), grouped by the season index they
+    were written in, in the order they were written. The ledger prints each under its season's line, as it does a sale. */
+export function worthBySeason(log) {
+  const by = new Map();
+  for (const e of log ?? []) {
+    if (e.kind !== 'worth' || !Number.isInteger(e.at) || !e.text) continue;
+    if (!by.has(e.at)) by.set(e.at, []);
+    by.get(e.at).push(e.text);
+  }
+  return by;
+}
+
+/** The line for the years of a jump as the engine's trail gives them (`after`: { years, change, trips, net }, `change` being the jump's change in worth):
+    jumpWords without the clause about loans, which was worth's difference from cash and is now a number of its own. */
+export function trailJumpWords(a) {
+  const n = a.years === 1 ? 'A year passed.' : `${a.years} years passed.`;
+  if (!Number.isInteger(a.net)) return n;
+  const made = a.net > 0 ? `The trips made ${dinars(a.net)} for the house.` : a.net < 0 ? `The trips cost the house ${dinars(-a.net)}.` : 'The trips came out even.';
+  return `${n} ${made}${a.trips === a.net ? '' : ` In the money it shows as ${signed(a.trips)}, the rest being goods in the warehouse.`}`;
+}
+
 function whereIsExpedition(app, x) {
   const { content } = app;
   const route = content.routes.find(r => r.id === x.route);
@@ -91,11 +113,13 @@ const section = (key, title, ...body) => h('section', { class: 'ledger-sec', id:
 
 function money(app) {
   const { state, content } = app;
-  const trail = moneyTrail(content, state.log);
-  const sales = salesBySeason(content, state.log);
+  // MER-145 (MER-146's view().trail): each season's true change in worth, with the money's own change when it differs, and the jump as a line of its own
+  const trail = app.view().trail ?? moneyTrail(content, state.log);
+  const sales = salesBySeason(content, state.log), worth = worthBySeason(state.log);
   const closed = Math.max(-1, ...state.log.filter(e => e.kind === 'season' && Number.isInteger(e.at)).map(e => e.at));
   const saleLines = at => (sales.find(x => x.at === at)?.lines ?? []).map(l => h('li', { class: 'ledger-sale', dataset: { saleAt: String(at) } }, l));
-  const openSales = sales.filter(x => x.at > closed);
+  const worthLines = at => (worth.get(at) ?? []).map(l => h('li', { class: 'ledger-worth', dataset: { worthAt: String(at) } }, l));
+  const openAts = [...new Set([...sales.map(x => x.at), ...worth.keys()])].filter(at => at > closed).sort((a, b) => a - b);
   const loans = state.loans ?? [];
   return section('money', 'Money',
     h('p', { class: 'ledger-line', id: 'ledger-have' }, `The house has ${dinars(state.money)}.`),
@@ -104,14 +128,15 @@ function money(app) {
         `Owes ${dinars(l.principal)} to ${cap(l.from)}, due ${writeSeason(content, l.due)}.`)))
       : h('p', { class: 'ledger-line', id: 'ledger-loans' }, 'The house owes nothing.'),
     h('h4', null, 'The last four seasons'),
-    trail.length || openSales.length
+    trail.length || openAts.length
       ? h('ul', { class: 'ledger-list ledger-trail', id: 'ledger-trail' }, [...trail.flatMap(t => [
-        h('li', { dataset: { change: String(t.change) } },
-          h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`)),
-        ...saleLines(t.at),
-        ...(t.after ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.after.years) } }, jumpWords(t.after))] : [])]),
-      // a season not yet closed has no change to show, only what the house sold in it so far
-      ...openSales.flatMap(x => [h('li', { class: 'ledger-open', dataset: { open: String(x.at) } }, h('span', null, `${x.season}, not yet closed`)), ...saleLines(x.at)])])
+        h('li', { dataset: { change: String(t.change), ...(Number.isInteger(t.cash) ? { cash: String(t.cash) } : {}) } },
+          h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`),
+          Number.isInteger(t.cash) && t.cash !== t.change ? h('small', { class: 'ledger-cash' }, ` in worth, ${signed(t.cash)} in the money`) : null),
+        ...saleLines(t.at), ...worthLines(t.at),
+        ...(t.after ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.after.years) } }, trailJumpWords(t.after))] : [])]),
+      // a season not yet closed has no change to show, only what the house sold in it so far and what moved its worth
+      ...openAts.flatMap(at => [h('li', { class: 'ledger-open', dataset: { open: String(at) } }, h('span', null, `${writeSeason(content, at)}, not yet closed`)), ...saleLines(at), ...worthLines(at)])])
       : h('p', { class: 'ledger-line', id: 'ledger-trail' }, 'No season has been closed in the books yet.'));
 }
 
@@ -135,12 +160,15 @@ function warehouse(app, ui) {
     const good = content.goods.find(g => g.id === id);
     const p = prices[id];
     const unit = good?.unit ?? 'load';
-    const price = p?.p == null ? 'no news of the price'
-      : `${stopName(content, home)} price ${dinars(p.p)} a ${unit}, ${p.written}, ${p.ageWords}`;
     const n = Math.max(1, Math.min(q, ui.loads[id] ?? Math.min(q, 10)));
     ui.loads[id] = n;
     const quote = engine.sellHomeQuote(state, content, id, n);
     const name = good?.name?.toLowerCase() ?? id;
+    // MER-145 (M4e play problem 14, a099): the price line is the quote for the loads now chosen, drawn again after every sale and every step. The news
+    // price it replaced stayed at "71 dinars a load" while the next two loads fetched 55 each.
+    const price = quote.ok
+      ? `${stopName(content, home)} pays ${dinars(quote.first)} a ${unit} now${quote.first === quote.last ? '' : `, falling to ${dinars(quote.last)} by the last`}, after the broker's cut`
+      : p?.p == null ? 'no news of the price' : `${stopName(content, home)} price ${dinars(p.p)} a ${unit}, ${p.written}, ${p.ageWords}`;
     const note = quoteWords(app, quote);
     return h('li', { dataset: { good: id } },
       h('strong', null, `${num(q)} ${q === 1 ? unit : `${unit}s`} of ${name}`), ' ', h('span', null, price),
@@ -210,10 +238,10 @@ export function ledgerBody(app) {
       }
       app.say(`Sold ${loads} ${loads === 1 ? 'load' : 'loads'}. The house has ${dinars(app.state.money)}.`);
       app.refreshDesk?.();
-      // the good may be gone from the warehouse: focus goes to what is left, else to the section's heading
+      // the focus stays on the button just pressed. A good sold out has no button left: the focus goes to the section's heading and never to the next
+      // good's Sell, where a second Enter would sell that too (MER-145, play b032).
       ui.redraw();
-      const left = document.getElementById(`sell-${good}`) ?? scroll.querySelector('.sell-btn') ?? document.getElementById('ledger-warehouse-h');
-      left?.focus({ preventScroll: true });
+      (document.getElementById(`sell-${good}`) ?? document.getElementById('ledger-warehouse-h'))?.focus({ preventScroll: true });
     } };
   ui.redraw();
   return [scroll];

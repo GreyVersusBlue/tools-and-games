@@ -8,7 +8,9 @@ import { holds } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import * as M from '../js/engine/market.js';
-import { newGame, endSeason, view, paperChoices, choose, sellHome, sellHomeQuote, BROKER_CUT } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, view, paperChoices, choose, outfit, sellHome, sellHomeQuote, BROKER_CUT } from '../js/engine/index.js';
+import { steps } from '../js/engine/turn.js';
+import { worthOf, NOTE } from '../js/engine/worth.js';
 
 const CITIES = {
   testport: { content: await loadContent('testport', { fs }), house: 'plain', stop: 'saltmarsh', good: 'lamps', far: 'hilltown', farLag: 2, nearLag: 1, foldAt: 2 },
@@ -455,6 +457,107 @@ test('sellHome: selling all of 100 loads at once fetches less a load than sellin
   ok(all.last < all.first, 'the last load fetches less than the first');
   const t = sellHome(s, CAIRO, 'copper', 100);
   eq([t.stock.copper, t.money - s.money], [undefined, all.got], 'the warehouse is empty and the quote held');
+});
+
+// ---- MER-146 (M4e play problem 7): worth moves for a reason the log names
+
+const C = CITIES.cairo.orig;   // Cairo as the data has it (the loop above reads `priceNews: true` copies of both cities)
+
+test('(MER-146, 7) every move of worth of 10 dinars or more in a closing step with no paper of its own has a worth line in the log', () => {
+  const own = new Set(['returns', 'risk', 'letters', 'fireDue', 'jump']);   // a return, a loss, a letter or later effect with an Accounts line, the Years pass page
+  const marks = [];
+  const wrapped = {};
+  for (const name of Object.keys(steps)) {
+    wrapped[name] = steps[name];
+    steps[name] = function (s, ...rest) {
+      const w0 = worthOf(s, C), n0 = s.log.length, held = s.expeditions.length;
+      const r = wrapped[name].call(this, s, ...rest);
+      const d = worthOf(s, C) - w0, lines = s.log.slice(n0).filter(e => e.kind === 'worth').reduce((n, e) => n + e.change, 0);
+      if (Math.abs(d) >= NOTE && !own.has(name) && !(name === 'news' && s.t === 0)) marks.push({ name, d, lines, room: NOTE * (['tolls', 'move'].includes(name) ? held + 1 : 1) });
+      return r;
+    };
+  }
+  let causes = new Set();
+  try {
+    for (const [house, seeds] of [['spice', [1, 2, 3, 4, 5, 6]], ['cloth', [1, 2]]]) for (const seed of seeds) {
+      let s = newGame(C, { seed, length: 'acts', house });
+      for (let g = 0; g < 40 && !['recall', 'ended'].includes(s.phase); g++) {
+        if (s.phase === 'interlude') { s = openSeason(s, C); continue; }
+        for (const p of s.desk.filter(q => q.state === 'open')) { const ch = paperChoices(s, C, p.id); for (const c of ch) { try { s = choose(s, C, p.id, c.id); break; } catch { /* closed */ } } }
+        const v = view(s, C).venture;
+        if (v) { try { s = outfit(s, C, v.plan); } catch { /* did not fit */ } }
+        s = endSeason(s, C);
+        for (const e of s.log) if (e.kind === 'worth') causes.add(e.cause);
+      }
+    }
+  } finally { Object.assign(steps, wrapped); }
+  ok(marks.length >= 100, `${marks.length} moves of worth of ${NOTE} dinars or more in steps with no paper of their own were looked at`);
+  const loose = marks.filter(m => Math.abs(m.d - m.lines) >= m.room);
+  eq(loose, [], `${loose.length} moves of worth have no line: ${JSON.stringify(loose.slice(0, 3))}`);
+  ok(['prices', 'trade'].every(c => causes.has(c)), `the log named drift and trade as causes (${[...causes]})`);
+});
+
+test('(MER-146, 7) the warehouse rising in price writes the line the ledger prints, with the dinars it moved worth by', () => {
+  let s = newGame(C, { seed: 4, length: 'full', house: 'spice' });
+  s.stock = { pepper: 7 };
+  const held = s.known.cairo.pepper.p;
+  s.market.cairo.pepper.f = 1.4;
+  s = endSeason(answer(s, C), C);   // the closing's drift moves the price, the next opening reads it
+  const line = s.log.find(e => e.kind === 'worth' && e.cause === 'prices' && e.part === 'warehouse');
+  ok(line, 'a price line for the warehouse');
+  const now = s.known.cairo.pepper.p;
+  eq(line.change, Math.round(7 * (now - held)), 'the line says what seven loads moved by');
+  ok(/^The goods in the warehouse (rose|fell) in price: [+\u2212]\d+\.$/.test(line.text), line.text);
+  eq(line.at, s.t, 'it belongs to the season whose desk shows the new figure');
+});
+
+// ---- MER-146 (M4e play problem 8): the ledger's last four seasons give each season's true change
+
+test('(MER-146, 8) a season that sends a trip out is not a loss in the ledger: the trail gives the change in worth, the cash change stays as it was', () => {
+  let s, v;
+  for (const seed of [5, 1, 2, 3, 4, 6, 7, 8]) {   // the first game that has a plan to send on one of its first three desks
+    s = newGame(C, { seed, length: 'acts', house: 'spice' });
+    for (let k = 0; k < 3 && !v; k++) {
+      s = answer(s, C);
+      v = view(s, C).venture;
+      if (!v) s = endSeason(s, C);
+    }
+    if (v) break;
+  }
+  ok(v, 'a seeded game with a plan on one of its first desks');
+  s = outfit(s, C, v.plan);
+  const stake = v.plan.purse + 1;
+  s = endSeason(answer(s, C), C);
+  const row = view(s, C).trail.at(-1), entry = s.log.filter(e => e.kind === 'season').at(-1);
+  ok(entry.change < -300, `the money went out: ${entry.change}`);
+  eq(row.cash, entry.change, 'the cash change is what the log had');
+  ok(Math.abs(row.change) < Math.abs(entry.change) / 4, `the true change is ${row.change} against a cash change of ${entry.change}`);
+  ok(stake >= 1);
+});
+
+test('(MER-146, 8) the trail follows the log across the jump: each season keeps its own change and the years are the line after the season they followed', () => {
+  let s = newGame(C, { seed: 6, length: 'acts', house: 'cloth' });
+  let at = 0;
+  for (let g = 0; g < 40 && s.phase !== 'interlude'; g++) {
+    s = answer(s, C);
+    const v = view(s, C).venture;
+    if (v) { try { s = outfit(s, C, v.plan); } catch { /* did not fit */ } }
+    s = endSeason(s, C);
+    at = g;
+  }
+  eq(s.phase, 'interlude');
+  const seasons = s.log.filter(e => e.kind === 'season'), trail = view(s, C).trail, jump = s.log.find(e => e.kind === 'jump');
+  eq(trail.length, 4, 'four seasons');
+  const last = trail.at(-1);
+  eq(last.at, jump.from, 'the last row is the season the years followed');
+  eq(last.after.years, jump.years, 'with the jump as its line');
+  eq(last.change, seasons.at(-1).worthChange - jump.worthChange, 'its own change leaves out what the years did');
+  eq(last.change + jump.worthChange, seasons.at(-1).worthChange, 'and the two add to what worth moved by');
+  const w = seasons.map(e => e.worth);
+  seasons.slice(1).forEach((e, k) => eq(e.worthChange, w[k + 1] - w[k], `season ${k + 1}'s change is the move from the worth before it`));
+  const opened = openSeason(s, C);
+  eq(view(opened, C).trail.at(-1).at, jump.from, 'on the first desk after the years the trail still ends with that season and its jump line');
+  ok(at > 0);
 });
 
 done();

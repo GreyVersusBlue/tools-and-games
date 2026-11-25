@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test, eq, ok, done } from './lib.mjs';
 
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS = path.join(HERE, '..', '..', '..', 'Tools', 'board-check', 'harness.mjs');
 const { serve, launch, prepPage } = await import(pathToFileURL(HARNESS).href);
@@ -23,6 +24,9 @@ const eng = await import(pathToFileURL(path.join(MER, 'engine', 'index.js')).hre
 const { loadContent } = await import(pathToFileURL(path.join(MER, 'data.js')).href);
 const nodeContent = eng.validateContent(await loadContent('cairo', { fs: await import('node:fs/promises') }));
 const SEED = 1324;
+const { legSeasons } = await import(pathToFileURL(path.join(MER, 'engine', 'agents.js')).href);
+// what each agent's leg of 2 to 6 seasons takes him (a careful agent a season more): a token's fraction done is `left` over this
+const LEG_TOTALS = Object.fromEntries(nodeContent.agents.map(a => [a.id, [2, 3, 4, 5, 6].map(n => legSeasons(a, { seasons: n }))]));
 const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'state.js')).href);
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -1002,7 +1006,7 @@ try {
           ok(rows.length >= 3 && rows.some(r => r.includes('Profit') || r.includes('Back home')), rows.join(' | '));
           // MER-119: the rows a child reads add up. Each sum row shows its dinars, and the ones before the last come to the last,
           // which is the headline's number: 'Sent out' (what the goods and money cost), 'Back home', the wage, then Profit
-          { const sums = await page.$$eval('.account tr.sum', trs => trs.map(t => [t.querySelector('th').textContent, t.querySelector('.amount').textContent]));
+          { const sums = await page.$$eval('.account tr.sum', trs => trs.map(t => [t.querySelector('th').textContent.trim(), t.querySelector('.amount').textContent.trim()]));
             const n = s => Number(s.replace('\u2212', '-').replace(/[^\d+-]/g, ''));
             ok(sums.length >= 3 && sums[0][0] === 'Sent out' && n(sums[0][1]) < 0, JSON.stringify(sums));
             ok(/^(Profit|Loss)$/.test(sums.at(-1)[0]), JSON.stringify(sums));
@@ -1363,14 +1367,16 @@ try {
       // Lengthen the live leg in the page and look again: the token sits at the fraction done, and
       // two expeditions at the same place on a leg are one token with a count.
       await test('tokens stand at the fraction of their leg done, and two on the same spot stack with a count', async () => {
-        await page.evaluate(() => {
+        await page.evaluate(totals => {
           // the expedition the case before left on the road, found by what it is (the last one sent that is not home), not by where a seed's play put it
           const m = window.__merchant, x = m.state.expeditions.filter(e => e.status === 'out' || e.status === 'waiting').at(-1) ?? m.state.expeditions.at(-1);
           if (!x) throw new Error('no expedition is on the road: the case before it sends one');
           const leg = m.content.routes.find(r => r.id === x.route).legs[x.leg];
-          leg.seasons = 4; x.left = 3; x.status = 'out';
-          m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin', agent: 'ali' });
-        });
+          // MER-145: the seasons a leg takes are the agent's own, so the leg is lengthened to one this agent rides in a multiple of four, with three quarters left
+          const row = totals[x.agent], i = row.findIndex(n => n % 4 === 0);
+          leg.seasons = i + 2; x.left = row[i] * 3 / 4; x.status = 'out';
+          m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin' });
+        }, LEG_TOTALS);
         await goDesk(page); await goMap(page);
         const ts = await tokens(page);
         eq(ts.length, 1, 'two expeditions on one spot are one token');
@@ -1760,7 +1766,7 @@ try {
       const money0 = await moneyOf(page);
       ok(shown > 100, `the bought linen is in the number: ${shown}`);
       const later = await page.$$eval('#outfit-costs .cost-later', ps => ps.map(p => p.textContent));
-      ok(later.some(t => /wage, about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
+      ok(later.some(t => /wage, [\d,]+ dinars a season for \w+ seasons?[^,]*, is paid when the trip comes home: about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
       await page.click('#outfit-send');
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
       eq(money0 - await moneyOf(page), shown, 'the number shown is the number taken, to the dinar');
@@ -1833,8 +1839,10 @@ try {
     await page.screenshot({ path: path.join(SHOTS, `map-${frame.name}.png`) });
     await test(`${frame.name}: the map table has no horizontal overflow, its buttons are 44 px, the picture is whole`, async () => {
       const m = await page.evaluate(() => {
-        const f = document.getElementById('map-frame').getBoundingClientRect();
-        return { doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth], frame: [Math.round(f.width / f.height * 100) / 100, f.left >= -1, f.right <= innerWidth + 1],
+        const f = document.getElementById('map-frame').getBoundingClientRect(), st = document.querySelector('.map-stage').getBoundingClientRect();
+        // MER-145: whole inside the pane, or larger than it on both sides (the wide frames show the table as large as fits and the pane clips the wood)
+        const within = f.left >= st.left - 1 && f.right <= st.right + 1, covers = f.left <= st.left + 1 && f.right >= st.right - 1;
+        return { doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth], frame: [Math.round(f.width / f.height * 100) / 100, within || covers, f.right - f.left > 0],
           hits: [...document.querySelectorAll('#btn-outfit, #map-desk, #map-desk-top, .stoplist .option')].map(b => { const r = b.getBoundingClientRect(); return [b.id || b.className, Math.round(r.height)]; }) };
       });
       eq(m.doc[0], m.doc[1]);
@@ -1848,7 +1856,7 @@ try {
           const box = e => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
           const key = e => e.dataset.stop ?? `cluster:${e.dataset.cluster}`;
           return {
-            frame: box(document.getElementById('map-frame')), board: box(document.getElementById('board')),
+            frame: (() => { const f = box(document.getElementById('map-frame')), s = box(document.querySelector('.map-stage')); return { l: Math.max(f.l, s.l), t: Math.max(f.t, s.t), r: Math.min(f.r, s.r), b: Math.min(f.b, s.b) }; })(), board: box(document.getElementById('board')),
             labels: [...document.querySelectorAll('.stop-label')].map(l => ({ id: key(l), hidden: l.hidden, ...box(l) })),
             dots: [...document.querySelectorAll('.dot')].map(d => ({ id: key(d), name: d.getAttribute('aria-label'), role: d.getAttribute('role'), ...box(d) })),
           };
@@ -2223,15 +2231,20 @@ try {
         eq(await texts(page, '#panel-ledger h3'), ['Money', 'Warehouse', 'Out on the road', 'People']);
         eq(await texts(page, '#ledger-have'), [`The house has ${withCommas(book.money)} dinars.`]);
         eq(await texts(page, '#ledger-loans li'), ['Owes 100 dinars to Nell, due Autumn 1325.']);
-        eq(await texts(page, '#ledger-trail li'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
-        eq(await page.$$eval('#ledger-trail li', es => es.map(e => e.dataset.change)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, each as the log wrote it');
-        ok((await texts(page, '#ledger-trail li')).every(t => /[+−]\d+ dinars$/.test(t)), 'signed with a real minus');
+        eq(await texts(page, '#ledger-trail li[data-change]'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
+        // MER-145: the engine's own game logged what moved the house's worth without a paper, and the ledger prints each line
+        eq((await texts(page, '#ledger-trail li.ledger-worth')).sort(), book.log.filter(e => e.kind === 'worth' && (eng.view(book, nodeContent).trail.some(t => t.at === e.at) || e.at > Math.max(...book.log.filter(x => x.kind === 'season').map(x => x.at)))).map(e => e.text).sort(), 'the worth lines of the log, for the seasons the ledger shows and the one still open');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.cash)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, the money each as the log wrote it');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), eng.view(book, nodeContent).trail.map(t => String(t.change)), 'and the change in worth each is the engine\'s trail');
+        ok((await texts(page, '#ledger-trail li[data-change] strong')).every(t => /^[+−]\d[\d,]* dinars?$/.test(t)), 'signed with a real minus');
       });
 
       await test(`${how}: the ledger's warehouse shows each good with Cairo's price as last known and its date, from the engine's view`, async () => {
         const want = Object.entries(book.stock).filter(([, q]) => q > 0).map(([id, q]) => {
           const g = nodeContent.goods.find(x => x.id === id), p = view.prices.cairo[id];
-          return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`;
+          // MER-145: the price line is the quote for the loads the stepper holds (ten at most), not the news price
+          const quote = eng.sellHomeQuote(book, nodeContent, id, Math.min(q, 10)), cur = n => `${withCommas(n)} ${n === 1 ? 'dinar' : 'dinars'}`;
+          return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} ${quote.ok ? `Cairo pays ${cur(quote.first)} a ${g.unit} now${quote.first === quote.last ? '' : `, falling to ${cur(quote.last)} by the last`}, after the broker's cut` : `Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`}`;
         });
         ok(want.length >= 2, 'the saved game holds at least two goods');
         // MER-138: each row also holds the Sell button's stepper and quote line (their own cases are further down): the row's own words are its first two parts
@@ -2253,7 +2266,7 @@ try {
       });
 
       await test(`${how}: the ledger says the years the engine's own jump skipped, on testport and cairo, and says nothing where seasons run on (MER-113b)`, async () => {
-        const { moneyTrail, jumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
+        const { moneyTrail, trailJumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);   // MER-145: the page reads view().trail and prints trailJumpWords; moneyTrail is still the log's own reading
         const { writeSeason } = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
         const fsp = await import('node:fs/promises');
         const testportContent = eng.validateContent(await loadContent('testport', { fs: fsp }));
@@ -2297,7 +2310,7 @@ try {
           if (name === 'cairo') cairoJumped = st;
         }
         // cairo in the page: the same log, the same line, the same figures
-        const st = cairoJumped, j = st.log.find(e => e.kind === 'jump'), trail = moneyTrail(nodeContent, st.log);
+        const st = cairoJumped, j = st.log.find(e => e.kind === 'jump'), trail = eng.view(st, nodeContent).trail;
         await page.goto(GAME, { waitUntil: 'load' });
         await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
         await page.goto(GAME + '#ledger', { waitUntil: 'load' });
@@ -2305,12 +2318,12 @@ try {
         // MER-125: the row whose `at` is the jump's `from` carries `after`; the page prints one line for it, right after that season's own line
         const first = trail.findIndex(t => t.after);
         const checkJumpLine = async (st2, why) => {
-          const j2 = st2.log.find(e => e.kind === 'jump'), tr = moneyTrail(nodeContent, st2.log), at = tr.findIndex(t => t.after);
+          const j2 = st2.log.find(e => e.kind === 'jump'), tr = eng.view(st2, nodeContent).trail, at = tr.findIndex(t => t.after);
           ok(at >= 0 && tr[at].at === j2.from, `${why}: setup: the jump is on the season it came after`);
           eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1, `${why}: exactly one jump line`);
           eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j2.years)], `${why}: data-gap is the years`);
-          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], jumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
-          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.previousElementSibling?.dataset.change)), [String(tr[at].change)], `${why}: it sits right after that season's line`);
+          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], trailJumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => { let p = e.previousElementSibling; while (p && /ledger-(sale|worth)/.test(p.className)) p = p.previousElementSibling; return p?.dataset.change; })), [String(tr[at].change)], `${why}: it sits right after that season's line`);
           eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), tr.map(t => String(t.change)), `${why}: the changes the page shows are the trail's`);
         };
         eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1);
@@ -3448,7 +3461,7 @@ try {
       eq(await page.$eval('.sheet', e => e.dataset.kind), 'lost');
       const order = await page.$eval('.sheet', e => [...e.children].map(c => c.className.split(' ')[0]));
       ok(order.indexOf('picture-slot') > order.indexOf('sheet-head') && order.indexOf('picture-slot') < order.indexOf('sheet-title'), order.join(' '));
-      eq(await page.$eval('.picture-slot', e => e.getAttribute('aria-hidden')), 'true');
+      eq(await page.$eval('.picture-slot .picture-frame', e => e.getAttribute('aria-hidden')), 'true');   // MER-145: the picture is hidden, its caption is not
       eq(await labelsOf(), eng.paperChoices(lost, content80, 'p80-0').map(c => c.label));
       eq(await page.$('#btn-next'), null);
     });
@@ -3931,7 +3944,9 @@ try {
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
         const got = await page.evaluate(() => {
-          const t = document.getElementById('map-toast').getBoundingClientRect(), fr = document.querySelector('.map-frame').getBoundingClientRect();
+          const t = document.getElementById('map-toast').getBoundingClientRect(), fr0 = document.querySelector('.map-frame').getBoundingClientRect(), sg = document.querySelector('.map-stage').getBoundingClientRect();
+          // MER-145: the picture is larger than the pane at the wide frames and the pane clips it, so what is on the picture is the part inside the pane
+          const fr = { left: Math.max(fr0.left, sg.left), right: Math.min(fr0.right, sg.right), top: Math.max(fr0.top, sg.top), bottom: Math.min(fr0.bottom, sg.bottom) };
           const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
           const under = [...document.querySelectorAll('.stop-label:not([hidden]), .token, .dot')].filter(e => e.checkVisibility() && hit(t, e.getBoundingClientRect())).map(e => e.className.split(' ')[0] + ' ' + (e.textContent.trim().slice(0, 20) || e.dataset.stop || ''));
           return { onPicture: hit(t, fr), under, text: document.getElementById('map-toast').textContent };
@@ -3940,7 +3955,7 @@ try {
         ok(!got.onPicture, 'the toast lies over the picture');
         eq(got.under, [], 'the toast covers nothing on the map');
         // the first press anywhere on the table takes it away: a press on the picture, as a thumb would
-        const at = await page.$eval('.map-frame', e => { const b = e.getBoundingClientRect(); return { x: b.left + 6, y: b.top + 6 }; });
+        const at = await page.$eval('.map-frame', e => { const b = e.getBoundingClientRect(), g = document.querySelector('.map-stage').getBoundingClientRect(); return { x: Math.max(b.left, g.left) + 6, y: Math.max(b.top, g.top) + 6 }; });   // MER-145: the part of the picture the pane shows
         await page.mouse.click(at.x, at.y);
         await page.waitForSelector('#map-toast[hidden]', { timeout: 1500 });
       });
@@ -4081,7 +4096,7 @@ try {
           await put(page, st, '#map');
           const a = await reach(page);
           // MER-137: parties standing on one stop are one token with a count, whatever road each is about to take
-          eq(a.length, PLACES[name], `${name}: one token for each place a party stands`);
+          ok(a.length >= 1 && a.length <= PLACES[name], `${name}: at most one token for each place a party stands, ${a.length} for ${PLACES[name]} (MER-145: parties a piece's width apart are one stack, and that is a distance in px)`);
           for (const t of a) ok(t.off <= 24, `${name}: the token for ${t.ids} on ${t.leg} stands ${t.off.toFixed(1)} px from its road`);
           // a second render of the same state: a resize redraws the map, and a press on another stop redraws it again
           await page.evaluate(() => dispatchEvent(new Event('resize')));
@@ -4149,7 +4164,7 @@ try {
     const solo = trips([['yusuf', 'cairo-damascus', 0, 1]]);
     const noOne = (() => { const g = structuredClone(solo); for (const [id, a] of Object.entries(g.agents)) if (id !== 'yusuf') a.hired = false; return g; })();
     const withFree = (() => { const g = structuredClone(noOne); g.agents.ali.hired = true; g.agents.ali.where = nodeContent.city.home; return g; })();
-    const withBusy = trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-qus', 1, 1]]);
+    const withBusy = trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-aden', 3, 1]]);   // MER-145: Ali stands on Jeddah, far enough from Cairo that his piece and Yusuf's are never one stack
     for (const frame of [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3]]) {
       const { page, consoleErrors } = await open(frame);
       const centre = id => page.evaluate(id => {
@@ -4426,7 +4441,7 @@ try {
         const rows = r.data.account, last = rows[rows.length - 1];
         last.label = 'Loss'; last.text = 'about 31 dinars'; last.amount = -31;
         const back = rows.find(x => x.label === 'Back home'); back.text = '31 dinars, 31 dinars in all'; back.amount = 31;
-        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent, cells: [...t.querySelectorAll('td')].map(c => c.textContent) }))); };
+        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent.trim(), cells: [...t.querySelectorAll('td')].map(c => c.textContent.trim()) }))); };
         for (const [name, st] of [['a profit', gain], ['a loss', loss]]) {
           const got = await read(st), all = got.flatMap(x => x.cells).join(' | ');
           const home = got.find(x => x.label === 'Back home');
@@ -4796,6 +4811,135 @@ try {
         ok(trail[i - 1][2] !== null || trail[i - 1][0] === 'ledger-sale', `the sale line is not under a season's line: ${JSON.stringify(trail[i - 1])}`);
       });
       await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // ---- MER-145: what the M4e play found on screen
+    {
+      const { page, consoleErrors } = await open(FRAMES[1]);
+      await test('MER-145 board: a sale that sells a good out leaves the focus on the section heading, never on the next good\'s Sell, and a second Enter sells nothing', async () => {
+        const st = stocked(); st.stock = { copper: 3, linen: 4 };
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+        await page.focus('#sell-copper');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => !document.getElementById('sell-copper'));
+        const after = await page.evaluate(() => ({ active: document.activeElement.id, stock: window.__merchant.state.stock }));
+        eq(after.stock, { linen: 4 }, 'the three loads of copper were sold, nothing else');
+        ok(after.active !== 'sell-linen', 'the focus went to the next good\'s Sell button');
+        eq(after.active, 'ledger-warehouse-h');
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => window.__merchant.state.stock), { linen: 4 }, 'a second Enter sold a good');
+      });
+      await test('MER-145 board: the price line is the quote for the loads now chosen, after a step and after a sale', async () => {
+        const st = stocked();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+        const line = () => page.$eval('#ledger-stock li[data-good="copper"] > span', e => e.textContent);
+        const n0 = await page.$eval('#step-sell-copper', e => Number(e.getAttribute('aria-valuenow')));
+        const q0 = eng.sellHomeQuote(st, nodeContent, 'copper', n0);
+        ok((await line()).includes(`${withCommas(q0.first)} dinars a load`) && (await line()).includes(`${withCommas(q0.last)} dinars by the last`), `the line for ${n0}: ${await line()} against ${JSON.stringify(q0)}`);
+        await page.click('#step-sell-copper-minus'); await page.click('#step-sell-copper-minus');
+        const q1 = eng.sellHomeQuote(st, nodeContent, 'copper', n0 - 2);
+        ok((await line()).includes(`${withCommas(q1.last)} dinars by the last`) || q1.first === q1.last, `after two steps: ${await line()} against ${JSON.stringify(q1)}`);
+        await page.click('#sell-copper');
+        const sold = eng.sellHome(st, nodeContent, 'copper', n0 - 2);
+        const q2 = eng.sellHomeQuote(sold, nodeContent, 'copper', n0 - 2);
+        ok((await line()).includes(`${withCommas(q2.first)} dinars a load`), `after the sale: ${await line()} against ${JSON.stringify(q2)}`);
+        ok(q2.first !== q0.first, 'setup: the sale moved the price, so the old line would be wrong');
+      });
+      await test('MER-145 board: the set-out note covers neither the heading nor the stop list on a second send', async () => {
+        let g = firstDone3(); g.money = 3000;
+        await putState(page, g, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        for (let i = 0; i < 2; i++) {
+          await page.click('#btn-outfit'); await page.waitForSelector('#outfit-send'); await page.click('#outfit-send');
+          await page.waitForSelector('#map-toast:not([hidden])');
+          await page.evaluate(() => new Promise(r => setTimeout(r, 400)));
+          const got = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(); const t = r('#map-toast');
+            return { toast: t.bottom, title: r('#board-title').top, list: r('#stoplist').top }; });
+          ok(got.title >= got.toast - 0.5 && got.list >= got.toast - 0.5, `send ${i + 1}: the note ends at ${got.toast}, the heading begins at ${got.title}, the list at ${got.list}`);
+          if (i === 0) { await page.click('#stop-qus'); }
+        }
+      });
+      await test('MER-145 board: "Every price" is whole above the buttons at the foot of the board, opened and focused (1366 is the frame it was cut at)', async () => {
+        await page.setViewport({ width: 1366, height: 768, deviceScaleFactor: 1 });
+        await putState(page, firstDone3(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.focus('#btn-all-prices');
+        const got = await page.evaluate(() => { const b = document.getElementById('btn-all-prices').getBoundingClientRect(), a = document.querySelector('.board-actions').getBoundingClientRect(), v = document.getElementById('board-body').getBoundingClientRect(); return { bottom: b.bottom, actions: a.top, body: v.bottom }; });
+        ok(got.bottom <= got.actions + 0.5 && got.bottom <= got.body + 0.5, `Every price ends at ${got.bottom}, the buttons begin at ${got.actions}`);
+        await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+      });
+      await test('MER-145 board: hiring Ali on a wage opens the outfit sheet for him, as the qirad does for Samir', async () => {
+        const g = firstDone3(); g.agents.ali.hired = false; g.agents.ali.where = 'cairo';
+        for (const p of g.desk) if (p.state === 'open') p.state = 'done';
+        g.desk.push({ id: 'p0-9', state: 'open', kind: 'card', ref: 'ali-asks-for-work' });
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await page.click('.sheet .choice:first-child');
+        await page.waitForSelector('#btn-next:not([disabled])');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
+        await page.click('#btn-next');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        const got = await page.evaluate(() => document.getElementById('outfit-send')?.textContent ?? '');
+        ok(/Ali/.test(got), `the sheet is not Ali's: "${got}"`);
+        eq(await page.evaluate(() => window.__merchant.state.agents.ali.hired), true);
+      });
+      await test('MER-145 board: the ledger prints worth lines under their season and each season\'s change in worth, from the engine\'s trail', async () => {
+        const st = modelSeason(firstDone3()); st.stock = { copper: 100, linen: 4, salt: 2 };
+        const seasons = st.log.filter(e => e.kind === 'season');
+        const last = seasons.at(-1);
+        // the season with a 309 return: the money moved +1, the worth +309 (the play's problem 8)
+        last.change = 1; last.worthChange = 309; last.worth = (last.worth ?? 0) + 309;
+        st.log.push({ at: last.at, kind: 'worth', cause: 'prices', change: 81, text: 'The goods in the warehouse rose in price: +81.' });
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        const trail = eng.view(st, nodeContent).trail;
+        eq(trail.at(-1).change, 309, 'setup: the engine\'s trail reads the worth');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), trail.map(t => String(t.change)), 'the seasons show the trail\'s changes');
+        const row = await page.$$eval('#ledger-trail li', ls => ls.map(l => [l.className, l.textContent]));
+        const at = row.findIndex(([, t]) => /\+309 dinars/.test(t));
+        ok(at >= 0 && /\+1 in the money/.test(row[at][1]), `the season with the 309 return shows its worth and its money: ${JSON.stringify(row)}`);
+        eq(row[at + 1], ['ledger-worth', 'The goods in the warehouse rose in price: +81.'], 'the worth line sits under its season');
+      });
+      await test('MER-145 board: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    {
+      // account rows never run a figure into the words, and the wage row and the bonus reason name what they mean
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await test('MER-145 phone: a return\'s account has a space between its cells, the wage row prints the engine words, and the paper opens with its seal below the top bar', async () => {
+        let g = fresh3();
+        for (let i = 0; i < 60 && !g.desk.some(p => p.kind === 'return' && p.state === 'open'); i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
+        ok(g.desk.some(p => p.kind === 'return' && p.state === 'open'), 'setup: the model game reaches a return');
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        const id = g.desk.find(p => p.kind === 'return' && p.state === 'open').id;
+        if (await page.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await page.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await page.click(`.edge[data-paper="${id}"]`); }
+        await page.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
+        await page.evaluate(() => new Promise(r => setTimeout(r, 600)));
+        // the paper opened with the page scrolled by the tap on its edge: its seal is under the bar or below it, never behind it
+        const seal = await page.evaluate(() => { const s = document.querySelector('.sheet .sheet-head').getBoundingClientRect(), b = document.querySelector('.topbar').getBoundingClientRect(); return { top: s.top, bar: b.bottom }; });
+        ok(seal.top >= seal.bar - 0.5, `the seal row begins at ${seal.top}, the top bar ends at ${seal.bar}`);
+        await page.click('.account summary');
+        const rows = await page.$$eval('.accounts-table tr', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+        ok(rows.length > 2, 'the account has rows');
+        const run = rows.filter(t => /[A-Za-z)][+−-]\d|[a-z]\d/.test(t));
+        eq(run, [], 'a row runs a figure into the words');
+        // MER-146's wageWords is the one string for a wage: the row prints the engine's words as given
+        const wageRow = g.desk.find(p => p.id === id).data.account.find(r => /'s wage$/.test(r.label));
+        if (wageRow) ok(rows.some(t => t.includes(wageRow.text)), `the wage row does not print the engine's words "${wageRow.text}": ${rows.join(' | ')}`);
+      });
+      await test('MER-145 phone: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
   }

@@ -25,7 +25,7 @@ import { next as dice } from '../js/engine/rng.js';
 import { steps } from '../js/engine/turn.js';
 import { repair } from '../js/save.js';
 import { playGame } from '../tools/bots.mjs';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view, sellHomeQuote } from '../js/engine/index.js';
 
 const T = await loadContent('testport', { fs });
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
@@ -968,12 +968,13 @@ test('(MER-123) every card choice that costs money later is closed to a house th
 
 /** The home state with its first return paper made into a broker's offer for `entryId`, the home market's price for the good at `f`
     times its base, and the paper's letters step run again. */
-function brokerPaper(entryId, f, { shown = 0 } = {}) {
+function brokerPaper(entryId, f, { shown = 0, stock = null } = {}) {
   const { s: base, p: k } = homeState();
   const s = structuredClone(base), p = s.desk[k], entry = CAIRO.returns.find(e => e.id === entryId), good = entry.facts.good[0];
   s.market.cairo[good].f = f;
   p.data.entry = entryId; p.data.ask = { title: entry.title, body: entry.body }; p.data.choices = structuredClone(entry.choices); delete p.data.fitted;
   if (shown) s.seen[`shown:${entryId}`] = shown;
+  if (stock !== null) s.stock[good] = stock;
   reopen(s, CAIRO);
   return { s, p, good, price: truePrice(s, CAIRO, 'cairo', good, idx(s, CAIRO)) };
 }
@@ -995,6 +996,58 @@ test('(MER-134, 7) a broker\'s "about N in every hundred less" is the gap betwee
     said.add(`${id}:${o.said}`);
   }
   ok(new Set([...said].filter(k => k.startsWith('return-sell-pepper')).map(k => k.split(':')[1])).size >= 3, 'the number follows the price: pepper says at least three different figures over seven prices');
+});
+
+test('(MER-146, 11) a broker\'s offer for goods in the warehouse is never worse than Sell in Cairo for the same loads the same season', () => {
+  let raised = 0;
+  for (const id of ['return-sell-pepper', 'return-sell-silk', 'return-sell-sugar', 'return-sell-linen']) for (const f of [0.55, 0.8, 0.95, 1, 1.1, 1.3, 1.7, 2]) {
+    const b = brokerPaper(id, f, { stock: 6 }), o = brokerOf(b);
+    const q = sellHomeQuote(b.s, CAIRO, b.good, o.loads);
+    ok(q.ok, `${id} at ${f}: the house holds the loads, so Sell can quote them`);
+    ok(o.offer >= q.got, `${id} at ${f}: the broker offers ${o.offer} for ${o.loads} and Sell gives ${q.got}`);
+    eq(o.pay, o.offer, `${id} at ${f}: the choice pays what the words offer`);
+    ok(o.said >= 0 && o.said <= BROKER_MAX, `${id} at ${f}: still a broker's discount in the words (${o.said} in every hundred)`);
+    if (o.offer > o.loads * 0 && q.got > Math.round(o.loads * b.price * (1 - 0.30))) raised++;
+  }
+  ok(raised > 0, 'at least one price had the broker\'s old sum under Sell, so the case could fail');
+});
+
+test('(MER-146, 4) an Accounts paper that takes a letter\'s money line sits behind that letter, even when the paper was on the desk first', () => {
+  const base = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
+  const s = structuredClone(base), i = idx(s, CAIRO);
+  s.desk = []; s.t = 2;
+  s.money = 90;
+  s.post = [{ id: 'alexandria-twenty-in-a-hundred', kind: 'report', expedition: 'x1', agent: 'yusuf', stop: 'alexandria', standing: true, written: idx(s, CAIRO) - 1, lag: 1, arrive: idx(s, CAIRO) }];
+  // the Accounts paper of the season's earlier closing, already on the desk and not yet read
+  addPaper(s, { kind: 'accounts', ref: 'accounts', items: [{ from: 'x/y', card: 'A card', choice: 'A choice', changes: ['+5 dinars'], text: 'From A card: +5 dinars' }] });
+  steps.letters(s, CAIRO);
+  const kinds = s.desk.map(p => p.kind), at = kinds.indexOf('letter'), acc = kinds.indexOf('accounts');
+  ok(at >= 0, `the customs letter reached the desk (${kinds})`);
+  ok(s.money < 90, 'its forty dinars were taken on arrival, as the letter says');
+  ok(s.desk[acc].items.some(it => it.from === 'alexandria-twenty-in-a-hundred'), 'the Accounts paper carries the letter\'s line');
+  ok(at < acc, `the letter (desk place ${at}) comes before the Accounts paper that reports its money (desk place ${acc})`);
+  ok(i >= 0);
+});
+
+test('(MER-146, 7) "Your carters wait at Alexandria" is dealt only while the house has a trip out', () => {
+  const card = CAIRO.cards.find(c => c.id === 'harbour-count');
+  ok(/carters wait at Alexandria/.test(card.body), 'the card is the one that says it');
+  const s = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
+  s.rep.court = 0;
+  eq([s.expeditions.length, holds(card.when, s, CAIRO)], [0, false], 'nothing is coming: the card is closed');
+  s.expeditions.push({ id: 'x1' });
+  eq(holds(card.when, s, CAIRO), true, 'a trip is out: it may be dealt');
+  // a house that never sends anyone is never told of carters waiting
+  for (let seed = 1; seed <= 12; seed++) {
+    let g = newGame(CAIRO, { seed, length: 'acts', house: ['spice', 'cloth', 'newcomer'][seed % 3] });
+    g.rep.court = 0;
+    for (let k = 0; k < 30 && ['desk', 'interlude'].includes(g.phase); k++) {
+      if (g.phase === 'interlude') { g = openSeason(g, CAIRO); continue; }
+      for (const p of g.desk.filter(q => q.state === 'open')) for (const c of paperChoices(g, CAIRO, p.id)) { try { g = choose(g, CAIRO, p.id, c.id); break; } catch { /* closed */ } }
+      g = endSeason(g, CAIRO);
+      eq(g.desk.some(p => p.ref === 'harbour-count') && g.expeditions.length === 0 && !g.desk.some(p => p.kind === 'return'), false, `seed ${seed}: no carters with nothing coming`);
+    }
+  }
 });
 
 test('(MER-134, 15) a broker\'s paper is shown twice in a game, and the third time the return carries no offer', () => {
