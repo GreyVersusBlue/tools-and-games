@@ -26,7 +26,9 @@ export const POOL_WITH_TRIP = 2;
 /** A step whose move of worth gets a line of its own when nothing it wrote says it (MER-148, M4f play problem 8): a move of 10 dinars or more is never left to
     the season's figure alone. */
 const said = (cause, text, fn) => (s, content, ...rest) => {
-  const w0 = W.worthOf(s, content), n0 = s.log.length;
+  let w0;
+  try { w0 = W.worthOf(s, content); } catch { return fn(s, content, ...rest); }   // content with no city: the step says so in its own words
+  const n0 = s.log.length;
   const out = fn(s, content, ...rest);
   W.rest(s, content, cause, w0, n0, text);
   return out;

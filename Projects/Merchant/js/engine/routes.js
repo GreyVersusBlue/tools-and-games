@@ -432,11 +432,13 @@ function lossCosts(x, loss, content, s) {
   return { house: value - partners, partners };
 }
 
-function put(s, paper) {
+function put(s, paper, { atJump = false } = {}) {
   // A return, loss or accounts paper goes on the desk at once; when the desk is full it is not shown
-  // and the log says so, because the money and goods have already moved.
+  // and the log says so, because the money and goods have already moved. A paper the act jump could not seat says so too (`atJump`): the page between the
+  // acts lists every trip it settled, with its profit and its why, so no money moves unsaid (MER-148: the bots now keep more trips out at once, and three of 120
+  // games brought more home at the first jump than the desk holds).
   const shown = addPaper(s, paper);
-  if (!shown) s.log.push({ at: s.t, kind: 'dropped', ref: paper.kind, reason: 'the desk was full' });
+  if (!shown) s.log.push({ at: s.t, kind: 'dropped', ref: paper.kind, reason: 'the desk was full', ...(atJump ? { atJump: true } : {}) });
   return shown;
 }
 
@@ -2105,7 +2107,7 @@ export function jump(s, content) {
   // a paper left for the first desk (MER-98): an agent who left or retired at the jump is not asked about again, and gets no bonus
   for (const paper of papers) {
     if (!s.agents[paper.agent]?.hired) Object.assign(paper.data, askOf(content, null, paper.data.trip));
-    put(s, paper);
+    put(s, paper, { atJump: true });
   }
 
   const priorWorth = W.holdings(s, content);   // for the line the reset's move of worth gets (MER-146)
