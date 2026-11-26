@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { test, eq, ok, done } from './lib.mjs';
 import { loadContent } from '../js/data.js';
 import { holds } from '../js/engine/conditions.js';
-import { BOTS, EXTRA_BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf, standingOf, venturePlan, dice, priceDraw, STANDING_PRICE } from '../tools/bots.mjs';
+import { BOTS, EXTRA_BOTS, LIMITS, DIRECTIONS, SENSIBLE, directionOf, directionShares, run, check, playGame, table, ranked, worthOf, standingOf, venturePlan, sellSurplus, dice, priceDraw, STANDING_PRICE } from '../tools/bots.mjs';
 
 const content = await loadContent('cairo', { fs });
 const PER_BOT = 50;
@@ -62,6 +62,21 @@ test('smoke: the bots read the notebook as their players would (DECISIONS 2026-1
   const share = sum('random', 'read') / sum('random', 'pages');
   ok(share > 0.3 && share < 0.7, `random read ${(share * 100).toFixed(0)} percent of its pages`);
   for (const g of res.results.random) ok(g.raw.read <= g.raw.pages, `${g.seed}`);
+});
+
+test('smoke: a bot with a full warehouse and no plan for a good sells it at home (MER-153); `first` and a good a plan just took are left', () => {
+  let s = newGame(content, { seed: 5, length: 'acts', house: content.houses[0].id });
+  if (s.phase === 'interlude') s = openSeason(s, content);
+  s.stock.pepper = 30;
+  s.market.cairo.pepper.f = 1.3;   // Cairo pays well for pepper, so the sale clears the bot's price floor
+  for (const bot of ['careful', 'greedy', 'qirad']) {
+    const t = sellSurplus(bot, s, content, dice(1), { pepper: 30 });
+    ok(t.stock.pepper < 30 && t.money > s.money, `${bot} sold nothing: ${t.stock.pepper} loads left`);
+    ok(t.log.some(e => e.kind === 'sale' && e.good === 'pepper'), `${bot}: no sale in the log`);
+  }
+  eq(sellSurplus('first', s, content, dice(1), { pepper: 30 }).stock.pepper, 30);
+  eq(sellSurplus('careful', s, content, dice(1), {}).stock.pepper, 30);   // loads that arrived or were left this season are not idle yet
+  eq(sellSurplus('careful', s, content, dice(1), { pepper: 3 }).stock.pepper >= 27, true);   // only the idle loads go
 });
 
 test('smoke: an unknown bot and an unknown house are refused, not played as something else', () => {
