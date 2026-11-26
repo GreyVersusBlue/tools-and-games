@@ -355,5 +355,111 @@
         "at": "p. 317; partnership in the place of loans on interest"
       }
     ]
+  },
+  {
+    "id": "quseir-paper-credit",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "A Quseir trading house",
+      "role": "Quseir",
+      "seal": null
+    },
+    "title": "A share paid on paper",
+    "body": "A trading house at Quseir offers you a share of its trade. It will pay you on paper, a written promise to pay later, not in coin. Many houses do this, and it is slow.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "paper",
+        "label": "Take the share and the paper",
+        "hint": "It costs 6 dinars now. The house pays in two seasons, and partners think you trust well.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coin",
+        "label": "Ask to be paid in coin",
+        "hint": "It costs 8 dinars now. The house is glad of coin, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline the offer",
+        "hint": "It costs nothing. The house offers its trade to someone else.",
+        "now": [
+          {
+            "flag": "quseir-paper-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Papers found at Quseir from 1215 to 1235 show that trade there ran mostly on credit, written on paper. That is about 100 years before 1324.",
+    "unlocks": [
+      "term-dinar",
+      "place-quseir"
+    ],
+    "sources": [
+      {
+        "src": "bauden-2009b",
+        "at": "p. 168"
+      }
+    ]
   }
 ]

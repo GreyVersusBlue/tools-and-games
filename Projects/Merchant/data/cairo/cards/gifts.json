@@ -472,5 +472,112 @@
         "is": "home"
       }
     }
+  },
+  {
+    "id": "samarkand-tomb-gifts",
+    "group": "gifts",
+    "kind": "people",
+    "from": {
+      "name": "Bahram, a traveller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A tomb that feeds travellers",
+    "body": "Bahram has come to Cairo from Samarkand, a city far to the east. Outside his town stands a tomb, and visitors leave gifts there. The gifts feed travellers who stay at the hospice beside it, a guest house for people on the road. Bahram asks if your house will give a little too.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "gift",
+        "label": "Send a small gift to the hospice",
+        "hint": "It costs 4 dinars now. Travellers from the east will speak well of your house.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "letter",
+        "label": "Ask Bahram to carry a letter east",
+        "hint": "It costs 1 dinar now. Your partners hear from you, and Bahram asks for nothing more.",
+        "requires": {
+          "money": {
+            "gte": 1
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Give nothing",
+        "hint": "It costs nothing. Bahram tells people your house is careful with money, not kind.",
+        "now": [
+          {
+            "flag": "samarkand-gift-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1333 the traveller Ibn Battuta saw people bring animals and money to the tomb of Qutham, outside Samarkand. The gifts fed travellers and paid the staff of the hospice.",
+    "unlocks": [
+      "term-dinar",
+      "place-samarkand",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 3, p. 568"
+      }
+    ]
   }
 ]

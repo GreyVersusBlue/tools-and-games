@@ -1387,5 +1387,222 @@
         "at": "pp. 135 to 136; Famagusta as the market and go-between for Venice and Egypt, a role older than the ban of 1323"
       }
     ]
+  },
+  {
+    "id": "samarkand-silver",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Farrukh, a silversmith",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Silver from the eastern mountains",
+    "body": "Farrukh makes silver cups in Cairo. He hears that a mountain near Samarkand has a silver mine that is easy to work. He wants to pay for a first lot of silver and asks you to put in some money too.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "lot",
+        "label": "Pay for a lot at the mine",
+        "hint": "It costs 10 dinars now. In three seasons the silversmiths of Cairo speak well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "label": "Pay for a small lot",
+        "hint": "It costs 4 dinars now. Merchants from the east hear that you trade far away.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Wish Farrukh luck and decline",
+        "hint": "It costs nothing. Farrukh will find another partner.",
+        "now": [
+          {
+            "flag": "samarkand-silver-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A Persian writer said in 1340 that a mountain near Samarkand has an easy silver mine that pays well. He copied from older books, so this may be older news.",
+    "unlocks": [
+      "term-dinar",
+      "place-samarkand"
+    ],
+    "sources": [
+      {
+        "src": "le-strange-1919",
+        "at": "p. 193"
+      }
+    ]
+  },
+  {
+    "id": "quseir-or-aydhab",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Ghazi, a shipper",
+      "role": "Qus",
+      "seal": null
+    },
+    "title": "Quseir or Aydhab",
+    "body": "Ghazi ships goods to the Red Sea. He asks if you want them sent by Quseir or by Aydhab. Quseir is the port nearest Qus. But the sea voyage from it is hard, because fierce north winds blow against the ships.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "quseir",
+        "label": "Ship by Quseir",
+        "hint": "It costs 4 dinars now and 1 more in two seasons, for the slow sail. The desert road is short.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "aydhab",
+        "label": "Ship by Aydhab",
+        "hint": "It costs 6 dinars now. The desert road is longer, but the sea is quicker, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "split",
+        "label": "Split the goods between the two",
+        "hint": "It costs 6 dinars now. If one road fails, the other still brings goods, and foreign houses notice.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Quseir was the port nearest Qus, but ships sailing from it fought fierce north winds. Al-Qalqashandi, who wrote this about 1400, says some merchants chose it anyway.",
+    "unlocks": [
+      "term-dinar",
+      "place-quseir",
+      "place-aydhab",
+      "place-red-sea"
+    ],
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 32 (the preference for Quseir is al-Qalqashandi, about 1400)"
+      }
+    ]
   }
 ]

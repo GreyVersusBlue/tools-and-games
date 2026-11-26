@@ -329,5 +329,112 @@
         "at": "pp. 150 and 152; a loose confederation; the office's papers and 2.5 percent are al-Ashqar's reading, as Sato reports it, and Sato takes the office for a state one"
       }
     ]
+  },
+  {
+    "id": "qus-nile-tolls",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Nuh, a boatman",
+      "role": "Qus",
+      "seal": null
+    },
+    "title": "Small tolls on the Nile",
+    "body": "Nuh takes goods up the Nile from Cairo to Qus. At each town on the way a small toll is paid, a fee to pass. He asks you to pay each toll as the boat goes, so it is never held up.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "each",
+        "label": "Pay each toll as the boat goes",
+        "hint": "It costs 4 dinars now. Nuh says your house is easy to work with.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "end",
+        "label": "Pay all the tolls at the end",
+        "hint": "It costs 1 dinar now and 2 more in two seasons, for paying late. Nuh does not mind.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rival",
+        "label": "Use a rival's boat",
+        "hint": "It costs nothing now. Nuh is hurt, and he remembers it.",
+        "now": [
+          {
+            "flag": "nuh-passed-over",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a lawsuit of 1097, a merchant said he paid small dues in the towns on the Nile. At Akhmim and Qus each was one eighth of a dinar, 227 years before 1324.",
+    "unlocks": [
+      "term-toll",
+      "term-dinar",
+      "place-qus",
+      "place-nile"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "p. 189"
+      }
+    ]
   }
 ]

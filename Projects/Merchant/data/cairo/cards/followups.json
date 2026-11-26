@@ -1363,5 +1363,110 @@
         "at": "p. 316; the commission paid for a special service"
       }
     ]
+  },
+  {
+    "id": "qus-raiders",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A carter",
+      "role": "Qus",
+      "seal": null
+    },
+    "title": "Raiders on the Aydhab road",
+    "body": "A carter writes from Qus. Raiders of the desert, the Bedouin, have been troubling the caravans that go to Aydhab. A caravan is a group of travellers and animals that go together. Merchants are asking about safer ways.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "escort",
+        "label": "Hire an escort for your goods",
+        "hint": "It costs 8 dinars now. The escort keeps the goods safe, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "quseir",
+        "label": "Send the goods by Quseir",
+        "hint": "It costs 4 dinars now and 3 more in two seasons. The sea road is longer but safer.",
+        "requires": {
+          "money": {
+            "gte": 7
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -3
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait and see",
+        "hint": "It costs nothing. If the raiders come, your goods may be late.",
+        "now": [
+          {
+            "flag": "qus-raiders-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One historian thinks that raiders troubled the caravans from Qus to Aydhab all through the early 1300s. So merchants and pilgrims began to seek safer routes.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar",
+      "place-quseir"
+    ],
+    "sources": [
+      {
+        "src": "bauden-2025",
+        "at": "p. 458 (reporting Jean-Claude Garcin, 1976)"
+      }
+    ]
   }
 ]

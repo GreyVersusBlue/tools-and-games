@@ -505,5 +505,124 @@
         "at": "p. 17; the whole army of agents, from Stillman, as they report it"
       }
     ]
+  },
+  {
+    "id": "samarkand-boats",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "Dilshad, a buyer",
+      "role": "Samarkand",
+      "seal": null
+    },
+    "title": "Boats on the river",
+    "body": "A letter comes from Dilshad, who buys goods for houses in Samarkand. He writes that the river is full of boats in spring. He can book a place on one for your next goods.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "spring"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "book",
+        "label": "Book a place now",
+        "hint": "It costs 6 dinars now. Dilshad tells others that your house pays fast.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cheaper",
+        "label": "Ask him to find a cheaper boat",
+        "hint": "It costs 2 dinars now. The boat is slow, and your buyers wait.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "road",
+        "label": "Send the goods by road",
+        "hint": "It costs 8 dinars now. The road is safe, and your partners like that.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A Persian writer said in 1340 that the river at Samarkand carries many boats in spring. He also praised its grapes, apples and melons, but he copied from older books, so this may be older news.",
+    "unlocks": [
+      "term-dinar",
+      "place-samarkand"
+    ],
+    "sources": [
+      {
+        "src": "le-strange-1919",
+        "at": "p. 238"
+      }
+    ]
   }
 ]
