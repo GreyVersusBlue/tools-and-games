@@ -1673,5 +1673,116 @@
         "at": "vol. 4, pp. 815 to 816"
       }
     ]
+  },
+  {
+    "id": "tuat-berber-chief",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A caravan master",
+      "role": "Tuat",
+      "seal": null
+    },
+    "title": "A chief stops the caravan",
+    "body": "A chief of the Hoggar Berbers has stopped a caravan of yours on the road to Tuat. He will not let it pass until he gets cloth. It is the month of Ramadan, when many Muslims fast. The caravan master asks what to do.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "cloth",
+        "label": "Give him the cloth",
+        "hint": "It costs 8 dinars now. The caravan goes on, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "argue",
+        "label": "Argue until he lets it pass",
+        "hint": "It costs 2 dinars now, for food while you wait. The chief is not pleased.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              },
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "round",
+        "label": "Go round by another road",
+        "hint": "It costs 6 dinars now. The way is longer, but partners like a safe caravan.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1353, in Ramadan, a Berber chief stopped Ibn Battuta's caravan until it gave him cloth. Ibn Battuta wrote that in Ramadan these Berbers do not raid; this is later evidence, after the game's years.",
+    "unlocks": [
+      "term-caravan",
+      "term-ramadan",
+      "term-dinar",
+      "place-tuat",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 976"
+      }
+    ]
   }
 ]

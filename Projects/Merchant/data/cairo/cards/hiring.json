@@ -702,5 +702,475 @@
         "at": "pp. 189 to 190 and note 21"
       }
     ]
+  },
+  {
+    "id": "tuat-seventy-nights",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Idris, a caravan master",
+      "role": "Tuat",
+      "seal": null
+    },
+    "title": "Food for seventy nights",
+    "body": "Idris plans a road from Takadda to Tuat. No grain is found between the two towns. Only meat, curdled milk and butter can be bought, and they are bought with cloth. He asks how much food to carry.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "full",
+        "label": "Buy food for seventy nights",
+        "hint": "It costs 9 dinars now. Nobody goes hungry, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 3,
+            "card": "tuat-berber-chief"
+          }
+        ]
+      },
+      {
+        "id": "less",
+        "label": "Buy less and trust to luck",
+        "hint": "It costs 4 dinars now. If the road runs long, your people go hungry.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "guide",
+        "label": "Hire a guide who knows the road",
+        "hint": "It costs 7 dinars now. The guide knows where food can be found, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 7
+          }
+        },
+        "now": [
+          {
+            "money": -7
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1353 Ibn Battuta bought food for seventy nights on the road from Takadda to Tuat, where no grain is found. This is later evidence, after the game's years.",
+    "unlocks": [
+      "term-dinar",
+      "place-tuat",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 975 and note 102"
+      }
+    ]
+  },
+  {
+    "id": "tuat-fourteen-days",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Yunus, a guide",
+      "role": "Tuat",
+      "seal": null
+    },
+    "title": "Fourteen days without water",
+    "body": "Yunus is a guide at Tuat. He says the road to Walata has fourteen days with no water. Only camels used to thirst can cross it. He offers to lead your caravan.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "hire",
+        "label": "Hire him and carry water",
+        "hint": "It costs 9 dinars now. The caravan crosses, and partners think well of you.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "other",
+        "label": "Try another road",
+        "hint": "It costs 6 dinars now. The way is longer, but foreign houses hear of your care.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cancel",
+        "label": "Cancel the trip",
+        "hint": "It costs nothing. Yunus finds another customer.",
+        "now": [
+          {
+            "flag": "tuat-trip-cancelled",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Umari wrote, from older accounts, that beyond Tabalbalet, the last town, lay fourteen days of desert with no water before Walata. Only camels used to thirst could cross.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar",
+      "place-tuat",
+      "place-walata",
+      "place-sahara",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 202 (the Tabalbalet entry)"
+      }
+    ]
+  },
+  {
+    "id": "walata-forward-runner",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "Yahya, a caravan master",
+      "role": "Walata",
+      "seal": null
+    },
+    "title": "A runner goes ahead",
+    "body": "Yahya leads a caravan over the Sahara to Walata. Caravans there send a man ahead with letters, so that friends rent houses and bring water to meet them. Yahya asks if you will pay for a runner.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "spring"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "runner",
+        "label": "Hire a runner to go ahead",
+        "hint": "It costs 5 dinars now. Houses and water are ready, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "friend",
+        "label": "Ask a friend in town to send word",
+        "hint": "It costs 2 dinars now. It is cheaper, but the friend may be slow.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "without",
+        "label": "Go without a runner",
+        "hint": "It costs nothing. If no one comes to meet the caravan, your people suffer.",
+        "now": [
+          {
+            "flag": "walata-no-runner",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Caravans hired a man of the Massufa to go ahead to Walata with letters. Ibn Battuta wrote in 1352, after the game's years, that if the messenger died, most of the caravan died too.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar",
+      "place-walata",
+      "place-sahara",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 948 (1352)"
+      }
+    ]
+  },
+  {
+    "id": "cairo-musa-guides",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "An officer of the pilgrim caravan",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Guides for the king of Mali",
+    "body": "The party of Mansa Musa leaves Cairo for Mecca soon. The desert road is hard, and the party needs guides who know the way. Your house is asked to pay part of the guides' fee.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "season": [
+            "autumn"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "fee",
+        "label": "Pay part of the guides' fee",
+        "hint": "It costs 6 dinars now. The court hears that your house helped.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "skins",
+        "label": "Send water skins instead",
+        "hint": "It costs 3 dinars now. Foreign houses hear of your gift.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The officer remembers.",
+        "now": [
+          {
+            "flag": "musa-guides-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A guide named Mehna son of Abd al-Baqi went with Mansa Musa's party on the pilgrimage in 1324. He told al-Umari that the king gave him 200 mithqals of gold.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar",
+      "person-mansa-musa",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 79"
+      }
+    ]
   }
 ]

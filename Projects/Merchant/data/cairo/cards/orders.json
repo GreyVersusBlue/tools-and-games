@@ -1911,5 +1911,344 @@
         "at": "vol. 2, p. 400 and note 118"
       }
     ]
+  },
+  {
+    "id": "walata-salt-price",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Hamdan, a salt dealer",
+      "role": "Walata",
+      "seal": null
+    },
+    "title": "Salt is dearer in Mali",
+    "body": "Hamdan is a salt dealer in Walata. He says a load of salt sells for far more in Mali than here. He offers to buy some for you at the mine town of Taghaza.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "winter"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "all",
+        "label": "Buy a load of salt",
+        "hint": "It costs 8 dinars now. The salt travels for seasons, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Buy half a load",
+        "hint": "It costs 4 dinars now. Partners think it a careful trade.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait for another year",
+        "hint": "It costs nothing. Hamdan sells to another house.",
+        "now": [
+          {
+            "flag": "walata-salt-passed",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1352 Ibn Battuta wrote that salt cost eight to ten mithqals a load at Walata, and twenty to thirty in Mali. This is later evidence, after the game's years.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "good-salt",
+      "place-walata",
+      "place-sahara",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 947"
+      }
+    ]
+  },
+  {
+    "id": "walata-sijilmasa-goods",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Bakr, a merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "What goes south for gold",
+    "body": "Bakr asks what goods go south across the Sahara, and what comes back. He wants to send a load of goods from your house. He asks what to choose.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "saltcopper",
+        "label": "Send salt and copper",
+        "hint": "It costs 9 dinars now. The goods cross the Sahara, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cowries",
+        "label": "Send cowries",
+        "hint": "It costs 5 dinars now. Cowries are small shells used as money, and partners like a light load.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. Bakr sends his own goods.",
+        "now": [
+          {
+            "flag": "bakr-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Umari wrote, from older accounts, that merchants left Sijilmasa for the lands south of the Sahara with salt, copper and cowries. They came back with gold.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "good-salt",
+      "good-copper",
+      "good-gold",
+      "place-sahara",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 202 (the Sijilmasa entry)"
+      }
+    ]
+  },
+  {
+    "id": "gao-copper-rods",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "A copper dealer",
+      "role": "Gao",
+      "seal": null
+    },
+    "title": "Copper in rods",
+    "body": "A dealer at Takadda offers copper rods for your goods. The rods are a span and a half long, and a thick rod is worth more than a thin one. He asks if you will take rods or gold.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "rods",
+        "label": "Take rods",
+        "hint": "It costs 8 dinars now. The rods travel well, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gold",
+        "label": "Take gold instead",
+        "hint": "It costs 12 dinars now. Gold is light, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The dealer trades with another house.",
+        "now": [
+          {
+            "flag": "copper-rods-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1353, after the game's years, Ibn Battuta wrote that Takadda's copper was made into rods a span and a half long. Four hundred thick or six or seven hundred thin rods were worth one gold mithqal, and thin ones bought meat and firewood.",
+    "unlocks": [
+      "term-dinar",
+      "good-copper",
+      "good-gold",
+      "place-gao",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 974"
+      }
+    ]
   }
 ]

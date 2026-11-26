@@ -504,5 +504,120 @@
         "at": "p. 18, citing Gil 2003, pp. 281 to 282 (not read); the Muslim judge who asked for the Jewish judge"
       }
     ]
+  },
+  {
+    "id": "cairo-five-dinar-shirt",
+    "group": "disputes",
+    "kind": "trade",
+    "from": {
+      "name": "Dawud, a cloth seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A shirt for five dinars",
+    "body": "A visitor from Mali comes to Dawud's stall to buy a shirt. The shirt is worth less than one dinar. Dawud asks what price you think he should name.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "fair",
+        "label": "Tell him to name a fair price",
+        "hint": "It costs 2 dinars now, the profit he gives up. The Malians remember a fair house.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "five",
+        "label": "Tell him to name five dinars",
+        "hint": "Dawud pays you 5 dinars now. The Malians do not forget it, and foreign houses hear of it.",
+        "now": [
+          {
+            "money": 5
+          },
+          {
+            "rep": "foreign",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "friend",
+        "label": "Send the visitor to a friend",
+        "hint": "It costs nothing. Partners think you fair.",
+        "now": [
+          {
+            "flag": "mali-visitor-sent-on",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1324 Cairo merchants charged the Malians five dinars for a shirt worth less than one. About twelve years later, al-Umari wrote, Malians still treated men from Cairo badly.",
+    "unlocks": [
+      "term-dinar",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "pp. 78 to 79"
+      }
+    ]
   }
 ]

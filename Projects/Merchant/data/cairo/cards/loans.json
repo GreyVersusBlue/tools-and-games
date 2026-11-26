@@ -675,5 +675,129 @@
         "at": "p. 168 (Wassaf, in Elliot and Dowson, The History of India as Told by Its Own Historians, vol. 3, p. 33)"
       }
     ]
+  },
+  {
+    "id": "cairo-musa-borrows",
+    "group": "loans",
+    "kind": "favour",
+    "from": {
+      "name": "Nasr, a merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The king of Mali asks for a loan",
+    "body": "Mansa Musa, the king of Mali, has run out of gold on his pilgrimage. Back in Cairo he wants to borrow from merchants on his word. Nasr asks if you will lend.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1325
+          ]
+        },
+        {
+          "season": [
+            "winter"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "lend",
+        "label": "Lend a large sum",
+        "hint": "It costs 12 dinars now and pays back 21 in three seasons. Other lenders say you lend too freely.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 21
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "little",
+        "label": "Lend a little",
+        "hint": "It costs 4 dinars now and pays back 7 in three seasons. Foreign houses hear that you lend to kings.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 7
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "It costs nothing. Partners think you careful.",
+        "now": [
+          {
+            "flag": "musa-loan-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1324 Mansa Musa ran out of gold and borrowed from Cairo merchants on his word. They told al-Umari that they made 700 dinars of profit for every 300 lent, and that Musa paid them.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar",
+      "person-mansa-musa",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 75"
+      }
+    ]
   }
 ]

@@ -359,5 +359,111 @@
         "at": "vol. 2, p. 360 (the year is 1328 or 1330; both in the window)"
       }
     ]
+  },
+  {
+    "id": "cairo-emirs-wives-hajj",
+    "group": "faith",
+    "kind": "trade",
+    "from": {
+      "name": "A litter maker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Litters for the emirs' wives",
+    "body": "The wives of some emirs, the sultan's high officers, plan to go on the Hajj, the pilgrimage to Mecca. They want litters, covered seats that camels carry. They also want to give robes to the drivers.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1346,
+            1346
+          ]
+        },
+        {
+          "season": [
+            "spring"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "plain",
+        "label": "Rent plain litters",
+        "hint": "They pay you 3 dinars now. It is a low fee, and partners think well of your house.",
+        "now": [
+          {
+            "money": 3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "showy",
+        "label": "Rent showy litters",
+        "hint": "They pay you 8 dinars now. People complain of the show, and the court hears of it.",
+        "now": [
+          {
+            "money": 8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The court sees that you stayed clear.",
+        "now": [
+          {
+            "flag": "emirs-wives-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1346 the wives of some emirs went on the Hajj with litters so grand that people complained. They gave robes to camel riders and water carriers, and the chief judge spoke against them in his sermon.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "stephan-2021",
+        "at": "pp. 201 to 202"
+      }
+    ]
   }
 ]
