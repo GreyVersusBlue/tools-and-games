@@ -664,5 +664,232 @@
         "at": "vol. 2, pp. 371 to 372"
       }
     ]
+  },
+  {
+    "id": "calicut-dandar",
+    "group": "tolls",
+    "kind": "world",
+    "from": {
+      "name": "A ship's pilot",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "The ruler's men signal",
+    "body": "A ship of yours passes a town on the Malabar coast. The ruler's men signal it to anchor and give a present. The pilot asks what to do.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "anchor",
+        "label": "Anchor and give the present",
+        "hint": "It costs 5 dinars now. The ship sails on safe, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sail",
+        "label": "Sail on",
+        "hint": "It costs nothing now and 10 dinars in two seasons, when the ruler's men chase the ship and tax it double. The ship does reach market early, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "flag": "dandar-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -10
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 2,
+            "card": "calicut-wreck"
+          }
+        ]
+      },
+      {
+        "id": "course",
+        "label": "Change course to keep clear",
+        "hint": "It costs 7 dinars now, for the longer way. The court hears that you avoid trouble.",
+        "requires": {
+          "money": {
+            "gte": 7
+          }
+        },
+        "now": [
+          {
+            "money": -7
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On the Malabar coast every ship passing a town had to anchor and give the ruler a present, the right of dandar. A ship that did not was chased, brought in by force, and taxed double.",
+    "unlocks": [
+      "term-toll",
+      "term-dinar",
+      "place-calicut"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 808 and note 30"
+      }
+    ]
+  },
+  {
+    "id": "calicut-warehouses",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Zaid, a merchant",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "Pepper in public warehouses",
+    "body": "Zaid writes from Calicut. The town keeps its pepper in public warehouses and sells it by the bahar, a large weight. The customs are two parts in every ten. He asks if you will ship now.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay the customs and ship",
+        "hint": "It costs 8 dinars now. The goods go safe, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "quilon",
+        "label": "Ship from Quilon by a longer road",
+        "hint": "It costs 5 dinars now. The road is long, but foreign houses like it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait",
+        "hint": "It costs nothing. Zaid sells to another house.",
+        "now": [
+          {
+            "flag": "calicut-customs-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A Chinese traveller, Wang Ta-yuan, wrote in 1330 that Calicut stored pepper in public warehouses and sold it by the bahar. He said the customs were two parts in every ten.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "good-pepper",
+      "place-calicut"
+    ],
+    "sources": [
+      {
+        "src": "sastri-1939",
+        "at": "pp. 294 to 295 (Wang Ta-yuan, Tao i chih lio, in Rockhill's translation)"
+      }
+    ]
   }
 ]

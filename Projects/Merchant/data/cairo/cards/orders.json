@@ -1685,5 +1685,231 @@
         "at": "pp. 342 to 343 (letter II,23, about 1135)"
       }
     ]
+  },
+  {
+    "id": "calicut-pepper-mats",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Rahim, a broker",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "Pepper dried in the sun",
+    "body": "Rahim is a broker in Calicut. It is autumn, and the new pepper lies on mats in the sun until it dries and turns black. He offers you a lot at the harvest price.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "large",
+        "label": "Buy a large lot at harvest",
+        "hint": "It costs 10 dinars now. The pepper takes a season to ship, and partners think well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "label": "Buy a small lot",
+        "hint": "It costs 4 dinars now. Foreign houses see that you buy at the source.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Wait for later prices",
+        "hint": "It costs nothing. Rahim sells to another house.",
+        "now": [
+          {
+            "flag": "calicut-pepper-passed",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that in autumn pepper was gathered and spread on mats in the sun until it dried and turned black. At Calicut he saw it poured out and measured by the bushel, like millet.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "good-pepper",
+      "place-calicut",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 807"
+      }
+    ]
+  },
+  {
+    "id": "hormuz-island-port",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Bilal, a broker",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Where India meets Persia",
+    "body": "Bilal is a broker in Hormuz, a port on an island. He writes that goods from India are sent on from there to buyers in Persia. He asks if you will send a buyer of your own.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buyer",
+        "label": "Send a buyer to Hormuz",
+        "hint": "It costs 10 dinars now. The road is long, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "aden",
+        "label": "Buy from Aden instead",
+        "hint": "It costs 6 dinars now. The road is shorter, and partners like it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait",
+        "hint": "It costs nothing. Bilal tells his other friends.",
+        "now": [
+          {
+            "flag": "hormuz-broker-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "New Hormuz, on an island, was founded shortly after 1300. Ibn Battuta wrote that it was the port of India and Sind, whose goods went on to Iraq, Fars and Khurasan.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "place-hormuz",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 400 and note 118"
+      }
+    ]
   }
 ]

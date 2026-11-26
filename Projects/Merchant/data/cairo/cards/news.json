@@ -751,5 +751,120 @@
         "at": "vol. 1, pp. 68 to 69"
       }
     ]
+  },
+  {
+    "id": "hormuz-summer-heat",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A letter-writer",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Sleeping in the gardens",
+    "body": "A letter comes from near Hormuz. The summer heat there is so great that people sleep in gardens in the country. The writer asks if your people should be sent somewhere cooler.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "cool",
+        "label": "Pay for a cooler lodging",
+        "hint": "It costs 5 dinars now. Your people are glad, and they speak well of you.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "home",
+        "label": "Bring your people home",
+        "hint": "It costs 3 dinars now, and the season is lost. Partners are not pleased.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Do nothing",
+        "hint": "It costs nothing. Your people feel forgotten.",
+        "now": [
+          {
+            "flag": "hormuz-heat-ignored",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Marco Polo wrote that people at Hormuz slept in gardens in the summer heat. He meant the old town, before it moved to its island, so this is older evidence.",
+    "unlocks": [
+      "term-dinar",
+      "place-hormuz"
+    ],
+    "sources": [
+      {
+        "src": "yule-polo-1903",
+        "at": "vol. 1, pp. 108 to 109"
+      }
+    ]
   }
 ]

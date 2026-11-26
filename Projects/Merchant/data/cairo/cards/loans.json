@@ -569,5 +569,111 @@
         "at": "vol. 2, p. 372 (one merchant owning a great ship)"
       }
     ]
+  },
+  {
+    "id": "hormuz-horse-guarantee",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "Sabir, a horse dealer",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Horses for south India",
+    "body": "Sabir sells horses that go by ship to south India. He offers you a share in a shipment. In the deal he offers, the king in India pays for any horse that is hurt or dies at sea.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "guarantee",
+        "label": "Take the share with the guarantee",
+        "hint": "It costs 12 dinars now. The price is higher, but a horse lost at sea is paid for.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "without",
+        "label": "Take the share without it",
+        "hint": "It costs 8 dinars now. If a horse is lost, so is the money, but partners see your nerve.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. Sabir finds another partner.",
+        "now": [
+          {
+            "flag": "sabir-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One Persian writer said that about 1300 each horse shipped from the Gulf islands to India cost 220 dinars of red gold. If a horse was hurt or died at sea, the Indian king paid.",
+    "unlocks": [
+      "term-dinar",
+      "place-hormuz"
+    ],
+    "sources": [
+      {
+        "src": "sastri-1939",
+        "at": "p. 168 (Wassaf, in Elliot and Dowson, The History of India as Told by Its Own Historians, vol. 3, p. 33)"
+      }
+    ]
   }
 ]

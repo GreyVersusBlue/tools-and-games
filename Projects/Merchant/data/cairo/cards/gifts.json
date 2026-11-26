@@ -653,5 +653,111 @@
         "at": "vol. 2, p. 372 (the port of the merchants of India)"
       }
     ]
+  },
+  {
+    "id": "hormuz-water-price",
+    "group": "gifts",
+    "kind": "world",
+    "from": {
+      "name": "Tahir, a householder",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Water has a price",
+    "body": "Tahir lives in Hormuz, on an island with no springs. The water comes in skins from far away, so it has a price. He asks what your people will pay.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay his price",
+        "hint": "It costs 2 dinars now. Tahir is glad of your custom.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "own",
+        "label": "Bring your own water",
+        "hint": "It costs 6 dinars now. It is dearer, but partners see you are ready.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "move",
+        "label": "Move on",
+        "hint": "It costs nothing. Tahir shrugs, and word gets round.",
+        "now": [
+          {
+            "flag": "hormuz-water-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On the island of Hormuz, water had a price. It came from springs and cisterns some way from the city, carried in waterskins on people's backs and then by boat.",
+    "unlocks": [
+      "term-dinar",
+      "place-hormuz"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 400"
+      }
+    ]
   }
 ]

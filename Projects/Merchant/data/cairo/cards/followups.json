@@ -1574,5 +1574,104 @@
         "at": "pp. 189 to 190 and note 25"
       }
     ]
+  },
+  {
+    "id": "calicut-wreck",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A pilot",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "The wreck on the coast",
+    "body": "A pilot brings bad news. A ship carrying goods of yours was wrecked on the Malabar coast, away from Calicut. The ruler's men are taking the cargo, as the law there allows.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "claim",
+        "label": "Claim the goods through a friend in Calicut",
+        "hint": "It costs 6 dinars now. If you win, foreign houses hear that your house fights for its goods.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "accept",
+        "label": "Accept the loss",
+        "hint": "It costs 3 dinars now, the part of the cargo you cannot save. Nothing more.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          },
+          {
+            "flag": "calicut-wreck-accepted",
+            "set": "now"
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Give a gift to the ruler's men",
+        "hint": "It costs 9 dinars now. They give back part of the cargo, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In every Malabar land except Calicut, goods from a wrecked ship belonged to the king. At Calicut the owners kept them, and Ibn Battuta wrote that this is why the town grew rich.",
+    "unlocks": [
+      "term-dinar",
+      "place-calicut",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, pp. 815 to 816"
+      }
+    ]
   }
 ]
