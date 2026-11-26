@@ -28,7 +28,7 @@ import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { loadContent } from '../js/data.js';
-import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score, proposePlan, estimate, readEntry } from '../js/engine/index.js';
+import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score, proposePlan, estimate, readEntry, sellHome, sellHomeQuote } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
 import { outEnd, jumpChances } from '../js/engine/routes.js';
 import { truePrice, baseOf } from '../js/engine/market.js';
@@ -248,6 +248,37 @@ function plan(bot, state, content, agent, roll) {
   return null;
 }
 
+/** The warehouse after the season's plans are sent (MER-153): what is left of a good no plan carried is sold at home, as a player
+    sells after a big return. careful, greedy and qirad sell the most loads of each good that the stop's market takes without the
+    price of the last load falling under SELL_FLOOR of the home price, and no more than LIMITS.depthShare of the market's depth at
+    once (the rest waits for another season's price); a sale that brings in under SELL_MIN dinars is not worth the broker's cut and
+    is left. random sells a random part of each good at random; `first` sells nothing. Written in the strategy: not in LIMITS,
+    RISK_WEIGHT or STAKE_SHARE. */
+const SELL_FLOOR = 0.7;
+const SELL_MIN = 20;
+export function sellSurplus(bot, state, content, roll = () => 0.5) {
+  if (bot === 'first') return state;
+  const home = cityOf(content, 'bots').home;
+  let s = state;
+  for (const good of Object.keys(s.stock).sort()) {
+    const held = s.stock[good] ?? 0;
+    const depth = stopOf(content, home).sells[good]?.depth;
+    if (held < 1 || !depth) continue;
+    if (bot === 'random') {
+      if (roll() < 0.3) { const n = 1 + Math.floor(roll() * held); if (sellHomeQuote(s, content, good, n).ok) s = sellHome(s, content, good, n); }
+      continue;
+    }
+    const homeP = truePrice(s, content, home, good);
+    let n = Math.min(held, Math.ceil(depth * LIMITS.depthShare));
+    for (; n >= 1; n--) {
+      const q = sellHomeQuote(s, content, good, n);
+      if (q.ok && q.last >= SELL_FLOOR * homeP) break;
+    }
+    if (n >= 1 && sellHomeQuote(s, content, good, n).got >= SELL_MIN) s = sellHome(s, content, good, n);
+  }
+  return s;
+}
+
 // ---- CARD POLICY (MER-68). What a choice is worth is read off its own effects, in money:
 //   net      money now and later, plus stock at the home price (a later effect counts whole, no discounting)
 //   outlay   the money and stock value it pays out, now and later, counted from the negative effects only
@@ -383,6 +414,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
       s = outfit(s, content, p);
       out.routes[p.route] = (out.routes[p.route] ?? 0) + 1;
     }
+    s = sellSurplus(bot, s, content, roll);
     const broke = s.money < 0 && !Object.values(s.stock).some(n => n > 0) && !s.expeditions.length;
     if (broke && out.brokeBy === null) out.brokeBy = s.t + 1;
     const can = canEndSeason(s);
