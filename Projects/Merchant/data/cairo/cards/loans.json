@@ -799,5 +799,337 @@
         "at": "p. 75"
       }
     ]
+  },
+  {
+    "id": "alexandria-late-payment",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "An Egyptian dealer",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "Pay when the goods sell",
+    "body": "An Egyptian dealer wants to buy gold from your house. He promises to pay when his own goods are sold.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "late",
+        "label": "Let him pay late for a better price",
+        "hint": "He pays 12 dinars in three seasons, not now. You must chase him, and your people tire of it.",
+        "now": [
+          {
+            "flag": "alexandria-late-pay",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 12
+              },
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coin",
+        "label": "Insist on coin on the day",
+        "hint": "He pays 8 dinars now. He is not pleased, but he pays.",
+        "now": [
+          {
+            "money": 8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "flag": "alexandria-coin-paid",
+                "set": "now"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Take half now and a note for the rest",
+        "hint": "He pays 4 dinars now and 6 in three seasons. A note is a risk, and partners know it.",
+        "now": [
+          {
+            "money": 4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 6
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Gold and silver sold in Egypt were often paid for late. Treaties in 1238, 1254, 1290, 1302 and 1345 ordered buyers to pay at once.",
+    "unlocks": [
+      "term-dinar",
+      "good-gold",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "p. 129"
+      }
+    ]
+  },
+  {
+    "id": "pera-gold-perpers",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "A Pera trader",
+      "role": "Constantinople",
+      "seal": null
+    },
+    "title": "Gold coins by weight",
+    "body": "A Pera trader pays you in gold perpers, the coins of the city. He says there is no need to weigh them. You can count them fast.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "weigh",
+        "label": "Weigh them on scales",
+        "hint": "It costs 1 dinar now, for the slow count. The coins are fair, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 1
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "count",
+        "label": "Count them",
+        "hint": "It costs nothing now and 4 dinars in two seasons, for short coins. Your people like the speed.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "flag": "perpers-counted",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -4
+              },
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "silver",
+        "label": "Take silver grossi instead",
+        "hint": "It costs 2 dinars now, a worse rate. Foreign houses trust silver.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti says gold coins at Constantinople were paid by weight, not counted. One gold perper was worth 12 and a half to 13 Venetian silver grossi.",
+    "unlocks": [
+      "term-dinar",
+      "place-constantinople"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 23"
+      }
+    ]
+  },
+  {
+    "id": "tabriz-pack-animal-tax",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "A man of Tabriz",
+      "role": "Tabriz",
+      "seal": null
+    },
+    "title": "A debt on every pack animal",
+    "body": "A man of Tabriz has won a claim of 4,000 bezants against the Venetians there. Until it is paid, each Venetian owes him 4 bezants a load.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Pay your share of the debt",
+        "hint": "It costs 8 dinars now. You are known as honest, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "It costs nothing now and 4 dinars in two seasons, the animal tax. Partners think you stubborn.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "flag": "tabriz-debt-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -4
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "court",
+        "label": "Seek a ruling from the court",
+        "hint": "It costs 4 dinars now. The court hears your case, and thinks well of you.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "About 1328 to 1336 a man of Tabriz won 4,000 bezants from the Venetians there. Until it was paid, each Venetian owed him 4 bezants on every pack animal.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "heyd-1886",
+        "at": "vol. 2, p. 128"
+      }
+    ]
   }
 ]

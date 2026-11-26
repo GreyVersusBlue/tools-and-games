@@ -619,5 +619,352 @@
         "at": "pp. 78 to 79"
       }
     ]
+  },
+  {
+    "id": "tunis-hidden-gold",
+    "group": "disputes",
+    "kind": "people",
+    "from": {
+      "name": "A Tunis merchant",
+      "role": "Tunis",
+      "seal": null
+    },
+    "title": "Gold under the bales",
+    "body": "At Tunis a rival's man was caught hiding gold under his bales. Now everyone asks if you will deal with him.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "cash",
+        "label": "Trade with him for cash only",
+        "hint": "It costs 3 dinars now. There is no risk, and foreign houses see you are fair.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse to deal with him",
+        "hint": "It costs nothing. Partners think well of your house.",
+        "now": [
+          {
+            "flag": "tunis-rival-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "loan",
+        "label": "Lend him money",
+        "hint": "It costs 10 dinars now and pays back 14 in three seasons. Foreign houses think you foolish.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 14
+              },
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Gold and silver brought into Tunis paid 5 in 100, and a little over in all. A merchant caught hiding them paid the duty and lost people's trust and good name.",
+    "unlocks": [
+      "term-dinar",
+      "good-gold",
+      "place-tunis"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 123 (gold and silver)"
+      }
+    ]
+  },
+  {
+    "id": "damascus-market-hall",
+    "group": "disputes",
+    "kind": "people",
+    "from": {
+      "name": "A cloth dealer",
+      "role": "Damascus",
+      "seal": null
+    },
+    "title": "Pushed out of the hall",
+    "body": "A cloth dealer was pushed out of his market hall in Damascus. The hall belonged to the Umayyad Mosque's endowment, property kept to pay for the mosque. He asks for help before the hall closes.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1326,
+            1326
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "petition",
+        "label": "Help him petition the governor",
+        "hint": "It costs 4 dinars now, a gift. The court thinks well of you.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "corner",
+        "label": "Rent him a corner of your warehouse",
+        "hint": "It costs 2 dinars now, the rent you lose. He is loyal to your house.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "out",
+        "label": "Stay out of it",
+        "hint": "It costs nothing. The dealer tells his friends.",
+        "now": [
+          {
+            "flag": "damascus-hall-ignored",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1326 cloth merchants of Damascus were moved out of a market hall. It belonged to the Umayyad Mosque's endowment.",
+    "unlocks": [
+      "term-dinar",
+      "place-damascus"
+    ],
+    "sources": [
+      {
+        "src": "lapidus-1967",
+        "at": "p. 59"
+      }
+    ]
+  },
+  {
+    "id": "tabriz-consul-bail",
+    "group": "disputes",
+    "kind": "people",
+    "from": {
+      "name": "The Venetian consul",
+      "role": "Tabriz",
+      "seal": null
+    },
+    "title": "Four Venetians in prison",
+    "body": "The Venetian consul at Tabriz writes that a quarrel among Venetians has put four of them in prison. He paid to get them out. He asks if your house will share the cost.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Pay a share of the bail",
+        "hint": "It costs 6 dinars now. The consul thanks you, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "silent",
+        "label": "Say nothing",
+        "hint": "It costs nothing. The quarrel grows, and the consul remembers.",
+        "now": [
+          {
+            "flag": "tabriz-bail-ignored",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Send a gift to the court",
+        "hint": "It costs 4 dinars now. The court hears of it, and the quarrel may settle.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On 6 June 1324 the Venetian consul at Tabriz wrote to Venice's ruler that a quarrel had put four Venetians in prison. He paid 270 bezants to free them.",
+    "unlocks": [
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "heyd-1886",
+        "at": "vol. 2, p. 127"
+      }
+    ]
   }
 ]

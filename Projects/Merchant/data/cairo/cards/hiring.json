@@ -1172,5 +1172,328 @@
         "at": "p. 79"
       }
     ]
+  },
+  {
+    "id": "pera-broker-fee",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "A broker at Pera",
+      "role": "Constantinople",
+      "seal": null
+    },
+    "title": "A broker offers to sell",
+    "body": "A broker at Pera offers to sell your goods. A broker is a go-between who finds buyers. He takes a fee from each side.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "his",
+        "label": "Hire him at his rate",
+        "hint": "It costs 4 dinars now. The sale is steady, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cheap",
+        "label": "Hire a cheaper broker",
+        "hint": "It costs 2 dinars now. The cheaper man sells badly, and word gets round.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "self",
+        "label": "Sell the goods yourself",
+        "hint": "It costs nothing. The sale is slow, and foreign houses wonder.",
+        "now": [
+          {
+            "flag": "pera-sold-self",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Constantinople a broker took 4 carats, each a twenty-fourth of a perper, from each side for every 100 perpers. Pegolotti says merchants often paid more.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "place-constantinople"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, pp. 23 and 28"
+      }
+    ]
+  },
+  {
+    "id": "famagusta-querini-agent",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "A Venetian house",
+      "role": "Famagusta",
+      "seal": null
+    },
+    "title": "Silver into gold, if it pays",
+    "body": "A Venetian house sends silver to Famagusta. It wants it turned into gold for its galleys, but only if the profit is 8 in 100 or more. It asks you to take the post.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "post",
+        "label": "Take the post",
+        "hint": "It costs 4 dinars now. If the profit is too small, you lose your fee, and foreign houses hear of the work.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "loan",
+        "label": "Take it as a loan from the house",
+        "hint": "It costs 8 dinars now. The house lends you its trust, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The house finds another agent.",
+        "now": [
+          {
+            "flag": "querini-post-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1343 Francesco Querini sent silver to Famagusta. His agent was to buy gold if the profit was 8 in 100 or more, and if not, cotton or spices.",
+    "unlocks": [
+      "term-dinar",
+      "term-ships",
+      "place-famagusta"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 135 to 136"
+      }
+    ]
+  },
+  {
+    "id": "cathay-interpreter",
+    "group": "hiring",
+    "kind": "people",
+    "from": {
+      "name": "A merchant bound east",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "An interpreter for the long road",
+    "body": "A merchant bound far east asks you to name a guide who speaks the languages of the road. A good interpreter is dear, and a poor one is cheap.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "good",
+        "label": "Send an expensive interpreter",
+        "hint": "It costs 10 dinars now. The road is safer, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cheap",
+        "label": "Send a cheap one",
+        "hint": "It costs 4 dinars now. The road is riskier, and word gets round.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "servants",
+        "label": "Send two servants who speak the local tongue",
+        "hint": "It costs 6 dinars now. They know the road, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti told merchants bound for China to hire a good interpreter at Tana. A company of sixty, he said, was as safe as at home.",
+    "unlocks": [
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "yule-1914",
+        "at": "pp. 151 and 154"
+      }
+    ]
   }
 ]

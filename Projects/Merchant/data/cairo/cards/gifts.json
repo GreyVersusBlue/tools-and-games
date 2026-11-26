@@ -759,5 +759,116 @@
         "at": "vol. 2, p. 400"
       }
     ]
+  },
+  {
+    "id": "constantinople-gift-masters",
+    "group": "gifts",
+    "kind": "trade",
+    "from": {
+      "name": "A Pera trader",
+      "role": "Constantinople",
+      "seal": null
+    },
+    "title": "A gift for the customs masters",
+    "body": "A trader at Pera says it is the custom to honour the customs masters with a gift. Customs are taxes on goods. The gift goes to the masters, their clerks and their interpreters.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "all",
+        "label": "Send gifts to the masters and their clerks",
+        "hint": "It costs 6 dinars now. Your goods are counted at less than their worth, and the court hears of your manners.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cloth",
+        "label": "Send a gift of cloth only",
+        "hint": "It costs 3 dinars now. The clerks are pleased, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "none",
+        "label": "Send nothing",
+        "hint": "It costs nothing now and 2 dinars in two seasons, because your goods are counted at full worth.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "flag": "masters-no-gift",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti advised merchants to give the customs masters a gift, and their clerks something too. Then, he said, they pass you politely and count your goods at less than they are worth.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-constantinople"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, pp. 24 to 25"
+      }
+    ]
   }
 ]
