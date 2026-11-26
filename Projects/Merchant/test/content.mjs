@@ -561,6 +561,13 @@ test('rule 12: every choice whose later effects cost money requires the money no
   for (const [cid, chid] of costly) eq(rulesOf(cairoEdit(c => { delete cardOf(c, cid).choices.find(x => x.id === chid).requires; })).filter(r => r === 12), [12], `${cid}/${chid}`);
   eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'khalid-news').choices.find(x => x.id === 'warn'); k.requires = { money: { gte: 8 } }; })).filter(r => r === 12), [12], 'khalid-news costs 8 now and 2 later: requiring 8 is not enough');
 });
+test('rule 17: a choice that takes money now and could be the only open one requires the money; take the requires off two-judges "settle" and the lint names it (MER-141)', () => {
+  eq(rulesOf(cairo).filter(r => r === 17), []);
+  eq(rulesOf(cairoEdit(c => { delete cardOf(c, 'two-judges').choices.find(x => x.id === 'settle').requires; })).filter(r => r === 17), [17], 'settle has no sibling that is always open');
+  // a card with a way out that costs nothing and needs nothing is not held to it: aydhab-toll's "quseir" needs money, so give it a free third choice
+  eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; })).filter(r => r === 17), [17], 'pay with no requires and a sibling that needs money');
+  eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; k.choices.push({ id: 'wait', label: 'Wait', now: [] }); })).filter(r => r === 17), [], 'a choice that is always open lets the cost stand');
+});
 test('rule 13: a bonus costs no more than the letter brings, a card bonus about a trip home needs that agent\'s profit, and a return bonus is for a profit', () => {
   eq(rulesOf(cairo).filter(r => r === 13), []);
   eq(rulesOf(cairoEdit(c => { letterOf(c, 'damascus-early-caravan').choices.find(x => x.id === 'bonus').now[0].money = -30; })).filter(r => r === 13), [13], 'a bonus of 30 on a letter that brings 25');
@@ -688,6 +695,20 @@ test('MER-134: Ali\'s offer does not count the agents (a second, one at a time);
   eq(free.now.find(e => e.money).money, -4, 'and the 4 is what it takes');
   const papers = cardOf(cairo, 'karimi-papers');
   ok(papers.when.all.some(c => c.trip?.is === 'ready'), 'Send two loads under his papers needs an agent ready to go');
+});
+
+test('MER-140 rule 18: no sum the house keeps, no label that has the house travel, no cost with no figure; each of the second play\'s slips is fixed in the card', () => {
+  eq(rulesOf(cairo).filter(r => r === 18), [], 'the content as it stands');
+  const find = (cid, chid) => cardOf(cairo, cid).choices.find(x => x.id === chid);
+  ok(!/\d+ dinars/.test(find('sugar-pots', 'pass').hint), 'Amina\'s pass does not name 140 for a house that may hold 130');
+  ok(!/^Go with/.test(find('broker-bales', 'look').label) && !/^Hold the gold$/.test(find('gold-price-falls', 'hold').label), 'no travelling house, no gold held that may not be there');
+  ok(/warehouse/.test(find('gold-price-falls', 'hold').hint) && /^Any gold/.test(find('gold-price-falls', 'hold').hint), 'the gold hint speaks of any gold in the warehouse, since the house plan may have sent it with an agent');
+  ok(/2 dinars/.test(find('karimi-papers', 'alone').hint) && find('karimi-papers', 'alone').later[0].do.some(e => e.money === -2), 'going without papers names its 2 dinars, the sum its later effect takes');
+  // broken on purpose, each against its own phrase
+  const edit = (cid, chid, key, text) => cairoEdit(c => { cardOf(c, cid).choices.find(x => x.id === chid)[key] = text; });
+  eq(rulesOf(edit('sugar-pots', 'pass', 'hint', 'You keep your 140 dinars. Amina will find another buyer.')).filter(r => r === 18), [18], 'a named purse');
+  eq(rulesOf(edit('broker-bales', 'look', 'label', 'Go with him and look at every bale')).filter(r => r === 18), [18], 'the house travelling');
+  eq(rulesOf(edit('karimi-papers', 'alone', 'hint', 'It costs less. Nabil may feel left out.')).filter(r => r === 18), [18], 'a cost with no figure');
 });
 
 await done();

@@ -16,6 +16,7 @@ import * as routes from './routes.js';
 import * as letters from './letters.js';
 import * as agents from './agents.js';
 import { score } from './score.js';
+import * as W from './worth.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
@@ -31,7 +32,11 @@ export const steps = {
   news(s, content) {
     // city.json's priceNews (default true) turns price letters off for a city
     if (content.city?.priceNews === false) return;
+    // home's price is always current at an opening, so the goods the house holds are worth what the new price says: the move is a line
+    // in the log, "The goods in the warehouse rose in price: +81" (MER-146, M4e play problem 7)
+    const was = W.homePrices(s, content), held = W.heldLoads(s);
     market.news(s, content);
+    for (const l of W.priceLines(s, content, was, held)) s.log.push({ at: seasonIndex(s, content), kind: 'worth', cause: 'prices', part: l.part, change: l.change, text: `${l.text}.` });
   },
   events(s, content) {
     const idx = seasonIndex(s, content);
@@ -179,8 +184,8 @@ const slotsOf = q => (q.card ? 1 : 0) + (q.do ?? []).filter(e => e && typeof e =
 
 /** Fires one queue item on `s`: every effect with "now" equal to the item's own season
     (`at`) and the context of the paper that queued it. */
-function fireOne(s, content, q) {
-  const ctx = { later: true, at: q.at, from: q.from, ...(q.agent ? { agent: q.agent } : {}), ...(q.expedition ? { expedition: q.expedition } : {}) };
+function fireOne(s, content, q, shorts) {
+  const ctx = { later: true, at: q.at, from: q.from, shorts, ...(q.agent ? { agent: q.agent } : {}), ...(q.expedition ? { expedition: q.expedition } : {}) };
   applyAll(s, content, q.do, ctx);
   if (q.card) apply(s, content, { card: q.card }, ctx);
 }
@@ -211,11 +216,12 @@ function fireDue(s, content) {
   const room = reserve(s, content, due);
   for (const q of due) {
     if (slotsOf(q) && deskFull(s, slotsOf(q) + room)) { held.push(q); continue; }
-    const trial = structuredClone(s);
+    const trial = structuredClone(s), shorts = [];
     try {
-      fireOne(trial, content, q);
-      // a later effect with no follow-up card is recorded for the one folded Accounts paper
-      const item = slotsOf(q) ? null : routes.accountItem(trial, content, q);
+      fireOne(trial, content, q, shorts);
+      // a later effect with no follow-up card is recorded for the one folded Accounts paper; so is one that took
+      // less money than it asked for, card or not, since the paper must say what was owed and not paid (MER-141)
+      const item = slotsOf(q) && !shorts.length ? null : routes.accountItem(trial, content, q, shorts);
       Object.assign(s, trial);
       if (item) accounts.push(item);
     } catch (e) {
@@ -264,7 +270,7 @@ function isOpen(s, content, p, choice) {
   if (!holds(choice.requires, s, content)) return false;
   // on the copy throughout: letters.reachable logs a dropped order on the state it is given
   const trial = clone(s);
-  try { applyAll(trial, content, nowOf(trial, p, choice), { agent: p.agent, expedition: p.expedition }); return true; }
+  try { applyAll(trial, content, nowOf(trial, p, choice), { agent: p.agent, expedition: p.expedition, strict: true }); return true; }
   catch { return false; }
 }
 const anyOpen = (s, content, p, list) => list.some(c => isOpen(s, content, p, c));
@@ -305,6 +311,7 @@ export function choose(state, content, paperId, choiceId) {
     const via = { from: `${paper.kind === 'return' || paper.kind === 'lost' ? (paper.data?.entry ?? paper.ref) : card.id}/${choice.id}`, card: (paper.kind === 'return' || paper.kind === 'lost' ? paper.data?.ask?.title : (seen?.title ?? card.title)) ?? null, choice: (seen?.choices[choice.id]?.label ?? choice.label) ?? null };
     if (!holds(choice.requires, s, content)) throw new Error(`choose: "${choice.label}" is not available`);
     const ctx = { agent: paper.agent, expedition: paper.expedition };
+    const nowCtx = { ...ctx, strict: true };   // a choice's `now` takes only money the house holds (MER-141)
     const refuse = e => new Error(`choose: "${choice.label}" on card "${card.id}" is refused: ${e.message}`);
     const later = choice.later ?? [];
     const now = nowOf(s, paper, choice);
@@ -312,7 +319,7 @@ export function choose(state, content, paperId, choiceId) {
     // stop or agent refuses the choice here and never throws when the item fires.
     const trial = clone(s);
     try {
-      applyAll(trial, content, now, ctx);
+      applyAll(trial, content, now, nowCtx);
       for (const l of later) {
         if (!Number.isInteger(l.in) || l.in < 1) throw new Error(`later.in must be a whole number above 0`);
         const item = { do: l.do ?? [], ...(l.card ? { card: l.card } : {}) };
@@ -322,7 +329,7 @@ export function choose(state, content, paperId, choiceId) {
         applyAll(trial, content, item.do, { ...ctx, later: true, dry: true });
       }
     } catch (e) { throw refuse(e); }
-    applyAll(s, content, now, ctx);
+    applyAll(s, content, now, nowCtx);
     if ((paper.kind === 'return' || paper.kind === 'letter') && choiceId === 'bonus' && paper.agent) s.flags[`${paper.agent}-bonused`] = idx;   // one bonus for one trip (letters.js fitOffers)
     if (paper.kind === 'letter') letters.stamp(s, paper, idx);
     for (const l of later) {
@@ -335,6 +342,7 @@ export function choose(state, content, paperId, choiceId) {
     for (const e of card.unlocks ?? []) if (!s.notebook.includes(e)) s.notebook.push(e);
   }
   paper.state = 'done';
+  letters.refitReturns(s, content);   // an answer may have moved goods out of the warehouse; the return papers still open are fitted to what is left (MER-146)
   paper.choice = choiceId;
   s.done.push({ id: paper.id, ref: paper.ref, choice: choiceId });
   s.log.push({ at: idx, kind: info ? 'event' : 'card', ref: paper.ref, choice: choiceId });
@@ -378,9 +386,31 @@ export function endSeason(state, content) {
     holding when the season closed. */
 function logSeason(s, content, moneyAtClose, at, firstSeason) {
   const last = [...s.log].reverse().find(e => e.kind === 'season' && Number.isInteger(e.money));
-  const start = (content.houses ?? []).find(h => h.id === s.house)?.money ?? 0;
+  const house = (content.houses ?? []).find(h => h.id === s.house);
+  const start = house?.money ?? 0;
   const from = last ? last.money : (firstSeason ? start : moneyAtClose);
-  s.log.push({ at, kind: 'season', change: s.money - from, money: s.money });
+  // `change` is the season's change in the money; `worth` and `worthChange` are the figure the top bar shows and its change: a trip sent is
+  // not a loss (the money went out and the goods are counted on the road) and one come home is not a gain beyond its profit, so the
+  // true change of a season is this one (MER-146, M4e play problem 8: +1 for the season a trip brought 309 home and the house sent 288 out again)
+  const worth = W.worthOf(s, content);
+  const startWorth = start + Object.entries(house?.stock ?? {}).reduce((n, [g, q]) => n + q * (market.baseOf(s, content, cityOf(content, 'ledger').home, g) ?? 0), 0);
+  const fromWorth = Number.isInteger(last?.worth) ? last.worth : (firstSeason ? startWorth : null);
+  s.log.push({ at, kind: 'season', change: s.money - from, money: s.money, worth, ...(fromWorth === null ? {} : { worthChange: worth - fromWorth }) });
+}
+
+/** The last four closed seasons for the ledger (MER-146): { at, season, change, cash, after }, newest last. `change` is the season's true
+    change in worth with the years' own move taken out (a season that ran the act jump carries the jump as `after`: { years, change,
+    trips, net }, the jump's change in worth and in cash from the log's `jump` entry), `cash` the change in the money as the log's `change`
+    has it. A season written before worth was logged has `change` equal to its cash. */
+export function trail(state, content) {
+  const jumps = (state.log ?? []).filter(e => e.kind === 'jump' && Number.isInteger(e.years));
+  return (state.log ?? []).filter(e => e.kind === 'season' && Number.isInteger(e.change)).slice(-4).map(e => {
+    const j = jumps.find(x => x.from === e.at);
+    const jw = j && Number.isInteger(j.worthChange) ? j.worthChange : null, jc = j && Number.isInteger(j.change) ? j.change : null;
+    const change = Number.isInteger(e.worthChange) ? e.worthChange - (jw ?? 0) : e.change - (jc ?? 0);
+    return { at: e.at, season: market.writeSeason(content, e.at), change, cash: e.change - (jc ?? 0),
+      after: j ? { years: j.years, change: jw ?? jc, ...(Number.isInteger(j.trips) ? { trips: j.trips, net: j.net } : {}) } : null };
+  });
 }
 
 /** The ending's last choice (ARCHITECTURE 4.9): routes.js rolls each expedition and each agent at home. */
@@ -422,5 +452,6 @@ export function view(state, content) {
     cards: describeTrips(state, content),   // filled words of the cards that tell of a trip, by paper id
     ...agents.standing(state, content),
     interlude: state.phase === 'interlude' ? routes.interludeOf(state, content) : null,
+    trail: trail(state, content),   // the ledger's last four seasons: each season's true change in worth (MER-146)
   };
 }

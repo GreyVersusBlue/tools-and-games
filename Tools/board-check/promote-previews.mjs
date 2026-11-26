@@ -52,7 +52,7 @@ const KNOWN = new Set([
   'absalom-inheritance', 'daredevil', 'fracture-cycle', 'corner-and-kettle',
   'torchbearer', 'orbital', 'blue-hour', 'signal-city', 'converter',
   'skywings64', 'throneshard', 'hearth', 'school-generator',
-  'schedule-visualizer-2',
+  'schedule-visualizer-2', 'merchant',
   // 2026-11-24 (TG-106): the five that had only the board's own card.
   'bell-to-bell', 'sports-bar-sim', 'anathema-archive', 'campaigns', 'characters',
 ]);

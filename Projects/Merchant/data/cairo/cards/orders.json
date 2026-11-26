@@ -311,7 +311,7 @@
       {
         "id": "pass",
         "label": "Wish her luck and pass",
-        "hint": "You keep your 140 dinars. Amina will find another buyer, and she will not forget it.",
+        "hint": "You keep your money. Amina will find another buyer, and she will not forget it.",
         "now": [],
         "later": [
           {
@@ -450,8 +450,8 @@
       },
       {
         "id": "look",
-        "label": "Go with him and look at every bale",
-        "hint": "It costs a day, and you get good linen.",
+        "label": "Have him bring every bale to your desk",
+        "hint": "You look at each one before you pay. It costs a day, and you get good linen.",
         "requires": {
           "money": {
             "gte": 170

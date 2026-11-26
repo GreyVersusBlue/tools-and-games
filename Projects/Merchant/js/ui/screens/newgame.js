@@ -17,7 +17,9 @@ export function newGameBody({ content, art = new Map(), onBegin, onCancel }) {
   const radio = (name, value, checked, disabled, ...kids) => {
     const id = `${name}-${value}`;
     const input = h('input', { type: 'radio', name, id, value, checked, disabled,
-      onchange: () => { if (name === 'length') length = value; else house = value; } });
+      onchange: () => { if (name === 'length') length = value; else house = value; },
+      // MER-138 (play b002): Enter on a radio chooses it, as it does on every other button of the game; Space and the arrows already did. Begin is the next Tab.
+      onkeydown: e => { if (e.key === 'Enter' && !e.repeat && !disabled) { e.preventDefault(); if (!e.currentTarget.checked) e.currentTarget.click(); } } });
     return h('div', { class: `option ${disabled ? 'is-disabled' : ''}` }, input, h('label', { for: id }, ...kids));
   };
   const fullYears = content.calendar?.lengths?.full;

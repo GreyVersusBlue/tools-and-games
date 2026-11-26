@@ -80,8 +80,11 @@ export function priceLine(app) {
   const { content, state } = app;
   const home = content.city.home, stopId = content.city.firstStop ?? 'damascus';
   const stop = (content.stops ?? []).find(x => x.id === stopId);
-  const plan = cardPlan(state, content, stopId);
-  const good = Object.keys(plan?.cargo ?? {})[0] ?? Object.keys(state.stock).find(g => stop?.sells?.[g]);
+  // The first expedition's card names its own good ("ten loads of linen") and the line under it prices that good, not the sheet's first
+  // cargo, which `proposePlan` orders by its own rule (MER-142). From the second expedition the sheet's proposal is what the card sends (MER-97).
+  const first = !state.log.some(e => e.kind === 'outfit');
+  const good = (first && engine.openingGood(state, content, stopId)) || Object.keys(cardPlan(state, content, stopId)?.cargo ?? {})[0]
+    || Object.keys(state.stock).find(g => stop?.sells?.[g]);
   if (!stop || !good) return null;
   const prices = app.view().prices, name = goodName(content, good);
   const here = prices[home]?.[good], there = prices[stopId]?.[good];
@@ -120,6 +123,23 @@ function cardPlan(state, content, stopId) {
 
 const listOf = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
 
+/** MER-145 (M4e play problem 13, B Winter 1324: "Pay Yusuf a bonus of 30 dinars: You have already done this." after a bonus of 15): once a trip has had a bonus the
+    other closes (letters.js fitOffers, flag `<agent>-bonused`), and the reason says what was paid when a letter or a card's own choice is on record, which
+    is exact; a return paper's bonus is cut to half the profit, so its figure is not read back and the line names the bonus without one. null for any other flag. */
+function bonusWords(flag, state, content) {
+  const m = /^(.+)-bonused$/.exec(flag);
+  const agent = m && (content.agents ?? []).find(a => a.id === m[1]);
+  if (!agent) return null;
+  const sources = [...(content.letters ?? []), ...(content.cards ?? [])];
+  for (const d of [...(state.done ?? [])].reverse()) {
+    const c = sources.find(x => x.id === d.ref)?.choices?.find(x => x.id === d.choice);
+    if (!c || !(c.id === 'bonus' || (c.now ?? []).some(e => e && e.flag === flag))) continue;
+    const paid = -(c.now ?? []).reduce((n, e) => n + (e && Number.isFinite(e.money) && e.money < 0 ? e.money : 0), 0);
+    if (paid > 0) return `You have already paid ${agent.name} a bonus of ${dinars(paid)} for this trip.`;
+  }
+  return `You have already paid ${agent.name} a bonus for this trip.`;
+}
+
 /** The first thing a condition asks for that the house does not have, in words; null when the
     condition holds. Reads the same fields the engine's `holds` reads (turn.js, conditions.js) and
     only words them: whether a choice is open is still the engine's answer (choicesOf below). */
@@ -147,7 +167,7 @@ export function whyNot(cond, state, content) {
     if (cond.lte !== undefined && n > cond.lte) return `${cap(who)} think too well of the house for this.`;
   } else if ('flag' in cond) {
     const set = cond.flag in state.flags && (cond.gte === undefined || (typeof state.flags[cond.flag] === 'number' && state.flags[cond.flag] >= cond.gte));
-    if (cond.not ? set : !set) return cond.not ? 'You have already done this.' : 'Something has to happen first.';
+    if (cond.not ? set : !set) return cond.not ? (bonusWords(cond.flag, state, content) ?? 'You have already done this.') : 'Something has to happen first.';
   } else if ('notebook' in cond) {
     if (!state.notebook.includes(cond.notebook)) return `You have not yet learned about ${(content.notebook ?? []).find(n => n.id === cond.notebook)?.title?.toLowerCase() ?? 'this'}.`;
   } else if ('agent' in cond) {
@@ -423,23 +443,47 @@ function causeLine(i, content) {
   return 'After an earlier choice:';
 }
 
-/** A loss paper's picture slot (DESIGN 2.1 rule 4): the still `lost` from the manifest when it has one, else the
-    bare frame the picture will fill, so the sheet does not change shape when the art comes. Never read aloud. */
-function pictureSlot(app) {
-  const asset = app.art.get('lost');
-  return h('figure', { class: 'picture-slot', dataset: { slot: 'lost' }, 'aria-hidden': 'true' },
-    asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null);
+/** A loss paper's picture slot (DESIGN 2.1 rule 4): the picture the engine names in `data.picture` (a manifest id: storm-sea, sandstorm; null for
+    the causes that have none yet), else the still `lost`, else the bare frame the picture will fill, so the sheet does not change shape when the art
+    comes. The picture is never read aloud; its caption is the engine's `data.eventWords` ("A storm at sea"), which is words and is read (MER-145, MER-146). */
+function pictureSlot(app, paper) {
+  const named = paper?.data?.picture ? app.art.get(paper.data.picture) : null;
+  const asset = named ?? app.art.get('lost');
+  const words = named && paper?.data?.eventWords ? paper.data.eventWords : null;
+  return h('figure', { class: 'picture-slot', dataset: { slot: 'lost', ...(named ? { picture: paper.data.picture } : {}) } },
+    h('div', { class: 'picture-frame', 'aria-hidden': 'true' }, asset ? h('img', { src: `assets/art/${asset.file}`, alt: '', decoding: 'async' }) : null),
+    words ? h('figcaption', { class: 'picture-words' }, words) : null);
 }
 
-/** How much of a scroll box's top the tabs of the papers lower in the stack cover (screens.css keeps them stuck there while the paper under them
-    scrolls: MER-132, play a029, the tabs went out of sight above the box on every return). 0 where they scroll with the page or are not drawn. */
+/** The box a raised paper scrolls in: the paper's own box on a laptop or the board (MER-138), else the stack, which is visible, and the page scrolls. */
+export function scrollBoxOf(root) {
+  const sb = qs('.sheet-box', root);
+  return sb && getComputedStyle(sb).overflowY === 'auto' ? sb : qs('.stack-papers', root);
+}
+
+/** MER-138 (play a052, b011, b017): the headline of a raised paper is whole in its box after any scroll the desk made to bring a choice into
+    view (the headline wins where both cannot show, MER-122). */
+export function keepHeadline(sheet, gap = 6) {
+  const title = qs('.sheet-title', sheet), box = sheet.closest('.sheet-box, .stack-papers');
+  if (!title || !box) return;
+  if (getComputedStyle(box).overflowY !== 'auto') return;   // the phones scroll the page: desk.js's revealOnPage and the focus code keep the headline under the bar
+  const over = box.getBoundingClientRect().top + gap - title.getBoundingClientRect().top;
+  if (over > 0) box.scrollTop = Math.max(0, box.scrollTop - over);
+}
+
+/** MER-138: the tabs lie above the paper's box and no longer cover it, so this is 0 unless a stylesheet sticks them again. Kept so the one caller reads true. */
 export function stuckHeight(box) {
   const tabs = box && qs('.edges', box);
   if (!tabs || getComputedStyle(tabs).position !== 'sticky' || !tabs.checkVisibility?.()) return 0;
   return tabs.getBoundingClientRect().height + (parseFloat(getComputedStyle(box).rowGap) || 0);
 }
 
-const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v));
+/** An account cell's words with each figure and its unit ("340 dinars", "4 loads") in one nowrap span, so a long sentence breaks between
+    words and never between a number and what it counts (MER-142: "340 / dinars" at the phone's width). The text is the same text. */
+const keepUnits = text => String(text ?? '').split(/(\d[\d,]* (?:loads?|dinars?)(?![a-z]))/).map((part, i) => (i % 2 ? h('span', { class: 'nb' }, part) : part));
+/** MER-145 (M4e play a063, a031, b025: "spend-646 dinars", "now)+877 dinars"): a row's cells are read one after another by a screen reader and by textContent, so a
+    space ends every cell but the last and a figure never runs into the words before it. It collapses on screen. */
+const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k, ' '), h('td', null, keepUnits(v)));
 /** The words of an account row for a return. A sum row (an `amount`, no `detail`) shows its total in the last column, so the engine's
     closing ", 527 dinars in all" is dropped from the words (MER-132, play: "Back home / 527 dinars, 527 dinars in all / +527 dinars" said
     the figure three times). What is left is what came home; a row of money alone, whose words would be the figure again, says so in words. */
@@ -453,9 +497,10 @@ export function accountText(r) {
 
 /** An account row for a return: label, words, and the signed dinars when the row is one of the sums. The one sign is this file's: the
     engine's words carry none in front of a figure the column shows (a loss is U+2212, never a hyphen, and never twice). */
+/** The engine's own words are printed as they are, the wage row's included: MER-146's wageWords is the one string for a wage (sheet, return paper, Years pass). */
 const sumRow = r => {
   const sum = Number.isFinite(r.amount) && !r.detail;
-  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label), h('td', { colspan: sum ? null : 2 }, accountText(r)),
+  return h('tr', { class: sum ? 'sum' : null }, h('th', { scope: 'row' }, r.label, ' '), h('td', { colspan: sum ? null : 2 }, keepUnits(accountText(r)), sum ? ' ' : null),
     sum ? h('td', { class: 'amount' }, `${r.amount > 0 ? '+' : r.amount < 0 ? SIGN_MINUS : ''}${dinars(Math.abs(r.amount))}`) : null);
 };
 
@@ -514,7 +559,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
     e.preventDefault();
     onDone();
   };
-  const slot = paper.kind === 'lost' ? pictureSlot(app) : null;
+  const slot = paper.kind === 'lost' ? pictureSlot(app, paper) : null;
   const sheet = h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId, onkeydown: onKey },
     head(app, senderOf(content, paper)),
     slot,
@@ -525,13 +570,7 @@ export function record(app, paper, { onDone, open, onChoose = () => {}, locked =
   // MER-122: the desk scrolls a raised paper's stack down to its first choice (revealChoice), and on a short frame that leaves the headline
   // above the top (play a062, b070: y=-292). A record opens on its headline, whatever else is cut: this runs after the desk's own pass and
   // again when the sheet's rise ends, which is the desk's second pass.
-  const headline = () => {
-    const box = sheet.closest('.stack-papers'), title = qs('.sheet-title', sheet);
-    if (paper.kind !== 'return' || !box || !title || getComputedStyle(box).overflowY !== 'auto') return;
-    // the tabs stuck over the box's top (stuckHeight) lie over the first part of the window: the headline is put just under them
-    const stuck = stuckHeight(box), want = box.getBoundingClientRect().top + stuck;
-    if (title.getBoundingClientRect().top < want) box.scrollTop = stuck ? Math.max(0, box.scrollTop - (want - title.getBoundingClientRect().top) - 4) : 0;
-  };
+  const headline = () => keepHeadline(sheet);
   queueMicrotask(() => {
     if (!sheet.isConnected) return;
     headline();

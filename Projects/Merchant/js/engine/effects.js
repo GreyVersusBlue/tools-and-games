@@ -1,6 +1,11 @@
 // Effects (ARCHITECTURE 5.6): a closed list, each a one-key object plus its arguments.
 // apply(state, content, effect, ctx) changes `state` in place, so call it on a clone.
 // ctx: { agent } for "$agent", { expedition } for an order, { later: true } for a card.
+// The house's money never goes below 0 (MER-141). A `money` effect that would take more than the house
+// has is refused in words when ctx.strict is set (a choice's `now`: the choice is shown closed with
+// those words, so the player never pays what the house does not hold). Otherwise it takes what there is
+// and, when ctx.shorts is an array, pushes { effect, owed, paid } for the paper that says what went
+// unpaid (a later effect, a letter that arrives): no debt is kept anywhere.
 // A later effect also carries { at } (its own season, so "now" means the season it fires
 // for, MER-07) and { from } (the choice that queued it, kept as the flag "from:<card>");
 // { dry: true } is a trial run that checks references and puts no paper on the desk.
@@ -27,6 +32,12 @@ function agentId(state, ref, ctx) {
   if (!id) throw new Error('effect: "$agent" used on a paper with no agent');
   if (!state.agents[id]) throw new Error(`unknown agent "${id}"`);
   return id;
+}
+
+/** An amount in the city's coin: "1 dinar", "12 dinars", "2,663 dinars". */
+export function coinWords(content, n) {
+  const cur = content.city?.currency ?? 'coins';
+  return `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} ${Math.abs(n) === 1 && cur.endsWith('s') ? cur.slice(0, -1) : cur}`;
 }
 
 const nameOf = (content, id) => (content.agents ?? []).find(a => a.id === id)?.name ?? id;
@@ -92,9 +103,17 @@ export function apply(state, content, effect, ctx = {}) {
   const v = effect[head];
 
   switch (head) {
-    case 'money':
-      state.money += whole(v, 'money');
+    case 'money': {
+      const n = whole(v, 'money'), have = Math.max(0, state.money);
+      if (n < 0 && -n > have) {
+        if (ctx.strict) throw new Error(`The house has ${coinWords(content, have)}; this costs ${coinWords(content, -n)}`);
+        ctx.shorts?.push({ effect, owed: -n, paid: have });
+        state.money -= have;
+        return;
+      }
+      state.money += n;
       return;
+    }
     case 'stock': {
       find(content.goods, v, 'good');
       const n = (state.stock[v] ?? 0) + whole(effect.by, 'stock');

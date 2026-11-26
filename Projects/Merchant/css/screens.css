@@ -42,7 +42,12 @@ body { background: var(--night); }
   border-radius: var(--radius);
   width: fit-content;
 }
-.title-body { margin-top: auto; }
+.title-home { margin: 0; order: 2; }   /* after the tagline and before the menu on the page, though it is the last of them in the DOM and the Tab order */
+.home-link { display: inline-flex; align-items: center; min-height: var(--hit); padding: 0 var(--s3); background: rgba(20, 17, 13, .72); color: var(--paper); border-radius: var(--radius);
+  font-family: var(--font-chrome); text-decoration: underline; text-underline-offset: .2em; }   /* MER-138: a scrim as the title and tagline have, over a pale sky */
+.home-link:hover { background: rgba(20, 17, 13, .9); }
+.title-head { order: 1; }
+.title-body { margin-top: auto; order: 3; }
 .title-menu { padding: var(--s3); display: grid; gap: var(--s2); max-width: 26em; }
 .title-menu .choice { margin: 0; }
 .title-reason {
@@ -117,6 +122,7 @@ html.large-text .title-what { display: none; }
   min-height: var(--hit); min-width: var(--hit); padding: 0 var(--s2); display: inline-flex; align-items: center; justify-content: center;
   color: var(--paper); font-weight: 600; border-radius: var(--radius); text-align: center;
 }
+.bar-btn[hidden] { display: none; }
 .bar-btn:hover { background: rgba(239, 230, 210, .14); }
 .bar-btn[aria-disabled="true"] { color: #cbbd9f; cursor: not-allowed; }
 .bar-btn.loads { font-weight: 400; font-size: var(--step--1); }
@@ -137,8 +143,10 @@ html.large-text .title-what { display: none; }
 .stack-count { margin: 0; align-self: flex-start; padding: 0 var(--s2); background: rgba(20, 17, 13, .72); color: var(--paper);
   font-family: var(--font-chrome); font-size: var(--step--1); border-radius: var(--radius); }
 .stack-count:empty { display: none; }
-.stack-papers { position: relative; display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .2rem .3rem .5rem; }
-.sheet-box { display: flex; justify-content: center; }
+.stack-papers { position: relative; display: flex; flex-direction: column; gap: var(--s2); flex: 1 1 auto; min-height: 0; overflow: hidden; overflow: clip; padding: 0; }   /* clip, not hidden: a hidden box still scrolls when a script scrolls something into view in it, and took the whole paper up with it */
+/* MER-138 (play a052, b011, b017): the paper scrolls in its own box, and the row of other papers' tabs lies above that box, outside it. The tabs were
+   stuck over the top of one scrolling stack, so a headline scrolled or focused into the first 50 px was under them. Nothing scrolls under the tabs now. */
+.sheet-box { display: flex; justify-content: center; align-items: flex-start; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .2rem .3rem .5rem; }
 .sheet { width: 100%; max-width: var(--measure); padding: var(--s3) var(--s4); background-image: none; backface-visibility: hidden; }
 .sheet.still { animation: none; }
 .sheet-head { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s2); }
@@ -176,6 +184,9 @@ html.large-text .title-what { display: none; }
 .accounts-table { width: 100%; border-collapse: collapse; margin-top: var(--s2); }
 .accounts-table th { text-align: left; font-weight: 400; }
 .accounts-table td { text-align: right; }
+/* MER-142: the money column and the labels are never wrapped (the minus is U+2212 now, a wider figure, and a long sentence in the same table gave the
+   column its narrowest width: "-2,398 / dinars", "Back home" on two lines). A figure and its unit in a sentence stay together too. */
+.accounts-table th, .accounts-table td.amount, .accounts-table .nb { white-space: nowrap; }
 .accounts-table th, .accounts-table td { padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); vertical-align: baseline; }
 /* MER-124: a phone stacks each row, the label over its value, both at the left. Side by side in three columns on 390 px the label and the
    value each wrapped ("Sent / out", "-690 / dinars", play c041); stacked, each has the whole width and only a long sentence ever wraps,
@@ -183,14 +194,16 @@ html.large-text .title-what { display: none; }
    still happened to "Back home" and "+527 dinars".) */
 @media (max-width: 480px) { .accounts-table, .accounts-table tbody { display: block; } .accounts-table tr { display: block; padding: var(--s1) 0; border-bottom: 1px solid var(--paper-shade); }
   .accounts-table th, .accounts-table td { display: block; border: 0; padding: 0; text-align: left; }
-  .accounts-table th { font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); } }
+  .accounts-table th { font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); white-space: normal; } }
 
 /* a return's question and a loss's picture slot (DESIGN 2.1 rules 3 and 4) */
 .ask { margin-top: var(--s3); }
 .ask-title { font-size: var(--step-1); margin: 0 0 var(--s1); }
 .ask-title:focus-visible { outline: 2px solid var(--brass-dark); }
-.picture-slot { margin: 0 0 var(--s3); aspect-ratio: 16 / 5; max-height: clamp(4rem, 13vh, 11rem); width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
-.picture-slot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.picture-slot { margin: 0 0 var(--s3); width: 100%; }
+.picture-frame { aspect-ratio: 16 / 5; max-height: clamp(4rem, 13vh, 11rem); width: 100%; background: var(--paper-shade); border-radius: var(--radius); overflow: hidden; }
+.picture-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.picture-words { margin: var(--s1) 0 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
 /* The page between the acts is long and its one button is last: the button stays at the foot of the visible
    paper while the page scrolls under it (MER-87, finding 7), on a paper-coloured bar so no line shows through. */
 .kind-phase #btn-open-house { position: sticky; bottom: 0; box-shadow: 0 0 0 var(--s2) var(--paper); }
@@ -199,16 +212,16 @@ html.large-text .title-what { display: none; }
 .account-group .cause { font-size: var(--step-0); font-family: var(--font-chrome); margin: 0 0 var(--s1); }
 .account-group .account-item { margin: 0 0 var(--s1) var(--s3); }
 
-/* MER-132 (play a029): the tabs of the other papers stay in view over the paper that is raised. They are one row, stuck to the top of the scrolling
-   stack, with each title cut at the tab's width (its full title is its label); they went up out of the box on every return, when the stack was
-   scrolled to bring the paper's choices into view, while "5 papers left" still showed. The phones below put them back in the flow. */
-.edges { order: -1; display: flex; flex-wrap: nowrap; gap: var(--s2); justify-content: center; position: sticky; top: 0; z-index: 1; padding-bottom: var(--s1); }
+/* MER-132 (play a029): the tabs of the other papers stay in view over the paper that is raised. MER-138: they lie above the paper's own scroll box, not
+   stuck inside it, and a title is cut at two lines of its tab, not at one word (with four tabs on one row each read "A..."). The tabs wrap to a
+   second row where one row cannot give each 8 rem. The phones below put them back in the flow. */
+.edges { order: -1; display: flex; flex: none; flex-wrap: wrap; gap: var(--s2); justify-content: center; padding: .2rem .3rem 0; }
 .edges:empty { display: none; }
-.edge { min-width: 0; flex: 0 1 auto; }
-.edge > span:not(.seal) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edge { min-width: 0; flex: 1 1 8rem; max-width: 15rem; }
+.edge > span:not(.seal) { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.2; text-align: left; }
 .edge { display: inline-flex; align-items: center; gap: var(--s2); min-height: var(--hit); padding: var(--s1) var(--s3);
   background: var(--paper); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow);
-  transform: rotate(var(--tilt, 0deg)); font-family: var(--font-paper); font-size: var(--step-0); }
+  transform: rotate(var(--tilt, 0deg)); font-family: var(--font-paper); font-size: var(--step--1); }
 .edge .seal { width: 1.8rem; height: 1.8rem; }
 .edge:hover { background: var(--paper-shade); }
 
@@ -244,7 +257,7 @@ html.large-text .title-what { display: none; }
   .desk-screen:has(.desk-still.placeholder:last-child) { padding-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }
   .desk-screen:has(.desk-still.placeholder:last-child) .desk-stills { display: none; }   /* MER-132: the picture now in the band, not one still fading out of it: a final picture shows again the season after a placeholder one */
   /* a paper taller than the screen is scrolled to its heading by focus: keep it clear of the wrapped bar (MER-80) */
-  .sheet-title { scroll-margin-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }   /* the bar is two rows, 75 px (MER-105); desk.js keeps --bar-h at its measured height (MER-124) */
+  .sheet-title, .sheet-head { scroll-margin-top: calc(var(--bar-h, 4.7rem) + var(--s2)); }   /* the bar is two rows, 75 px (MER-105); desk.js keeps --bar-h at its measured height (MER-124) */
   .bar-tools .bar-btn:not(.menu):not(#btn-map) { display: none; }
   .bar-money .loads { display: none; }
   /* The End the season bar sticks to the foot of the screen but lies in the stack's own flow, last: the
@@ -254,13 +267,17 @@ html.large-text .title-what { display: none; }
   .desk-screen:has(.desk-still.placeholder:last-child) .stack { min-height: calc(100dvh - var(--bar-h, 4.7rem) - var(--s2)); }
   html { scroll-padding-bottom: calc(var(--end-h, 7rem) + var(--s2)); }   /* the End the season bar's measured height (desk.js): a control scrolled into view stops above it */
   .stack-papers { overflow: visible; flex: none; padding: 0 0 var(--s3); }
-  .edges { order: 0; position: static; flex-wrap: wrap; padding-bottom: 0; }
-  .edge > span:not(.seal) { overflow: visible; text-overflow: clip; white-space: normal; }
+  .sheet-box { overflow: visible; flex: none; padding: 0; }
+  .edges { order: 0; flex-wrap: wrap; padding: 0; }
+  .edge { flex: 0 1 auto; max-width: none; font-size: var(--step-0); }
+  .edge > span:not(.seal) { overflow: visible; display: inline; }
   .sheet { padding: var(--s3); }
   .choices .choice { min-height: 56px; }
   .end-row { position: sticky; bottom: 0; z-index: 3; padding: var(--s2) var(--s3) max(var(--s2), env(safe-area-inset-bottom));
-    background: var(--night); flex-direction: column; align-items: stretch; margin: auto -.5rem 0; }   /* opaque: at .9 the next paper's lines showed behind End the season (MER-105) */
-  .end-reason { text-align: center; }
+    background: var(--night); flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s2); margin: auto -.5rem 0; }   /* opaque: at .9 the next paper's lines showed behind End the season (MER-105) */
+  /* MER-145 (play c015b): the bar was a column, the reason over the button, 110 px of 844, and a letter's second choice sat behind it. The reason and the button share one row (about 60 px). */
+  .end-reason { flex: 1 1 0; min-width: 0; text-align: left; padding: 0; background: none; font-size: var(--step--1); line-height: 1.3; }
+  .end-season { flex: 0 0 auto; }
 }
 
 /* Phone on its side (DESIGN 5.2): 44 px bar, choices pinned to the foot of the paper, edges as a column */
@@ -270,7 +287,7 @@ html.large-text .title-what { display: none; }
   .bar-money .loads { display: none; }
   .stack { left: max(var(--s2), env(safe-area-inset-left)); right: max(var(--s2), env(safe-area-inset-right)); width: auto; top: 48px; bottom: var(--s2); }
   .stack-papers { flex-direction: row; align-items: stretch; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
-  .sheet-box { flex: 0 0 70%; max-height: 100%; }
+  .sheet-box { flex: 0 0 70%; max-height: 100%; overflow: visible; padding: 0; }
   /* A paper whose head, line, title and three choices fill the frame (a report) leaves the body 3 lines at least
      and the sheet scrolls; with fewer choices the body is the only part that scrolls, as DESIGN 5.2 says. */
   .sheet { display: flex; flex-direction: column; max-height: 100%; padding: var(--s2) var(--s3); overflow-y: auto; }
@@ -279,8 +296,9 @@ html.large-text .title-what { display: none; }
   .sheet-head { margin-bottom: var(--s1); }
   .letter-line { margin-bottom: var(--s1); }
   .choices { flex: none; }
-  .edges { order: 0; position: static; padding-bottom: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); scroll-padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); }
-  .edge > span:not(.seal) { overflow: visible; text-overflow: clip; white-space: normal; }
+  .edges { order: 0; padding: 0; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; flex: 1; overflow-y: auto; padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); scroll-padding-bottom: calc(var(--end-h, 5.5rem) + var(--s2)); }
+  .edge { flex: none; max-width: none; font-size: var(--step-0); }
+  .edge > span:not(.seal) { overflow: visible; display: inline; }
   /* End the season sits under the edges, at the right, so the raised paper keeps the full height */
   .end-row { position: absolute; right: 0; bottom: 0; width: calc(30% - var(--s2)); margin: 0; flex-direction: column; align-items: stretch; }
   .end-reason { text-align: center; }
@@ -301,7 +319,11 @@ html.large-text .title-what { display: none; }
 .map-bar .date { font-family: var(--font-paper); font-weight: 700; font-size: var(--step-1); line-height: 1.1; }
 .map-bar .money { font-weight: 600; font-variant-numeric: tabular-nums; }
 .map-stage { position: relative; container-type: size; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; }
-.map-frame { position: relative; width: min(100cqw, 100cqh * 16 / 9); aspect-ratio: 16 / 9; overflow: hidden; background: var(--night); cursor: pointer; }
+/* MER-145 (play a005): at 1920 x 1080 the picture filled 1,286 x 723 of a 1,286 x 1,080 pane, with blurred wood above and below. It is shown --crop times larger than
+   the pane's fit and the pane clips it: the stops lie between 9 and 91 percent across and 19 and 79 percent down, so 1.16 keeps every one of them in view.
+   A grid item wider than its area starts at the area's edge instead of centring, so the overflow is split by hand. */
+.map-frame { --fw: calc(min(100cqw, 100cqh * 16 / 9) * var(--crop, 1.16)); position: relative; width: var(--fw); aspect-ratio: 16 / 9;
+  left: min(0px, calc((100cqw - var(--fw)) / 2)); top: min(0px, calc((100cqh - var(--fw) * 9 / 16) / 2)); overflow: hidden; background: var(--night); cursor: pointer; }
 .map-img, .map-roads { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .map-img { object-fit: contain; }
 .map-roads, .map-layer { transform-origin: 0 0; }
@@ -321,28 +343,36 @@ html.large-text .title-what { display: none; }
 .stop-label[hidden] { display: none; }
 .stop-label.home { font-size: var(--step-1); font-weight: 700; }
 .stop-label.on { outline: 2px solid var(--brass-dark); }
-.token { position: absolute; width: 0; height: 0; transform: scale(calc(1 / var(--k, 1))) translate(var(--ox, 0px), var(--oy, 0px));   /* --ox, --oy: map.js moves a token along its road, or a few px across it, clear of a label or another token (MER-131) */
+.token { position: absolute; width: 0; height: 0; transform: scale(calc(1 / var(--k, 1))) translate(var(--ox, 0px), var(--oy, 0px));   /* MER-137: a token never moves for a label, so its place is the trip's own; a party still on its stop stands --ox, --oy along its road from the dot (map.js), and map.js chooses the side its caption sits on */
   pointer-events: none; transition: left var(--token-move-time) ease-in-out, top var(--token-move-time) ease-in-out; }   /* its anchor is the centre of its piece; the caption hangs below */
-.token.bare .token-label { display: none; }   /* map.js: no clear spot for the caption's width on a crowded picture */
+.token-leader { position: absolute; left: 0; top: -1px; height: 2px; transform-origin: 0 50%; background: var(--paper); box-shadow: 0 0 0 1px var(--night); }   /* MER-137: map.js ties a caption set apart from its piece to it */
+.token-leader[hidden] { display: none; }
 .token-piece { position: absolute; left: calc(var(--token) / -2); top: calc(var(--token) / -2); width: var(--token); height: var(--token); }
 .token-piece img { width: 100%; height: 100%; display: block; }
 .token-count { position: absolute; right: -.3rem; top: -.3rem; min-width: 1.4rem; height: 1.4rem; padding: 0 .3rem; display: grid; place-items: center;
   background: var(--madder); color: var(--paper); border-radius: 1rem; font-family: var(--font-chrome); font-size: var(--step--1); font-weight: 600; }
-.token-label { position: absolute; left: 0; top: calc(var(--token) / 2); transform: translateX(-50%); margin: 0; padding: 0 .35rem; display: flex; align-items: center; gap: .25rem; white-space: nowrap; background: var(--paper); color: var(--ink);
+.token-label { position: absolute; left: 0; top: calc(var(--token) / 2); transform: translateX(-50%); width: max-content; margin: 0; padding: 0 .35rem; display: flex; align-items: center; gap: .25rem; white-space: nowrap; background: var(--paper); color: var(--ink);
   font-family: var(--font-chrome); font-size: var(--step--1); border-radius: var(--radius); }
 .token-seal { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
+.token-label.token-stack { flex-direction: column; align-items: flex-start; gap: .1rem; padding-top: .15rem; padding-bottom: .15rem; }   /* MER-137: a stack lists each agent and that agent's season */
+.token-head { font-weight: 600; }
+.token-line { display: flex; align-items: center; gap: .25rem; }
 .map-unzoom { position: absolute; left: var(--s3); top: var(--s3); z-index: 2; }
 .map-unzoom[hidden] { display: none; }
 /* MER-124: the set-out toast is a note in the board's flow, above its buttons, at every frame: nothing on the picture is under it. It was
    fixed over the picture, and on a phone it covered the top third of the map and its labels (play c017). */
 /* MER-132 (play c010): it comes first in the board and sticks to its top. Under the buttons it lay beneath the sticky bar at the foot as soon as
    the board scrolled (Large text, a phone on its side), and "Watch the" was all of it that showed; at the top nothing lies over it. */
-.map-toast { order: -1; position: sticky; top: var(--s2); z-index: 2; flex: none; margin: 0; padding: var(--s2) var(--s3); background: var(--paper-shade); color: var(--ink); border-left: .3rem solid var(--brass);
+.map-toast { flex: none; margin: var(--s2) var(--s3) 0; padding: var(--s2) var(--s3);   /* MER-138 (play b015): a row of the board between its top and its scroll, so it lies over nothing; sticky inside the scroll it covered the stop list */ background: var(--paper-shade); color: var(--ink); border-left: .3rem solid var(--brass);
   border-radius: var(--radius); font-family: var(--font-chrome); }
 .map-toast[hidden] { display: none; }
 
-.board { grid-row: 2; grid-column: 2; background: var(--paper); color: var(--ink); overflow-y: auto; overscroll-behavior: contain;
-  padding: var(--s3) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
+/* MER-137 (play b008, c006b): the board is two parts, the scrolling body and the buttons under it. The bar used to be sticky inside the one
+   scroller, so at 1366 x 768 it lay over "Every price in ..." (half of it, at rest) and over whatever a focus scrolled to the foot. Now the
+   buttons are outside the scroll, and nothing the body scrolls to can be under them. */
+.board { grid-row: 2; grid-column: 2; background: var(--paper); color: var(--ink); overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.board-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--s3);
+  padding: var(--s3) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); }
 .board h2 { font-size: var(--step-2); margin: 0; }
 .board h2:focus-visible, .prices-head:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
 .stoplist { position: relative; max-height: 13rem; overflow-y: auto; border: 1px solid var(--ink-soft); border-radius: var(--radius); background: var(--paper); font-family: var(--font-chrome); flex: none; }
@@ -373,16 +403,17 @@ html.large-text .title-what { display: none; }
   .prices td::before { content: attr(data-label) ": "; font-weight: 600; }
   .prices .when { display: inline; }
 }
-.board-actions { margin-top: auto; position: sticky; bottom: calc(var(--s3) * -1); display: grid; gap: var(--s2); padding: var(--s2) 0 var(--s3); background: var(--paper); }
+.board-actions { flex: none; display: grid; gap: var(--s2); padding: var(--s2) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); background: var(--paper); box-shadow: 0 -1px 0 var(--paper-shade); }
 .board-actions .reason { margin: 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--madder); }
 .board-actions .reason[hidden] { display: none; }
-@media (min-width: 1600px) { .map-screen { --token: 80px; } }
+@media (min-width: 1600px) { .map-screen { --token: 80px; grid-template-columns: minmax(0, 1fr) minmax(24rem, 28%); } }   /* MER-145: the board needs 28 percent at 1920, and the picture the rest */
 
 /* Phone on its side (DESIGN 5.2): the picture at full height on the left, the list and the board in the column on the right */
 @media (max-height: 500px) {
-  .map-screen { grid-template-columns: minmax(0, 1fr) minmax(14rem, 240px); --token: 48px; }
+  .map-screen { grid-template-columns: minmax(0, 1fr) minmax(14rem, 240px); --token: 48px; --crop: 1; }
   .map-bar { min-height: 44px; height: 44px; padding-top: 0; padding-bottom: 0; }
-  .board { padding: var(--s2); gap: var(--s2); }
+  .board-body { padding: var(--s2); gap: var(--s2); }
+  .board-actions { padding: var(--s2); }
   .board h2 { font-size: var(--step-1); }
   .stoplist { max-height: 9rem; }
   /* MER-124: the picture is 600 px wide here and carries twenty labels; a 130 px caption under each token left no spot clear of them
@@ -393,9 +424,17 @@ html.large-text .title-what { display: none; }
 /* Phone upright (DESIGN 5.3): the picture short at full width, the list the main control, prices in a full-screen dialog */
 @media (max-width: 700px) and (min-height: 501px) {
   .map-screen { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); --token: 32px; }
+  /* MER-145 (play c022): date and money each wrapped onto two lines beside the button on 390 px. One line each: nowrap, smaller date, a tighter button. */
+  .map-bar { gap: var(--s2); }
+  .map-bar p { white-space: nowrap; }
+  .map-bar .date { font-size: var(--step-0); }
+  .map-bar .money { font-size: var(--step--1); }
+  .map-bar .button { padding-left: var(--s2); padding-right: var(--s2); white-space: nowrap; }
   .map-stage { container-type: normal; }
-  .map-frame { width: 100%; }
-  .board { grid-column: 1; grid-row: 3; padding: var(--s3); }
+  .map-frame { width: 100%; left: 0; top: 0; }
+  .board { grid-column: 1; grid-row: 3; }
+  .board-body { padding: var(--s3); }
+  .board-actions { padding: var(--s2) var(--s3) var(--s3); }
   .board h2 { display: none; }
   .stoplist { max-height: none; flex: 1 1 auto; min-height: 8rem; }
   .prices-open { display: block; }
@@ -460,7 +499,8 @@ dialog.outfit { animation-name: arrive-fade; }
 .good-text span { font-size: var(--step--1); color: var(--ink-soft); }
 .good-text .purse-flat { color: var(--lapis); }   /* MER-122: one more press of the purse buys no more loads */
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--ink-soft); border-radius: var(--radius); background: var(--paper); font-family: var(--font-chrome); }
-.step-btn { min-width: var(--hit); min-height: var(--hit); background: var(--paper-shade); color: var(--brass-dark); font-weight: 700; font-size: var(--step-1); }
+.step-btn { min-width: var(--hit); min-height: var(--hit); background: var(--paper-shade); color: var(--brass-dark); font-weight: 700; font-size: var(--step-1);
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; text-align: center; }   /* MER-138 (play c005): the glyph sits in the middle of its cell; it hugged the left edge */
 .step-btn[aria-disabled="true"] { color: var(--ink-soft); opacity: .6; cursor: not-allowed; }
 .step-val { min-width: 6.5rem; padding: 0 var(--s2); text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 .send-row { flex: none; padding: var(--s2) var(--s4) var(--s3); background: var(--paper);
@@ -482,6 +522,10 @@ dialog.outfit { animation-name: arrive-fade; }
   dialog.outfit .send-row .panel-actions { margin-top: var(--s1); flex-direction: row; flex-wrap: nowrap; justify-content: stretch; }
   .send-row .panel-actions .button { flex: 0 0 auto; min-height: 48px; padding-left: var(--s3); padding-right: var(--s3); }
   .send-row .panel-actions .send { flex: 1 1 auto; min-height: 48px; }
+  /* MER-145 (play c005): a stepper's + at x 165 to 209 met Send, which began at x 180, so a thumb on the + that was a pixel low or wide pressed Send. Back keeps 11rem
+     and Send begins at x 200 or later, and a stepper's number is narrower, so the + column ends left of Send's edge at every phone width. */
+  .send-row .panel-actions .button:not(.send) { min-width: 11rem; }
+  .step-val { min-width: 4.5rem; padding: 0 var(--s1); }
 }
 /* A phone on its side: the bar was 120 of 390 px. The estimate and the two buttons share one row. */
 @media (max-height: 500px) {
@@ -496,6 +540,9 @@ dialog.outfit { animation-name: arrive-fade; }
 dialog.book { width: min(44em, calc(100% - 2rem)); max-width: none; padding: var(--s3) var(--s4); display: flex; flex-direction: column; overflow: hidden; }
 dialog.book[open] { display: flex; }
 dialog.book .panel-actions { flex: none; }
+/* MER-145 (play a106 to a109, problem 15): the notebook is as tall as it will ever be on every tab, so the dialog, centred, keeps its top in one place. Sized to its
+   content it was centred on a height that changed with the tab, and its top moved 22, 32 and 102 px between Terms, Goods and People. The tab panel scrolls inside. */
+#panel-notebook { height: min(44rem, calc(100dvh - 2rem)); }
 .ledger-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: var(--s2); }
 .ledger-sec { padding: var(--s2) 0 var(--s3); border-bottom: 1px solid var(--paper-shade); }
 .ledger-sec:last-child { border-bottom: 0; }
@@ -505,6 +552,7 @@ dialog.book .panel-actions { flex: none; }
 .ledger-list { list-style: none; margin: 0; padding: 0; }
 .ledger-list li { display: flex; flex-wrap: wrap; gap: 0 var(--s3); align-items: baseline; justify-content: space-between; padding: var(--s1) 0; border-bottom: 1px dotted var(--paper-shade); font-variant-numeric: tabular-nums; }
 .ledger-list li > span { color: var(--ink-soft); font-family: var(--font-chrome); font-size: var(--step--1); }
+.ledger-list li > small { color: var(--ink-soft); font-family: var(--font-chrome); font-size: var(--step--1); }
 .ledger-trip, .ledger-person > div { display: grid; gap: 0; }
 .ledger-trip { display: grid !important; }
 .ledger-person { justify-content: flex-start !important; align-items: center !important; flex-wrap: nowrap !important; gap: var(--s3) !important; }
@@ -581,3 +629,28 @@ dialog.book .panel-actions { flex: none; }
   .ending-actions .button { width: 100%; }
 }
 @media (max-height: 500px) { .ending-holder { padding-top: var(--s2); padding-bottom: var(--s2); } }
+
+/* ---- MER-138: the Sell button of the warehouse (ledger) ---- */
+.ledger-sale, .ledger-open { font-size: var(--step--1); }
+.ledger-sale { padding-left: var(--s3); color: var(--ink-soft); }
+.ledger-open > span { font-weight: 600; color: var(--ink); }
+.ledger-list li .sell-row { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin-top: var(--s1); }
+.sell-row .sell-btn { min-height: var(--hit); }
+.sell-row .sell-btn[aria-disabled="true"] { background: var(--paper-shade); color: var(--ink-soft); border: 2px dashed var(--ink-soft); }
+.sell-row .sell-note { flex: 1 1 100%; margin: 0; font-family: var(--font-chrome); font-size: var(--step--1); color: var(--ink-soft); }
+.sell-row .sell-note.refused { color: var(--madder); }
+
+/* MER-138 (play c000, DESIGN 4.2): on an upright phone the picture is cut from its left edge, which is the blurred foreground and the city's soft near end,
+   and the menu card covers what is left: a blurred band. Laid from 38 percent across it shows the domes and roofs the picture is for, sharp, in the
+   strip between the tagline and the card; the sky it was laid on for the title is the top of the picture at any x. */
+@media (max-width: 700px) and (min-height: 501px) { .title-still { object-position: 38% 0; } }
+/* MER-138: a phone on its side has the head and the menu in two columns: the link stands at the foot of the left one, under the tagline's box. */
+@media (max-height: 500px) { .title-home { position: absolute; left: max(var(--s4), env(safe-area-inset-left)); bottom: max(var(--s2), env(safe-area-inset-bottom)); } }
+/* MER-138: where the head has the width to spare (a laptop, the board) the link stands in the corner of the sky, so the page is no taller than it was
+   with Continue showing (771 px in 768 with the link under the tagline). The phones keep it under the tagline, where the head has no one beside it. */
+@media (min-width: 701px) and (min-height: 501px) {
+  .title-home { position: absolute; top: max(var(--s3), env(safe-area-inset-top)); right: max(var(--s4), env(safe-area-inset-right)); margin: 0; }
+}
+/* MER-138: with the All games link the continued title is 771 px on a 740 px phone. The paragraph under the menu's first button is the first lines of About
+   and of the tagline's promise; on a short upright phone it steps aside as it does for Large text, rather than push a button out of view. */
+@media (max-width: 700px) and (min-height: 501px) and (max-height: 780px) { .title-what { display: none; } }

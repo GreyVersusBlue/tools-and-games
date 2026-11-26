@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test, eq, ok, done } from './lib.mjs';
 
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS = path.join(HERE, '..', '..', '..', 'Tools', 'board-check', 'harness.mjs');
 const { serve, launch, prepPage } = await import(pathToFileURL(HARNESS).href);
@@ -23,6 +24,9 @@ const eng = await import(pathToFileURL(path.join(MER, 'engine', 'index.js')).hre
 const { loadContent } = await import(pathToFileURL(path.join(MER, 'data.js')).href);
 const nodeContent = eng.validateContent(await loadContent('cairo', { fs: await import('node:fs/promises') }));
 const SEED = 1324;
+const { legSeasons } = await import(pathToFileURL(path.join(MER, 'engine', 'agents.js')).href);
+// what each agent's leg of 2 to 6 seasons takes him (a careful agent a season more): a token's fraction done is `left` over this
+const LEG_TOTALS = Object.fromEntries(nodeContent.agents.map(a => [a.id, [2, 3, 4, 5, 6].map(n => legSeasons(a, { seasons: n }))]));
 const { SAVE_VERSION } = await import(pathToFileURL(path.join(MER, 'engine', 'state.js')).href);
 const cap = w => w[0].toUpperCase() + w.slice(1);
 const withCommas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -50,6 +54,32 @@ const sheetPlan = (s, content, stop) => {
     if (p && !p.why) return p;   // a plan with a `why` carries nothing (MER-98): the sheet shows the sentence and the page has nothing to send
   }
   return null;
+};
+
+/** The goods and loads a cargo line says, in the order it says them ("4 loads of pepper, 4 of incense and 2 of porcelain, and 750 dinars to
+    buy with."), as { good id: loads }. The sheet words its own cargo from the plan it opens on, so a case reads the line back and compares
+    it with the engine's plan or with what the engine's rule leaves, never with a list typed in. */
+const cargoOfLine = (line, content) => {
+  const out = [];
+  for (const g of content.goods) {
+    const m = new RegExp(`(?:^|[ ,])(\\d+)(?: [a-z]+)? of ${g.name.toLowerCase()}(?=[,.]| and |$)`, 'i').exec(line);
+    if (m) out.push([m.index, g.id, Number(m[1])]);
+  }
+  return Object.fromEntries(out.sort((a, b) => a[0] - b[0]).map(([, id, n]) => [id, n]));
+};
+
+/** The sheet opens on the engine's proposal, which buys loads in Cairo until the house has almost nothing left (MER-139: 1,468 of 1,500 dinars at
+    the first expedition), so a press on the purse has no money to move. A player who wants to try the purse takes the bought loads off the cargo
+    first: this presses Home on the stepper of each good the engine's own cost says is bought, and answers the plan the sheet then holds (the
+    proposal's, less those goods). The carry section is open. */
+const lightCargo = async (page, stop = 'damascus') => {
+  const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
+  const proposal = sheetPlan(s0, nodeContent, stop);
+  const bought = eng.checkPlan(s0, nodeContent, proposal).cost.goods.filter(r => r.bought > 0).map(r => r.good);
+  ok(bought.length > 0, 'setup: the proposal buys loads in Cairo, so there is money to free');
+  for (const g of bought) { await page.focus(`#step-cargo-${g}`); await page.keyboard.press('Home'); }
+  await page.waitForFunction(gs => gs.every(g => document.getElementById(`step-cargo-${g}`)?.getAttribute('aria-valuenow') === '0'), {}, bought);
+  return { proposal, cargo: Object.fromEntries(Object.entries(proposal.cargo).filter(([g]) => !bought.includes(g))) };
 };
 
 const PORT = 8190;
@@ -108,6 +138,17 @@ const tabOrder = async (page, n) => {
 };
 const setLarge = (page, on) => page.evaluate(v => document.documentElement.classList.toggle('large-text', v), on);
 const hashOf = page => page.evaluate(() => location.hash);
+/** A point `off` px from the centre of a dot, on the side away from the nearest other dot, so that a press there is closest to this dot at every
+    frame however close the real map puts its neighbour (Damascus and Aleppo are 50 px apart at 1920 wide and 24 px at laptop width, a delta and an
+    Upper Egypt square 18 px on a phone). A press that misses the dot itself, which is what the nearest-stop rule is for. */
+const pressPoint = (page, selector, off) => page.evaluate((sel, off) => {
+  const mid = d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  const me = document.querySelector(sel), [x, y] = mid(me);
+  let near = null, nd = Infinity;
+  for (const o of document.querySelectorAll('.dot')) { if (o === me) continue; const [ox, oy] = mid(o), d = Math.hypot(ox - x, oy - y); if (d < nd) { nd = d; near = [ox, oy]; } }
+  const u = near ? [(x - near[0]) / nd, (y - near[1]) / nd] : [1, 0];
+  return [x + u[0] * off, y + u[1] * off];
+}, selector, off);
 /** Every sheet opens as the summary (MER-99). Presses each Change link that opens a section in place (not Where, which goes back to the map)
     so the steppers, the agents and the contracts are on the page. Safe to call on a sheet that is already open. */
 const openAll = async page => {
@@ -965,7 +1006,7 @@ try {
           ok(rows.length >= 3 && rows.some(r => r.includes('Profit') || r.includes('Back home')), rows.join(' | '));
           // MER-119: the rows a child reads add up. Each sum row shows its dinars, and the ones before the last come to the last,
           // which is the headline's number: 'Sent out' (what the goods and money cost), 'Back home', the wage, then Profit
-          { const sums = await page.$$eval('.account tr.sum', trs => trs.map(t => [t.querySelector('th').textContent, t.querySelector('.amount').textContent]));
+          { const sums = await page.$$eval('.account tr.sum', trs => trs.map(t => [t.querySelector('th').textContent.trim(), t.querySelector('.amount').textContent.trim()]));
             const n = s => Number(s.replace('\u2212', '-').replace(/[^\d+-]/g, ''));
             ok(sums.length >= 3 && sums[0][0] === 'Sent out' && n(sums[0][1]) < 0, JSON.stringify(sums));
             ok(/^(Profit|Loss)$/.test(sums.at(-1)[0]), JSON.stringify(sums));
@@ -1072,7 +1113,7 @@ try {
     }
     if (how === 'keyboard') { await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press('e'); } else await page.click('#btn-end');
   };
-  const tokens = page => page.$$eval('.token', ts => ts.map(t => ({ ids: t.dataset.expedition, count: t.dataset.count, left: parseFloat(t.style.left), top: parseFloat(t.style.top), label: t.querySelector('.token-label').textContent })));
+  const tokens = page => page.$$eval('.token', ts => ts.map(t => ({ ids: t.dataset.expedition, count: t.dataset.count, left: parseFloat(t.style.left), top: parseFloat(t.style.top), label: t.querySelector('.token-label').textContent, spoken: t.getAttribute('aria-label') })));
   const FRAME = FRAMES[0];
 
   // one expedition, sent from the map table and followed home, by pointer then by keyboard
@@ -1107,8 +1148,8 @@ try {
         const [bx, by] = await at('aden');
         await page.mouse.click(bx - 40, by + 30);   // 50 px away: nothing is that close
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Samarkand', 'a press 50 px from every stop selects nothing');
-        const [dx, dy] = await at('damascus');
-        await page.mouse.click(dx + 20, dy - 6);
+        const [dx, dy] = await pressPoint(page, '.dot[data-stop="damascus"]', 10);
+        await page.mouse.click(dx, dy);
         eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
       });
     } else {
@@ -1168,7 +1209,7 @@ try {
       eq(await page.$eval('#panel-outfit', d => d.getAttribute('aria-labelledby')), 'panel-outfit-title');
       const plan = sheetPlan(model, nodeContent, 'damascus');
       eq(await page.$eval('#summary-who', e => e.textContent), 'Yusuf (careful, knows Damascus).');
-      ok((await page.$eval('#summary-carry', e => e.textContent)).startsWith(`${plan.cargo.linen} loads of linen`), 'cargo is the engine plan');
+      eq(cargoOfLine(await page.$eval('#summary-carry', e => e.textContent), nodeContent), Object.fromEntries(Object.entries(plan.cargo).filter(([, n]) => n > 0)), 'cargo is the engine plan, good for good');
       eq(await page.$$eval('#panel-outfit .step', s => s.map(x => x.id)), ['outfit-who', 'outfit-where', 'outfit-carry', 'outfit-back'], 'four sections, carry out and bring back among them: the contract is met at the second expedition');
       eq(await page.$eval('#outfit-send', b => [b.textContent, b.getAttribute('aria-disabled')]), ['Send Yusuf to Damascus', 'false']);
     });
@@ -1326,14 +1367,16 @@ try {
       // Lengthen the live leg in the page and look again: the token sits at the fraction done, and
       // two expeditions at the same place on a leg are one token with a count.
       await test('tokens stand at the fraction of their leg done, and two on the same spot stack with a count', async () => {
-        await page.evaluate(() => {
+        await page.evaluate(totals => {
           // the expedition the case before left on the road, found by what it is (the last one sent that is not home), not by where a seed's play put it
           const m = window.__merchant, x = m.state.expeditions.filter(e => e.status === 'out' || e.status === 'waiting').at(-1) ?? m.state.expeditions.at(-1);
           if (!x) throw new Error('no expedition is on the road: the case before it sends one');
           const leg = m.content.routes.find(r => r.id === x.route).legs[x.leg];
-          leg.seasons = 4; x.left = 3; x.status = 'out';
-          m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin', agent: 'ali' });
-        });
+          // MER-145: the seasons a leg takes are the agent's own, so the leg is lengthened to one this agent rides in a multiple of four, with three quarters left
+          const row = totals[x.agent], i = row.findIndex(n => n % 4 === 0);
+          leg.seasons = i + 2; x.left = row[i] * 3 / 4; x.status = 'out';
+          m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin' });
+        }, LEG_TOTALS);
         await goDesk(page); await goMap(page);
         const ts = await tokens(page);
         eq(ts.length, 1, 'two expeditions on one spot are one token');
@@ -1347,7 +1390,9 @@ try {
         ok(Math.abs(ts[0].left - want[0]) < 0.15 && Math.abs(ts[0].top - want[1]) < 0.15, `token at ${ts[0].left}, ${ts[0].top}, a quarter along is ${want}`);
         // MER-131: a stack names each agent with that agent's own season, from the engine's view (it said only the soonest, which hid the later one)
         const named = await page.evaluate(ids => ids.map(id => { const x = window.__merchant.state.expeditions.find(e => e.id === id); return `${window.__merchant.content.agents.find(a => a.id === x.agent).name}, home about ${window.__merchant.view.homeBy[id].season}`; }), ts[0].ids.split(' '));
-        eq(ts[0].label, `2 expeditions: ${named.join('; ')}`, 'a stack names each trip with its own season, from the engine\'s view');
+        // MER-137: the caption lists them one to a line; the token says the same in one sentence to a screen reader
+        eq(ts[0].spoken, `2 expeditions: ${named.join('; ')}`, 'a stack names each trip with its own season, from the engine\'s view');
+        for (const n of named) ok(ts[0].label.includes(n), `the caption "${ts[0].label}" lacks "${n}"`);
       });
     }
     await page.close();
@@ -1456,9 +1501,12 @@ try {
       await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
       await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
       eq(await page.$eval('#outfit-back-total', e => e.textContent.startsWith('Nothing')), true, 'no good named: the line says so');
+      // the proposal spends nearly all the money on goods bought in Cairo: free some, then send money
+      const { proposal, cargo } = await lightCargo(page);
       await page.click('#step-purse-plus');
       const s0 = await page.evaluate(() => JSON.parse(JSON.stringify(window.__merchant.state)));
-      const plan = { ...sheetPlan(s0, nodeContent, 'damascus'), purse: 50, buy: [] };
+      const { sell, ...rest } = proposal;   // the sheet's own plan carries no sell list (outfit.js plan())
+      const plan = { ...rest, cargo, purse: 50, buy: [] };
       const reasons = eng.checkPlan(s0, nodeContent, plan).reasons;
       ok(reasons.length === 1 && /needs a good to bring back/.test(reasons[0]), `the engine refuses it: ${reasons}`);
       await page.waitForFunction(() => /needs a good to bring back/.test(document.getElementById('outfit-reasons').textContent));
@@ -1511,6 +1559,7 @@ try {
     await test('MER-122: the bring-back button names the good the red line names, also when the cargo already carries the sheet\'s own pick', async () => {
       await openSheet();
       await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
+      await lightCargo(page);   // money to move: the proposal leaves the house about 30 dinars
       await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
       // the first good the sheet would offer (a059: it offered pepper while the engine, which leaves out what the trip carries, named porcelain)
       const first = await page.$eval('.back-pick', b => b.dataset.good);
@@ -1532,8 +1581,8 @@ try {
     await test('MER-122: the purse stepper says when one more press buys no more loads, and only then', async () => {
       await openSheet();
       await pressChange(page, '#change-carry'); await page.waitForSelector('#step-purse');
-      await pressChange(page, '#change-back'); await page.waitForSelector('.back-pick');
-      await page.click('.back-pick');
+      await lightCargo(page);   // the proposal leaves the house about 30 dinars: free money first, so the purse has room to walk
+      await nameBack(page);
       const levels = [];
       const money = await page.evaluate(() => window.__merchant.state.money);
       for (let at = 0; at + 50 <= money && levels.length < 14; at += 50) {
@@ -1569,12 +1618,16 @@ try {
       await page.click('#stop-qus, .dot[data-stop="qus"]');
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      eq(await page.$eval('#summary-carry', e => e.textContent), `${cap(goods)}.`, 'Qus: the cargo set for Damascus is still on the sheet');
+      // what Qus still trades of the cargo set for Damascus stays, load for load; the rest (what only Damascus trades) is dropped
+      const kept = Object.fromEntries(Object.entries(cargoOfLine(goods, nodeContent)).filter(([g]) => trades('qus').includes(g)));
+      const keptLine = await page.$eval('#summary-carry', e => e.textContent);
+      ok(Object.keys(kept).includes('linen') && Object.keys(kept).length < Object.keys(cargoOfLine(goods, nodeContent)).length, `setup: Qus keeps some of the cargo and drops some: ${JSON.stringify(kept)}`);
+      eq(cargoOfLine(keptLine, nodeContent), kept, 'Qus: the cargo set for Damascus that Qus trades is still on the sheet');
       await closeSheet();
       // a draft is used once: the next sheet for Qus is the engine's own again
       await page.click('#btn-outfit');
       await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      ok(await page.$eval('#summary-carry', (e, k) => e.textContent !== k, `${cap(goods)}.`), 'the kept cargo was used once; the next sheet for Qus is the engine\'s own');
+      ok(await page.$eval('#summary-carry', (e, k) => e.textContent !== k, keptLine), 'the kept cargo was used once; the next sheet for Qus is the engine\'s own');
       await closeSheet();
       // Samarkand trades no linen: the loads are dropped and the engine's own plain plan stands
       await openSheet();
@@ -1692,9 +1745,16 @@ try {
     });
 
     await test('MER-72: the sheet lists what makes the cost up, and the number it shows is the number Send takes', async () => {
+      // linen is to be bought past the warehouse's: the proposal's own loads left no money for that. A stepper shows what the money allows, which with
+      // the 99,999 the case before typed is nothing, and a press on Home at nothing moves nothing: so the purse goes to 0 first, then the cargo is
+      // lightened, then the purse is 100.
+      await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
+      await page.keyboard.type('0'); await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.getElementById('step-purse')?.getAttribute('aria-valuenow') === '0');
+      await lightCargo(page);
       await page.$eval('#typed-purse', e => { e.focus(); e.select(); });
       await page.keyboard.type('100'); await page.keyboard.press('Enter');
-      await page.waitForSelector('#step-purse');
+      await page.waitForFunction(() => document.getElementById('step-purse')?.getAttribute('aria-valuenow') === '100');
       // more linen than the warehouse holds, so some is bought in Cairo at a price that rises with each load
       await page.focus('#step-cargo-linen');
       for (let i = 0; i < 14; i++) await page.keyboard.press('ArrowUp');
@@ -1706,7 +1766,7 @@ try {
       const money0 = await moneyOf(page);
       ok(shown > 100, `the bought linen is in the number: ${shown}`);
       const later = await page.$$eval('#outfit-costs .cost-later', ps => ps.map(p => p.textContent));
-      ok(later.some(t => /wage, about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
+      ok(later.some(t => /wage, [\d,]+ dinars a season for \w+ seasons?[^,]*, is paid when the trip comes home: about [\d,]+ dinars/.test(t)), `what comes later is listed apart: ${JSON.stringify(later)}`);
       await page.click('#outfit-send');
       await page.waitForFunction(() => !document.getElementById('panel-outfit'));
       eq(money0 - await moneyOf(page), shown, 'the number shown is the number taken, to the dinar');
@@ -1779,8 +1839,10 @@ try {
     await page.screenshot({ path: path.join(SHOTS, `map-${frame.name}.png`) });
     await test(`${frame.name}: the map table has no horizontal overflow, its buttons are 44 px, the picture is whole`, async () => {
       const m = await page.evaluate(() => {
-        const f = document.getElementById('map-frame').getBoundingClientRect();
-        return { doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth], frame: [Math.round(f.width / f.height * 100) / 100, f.left >= -1, f.right <= innerWidth + 1],
+        const f = document.getElementById('map-frame').getBoundingClientRect(), st = document.querySelector('.map-stage').getBoundingClientRect();
+        // MER-145: whole inside the pane, or larger than it on both sides (the wide frames show the table as large as fits and the pane clips the wood)
+        const within = f.left >= st.left - 1 && f.right <= st.right + 1, covers = f.left <= st.left + 1 && f.right >= st.right - 1;
+        return { doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth], frame: [Math.round(f.width / f.height * 100) / 100, within || covers, f.right - f.left > 0],
           hits: [...document.querySelectorAll('#btn-outfit, #map-desk, #map-desk-top, .stoplist .option')].map(b => { const r = b.getBoundingClientRect(); return [b.id || b.className, Math.round(r.height)]; }) };
       });
       eq(m.doc[0], m.doc[1]);
@@ -1794,7 +1856,7 @@ try {
           const box = e => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
           const key = e => e.dataset.stop ?? `cluster:${e.dataset.cluster}`;
           return {
-            frame: box(document.getElementById('map-frame')), board: box(document.getElementById('board')),
+            frame: (() => { const f = box(document.getElementById('map-frame')), s = box(document.querySelector('.map-stage')); return { l: Math.max(f.l, s.l), t: Math.max(f.t, s.t), r: Math.min(f.r, s.r), b: Math.min(f.b, s.b) }; })(), board: box(document.getElementById('board')),
             labels: [...document.querySelectorAll('.stop-label')].map(l => ({ id: key(l), hidden: l.hidden, ...box(l) })),
             dots: [...document.querySelectorAll('.dot')].map(d => ({ id: key(d), name: d.getAttribute('aria-label'), role: d.getAttribute('role'), ...box(d) })),
           };
@@ -1844,16 +1906,18 @@ try {
       await test(`${frame.name}: close stops are one cluster label and pressing it zooms to an inset`, async () => {
         const cl = await page.$$eval('.cluster-label:not([hidden])', ls => ls.map(l => l.textContent));
         // the names are city.json's `clusters`, one label for each group of close stops
-        const want = Object.entries(nodeContent.city.clusters).map(([id, name]) => `${name}: ${nodeContent.stops.filter(x => x.cluster === id).length} stops`);
+        // MER-137: the group that holds the house says Cairo in its label, since Cairo's own is not drawn inside it
+        const holds = id => nodeContent.stops.some(x => x.cluster === id && x.id === nodeContent.city.home);
+        const want = Object.entries(nodeContent.city.clusters).map(([id, name]) => `${holds(id) ? `${nodeContent.stops.find(x => x.id === nodeContent.city.home).name}, ` : ''}${name}: ${nodeContent.stops.filter(x => x.cluster === id).length} stops`);
         eq(want.length, 5, 'Cairo names five clusters');
         eq(cl.slice().sort(), want.slice().sort(), 'every cluster is labelled by its name from city.json');
         eq(await page.$('.stop-label[data-stop="cairo"]'), null, 'Cairo has no label of its own until the inset');
-        const [x, y] = await page.$eval('.dot.cluster[data-cluster="delta"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
-        await page.mouse.click(x + 10, y + 6);
+        const [x, y] = await pressPoint(page, '.dot.cluster[data-cluster="delta"]', 9);
+        await page.mouse.click(x, y);
         await page.waitForSelector('#map-unzoom:not([hidden])');
         ok(await page.$('.stop-label[data-stop="cairo"]') && await page.$('.stop-label[data-stop="alexandria"]'), 'both stops are named in the inset');
-        const [cx, cy] = await page.$eval('.dot[data-stop="alexandria"]', d => { const r = d.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
-        await page.mouse.click(cx + 12, cy - 12);
+        const [cx, cy] = await pressPoint(page, '.dot[data-stop="alexandria"]', 12);
+        await page.mouse.click(cx, cy);
         eq(await page.$eval('#stop-alexandria', e => e.getAttribute('aria-selected')), 'true');
         await page.click('#map-unzoom');
         eq(await page.$('.stop-label[data-stop="cairo"]'), null);
@@ -2128,7 +2192,9 @@ try {
     // due is a fixed season (Autumn 1325), not t + 4, so the line the page says does not move with the turn the state is found at
     book.loans.push({ id: 'nell-1', from: 'nell', principal: 100, due: 6, rate: 0.1 });
     for (const [i, change] of [[0, -60], [1, 120], [2, -45], [3, 80], [4, 300]]) book.log.push({ at: i, kind: 'season', change });
-    book.agents.yusuf.trust = -1; book.rep.court = 3; book.rep.partners = -3; book.rep.agents = 1;
+    // who the engine sends is the engine's call: Yusuf leaves the house at the first act's jump, and the desk found here can be one he is gone from
+    const who = book.expeditions[0].agent, whoRec = nodeContent.agents.find(a => a.id === who), whoName = whoRec.name;
+    book.agents[who].trust = -1; book.rep.court = 3; book.rep.partners = -3; book.rep.agents = 1; book.rep.foreign = 0;   // all four set, so none is left to what the seed's play happened to do
     const view = eng.view(book, nodeContent);
     const total = nodeContent.notebook.length;
     const found = nodeContent.notebook.filter(e => book.notebook.includes(e.id));
@@ -2165,34 +2231,42 @@ try {
         eq(await texts(page, '#panel-ledger h3'), ['Money', 'Warehouse', 'Out on the road', 'People']);
         eq(await texts(page, '#ledger-have'), [`The house has ${withCommas(book.money)} dinars.`]);
         eq(await texts(page, '#ledger-loans li'), ['Owes 100 dinars to Nell, due Autumn 1325.']);
-        eq(await texts(page, '#ledger-trail li'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
-        eq(await page.$$eval('#ledger-trail li', es => es.map(e => e.dataset.change)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, each as the log wrote it');
-        ok((await texts(page, '#ledger-trail li')).every(t => /[+−]\d+ dinars$/.test(t)), 'signed with a real minus');
+        eq(await texts(page, '#ledger-trail li[data-change]'), ['Summer 1324 +120 dinars', 'Autumn 1324 −45 dinars', 'Winter 1324 +80 dinars', 'Spring 1325 +300 dinars'], 'the last four of the five log entries, oldest first');
+        // MER-145: the engine's own game logged what moved the house's worth without a paper, and the ledger prints each line
+        eq((await texts(page, '#ledger-trail li.ledger-worth')).sort(), book.log.filter(e => e.kind === 'worth' && (eng.view(book, nodeContent).trail.some(t => t.at === e.at) || e.at > Math.max(...book.log.filter(x => x.kind === 'season').map(x => x.at)))).map(e => e.text).sort(), 'the worth lines of the log, for the seasons the ledger shows and the one still open');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.cash)), ['120', '-45', '80', '300'], 'the last four of the five entries, oldest first, the money each as the log wrote it');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), eng.view(book, nodeContent).trail.map(t => String(t.change)), 'and the change in worth each is the engine\'s trail');
+        ok((await texts(page, '#ledger-trail li[data-change] strong')).every(t => /^[+−]\d[\d,]* dinars?$/.test(t)), 'signed with a real minus');
       });
 
       await test(`${how}: the ledger's warehouse shows each good with Cairo's price as last known and its date, from the engine's view`, async () => {
         const want = Object.entries(book.stock).filter(([, q]) => q > 0).map(([id, q]) => {
           const g = nodeContent.goods.find(x => x.id === id), p = view.prices.cairo[id];
-          return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`;
+          // MER-145: the price line is the quote for the loads the stepper holds (ten at most), not the news price
+          const quote = eng.sellHomeQuote(book, nodeContent, id, Math.min(q, 10)), cur = n => `${withCommas(n)} ${n === 1 ? 'dinar' : 'dinars'}`;
+          return `${q} ${q === 1 ? g.unit : g.unit + 's'} of ${g.name.toLowerCase()} ${quote.ok ? `Cairo pays ${cur(quote.first)} a ${g.unit} now${quote.first === quote.last ? '' : `, falling to ${cur(quote.last)} by the last`}, after the broker's cut` : `Cairo price ${p.p} ${p.p === 1 ? 'dinar' : 'dinars'} a ${g.unit}, ${p.written}, ${p.ageWords}`}`;
         });
         ok(want.length >= 2, 'the saved game holds at least two goods');
-        eq(await texts(page, '#ledger-stock li'), want);
+        // MER-138: each row also holds the Sell button's stepper and quote line (their own cases are further down): the row's own words are its first two parts
+        eq(await page.$$eval('#ledger-stock li', ls => ls.map(l => [l.querySelector(':scope > strong'), l.querySelector(':scope > span')].map(e => e.textContent).join(' '))), want);
       });
 
       await test(`${how}: the ledger's road and people sections name where each is, when due, the traits and trust in words, and the four reputations with numbers`, async () => {
         const trip = (await texts(page, '#ledger-trips li'))[0];
-        ok(trip.startsWith('Yusuf to Damascus Last heard of on the '), trip);
+        ok(trip.startsWith(`${whoName} to Damascus Last heard of on the `), trip);
         ok(trip.endsWith(`Due home about ${eng.view(book, nodeContent).homeBy[book.expeditions[0].id].season}.`), trip);
         eq(await page.$$eval('#ledger-trips li', es => es.length), book.expeditions.length);
-        const yusuf = await page.$eval('[data-agent="yusuf"]', e => e.textContent.replace(/\s+/g, ' ').trim());
-        eq(yusuf, 'Yusuf careful, knows Damascus Yusuf is uneasy with the house. On the road to Damascus.');
-        ok(await page.$eval('[data-agent="yusuf"] img.seal', i => i.complete && i.naturalWidth > 0), 'the seal shows');
+        const traits = whoRec.traits.map(t => (t.startsWith('knows-') ? `knows ${nodeContent.stops.find(x => x.id === t.slice(6)).name}` : t.startsWith('speaks-') ? `speaks ${cap(t.slice(7))}` : t)).join(', ');
+        const person = await page.$eval(`[data-agent="${who}"]`, e => e.textContent.replace(/\s+/g, ' ').trim());
+        eq(person, `${whoName} ${traits} ${whoName} ${view.trust[who].words}. On the road to Damascus.`);
+        eq(view.trust[who].words, 'is uneasy with the house', 'setup: the trust the case set reads as uneasy');
+        ok(await page.$eval(`[data-agent="${who}"] img.seal`, i => i.complete && i.naturalWidth > 0), 'the seal shows');
         eq(await texts(page, '#ledger-reps li'), ['Partners They will not deal with you −3', 'Agents They speak well of you +1',
           'The court They come to you first +3', 'Foreign merchants They deal with you as with anyone 0']);
       });
 
       await test(`${how}: the ledger says the years the engine's own jump skipped, on testport and cairo, and says nothing where seasons run on (MER-113b)`, async () => {
-        const { moneyTrail, jumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);
+        const { moneyTrail, trailJumpWords } = await import(pathToFileURL(path.join(MER, 'ui', 'screens', 'ledger.js')).href);   // MER-145: the page reads view().trail and prints trailJumpWords; moneyTrail is still the log's own reading
         const { writeSeason } = await import(pathToFileURL(path.join(MER, 'engine', 'market.js')).href);
         const fsp = await import('node:fs/promises');
         const testportContent = eng.validateContent(await loadContent('testport', { fs: fsp }));
@@ -2236,7 +2310,7 @@ try {
           if (name === 'cairo') cairoJumped = st;
         }
         // cairo in the page: the same log, the same line, the same figures
-        const st = cairoJumped, j = st.log.find(e => e.kind === 'jump'), trail = moneyTrail(nodeContent, st.log);
+        const st = cairoJumped, j = st.log.find(e => e.kind === 'jump'), trail = eng.view(st, nodeContent).trail;
         await page.goto(GAME, { waitUntil: 'load' });
         await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
         await page.goto(GAME + '#ledger', { waitUntil: 'load' });
@@ -2244,12 +2318,12 @@ try {
         // MER-125: the row whose `at` is the jump's `from` carries `after`; the page prints one line for it, right after that season's own line
         const first = trail.findIndex(t => t.after);
         const checkJumpLine = async (st2, why) => {
-          const j2 = st2.log.find(e => e.kind === 'jump'), tr = moneyTrail(nodeContent, st2.log), at = tr.findIndex(t => t.after);
+          const j2 = st2.log.find(e => e.kind === 'jump'), tr = eng.view(st2, nodeContent).trail, at = tr.findIndex(t => t.after);
           ok(at >= 0 && tr[at].at === j2.from, `${why}: setup: the jump is on the season it came after`);
           eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1, `${why}: exactly one jump line`);
           eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.dataset.gap)), [String(j2.years)], `${why}: data-gap is the years`);
-          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], jumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
-          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => e.previousElementSibling?.dataset.change)), [String(tr[at].change)], `${why}: it sits right after that season's line`);
+          eq((await texts(page, '#ledger-trail li.ledger-jump'))[0], trailJumpWords(tr[at].after), `${why}: the line the page prints is ledger.js's own words`);
+          eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.map(e => { let p = e.previousElementSibling; while (p && /ledger-(sale|worth)/.test(p.className)) p = p.previousElementSibling; return p?.dataset.change; })), [String(tr[at].change)], `${why}: it sits right after that season's line`);
           eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), tr.map(t => String(t.change)), `${why}: the changes the page shows are the trail's`);
         };
         eq(await page.$$eval('#ledger-trail li.ledger-jump', es => es.length), 1);
@@ -2700,9 +2774,10 @@ try {
         return eng.endSeason(st, nodeContent);
       };
       const freeOf = st => nodeContent.agents.filter(a => st.agents[a.id]?.hired && st.agents[a.id].where === 'cairo' && !st.expeditions.some(e => e.agent === a.id));
-      // the first season in which a second expedition can be outfitted: one went out before, a hired agent is at home
+      // the first season in which a second expedition can be outfitted: one went out before, a hired agent is at home, and the warehouse holds
+      // goods the cash does not count (the sheet's first proposals now sell all that is held, so a desk with an empty warehouse comes first)
       let later = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
-      for (let i = 0; i < 60 && !(later.phase === 'desk' && later.t >= 3 && later.log.some(e => e.kind === 'outfit') && freeOf(later).length >= 1 && sheetPlan(later, nodeContent, 'damascus')); i++) {
+      for (let i = 0; i < 60 && !(later.phase === 'desk' && later.t >= 3 && later.log.some(e => e.kind === 'outfit') && freeOf(later).length >= 1 && sheetPlan(later, nodeContent, 'damascus') && eng.netWealth(later, nodeContent).net > later.money); i++) {
         later = later.phase === 'interlude' ? eng.openSeason(later, nodeContent) : play99(later);
       }
       const planNow = sheetPlan(later, nodeContent, 'damascus');
@@ -3335,7 +3410,7 @@ try {
     // focused headline sat above the top of the sheet (y=-292). The earlier return the desk counts is the same entry logged twice.
     const secondReturn = () => { const st = askingReturn(); st.log.push(structuredClone(st.log.find(e => e.kind === 'return'))); return st; };
     const headlineIn = () => page.evaluate(() => {
-      const t = document.querySelector('.sheet-title'), box = t.closest('.stack-papers'), r = t.getBoundingClientRect(), b = box.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
+      const t = document.querySelector('.sheet-title'), box = t.closest('.sheet-box, .stack-papers'), r = t.getBoundingClientRect(), b = box.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), from: Math.round(Math.max(b.top, bar.bottom)), to: Math.round(Math.min(b.bottom, innerHeight)), focus: document.activeElement === t };
     });
     const settledPage = () => page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
@@ -3386,7 +3461,7 @@ try {
       eq(await page.$eval('.sheet', e => e.dataset.kind), 'lost');
       const order = await page.$eval('.sheet', e => [...e.children].map(c => c.className.split(' ')[0]));
       ok(order.indexOf('picture-slot') > order.indexOf('sheet-head') && order.indexOf('picture-slot') < order.indexOf('sheet-title'), order.join(' '));
-      eq(await page.$eval('.picture-slot', e => e.getAttribute('aria-hidden')), 'true');
+      eq(await page.$eval('.picture-slot .picture-frame', e => e.getAttribute('aria-hidden')), 'true');   // MER-145: the picture is hidden, its caption is not
       eq(await labelsOf(), eng.paperChoices(lost, content80, 'p80-0').map(c => c.label));
       eq(await page.$('#btn-next'), null);
     });
@@ -3435,22 +3510,23 @@ try {
       ok(Math.abs(rows[0].label.left - rows[0].table.left) < 1 && Math.abs(rows[0].value.right - rows[0].table.right) < 1, 'the rows span the paper');
       ok(rows[1].tr.top >= rows[0].tr.bottom - 1, 'the second row is below the first');
     });
-    await test('MER-97: from the second expedition the card\'s price line names the good the sheet proposes, not the plain suggestion\'s', async () => {
+    await test('MER-97: from the second expedition the card\'s price line names the good the sheet proposes, not the opening card\'s', async () => {
       const card = content80.cards.find(c => c.choices.some(x => x.ui === 'outfit-first'));
       let st = eng.newGame(content80, { seed: SEED, length: 'acts', house: 'spice' }), found = null;
-      for (let i = 0; i < 40 && !found; i++) {
+      // the good the opening card names (`openingGood`, the first expedition's) is not the proposal's first cargo, which the engine orders by its own rule
+      for (let i = 0; i < 40 && !found && st.phase !== 'recall'; i++) {
         st = st.phase === 'interlude' ? eng.openSeason(st, content80) : play(st);
         if (st.phase !== 'desk' || !st.log.some(e => e.kind === 'outfit')) continue;
-        const plain = eng.suggestPlan(st, content80, 'damascus'), plan = sheetPlan(st, content80, 'damascus');
-        if (plain && plan && Object.keys(plain.cargo)[0] !== Object.keys(plan.cargo)[0]) found = { st: structuredClone(st), plain, plan };
+        const opening = eng.openingGood(st, content80, 'damascus'), plan = sheetPlan(st, content80, 'damascus');
+        if (opening && plan && opening !== Object.keys(plan.cargo)[0]) found = { st: structuredClone(st), opening, plan };
       }
-      ok(found, 'a season where the plain suggestion and the proposal name different goods');
+      ok(found, 'a season where the opening card\'s good and the proposal\'s first cargo differ');
       const name = id => content80.goods.find(g => g.id === id).name.toLowerCase();
       found.st.desk = [{ id: 'p97-0', state: 'open', kind: 'card', ref: card.id }];
       await load(found.st);
       const line = await page.$eval('.sheet .choice .prices', e => e.textContent);
       ok(line.includes(`a load of ${name(Object.keys(found.plan.cargo)[0])}.`), `${line} (the sheet proposes ${JSON.stringify(found.plan.cargo)})`);
-      ok(!line.includes(`a load of ${name(Object.keys(found.plain.cargo)[0])}.`), `${line} (the plain suggestion sends ${JSON.stringify(found.plain.cargo)})`);
+      ok(!line.includes(`a load of ${name(found.opening)}.`), `${line} (the opening card's good is ${found.opening})`);
     });
 
     await test('the Accounts paper groups each line under the card and the choice that caused it', async () => {
@@ -3868,7 +3944,9 @@ try {
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
         const got = await page.evaluate(() => {
-          const t = document.getElementById('map-toast').getBoundingClientRect(), fr = document.querySelector('.map-frame').getBoundingClientRect();
+          const t = document.getElementById('map-toast').getBoundingClientRect(), fr0 = document.querySelector('.map-frame').getBoundingClientRect(), sg = document.querySelector('.map-stage').getBoundingClientRect();
+          // MER-145: the picture is larger than the pane at the wide frames and the pane clips it, so what is on the picture is the part inside the pane
+          const fr = { left: Math.max(fr0.left, sg.left), right: Math.min(fr0.right, sg.right), top: Math.max(fr0.top, sg.top), bottom: Math.min(fr0.bottom, sg.bottom) };
           const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
           const under = [...document.querySelectorAll('.stop-label:not([hidden]), .token, .dot')].filter(e => e.checkVisibility() && hit(t, e.getBoundingClientRect())).map(e => e.className.split(' ')[0] + ' ' + (e.textContent.trim().slice(0, 20) || e.dataset.stop || ''));
           return { onPicture: hit(t, fr), under, text: document.getElementById('map-toast').textContent };
@@ -3877,7 +3955,7 @@ try {
         ok(!got.onPicture, 'the toast lies over the picture');
         eq(got.under, [], 'the toast covers nothing on the map');
         // the first press anywhere on the table takes it away: a press on the picture, as a thumb would
-        const at = await page.$eval('.map-frame', e => { const b = e.getBoundingClientRect(); return { x: b.left + 6, y: b.top + 6 }; });
+        const at = await page.$eval('.map-frame', e => { const b = e.getBoundingClientRect(), g = document.querySelector('.map-stage').getBoundingClientRect(); return { x: Math.max(b.left, g.left) + 6, y: Math.max(b.top, g.top) + 6 }; });   // MER-145: the part of the picture the pane shows
         await page.mouse.click(at.x, at.y);
         await page.waitForSelector('#map-toast[hidden]', { timeout: 1500 });
       });
@@ -3987,6 +4065,8 @@ try {
       // two trips on one leg at one place, due home in different seasons: one token, and its caption names each agent with that agent's own season
       merged: trips([['yusuf', 'cairo-qus', 0, 1], ['ali', 'cairo-quseir', 0, 1]]),
     };
+    // how many places the parties stand in: three has Yusuf and Samir on Cairo, crowd has both on Cairo
+    const PLACES = { three: 2, roads: 4, two: 2, crowd: 1, merged: 1 };
     const frames = [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3], FRAMES[5]];   // laptop, board, laptop-small, phone upright, phone on its side
     const put = async (page, st, hash) => {
       await page.goto(GAME, { waitUntil: 'load' });
@@ -4015,7 +4095,8 @@ try {
         for (const [name, st] of Object.entries(STATES)) {
           await put(page, st, '#map');
           const a = await reach(page);
-          eq(a.length, name === 'merged' ? 1 : st.expeditions.length, `${name}: one token for each place a party stands`);
+          // MER-137: parties standing on one stop are one token with a count, whatever road each is about to take
+          ok(a.length >= 1 && a.length <= PLACES[name], `${name}: at most one token for each place a party stands, ${a.length} for ${PLACES[name]} (MER-145: parties a piece's width apart are one stack, and that is a distance in px)`);
           for (const t of a) ok(t.off <= 24, `${name}: the token for ${t.ids} on ${t.leg} stands ${t.off.toFixed(1)} px from its road`);
           // a second render of the same state: a resize redraws the map, and a press on another stop redraws it again
           await page.evaluate(() => dispatchEvent(new Event('resize')));
@@ -4073,6 +4154,52 @@ try {
         }
       });
       await test('MER-131: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // ---- MER-137 (play A, a013 and a016): a token's place is the trip's and the season's, and nothing else. The same trip in the same season was
+    // drawn 53 px apart depending on whether an agent was free, and a token that had just set out stood at the far end of its road. Here
+    // Yusuf's trip is read in three houses (nobody free, Ali free, Ali out on a trip of his own) and with every kind of stop selected in turn,
+    // at every frame: the piece's centre must be the same pixel each time, and on the day it leaves it is on its first stop, not its last.
+    const solo = trips([['yusuf', 'cairo-damascus', 0, 1]]);
+    const noOne = (() => { const g = structuredClone(solo); for (const [id, a] of Object.entries(g.agents)) if (id !== 'yusuf') a.hired = false; return g; })();
+    const withFree = (() => { const g = structuredClone(noOne); g.agents.ali.hired = true; g.agents.ali.where = nodeContent.city.home; return g; })();
+    const withBusy = trips([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-aden', 3, 1]]);   // MER-145: Ali stands on Jeddah, far enough from Cairo that his piece and Yusuf's are never one stack
+    for (const frame of [FRAMES[0], FRAMES[1], FRAMES[2], FRAMES[3]]) {
+      const { page, consoleErrors } = await open(frame);
+      const centre = id => page.evaluate(id => {
+        const t = [...document.querySelectorAll('.token')].find(e => e.dataset.expedition.split(' ').includes(id));
+        if (!t) return null;
+        const r = t.querySelector('.token-piece').getBoundingClientRect();
+        // on a phone close stops are one square, so there is no dot of their own to measure from
+        const d = s => { const e = document.querySelector(`.dot[data-stop="${s}"]`); if (!e) return null; const q = e.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; };
+        const c = [r.left + r.width / 2, r.top + r.height / 2], dist = s => d(s) ? Math.hypot(c[0] - d(s)[0], c[1] - d(s)[1]) : null;
+        return { c, piece: r.width, toCairo: dist('cairo'), toDamascus: dist('damascus') };
+      }, id);
+      await test(`MER-137 ${frame.name}: the same trip in the same season is drawn on the same pixel whoever is free and whatever stop is selected, and on the day it leaves it is at its start`, async () => {
+        let want = null;
+        for (const [name, st] of [['nobody free', noOne], ['Ali free', withFree], ['Ali on a trip', withBusy]]) {
+          await put(page, st, '#map');
+          const at = async how => {
+            await page.evaluate(() => new Promise(r => setTimeout(r, 400)));   // a token moves to its place over the token-move time
+            const got = await centre('x1');
+            if (!want) { want = got; return; }
+            ok(Math.abs(got.c[0] - want.c[0]) < 0.5 && Math.abs(got.c[1] - want.c[1]) < 0.5, `${name}, ${how}: Yusuf's token is at ${got.c.map(Math.round)}, it was at ${want.c.map(Math.round)}`);
+          };
+          await at('as opened');
+          for (const stop of ['damascus', 'qus', 'alexandria', 'cairo', 'aden']) {
+            await page.evaluate(id => document.querySelector(`#stop-${id}`).click(), stop);
+            await at(`${stop} selected`);
+          }
+        }
+        // the day it leaves: on Cairo's dot, and far from Damascus, whatever the road's length at this frame
+        // beside the dot, on the road: a piece's half-width and a gap out, never past the middle of the road
+        if (want.toCairo !== null && want.toDamascus !== null) {
+          ok(want.toCairo <= want.piece * 0.75 + 4, `the token that has just set out is ${want.toCairo.toFixed(1)} px from its first stop, a piece is ${want.piece} px`);
+          ok(want.toDamascus > want.toCairo * 1.7, `it is ${want.toDamascus.toFixed(1)} px from the far end, the stop it leaves for, and ${want.toCairo.toFixed(1)} px from the first`);
+        }
+      });
+      await test(`MER-137 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
   }
@@ -4171,8 +4298,8 @@ try {
         await page.click('#outfit-send');
         await page.waitForSelector('#map-toast:not([hidden])');
         const probe = how => page.evaluate(how => {
-          const t = document.getElementById('map-toast'), board = document.getElementById('board');
-          if (how === 'foot') board.scrollTop = board.scrollHeight; else board.scrollTop = 0;
+          const t = document.getElementById('map-toast'), board = document.getElementById('board'), body = document.getElementById('board-body');   // MER-137: the body is the scroller, the buttons sit under it
+          if (how === 'foot') body.scrollTop = body.scrollHeight; else body.scrollTop = 0;
           const r = t.getBoundingClientRect(), b = board.getBoundingClientRect();
           const covered = [[r.left + 4, r.top + 3], [r.right - 4, r.top + 3], [r.left + 4, r.bottom - 3], [r.right - 4, r.bottom - 3], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]
             .map(([x, y]) => { const e = document.elementFromPoint(x, y); return e && !(t === e || t.contains(e)) ? (e.id || e.className || e.tagName) : null; }).filter(Boolean);
@@ -4200,6 +4327,7 @@ try {
         await page.$eval('#change-carry', e => e.scrollIntoView({ block: 'center' }));
         await pressChange(page, '#change-carry');
         await page.waitForSelector('#step-purse');
+        await lightCargo(page);   // the proposal spends nearly all the money, so a cargo stepper's plus is dead; free some so a tap has something to move
         const ids = await page.$$eval('#panel-outfit .stepper', s => s.map(e => e.id));
         ok(ids.length >= 2, `steppers on the sheet: ${ids}`);
         let atFoot = 0;
@@ -4234,7 +4362,7 @@ try {
     // 16 pepper at Qus and the engine's own check refuses 15; money is cut here until the flat count is exactly one load over.
     {
       const { page, consoleErrors } = await open(FRAMES[0]);
-      await test('MER-132: the cargo stepper stops at the engine\'s mostLoads, a load short of what money over today\'s price allows', async () => {
+      await test('MER-132: the cargo stepper stops at the engine\'s mostLoads, short of what money over today\'s price allows', async () => {
         const base = firstDone3(), home = nodeContent.city.home;
         const priceOf = (s, g) => eng.view(s, nodeContent).prices[home][g].p;
         let pick = null;
@@ -4243,9 +4371,9 @@ try {
           const plan = eng.suggestPlan(s, nodeContent, 'qus');
           if (!plan) continue;
           const flat = (s.stock.pepper ?? 0) + Math.floor(m / priceOf(s, 'pepper')), most = eng.mostLoads(s, nodeContent, plan, 'pepper');
-          if (flat - most === 1 && most >= 3) pick = { s, plan, flat, most };
+          if (flat > most && most >= 3) pick = { s, plan, flat, most };   // the proposal buys goods besides, so the flat count is more than a load over now
         }
-        ok(pick, 'no money in 400 to 1500 puts the flat count exactly one load over mostLoads');
+        ok(pick, 'no money in 400 to 1500 puts the flat count over mostLoads');
         const mk = n => ({ ...pick.plan, cargo: { ...pick.plan.cargo, pepper: n } });
         eq(eng.checkPlan(pick.s, nodeContent, mk(pick.most)).ok, true, 'the engine pays for mostLoads');
         eq(eng.checkPlan(pick.s, nodeContent, mk(pick.flat)).ok, false, 'and refuses the flat count');
@@ -4313,7 +4441,7 @@ try {
         const rows = r.data.account, last = rows[rows.length - 1];
         last.label = 'Loss'; last.text = 'about 31 dinars'; last.amount = -31;
         const back = rows.find(x => x.label === 'Back home'); back.text = '31 dinars, 31 dinars in all'; back.amount = 31;
-        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent, cells: [...t.querySelectorAll('td')].map(c => c.textContent) }))); };
+        const read = async st => { await put(page, st, '#desk'); await page.waitForSelector('.accounts-table'); return page.$$eval('.accounts-table tr', trs => trs.map(t => ({ label: t.querySelector('th').textContent.trim(), cells: [...t.querySelectorAll('td')].map(c => c.textContent.trim()) }))); };
         for (const [name, st] of [['a profit', gain], ['a loss', loss]]) {
           const got = await read(st), all = got.flatMap(x => x.cells).join(' | ');
           const home = got.find(x => x.label === 'Back home');
@@ -4340,6 +4468,478 @@ try {
         eq(got, ['All of it in money', '3 loads of silk (worth 450 dinars in Cairo now) and 12 dinars', '3 loads of silk in Damascus, for 90 dinars', 'nothing', 'a, 5 dinars in all']);
       });
       await test('MER-132: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+  }
+
+  // ---- MER-138: the paper tabs and focus, the phone's last taps, the Sell button, the All games link. Layout.mjs measures the boxes at every
+  // frame; these cases press and type.
+  {
+    const G = URL_ + `?test=1&seed=${SEED}`;
+    const putState = async (page, st, hash) => {
+      await page.goto(G, { waitUntil: 'load' });
+      await page.evaluate((x, v) => { localStorage.clear(); localStorage.setItem('merchant-save', JSON.stringify({ ...x, __v: v })); }, JSON.parse(JSON.stringify(st)), SAVE_VERSION);
+      await page.goto(G + hash, { waitUntil: 'load' });
+    };
+    const fresh3 = () => eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    const FIRST3 = { 'opening-letter': 'begin', 'first-expedition': 'wait', 'linen-neighbour': 'keep' };
+    const firstDone3 = () => { let g = fresh3(); for (const p of g.desk) if (p.state === 'open') g = eng.choose(g, nodeContent, p.id, FIRST3[p.ref]); return g; };
+    const toInterlude = () => { let g = fresh3(); for (let i = 0; i < 90 && g.phase !== 'interlude'; i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g); return g; };
+    const stocked = () => { const g = firstDone3(); g.stock = { copper: 100, linen: 4, salt: 2 }; return g; };
+    // a heading is "in view" when it lies whole in the window and under the top bar (and, on a laptop, inside the box it scrolls in)
+    const headingProblem = () => {
+      const a = document.activeElement, bar = document.querySelector('.topbar')?.getBoundingClientRect();
+      if (!a || !/^H[1-6]$/.test(a.tagName)) return `the focus is on ${a?.tagName} ${a?.id || a?.className}, not on a heading`;
+      const r = a.getBoundingClientRect();
+      if (!a.checkVisibility() || r.top < (bar?.bottom ?? 0) - 0.5 || r.bottom > innerHeight + 0.5) return `"${a.textContent.slice(0, 30)}" is at ${Math.round(r.top)} to ${Math.round(r.bottom)}, the bar ends at ${Math.round(bar?.bottom ?? 0)}, the window at ${innerHeight}`;
+      for (let x = a.parentElement; x && x !== document.body; x = x.parentElement) {
+        if (getComputedStyle(x).overflowY === 'visible') continue;
+        const b = x.getBoundingClientRect();
+        if (r.top < b.top - 0.5 || r.bottom > b.bottom + 0.5) return `"${a.textContent.slice(0, 30)}" at ${Math.round(r.top)} to ${Math.round(r.bottom)} is cut by ${x.className || x.tagName} showing ${Math.round(b.top)} to ${Math.round(b.bottom)}`;
+      }
+      return null;
+    };
+
+    // (1) the title's way back to the board
+    for (const frame of [FRAMES[0], FRAMES[3], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: the title has an All games link to the site's root, and Tab reaches it`, async () => {
+        const got = await page.evaluate(() => { const a = document.getElementById('lnk-all-games'); const r = a?.getBoundingClientRect(); return a && { href: a.getAttribute('href'), text: a.textContent, shown: a.checkVisibility() && r.right <= innerWidth && r.bottom <= innerHeight && r.left >= 0 && r.top >= 0 }; });
+        ok(got, 'no #lnk-all-games on the title');
+        eq([got.href, got.text, got.shown], ['/', 'All games', true]);
+        await page.evaluate(() => document.activeElement.blur());
+        const seen = [];
+        for (let i = 0; i < 6; i++) { await page.keyboard.press('Tab'); seen.push(await page.evaluate(() => document.activeElement.id)); }
+        eq(seen.slice(0, 4), ['btn-new', 'btn-about', 'btn-settings', 'lnk-all-games'], 'the link is the fourth stop: New game stays the first, as every keyboard path of the game expects');
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (2) Enter on a new-game radio chooses it, and Begin is the next Tab
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-138 keyboard: Enter on a house radio chooses it, the next Tab is Begin, and Enter there begins that house', async () => {
+        await page.click('#btn-new');
+        await page.waitForSelector('#newgame-begin');
+        await page.focus('#house-cloth');
+        eq(await page.$eval('#house-cloth', e => e.checked), false, 'not chosen before the key');
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => [document.getElementById('house-cloth').checked, document.getElementById('house-spice').checked, document.activeElement.id]), [true, false, 'house-cloth'], 'Enter chose the cloth merchant and the focus stayed');
+        // Cancel is the panel's first button and Begin its second, as on every panel of the game: Begin is the second Tab from the last radio
+        const order = [];
+        for (let i = 0; i < 2; i++) { await page.keyboard.press('Tab'); order.push(await page.evaluate(() => document.activeElement.id)); }
+        eq(order, ['newgame-cancel', 'newgame-begin'], 'Begin follows by Tab');
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('#screen-desk');
+        eq(await page.evaluate(() => JSON.parse(localStorage.getItem('merchant-save')).house), 'cloth', 'the game began with the house chosen by Enter');
+      });
+      await test('MER-138 keyboard: Enter on the length radio keeps it chosen, and the disabled one cannot be chosen by Enter', async () => {
+        await page.evaluate(() => localStorage.clear());
+        await page.goto(G, { waitUntil: 'load' });
+        await page.waitForSelector('#btn-new');
+        await page.click('#btn-new');
+        await page.waitForSelector('#length-acts');
+        await page.focus('#length-acts');
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => [document.getElementById('length-acts').checked, document.getElementById('length-full').checked]), [true, false]);
+        await page.$eval('#length-full', e => e.focus());
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => [document.getElementById('length-acts').checked, document.getElementById('length-full').checked]), [true, false], 'Enter on "Coming later" chose it');
+      });
+      await test('MER-138: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (2b) a paper raised from its tab by the keyboard: its heading has the focus, is in view, and no tab lies over it (a052, b011, b017)
+    for (const frame of [FRAMES[0], FRAMES[1], FRAMES[3], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: each paper of a desk with a return on it, raised from its tab by Enter, has its heading in view, under the bar and under no tab`, async () => {
+        // the first desk with a return paper on it: a tall paper, with four or more others behind it (a052, b011, b017 were a return, a loss and the Accounts)
+        let best = fresh3();
+        for (let i = 0; i < 90 && !(best.phase === 'desk' && best.desk.some(p => p.kind === 'return' && p.state === 'open')); i++) best = best.phase === 'interlude' ? eng.openSeason(best, nodeContent) : modelSeason(best);
+        const n = best.desk.filter(p => p.state === 'open').length;
+        ok(n >= 4, `setup: the desk has ${n} papers`);
+        await putState(page, best, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 600)));
+        const edges = await page.$$eval('.edge', es => es.map(e => e.dataset.paper));
+        eq(edges.length, n - 1, 'a tab for each paper but the raised one');
+        const bad = [];
+        for (let i = 0; i < n - 1; i++) {
+          const id = (await page.$$eval('.edge', es => es.map(e => e.dataset.paper)))[0];
+          await page.$eval(`.edge[data-paper="${id}"]`, e => e.focus());
+          await page.keyboard.press('Enter');
+          await page.waitForFunction(p => document.querySelector('.sheet')?.dataset.paper === p, {}, id);
+          await page.evaluate(() => new Promise(r => setTimeout(r, 450)));
+          const p = await page.evaluate(headingProblem);
+          const under = await page.evaluate(() => { const t = document.activeElement, s = document.querySelector('.edges'); if (!s?.checkVisibility()) return null; const a = t.getBoundingClientRect(), b = s.getBoundingClientRect(); return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top ? `lies under the tabs at ${Math.round(b.top)} to ${Math.round(b.bottom)}` : null; });
+          if (p || under) bad.push(`paper ${i + 1} (${id}): ${p ?? under}`);
+        }
+        eq(bad, []);
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (3) Open the house: focus lands on a heading below the top bar. The Years pass page offers no Map, and its live region says what it shows.
+    for (const frame of [FRAMES[0], FRAMES[1], FRAMES[3], FRAMES[4], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: the Years pass page offers no Map and says what it shows; Open the house puts the focus on a heading in view`, async () => {
+        const st = toInterlude();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-open-house');
+        const gap = eng.view(st, nodeContent).interlude;
+        eq(await page.$eval('#btn-map', e => e.checkVisibility()), false, 'the Map button is not offered between the acts');
+        const live = await page.$eval('#live', e => e.textContent);
+        ok(/^Years pass/.test(live) && live.includes(`${gap.from} to ${gap.to}`), `the live region says "${live}"`);
+        ok(!/papers? on your desk/.test(live), `the live region still has the last desk's words: "${live}"`);
+        await page.evaluate(() => document.activeElement.blur());
+        await page.keyboard.press('m');
+        eq(await hashOf(page), '#desk', 'the M key does not leave the page');
+        await page.$eval('#btn-open-house', b => b.scrollIntoView({ block: 'center' }));
+        await page.click('#btn-open-house');
+        await page.waitForSelector('#btn-end:not([hidden])');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
+        const bad = await page.evaluate(headingProblem);
+        ok(!bad, bad ?? '');
+        eq(await page.$eval('#btn-map', e => e.checkVisibility()), true, 'the Map button is back with the seasons');
+        await page.evaluate(() => document.activeElement.blur());
+        await page.keyboard.press('m');
+        await page.waitForSelector('#screen-map');
+      });
+      await test(`MER-138 ${frame.name}: the first draw of the first season of act two, with the Accounts paper first and long, focuses its heading in view`, async () => {
+        // the seasons of act two open with the jump's Accounts paper on top; a long one was scrolled to its foot with its heading at y=45 under the bar (b023)
+        let g = eng.openSeason(toInterlude(), nodeContent);
+        const acc = g.desk.find(p => p.kind === 'accounts' && p.state === 'open');
+        ok(acc, 'setup: act two opens with an Accounts paper');
+        for (let i = 0; i < 14; i++) acc.items.push({ from: `sell/${i}`, card: `The warehouse, line ${i}`, choice: `Sell ${i + 1} loads of copper`, changes: [`+${40 + i} dinars`, `−${i + 1} copper`], text: `Sold ${i + 1} loads of copper for ${40 + i} dinars, after the broker's cut.` });
+        g.desk = [acc, ...g.desk.filter(p => p !== acc)];
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 700)));
+        eq(await page.$eval('.sheet', e => e.dataset.kind), 'accounts', 'the Accounts paper is the raised one');
+        const bad = await page.evaluate(headingProblem);
+        ok(!bad, bad ?? '');
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (3b) b021: the last season of the act is ended by the player, and the live region, which keeps its last words, says what the Years pass page shows,
+    // not "Winter 1325. Four papers on your desk." from the desk it came from
+    {
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await test('MER-138 laptop: ending the last season of an act, the live region says the years pass, not the last desk', async () => {
+        let g = fresh3();
+        for (let i = 0; i < 90 && !(g.phase === 'desk' && g.t === 7); i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
+        eq([g.phase, g.t], ['desk', 7], 'setup: the last season of act one');
+        // every paper answered by the model's policy, the season not yet ended
+        for (const p of g.desk) {
+          if (p.state !== 'open') continue;
+          const c = nodeChoices(g, nodeContent, p.id).find(x => { try { eng.choose(g, nodeContent, p.id, x.id); return true; } catch { return false; } });
+          g = eng.choose(g, nodeContent, p.id, c.id);
+          if (c.ui === 'outfit-first') { const plan = sheetPlan(g, nodeContent, 'damascus'); if (plan) g = eng.outfit(g, nodeContent, plan); }
+        }
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#btn-end[aria-disabled="false"]');
+        const desk = await page.$eval('#live', e => e.textContent);
+        ok(/papers? on your desk/.test(desk), `setup: the live region says "${desk}" on the desk`);
+        await page.click('#btn-end');
+        await page.waitForSelector('#btn-open-house');
+        const live = await page.$eval('#live', e => e.textContent);
+        ok(/^Years pass/.test(live), `the live region says "${live}" on the Years pass page`);
+        ok(!/papers? on your desk/.test(live), `the live region still has the desk's words: "${live}"`);
+      });
+      await test('MER-138 laptop: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (4) After Send the focus is on a control that works and is in view, and the set-out note covers no control
+    for (const frame of [FRAMES[0], FRAMES[3], FRAMES[5]]) {
+      const { page, consoleErrors } = await open(frame);
+      await test(`MER-138 ${frame.name}: after Send, with nobody left to send, the focus is on an enabled visible control and the set-out note covers none`, async () => {
+        let g = firstDone3();
+        const plan = sheetPlan(g, nodeContent, 'aden');   // Ali knows Aden: he goes, and Yusuf is the one left
+        ok(plan && plan.agent === 'ali', `setup: the plan for Aden is ${plan?.agent}'s`);
+        g = eng.outfit(g, nodeContent, plan);
+        await putState(page, g, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        await page.waitForSelector('#outfit-send');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
+        const got = await page.evaluate(() => {
+          const a = document.activeElement, r = a.getBoundingClientRect(), t = document.getElementById('map-toast').getBoundingClientRect();
+          const hit = (x, y) => x.left < y.right && x.right > y.left && x.top < y.bottom && x.bottom > y.top;
+          const under = [...document.querySelectorAll('button, [role="listbox"], [tabindex="0"], a[href]')].filter(e => e.checkVisibility() && hit(t, e.getBoundingClientRect())).map(e => e.id || e.className);
+          return { id: a.id, disabled: a.getAttribute('aria-disabled') === 'true' || a.disabled, shown: a.checkVisibility() && r.width > 0 && r.top >= 0 && r.bottom <= innerHeight, outfit: document.getElementById('btn-outfit').getAttribute('aria-disabled'), under };
+        });
+        eq(got.outfit, 'true', 'setup: Outfit is dead, nobody is free');
+        ok(got.id && got.id !== 'btn-outfit', `the focus is on ${got.id}, the dead Outfit button`);
+        ok(!got.disabled, `the focus is on a disabled ${got.id}`);
+        ok(got.shown, `the focused ${got.id} is not in view`);
+        eq(got.under, [], 'the set-out note covers a control');
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (5) c006 on an iPhone 13: no tap meant for a stepper sends the trip
+    {
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await test('MER-138 iPhone 13: a tap on a stepper never sends the trip, at every scroll of the sheet (c006, checked again after MER-132 and MER-137)', async () => {
+        // the iPhone 13 of Puppeteer's device list: 390 x 844, three pixels to the CSS pixel, a touch screen, Safari's user agent
+        if (page.setViewport) {
+          await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1');
+          await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+        }
+        const st = firstDone3();
+        await putState(page, st, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.click('#btn-outfit');
+        await page.waitForSelector('#outfit-send');
+        await openAll(page);
+        const before = await page.evaluate(() => JSON.stringify(window.__merchant.state.expeditions.length));
+        const steppers = await page.$$eval('.stepper', els => els.map(e => e.id));
+        ok(steppers.length >= 2, `only ${steppers.length} steppers on the sheet`);
+        const out = [];
+        for (const id of steppers) {
+          for (const at of ['nearest', 'start', 'end']) {
+            await page.$eval(`#${id}`, (e, a) => e.scrollIntoView({ block: a }), at);
+            const spot = await page.$eval(`#${id}-plus`, b => { const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, on = document.elementFromPoint(x, y); return { x, y, ok: on === b || b.contains(on), hit: on?.id || on?.className || on?.tagName }; });
+            if (!spot.ok) { out.push(`#${id}-plus at ${at}: a tap lands on ${spot.hit}`); continue; }
+          }
+        }
+        eq(out, [], 'a tap meant for a plus landed elsewhere');
+        // and a real touch on the lowest edge of a plus scrolled to the foot of the sheet, as a thumb meets it: Chrome's touch adjustment moves a tap near the
+        // edge of a button onto the nearest button, and the + column (x 165 to 209) meets Send (from x 180). The trip is not sent, and the number moves.
+        for (const id of [steppers[0], steppers.at(-1)]) {
+          for (const corner of ['bottom centre', 'bottom right']) {
+            await page.$eval(`#${id}`, e => e.scrollIntoView({ block: 'end' }));
+            await page.evaluate(() => new Promise(r => setTimeout(r, 150)));
+            const tap = await page.$eval(`#${id}-plus`, (b, c) => { const r = b.getBoundingClientRect(); return { x: c === 'bottom right' ? r.right - 3 : (r.left + r.right) / 2, y: r.bottom - 3, v: b.closest('.stepper').getAttribute('aria-valuenow') }; }, corner);
+            await page.touchscreen.tap(tap.x, tap.y);
+            await page.evaluate(() => new Promise(r => setTimeout(r, 150)));
+            eq(await page.evaluate(() => JSON.stringify(window.__merchant.state.expeditions.length)), before, `a tap on the ${corner} of ${id}'s plus sent the trip`);
+            ok(await page.$('#outfit-send'), 'the sheet closed');
+          }
+        }
+      });
+      await test('MER-138 iPhone 13: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // (6) the Sell button: a sale, a refusal, the ledger line
+    for (const frame of [FRAMES[0], FRAMES[3]]) {
+      const { page, consoleErrors } = await open(frame);
+      const openLedger = async () => {
+        if (await page.$eval('#btn-warehouse', e => e.checkVisibility())) await page.click('#btn-warehouse');
+        else { await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger'); }
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+      };
+      await test(`MER-138 ${frame.name}: the warehouse sells in Cairo, through sellHome, and the money, the warehouse and the ledger show the sale`, async () => {
+        const st = stocked();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await openLedger();
+        // each good the house holds has a stepper, a quote line from sellHomeQuote and a button
+        for (const g of ['copper', 'linen', 'salt']) ok(await page.$(`#sell-${g}`), `no Sell button for ${g}`);
+        const start = await page.$eval('#step-sell-copper', e => Number(e.getAttribute('aria-valuenow')));
+        eq(start, 10, 'the stepper opens on ten loads');
+        const q10 = eng.sellHomeQuote(st, nodeContent, 'copper', 10);
+        ok((await page.$eval('#sell-note-copper', e => e.textContent)).includes(`${withCommas(q10.got)} dinars`), `the quote line for 10: ${await page.$eval('#sell-note-copper', e => e.textContent)}`);
+        // the plus and minus move the number and the quote with it
+        await page.click('#step-sell-copper-minus'); await page.click('#step-sell-copper-minus');
+        const n = await page.$eval('#step-sell-copper', e => Number(e.getAttribute('aria-valuenow')));
+        eq(n, 8, 'two minuses');
+        const q = eng.sellHomeQuote(st, nodeContent, 'copper', n);
+        const note = await page.$eval('#sell-note-copper', e => e.textContent);
+        ok(note.includes(`${withCommas(q.got)} dinars`) && note.includes(`broker's cut of ${withCommas(q.cut)} dinars`) && note.includes(String(q.average)), `the quote line for ${n}: ${note} against ${JSON.stringify(q)}`);
+        await page.click('#sell-copper');
+        const want = eng.sellHome(st, nodeContent, 'copper', n);
+        const got = await page.evaluate(() => { const s = window.__merchant.state; return { money: s.money, stock: s.stock, sale: s.log.filter(e => e.kind === 'sale') }; });
+        eq([got.money, got.stock], [want.money, want.stock], 'the page sold through the engine: the same money and stock as sellHome on the same state');
+        eq(got.sale.length, 1, 'one sale in the log');
+        // the bar, the warehouse and the ledger are drawn again behind and in the open ledger
+        eq(await page.$eval('#bar-money', e => e.textContent.replace(/\D/g, '')), String(want.money), 'the money in the bar');
+        if (await page.$eval('#btn-warehouse', e => e.checkVisibility())) eq(await page.$eval('#btn-warehouse', e => e.textContent), `${Object.values(want.stock).reduce((a, b) => a + b, 0)} loads in the warehouse`, 'the warehouse button');
+        eq(await page.$eval('#ledger-stock li[data-good="copper"] strong', e => e.textContent), '92 loads of copper', 'the warehouse row');
+        eq(await page.$eval('#ledger-have', e => e.textContent), `The house has ${withCommas(want.money)} dinars.`, 'the ledger money line');
+        const lines = await page.$$eval('#ledger-trail li', ls => ls.map(l => [l.className, l.textContent]));
+        ok(lines.some(([c, t]) => c === 'ledger-open' && /not yet closed/.test(t)), `no line for the season the sale was made in: ${JSON.stringify(lines)}`);
+        ok(lines.some(([c, t]) => c === 'ledger-sale' && t === `Sold 8 loads of copper for ${withCommas(q.got)} dinars.`), `no sale line: ${JSON.stringify(lines)}`);
+        eq(await page.evaluate(() => document.activeElement.id), 'sell-copper', 'the focus stays on the button that was pressed');
+      });
+      await test(`MER-138 ${frame.name}: a good Cairo does not buy shows the engine's reason, and a sale it refuses changes nothing`, async () => {
+        const st = stocked();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await openLedger();
+        const reason = eng.sellHomeQuote(st, nodeContent, 'salt', 1).reason;
+        ok(reason && /does not buy salt/.test(reason), `setup: the engine says "${reason}"`);
+        eq(await page.$eval('#sell-note-salt', e => e.textContent), reason, 'the line under the button says why before it is pressed');
+        eq(await page.$eval('#sell-salt', e => e.getAttribute('aria-disabled')), 'true');
+        const before = await page.evaluate(() => JSON.stringify(window.__merchant.state));
+        await page.click('#sell-salt');
+        eq(await page.$eval('#sell-note-salt', e => [e.textContent, e.classList.contains('refused')]), [reason, true], 'the refusal is printed in the refused style');
+        eq(await page.evaluate(() => JSON.stringify(window.__merchant.state)), before, 'a refused sale changed the save');
+        eq(await page.$eval('#live', e => e.textContent), reason, 'the live region reads it out');
+      });
+      await test(`MER-138 ${frame.name}: a sale of an earlier season is a line under that season in the money trail`, async () => {
+        const st = stocked(), seasons = st.log.filter(e => e.kind === 'season');
+        // the engine's own sale, then the log's entry moved back to the closed season it belongs to (the page reads `sale.at` and nothing else)
+        const sold = eng.sellHome(st, nodeContent, 'copper', 5), sale = sold.log.find(e => e.kind === 'sale');
+        const at = seasons.at(-1)?.at;
+        if (at === undefined) { // the first season is still open: close one with the engine's policy first
+          let g = firstDone3(); g = eng.endSeason(g, nodeContent); g.stock = { copper: 100 };
+          const s2 = eng.sellHome(g, nodeContent, 'copper', 5);
+          s2.log.find(e => e.kind === 'sale').at = 0;   // the sale belongs to the season that closed: the log's entry is read, nothing else
+          await putState(page, s2, '#desk');
+        } else { sold.log.find(e => e.kind === 'sale').at = at; await putState(page, sold, '#desk'); }
+        await page.waitForSelector('#btn-menu');
+        await page.waitForSelector('#screen-desk');
+        if (await page.$eval('#btn-warehouse', e => e.checkVisibility())) await page.click('#btn-warehouse');
+        else { await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger'); }
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        const trail = await page.$$eval('#ledger-trail li', ls => ls.map(l => [l.className, l.textContent, l.dataset.change ?? null]));
+        const i = trail.findIndex(([c, t]) => c === 'ledger-sale' && /^Sold 5 loads of copper for/.test(t));
+        ok(i > 0, `no sale line in the trail: ${JSON.stringify(trail)}`);
+        ok(trail[i - 1][2] !== null || trail[i - 1][0] === 'ledger-sale', `the sale line is not under a season's line: ${JSON.stringify(trail[i - 1])}`);
+      });
+      await test(`MER-138 ${frame.name}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // ---- MER-145: what the M4e play found on screen
+    {
+      const { page, consoleErrors } = await open(FRAMES[1]);
+      await test('MER-145 board: a sale that sells a good out leaves the focus on the section heading, never on the next good\'s Sell, and a second Enter sells nothing', async () => {
+        const st = stocked(); st.stock = { copper: 3, linen: 4 };
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+        await page.focus('#sell-copper');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => !document.getElementById('sell-copper'));
+        const after = await page.evaluate(() => ({ active: document.activeElement.id, stock: window.__merchant.state.stock }));
+        eq(after.stock, { linen: 4 }, 'the three loads of copper were sold, nothing else');
+        ok(after.active !== 'sell-linen', 'the focus went to the next good\'s Sell button');
+        eq(after.active, 'ledger-warehouse-h');
+        await page.keyboard.press('Enter');
+        eq(await page.evaluate(() => window.__merchant.state.stock), { linen: 4 }, 'a second Enter sold a good');
+      });
+      await test('MER-145 board: the price line is the quote for the loads now chosen, after a step and after a sale', async () => {
+        const st = stocked();
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        await page.waitForSelector('#sell-copper');
+        const line = () => page.$eval('#ledger-stock li[data-good="copper"] > span', e => e.textContent);
+        const n0 = await page.$eval('#step-sell-copper', e => Number(e.getAttribute('aria-valuenow')));
+        const q0 = eng.sellHomeQuote(st, nodeContent, 'copper', n0);
+        ok((await line()).includes(`${withCommas(q0.first)} dinars a load`) && (await line()).includes(`${withCommas(q0.last)} dinars by the last`), `the line for ${n0}: ${await line()} against ${JSON.stringify(q0)}`);
+        await page.click('#step-sell-copper-minus'); await page.click('#step-sell-copper-minus');
+        const q1 = eng.sellHomeQuote(st, nodeContent, 'copper', n0 - 2);
+        ok((await line()).includes(`${withCommas(q1.last)} dinars by the last`) || q1.first === q1.last, `after two steps: ${await line()} against ${JSON.stringify(q1)}`);
+        await page.click('#sell-copper');
+        const sold = eng.sellHome(st, nodeContent, 'copper', n0 - 2);
+        const q2 = eng.sellHomeQuote(sold, nodeContent, 'copper', n0 - 2);
+        ok((await line()).includes(`${withCommas(q2.first)} dinars a load`), `after the sale: ${await line()} against ${JSON.stringify(q2)}`);
+        ok(q2.first !== q0.first, 'setup: the sale moved the price, so the old line would be wrong');
+      });
+      await test('MER-145 board: the set-out note covers neither the heading nor the stop list on a second send', async () => {
+        let g = firstDone3(); g.money = 3000;
+        await putState(page, g, '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        for (let i = 0; i < 2; i++) {
+          await page.click('#btn-outfit'); await page.waitForSelector('#outfit-send'); await page.click('#outfit-send');
+          await page.waitForSelector('#map-toast:not([hidden])');
+          await page.evaluate(() => new Promise(r => setTimeout(r, 400)));
+          const got = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(); const t = r('#map-toast');
+            return { toast: t.bottom, title: r('#board-title').top, list: r('#stoplist').top }; });
+          ok(got.title >= got.toast - 0.5 && got.list >= got.toast - 0.5, `send ${i + 1}: the note ends at ${got.toast}, the heading begins at ${got.title}, the list at ${got.list}`);
+          if (i === 0) { await page.click('#stop-qus'); }
+        }
+      });
+      await test('MER-145 board: "Every price" is whole above the buttons at the foot of the board, opened and focused (1366 is the frame it was cut at)', async () => {
+        await page.setViewport({ width: 1366, height: 768, deviceScaleFactor: 1 });
+        await putState(page, firstDone3(), '#map');
+        await page.waitForSelector('#screen-map[data-ready]');
+        await page.focus('#btn-all-prices');
+        const got = await page.evaluate(() => { const b = document.getElementById('btn-all-prices').getBoundingClientRect(), a = document.querySelector('.board-actions').getBoundingClientRect(), v = document.getElementById('board-body').getBoundingClientRect(); return { bottom: b.bottom, actions: a.top, body: v.bottom }; });
+        ok(got.bottom <= got.actions + 0.5 && got.bottom <= got.body + 0.5, `Every price ends at ${got.bottom}, the buttons begin at ${got.actions}`);
+        await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+      });
+      await test('MER-145 board: hiring Ali on a wage opens the outfit sheet for him, as the qirad does for Samir', async () => {
+        const g = firstDone3(); g.agents.ali.hired = false; g.agents.ali.where = 'cairo';
+        for (const p of g.desk) if (p.state === 'open') p.state = 'done';
+        g.desk.push({ id: 'p0-9', state: 'open', kind: 'card', ref: 'ali-asks-for-work' });
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await page.click('.sheet .choice:first-child');
+        await page.waitForSelector('#btn-next:not([disabled])');
+        await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
+        await page.click('#btn-next');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        const got = await page.evaluate(() => document.getElementById('outfit-send')?.textContent ?? '');
+        ok(/Ali/.test(got), `the sheet is not Ali's: "${got}"`);
+        eq(await page.evaluate(() => window.__merchant.state.agents.ali.hired), true);
+      });
+      await test('MER-145 board: the ledger prints worth lines under their season and each season\'s change in worth, from the engine\'s trail', async () => {
+        const st = modelSeason(firstDone3()); st.stock = { copper: 100, linen: 4, salt: 2 };
+        const seasons = st.log.filter(e => e.kind === 'season');
+        const last = seasons.at(-1);
+        // the season with a 309 return: the money moved +1, the worth +309 (the play's problem 8)
+        last.change = 1; last.worthChange = 309; last.worth = (last.worth ?? 0) + 309;
+        st.log.push({ at: last.at, kind: 'worth', cause: 'prices', change: 81, text: 'The goods in the warehouse rose in price: +81.' });
+        await putState(page, st, '#desk');
+        await page.waitForSelector('#btn-menu');
+        await page.click('#btn-menu'); await page.waitForSelector('#menu-ledger'); await page.click('#menu-ledger');
+        await page.waitForFunction(() => document.getElementById('panel-ledger')?.open);
+        const trail = eng.view(st, nodeContent).trail;
+        eq(trail.at(-1).change, 309, 'setup: the engine\'s trail reads the worth');
+        eq(await page.$$eval('#ledger-trail li[data-change]', es => es.map(e => e.dataset.change)), trail.map(t => String(t.change)), 'the seasons show the trail\'s changes');
+        const row = await page.$$eval('#ledger-trail li', ls => ls.map(l => [l.className, l.textContent]));
+        const at = row.findIndex(([, t]) => /\+309 dinars/.test(t));
+        ok(at >= 0 && /\+1 in the money/.test(row[at][1]), `the season with the 309 return shows its worth and its money: ${JSON.stringify(row)}`);
+        eq(row[at + 1], ['ledger-worth', 'The goods in the warehouse rose in price: +81.'], 'the worth line sits under its season');
+      });
+      await test('MER-145 board: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+    {
+      // account rows never run a figure into the words, and the wage row and the bonus reason name what they mean
+      const { page, consoleErrors } = await open(FRAMES[3]);
+      await test('MER-145 phone: a return\'s account has a space between its cells, the wage row prints the engine words, and the paper opens with its seal below the top bar', async () => {
+        let g = fresh3();
+        for (let i = 0; i < 60 && !g.desk.some(p => p.kind === 'return' && p.state === 'open'); i++) g = g.phase === 'interlude' ? eng.openSeason(g, nodeContent) : modelSeason(g);
+        ok(g.desk.some(p => p.kind === 'return' && p.state === 'open'), 'setup: the model game reaches a return');
+        await putState(page, g, '#desk');
+        await page.waitForSelector('#screen-desk .sheet-title');
+        const id = g.desk.find(p => p.kind === 'return' && p.state === 'open').id;
+        if (await page.$eval('.sheet', (e, i) => e.dataset.paper !== i, id)) { await page.$eval(`.edge[data-paper="${id}"]`, e => e.scrollIntoView({ block: 'center' })); await page.click(`.edge[data-paper="${id}"]`); }
+        await page.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, id);
+        await page.evaluate(() => new Promise(r => setTimeout(r, 600)));
+        // the paper opened with the page scrolled by the tap on its edge: its seal is under the bar or below it, never behind it
+        const seal = await page.evaluate(() => { const s = document.querySelector('.sheet .sheet-head').getBoundingClientRect(), b = document.querySelector('.topbar').getBoundingClientRect(); return { top: s.top, bar: b.bottom }; });
+        ok(seal.top >= seal.bar - 0.5, `the seal row begins at ${seal.top}, the top bar ends at ${seal.bar}`);
+        await page.click('.account summary');
+        const rows = await page.$$eval('.accounts-table tr', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+        ok(rows.length > 2, 'the account has rows');
+        const run = rows.filter(t => /[A-Za-z)][+−-]\d|[a-z]\d/.test(t));
+        eq(run, [], 'a row runs a figure into the words');
+        // MER-146's wageWords is the one string for a wage: the row prints the engine's words as given
+        const wageRow = g.desk.find(p => p.id === id).data.account.find(r => /'s wage$/.test(r.label));
+        if (wageRow) ok(rows.some(t => t.includes(wageRow.text)), `the wage row does not print the engine's words "${wageRow.text}": ${rows.join(' | ')}`);
+      });
+      await test('MER-145 phone: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
   }

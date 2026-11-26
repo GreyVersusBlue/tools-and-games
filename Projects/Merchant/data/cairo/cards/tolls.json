@@ -42,7 +42,7 @@
       {
         "id": "quseir",
         "label": "Send goods by Quseir instead",
-        "hint": "It costs less, later. Quseir is nearer to Qus, and partners like a house that counts its costs.",
+        "hint": "It costs 4 dinars in two seasons, not 5 now. Quseir is nearer to Qus, and partners like a house that counts its costs.",
         "now": [],
         "later": [
           {
@@ -69,7 +69,8 @@
     "unlocks": [
       "term-toll",
       "term-caravan",
-      "term-load"
+      "term-load",
+      "term-dinar"
     ],
     "sources": [
       {
@@ -94,8 +95,10 @@
     "title": "The officer counts twice",
     "body": "Your carters wait at Alexandria to bring a merchant's goods up from a ship. A customs officer there has not met your house, so he counts every bundle twice. Customs are taxes on goods that enter a port. He asks for 5 dinars.",
     "when": {
-      "rep": "court",
-      "lte": 0
+      "all": [
+        { "rep": "court", "lte": 0 },
+        { "out": { "gte": 1 } }
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -129,7 +132,7 @@
       {
         "id": "store",
         "label": "Leave the goods in the harbour store",
-        "hint": "It costs less. Your goods wait and the officer notices, but partners like a patient house.",
+        "hint": "It costs 3 dinars in two seasons, not 5 now. Your goods wait and the officer notices, but partners like a patient house.",
         "now": [],
         "later": [
           {
@@ -291,7 +294,7 @@
       {
         "id": "alone",
         "label": "Go without his papers",
-        "hint": "It costs less. Nabil may feel left out, but the officers see your own count.",
+        "hint": "It costs 2 dinars in two seasons, not 5 now. Nabil may feel left out, but the officers see your own count.",
         "now": [],
         "later": [
           {

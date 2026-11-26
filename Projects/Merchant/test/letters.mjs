@@ -25,7 +25,7 @@ import { next as dice } from '../js/engine/rng.js';
 import { steps } from '../js/engine/turn.js';
 import { repair } from '../js/save.js';
 import { playGame } from '../tools/bots.mjs';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view } from '../js/engine/index.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, checkPlan, suggestPlan, destinations, recall, view, sellHomeQuote } from '../js/engine/index.js';
 
 const T = await loadContent('testport', { fs });
 const variant = (c, edit) => { const x = structuredClone(c); edit(x); return x; };
@@ -77,11 +77,13 @@ const noHappened = c => variant(c, x => { x.letters = x.letters.map(l => (l.kind
 const PLAN = { agent: 'tobin', route: 'trek', cargo: { wool: 2 }, purse: 0, contract: 'own', sell: [], buy: [] };
 /** A rich house with one expedition sent in season 0. `plan.length` picks the calendar's length. */
 const start = (c, seed, { length = 'full', ...plan } = {}) => outfit(newGame(c, { seed, length, house: 'rich' }), c, { ...PLAN, ...plan });
+/** The choices of `list` that `choose` takes now: one that costs more money than the house holds is refused (MER-141). */
+const takeable = (s, c, p, list) => list.filter(ch => { try { choose(s, c, p.id, ch.id); return true; } catch { return false; } });
 /** Answers every open paper: the choice named for its card or letter in `choices`, else the first that is open. */
 function pick(s, c, choices = {}) {
   for (const p of s.desk) {
     if (p.state !== 'open') continue;
-    const all = paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c));
+    const all = takeable(s, c, p, paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c)));
     s = choose(s, c, p.id, (all.find(ch => ch.id === choices[p.ref]) ?? all[0]).id);
   }
   return s;
@@ -624,7 +626,7 @@ function cairoGame(seed, length, onOpen) {
     if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
     for (const p of s.desk) {
       if (p.state !== 'open') continue;
-      const all = paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c));
+      const all = takeable(s, c, p, paperChoices(s, c, p.id).filter(ch => holds(ch.requires, s, c)));
       if (all.length) s = choose(s, c, p.id, all[roll(all.length)].id);
     }
     for (const a of c.agents) {
@@ -846,11 +848,12 @@ function homeState() {
   throw new Error('no cairo game in the search brought a trip home');
 }
 /** The facts the return paper at `k` of a state carries, set by hand: sold rows or none, the net and the hope. */
-function facts(base, k, { sold = true, net, hoped = null, agent = 'ali' }) {
+function facts(base, k, { sold = true, net, hoped = null, agent = 'ali', lost = false }) {
   const s = structuredClone(base), p = s.desk[k];
   p.agent = agent; p.data.houseNet = net; p.data.hoped = hoped;
   p.data.account = p.data.account.filter(r => r.label !== 'Sold');
   if (sold) p.data.account.push({ label: 'Sold', text: '1 load', amount: 80, detail: true });
+  if (lost) p.data.account.push({ label: 'Lost', text: '2 loads of pepper' });
   s.agents[agent].hired = true;
   return s;
 }
@@ -868,6 +871,13 @@ test('(MER-123) the facts a card\'s words rely on are written when a trip comes 
   eq([cleared.flags['ali-undersold'], cleared.flags['ali-profit']].map(Boolean), [true, true], 'set until the next opening');
   reopen(cleared, CAIRO);
   eq([cleared.flags['ali-undersold'], cleared.flags['ali-profit']], [undefined, undefined], 'and cleared at the next one, when no trip of his is home');
+});
+
+test('MER-139 (4) a trip the road robbed is not "undersold": the lost paper has already said where the shortfall went, and no second paper blames Ali\'s selling', () => {
+  const { s: base, p: k } = homeState();
+  const undersold = o => !!reopen(facts(base, k, { net: -12, hoped: 6, ...o }), CAIRO).flags['ali-undersold'];
+  eq(undersold({}), true, 'the same trip with nothing lost is still undersold');
+  eq(undersold({ lost: true }), false, 'robbers took part of the cargo: the road, not the selling');
 });
 
 test('(MER-123) "Ali and the price" is drawn only after a sale that fell short; its words no longer give a loss or a number', () => {
@@ -958,12 +968,13 @@ test('(MER-123) every card choice that costs money later is closed to a house th
 
 /** The home state with its first return paper made into a broker's offer for `entryId`, the home market's price for the good at `f`
     times its base, and the paper's letters step run again. */
-function brokerPaper(entryId, f, { shown = 0 } = {}) {
+function brokerPaper(entryId, f, { shown = 0, stock = null } = {}) {
   const { s: base, p: k } = homeState();
   const s = structuredClone(base), p = s.desk[k], entry = CAIRO.returns.find(e => e.id === entryId), good = entry.facts.good[0];
   s.market.cairo[good].f = f;
   p.data.entry = entryId; p.data.ask = { title: entry.title, body: entry.body }; p.data.choices = structuredClone(entry.choices); delete p.data.fitted;
   if (shown) s.seen[`shown:${entryId}`] = shown;
+  if (stock !== null) s.stock[good] = stock;
   reopen(s, CAIRO);
   return { s, p, good, price: truePrice(s, CAIRO, 'cairo', good, idx(s, CAIRO)) };
 }
@@ -985,6 +996,58 @@ test('(MER-134, 7) a broker\'s "about N in every hundred less" is the gap betwee
     said.add(`${id}:${o.said}`);
   }
   ok(new Set([...said].filter(k => k.startsWith('return-sell-pepper')).map(k => k.split(':')[1])).size >= 3, 'the number follows the price: pepper says at least three different figures over seven prices');
+});
+
+test('(MER-146, 11) a broker\'s offer for goods in the warehouse is never worse than Sell in Cairo for the same loads the same season', () => {
+  let raised = 0;
+  for (const id of ['return-sell-pepper', 'return-sell-silk', 'return-sell-sugar', 'return-sell-linen']) for (const f of [0.55, 0.8, 0.95, 1, 1.1, 1.3, 1.7, 2]) {
+    const b = brokerPaper(id, f, { stock: 6 }), o = brokerOf(b);
+    const q = sellHomeQuote(b.s, CAIRO, b.good, o.loads);
+    ok(q.ok, `${id} at ${f}: the house holds the loads, so Sell can quote them`);
+    ok(o.offer >= q.got, `${id} at ${f}: the broker offers ${o.offer} for ${o.loads} and Sell gives ${q.got}`);
+    eq(o.pay, o.offer, `${id} at ${f}: the choice pays what the words offer`);
+    ok(o.said >= 0 && o.said <= BROKER_MAX, `${id} at ${f}: still a broker's discount in the words (${o.said} in every hundred)`);
+    if (o.offer > o.loads * 0 && q.got > Math.round(o.loads * b.price * (1 - 0.30))) raised++;
+  }
+  ok(raised > 0, 'at least one price had the broker\'s old sum under Sell, so the case could fail');
+});
+
+test('(MER-146, 4) an Accounts paper that takes a letter\'s money line sits behind that letter, even when the paper was on the desk first', () => {
+  const base = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
+  const s = structuredClone(base), i = idx(s, CAIRO);
+  s.desk = []; s.t = 2;
+  s.money = 90;
+  s.post = [{ id: 'alexandria-twenty-in-a-hundred', kind: 'report', expedition: 'x1', agent: 'yusuf', stop: 'alexandria', standing: true, written: idx(s, CAIRO) - 1, lag: 1, arrive: idx(s, CAIRO) }];
+  // the Accounts paper of the season's earlier closing, already on the desk and not yet read
+  addPaper(s, { kind: 'accounts', ref: 'accounts', items: [{ from: 'x/y', card: 'A card', choice: 'A choice', changes: ['+5 dinars'], text: 'From A card: +5 dinars' }] });
+  steps.letters(s, CAIRO);
+  const kinds = s.desk.map(p => p.kind), at = kinds.indexOf('letter'), acc = kinds.indexOf('accounts');
+  ok(at >= 0, `the customs letter reached the desk (${kinds})`);
+  ok(s.money < 90, 'its forty dinars were taken on arrival, as the letter says');
+  ok(s.desk[acc].items.some(it => it.from === 'alexandria-twenty-in-a-hundred'), 'the Accounts paper carries the letter\'s line');
+  ok(at < acc, `the letter (desk place ${at}) comes before the Accounts paper that reports its money (desk place ${acc})`);
+  ok(i >= 0);
+});
+
+test('(MER-146, 7) "Your carters wait at Alexandria" is dealt only while the house has a trip out', () => {
+  const card = CAIRO.cards.find(c => c.id === 'harbour-count');
+  ok(/carters wait at Alexandria/.test(card.body), 'the card is the one that says it');
+  const s = newGame(CAIRO, { seed: 3, length: 'full', house: 'spice' });
+  s.rep.court = 0;
+  eq([s.expeditions.length, holds(card.when, s, CAIRO)], [0, false], 'nothing is coming: the card is closed');
+  s.expeditions.push({ id: 'x1' });
+  eq(holds(card.when, s, CAIRO), true, 'a trip is out: it may be dealt');
+  // a house that never sends anyone is never told of carters waiting
+  for (let seed = 1; seed <= 12; seed++) {
+    let g = newGame(CAIRO, { seed, length: 'acts', house: ['spice', 'cloth', 'newcomer'][seed % 3] });
+    g.rep.court = 0;
+    for (let k = 0; k < 30 && ['desk', 'interlude'].includes(g.phase); k++) {
+      if (g.phase === 'interlude') { g = openSeason(g, CAIRO); continue; }
+      for (const p of g.desk.filter(q => q.state === 'open')) for (const c of paperChoices(g, CAIRO, p.id)) { try { g = choose(g, CAIRO, p.id, c.id); break; } catch { /* closed */ } }
+      g = endSeason(g, CAIRO);
+      eq(g.desk.some(p => p.ref === 'harbour-count') && g.expeditions.length === 0 && !g.desk.some(p => p.kind === 'return'), false, `seed ${seed}: no carters with nothing coming`);
+    }
+  }
 });
 
 test('(MER-134, 15) a broker\'s paper is shown twice in a game, and the third time the return carries no offer', () => {
@@ -1110,6 +1173,22 @@ test('(MER-134, 9) a letter that waited for room does not arrive with the agent 
   ok(names.indexOf('damascus-early-caravan') >= 0 && names.indexOf('damascus-early-caravan') < names.indexOf('return'), `an on-time letter comes before the return: ${names}`);
 });
 
+
+test('(MER-140) a letter that arrived in an earlier season and waited is never put on the desk with its agent\'s return paper, whatever its lag and whenever it was written; one that arrives on the return day still comes ahead', () => {
+  const { s: base, p: k } = homeState();
+  let dropped = 0, kept = 0;
+  for (const lag of [1, 2, 3]) for (const late of [0, 1, 2, 3]) for (const room of [1, 3]) {
+    const s = structuredClone(base), ret = s.desk[k], now = idx(s, CAIRO);
+    s.desk = [ret];
+    while (s.desk.length < MAX_PAPERS - room) s.desk.push({ id: `pad${s.desk.length}`, kind: 'notice', ref: 'pad', state: 'open' });   // `room` places left for the letter and its Accounts paper
+    s.post = [{ id: 'damascus-early-caravan', kind: 'report', expedition: ret.expedition, agent: ret.agent, stop: 'damascus', standing: true, written: now - late - lag, lag, arrive: now - late }];
+    letters(s, CAIRO);
+    const names = s.desk.map(p => p.ref ?? p.kind), where = `lag ${lag}, ${late} seasons late, ${room} places`;
+    if (late > 0) { ok(!names.includes('damascus-early-caravan'), `${where}: a letter that waited came with its agent: ${names}`); dropped++; }
+    else if (room > 1) { ok(names.indexOf('damascus-early-caravan') >= 0 && names.indexOf('damascus-early-caravan') < names.indexOf('return'), `${where}: ${names}`); kept++; }
+  }
+  ok(dropped === 18 && kept === 3, `${dropped} late and ${kept} on-time cases were read`);
+});
 
 // ---- MER-136: the share of long trips that bring a letter holds its floor, in a check CI runs
 // test/mix.mjs measures the same share over 1,000 games and is run by hand. For a week it read 22 percent while the engine gave about 72:

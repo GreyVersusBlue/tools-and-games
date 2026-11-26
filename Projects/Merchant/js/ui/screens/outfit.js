@@ -65,7 +65,7 @@ export function traitWords(app, agent) {
 const shareWords = ([a, b]) => FRACTIONS[`${a}/${b}`] ?? `${words(a)} of every ${words(b)}`;
 
 /** A group that is one tab stop, with minus and plus beside a number that is text. */
-function stepper({ key, label, value, min, max, step = 1, fine = step, big = 10, text, onChange }) {
+export function stepper({ key, label, value, min, max, step = 1, fine = step, big = 10, text, onChange }) {
   const clamp = n => Math.max(min, Math.min(max, n));
   const set = n => { n = clamp(n); if (n !== value) onChange(n); };
   // Shift narrows a press to `fine` (money moves by 50, and by 10 with Shift)
@@ -404,7 +404,8 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     if (cost.partners) rows.push([`Put in by the partners`, -cost.partners]);
     if (cost.wagePaid) rows.push([`${agent()?.name ?? 'The agent'}'s wage, paid first`, cost.wagePaid]);
     const later = [];
-    if (cost.later?.wage) later.push(`${agent()?.name ?? 'The agent'}'s wage, about ${dinars(cost.later.wage)} (${dinars(cost.later.wagePerSeason)} a season out), is paid when the trip comes home.`);
+    // MER-145 (MER-146's wageWords, play problem 10): the engine's own string says the seasons the wage is for, the one the return paper and the Years pass print
+    if (cost.later?.wage) later.push(`${agent()?.name ?? 'The agent'}'s wage, ${cost.later.wageWords ?? `${dinars(cost.later.wagePerSeason)} a season out`}, is paid when the trip comes home: about ${dinars(cost.later.wage)}.`);
     if (cost.later?.tolls) later.push(`Tolls along the road come to about ${dinars(cost.later.tolls)}, paid from the money and goods sent.`);
     return h('div', { class: 'costs', id: 'outfit-costs' },
       h('p', { class: 'total', id: 'outfit-costs-h' }, h('strong', null, 'What Send takes from the house')),
@@ -478,7 +479,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const est = checked().estimate;
     // MER-117: a road too long to come home before the years skip is settled by `jump` at the prices the party left with; the figure above
     // is already worked out that way, and this says so in one sentence (estimate().settledAtJump)
-    const settled = est?.settledAtJump && a
+    const settled = est?.yearsFirst && a   // MER-145: yearsFirst is the years passing while the party is still out; settledAtJump is also true when it is home first
       ? h('p', { class: 'estimate settled', id: 'outfit-settled' }, `The years pass before ${a.name} is home: the house will be paid at the prices ${a.name} left with.`) : null;
     const send = h('button', { class: 'button primary send', type: 'button', id: 'outfit-send', dataset: { key: 'outfit-send' }, 'aria-disabled': s.ok ? 'false' : 'true',
       'aria-describedby': `outfit-estimate${settled ? ' outfit-settled' : ''} outfit-reasons`, onclick: () => doSend() }, label);

@@ -6,6 +6,7 @@
 import { h, qs, qsa } from '../dom.js';
 import * as engine from '../../engine/index.js';
 import { dinars } from './paper.js';
+import { legSeasons } from '../../engine/agents.js';
 import { createOutfit, firstLegState, freeAgents, stopOf, stopName, cap } from './outfit.js';
 
 const NEAR = 48;                 // a press goes to the closest stop within this many px (DESIGN 4.7)
@@ -38,12 +39,16 @@ const SIDES = {
   above: { dx: 0, dy: -11, ax: -0.5, ay: -1 }, below: { dx: 0, dy: 11, ax: -0.5, ay: 0 },
   'above-right': { dx: 8, dy: -8, ax: 0, ay: -1 }, 'below-right': { dx: 8, dy: 8, ax: 0, ay: 0 },
   'above-left': { dx: -8, dy: -8, ax: -1, ay: -1 }, 'below-left': { dx: -8, dy: 8, ax: -1, ay: 0 },
+  // MER-145: beside the dot but a hand higher or lower, for a crowd where the plain side misses a neighbour's label by a pixel (Aleppo at 1366, above Damascus)
+  'right-up': { dx: 12, dy: -9, ax: 0, ay: -0.5 }, 'right-down': { dx: 12, dy: 9, ax: 0, ay: -0.5 },
+  'left-up': { dx: -12, dy: -9, ax: -1, ay: -0.5 }, 'left-down': { dx: -12, dy: 9, ax: -1, ay: -0.5 },
 };
 const ANCHOR_AX = { start: 0, middle: -0.5, end: -1 };
-const CORRIDOR = 16;             // MER-131: how far across its road a token may be moved to clear a label; under the 24 px the suites allow
-const SLIDE = 160;               // how far along its road, in px, never past either stop
+const REACH_FAR = 44;            // MER-137: the last resort before a label lies over a caption: still on its own side of its own dot
+const MAX_AWAY = 36;             // MER-137: px from a dot's centre to the nearest edge of its label; further and the label reads as another stop's
 const GAP = 3;                   // px kept clear around a label, so two never touch
 const hits = (a, b) => a.left < b.right + GAP && b.left < a.right + GAP && a.top < b.bottom + GAP && b.top < a.bottom + GAP;
+const away = (r, c) => Math.hypot(Math.max(r.left - c.x, 0, c.x - r.right), Math.max(r.top - c.y, 0, c.y - r.bottom));
 const inside = (a, f) => a.left >= f.left && a.right <= f.right && a.top >= f.top && a.bottom <= f.bottom;
 
 /** When the soonest expedition of a group is expected home, in words ("Winter 1325"): the engine's own answer, view().homeBy. */
@@ -118,13 +123,14 @@ export function createMap(app, nav) {
   const reason = h('p', { class: 'reason', id: 'outfit-open-reason' });
   const outfitBtn = h('button', { class: 'button primary', type: 'button', id: 'btn-outfit', 'aria-describedby': 'outfit-open-reason', onclick: () => pressOutfit() });
   const board = h('aside', { class: 'board', id: 'board', 'aria-label': 'Prices and stops' },
-    boardTitle, list, pricesBtn, pricesBox, toast,
+    toast,
+    h('div', { class: 'board-body', id: 'board-body' }, boardTitle, list, pricesBtn, pricesBox),
     h('div', { class: 'board-actions' }, reason, outfitBtn,
       h('button', { class: 'button', type: 'button', id: 'map-desk', onclick: () => nav.toDesk() }, 'Back to the desk')));
   const el = h('main', { class: 'map-screen', id: 'screen-map' }, bar, stage, board);
   // MER-124: the set-out toast lives in the board, in the flow above its buttons, where it covers no stop, label or token at any frame
   // (it was fixed over the picture and sat on the labels on a phone). The first press anywhere on the table dismisses it.
-  el.addEventListener('pointerdown', () => hideToast(), true);
+  el.addEventListener('click', () => hideToast(), true);   // MER-138: on the click, not the press: the board moves up when the note goes, and a press that moved it left the tap on the row below
 
   // ---- what the player can do with a stop
   function outfitState(stopId) {
@@ -160,6 +166,10 @@ export function createMap(app, nav) {
   function drawMap() {
     if (!geo) return;
     const v = app.view();
+    // MER-145 (play a038, a093): the seasons a leg takes are the agent's own (a careful agent rides a long leg a season longer, agents.js legSeasons), and
+    // `left` counts down from that number. Read against the leg's own length, a careful agent's first season out gave 1 - 3/2 < 0, which drew him at
+    // Cairo a season after he had left.
+    const seasonsOf = (x, leg) => legSeasons(content.agents.find(ag => ag.id === x.agent), leg);
     let k = 1, tx = 0, ty = 0;
     if (zoom) {
       const ps = members(zoom).map(s => pos[s.id]);
@@ -194,6 +204,11 @@ export function createMap(app, nav) {
     roads.replaceChildren(...svg);
 
     const out = [];
+    // the stops a party stands on: their labels choose a place before the rest do, so a trip never costs a stop its name (MER-137)
+    const occupied = new Set(app.state.expeditions.map(x => {
+      const leg = content.routes.find(r => r.id === x.route)?.legs[x.leg];
+      return leg && (x.status !== 'out' || x.left >= seasonsOf(x, leg)) ? leg.from : null;
+    }).filter(Boolean));
     const grp = grouped() ? clusters() : [];
     const drawn = new Set();
     const pairs = [];              // each dot with its label, for placeLabels
@@ -202,9 +217,11 @@ export function createMap(app, nav) {
         if (drawn.has(s.cluster)) continue;
         drawn.add(s.cluster);
         const ms = members(s.cluster), x = ms.reduce((n, m) => n + pos[m.id].x, 0) / ms.length, y = ms.reduce((n, m) => n + pos[m.id].y, 0) / ms.length;
-        const dot = h('span', { class: 'dot cluster', role: 'img', 'aria-label': `${clusterName(s.cluster)}, ${ms.length} stops`, style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } });
-        const label = h('span', { class: 'stop-label cluster-label', 'aria-hidden': 'true', style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster, ...(ms.some(m => m.id === home) ? { keep: '1' } : {}) } }, `${clusterName(s.cluster)}: ${ms.length} stops`);
-        out.push(dot, label); pairs.push({ dot, label, side: null, rank: 1 });
+        // MER-137: the group that holds the house says so in its label, since the house's own label is not drawn inside it (c006b: Cairo had none)
+        const named = ms.some(m => m.id === home) ? `${stopName(content, home)}, ${clusterName(s.cluster)}` : clusterName(s.cluster);
+        const dot = h('span', { class: 'dot cluster', role: 'img', 'aria-label': `${named}, ${ms.length} stops`, style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster } });
+        const label = h('span', { class: 'stop-label cluster-label', 'aria-hidden': 'true', style: `left:${x}%;top:${y}%`, dataset: { cluster: s.cluster, ...(ms.some(m => m.id === home) ? { keep: '1' } : {}) } }, `${named}: ${ms.length} stops`);
+        out.push(dot, label); pairs.push({ dot, label, side: null, rank: ms.some(m => m.id === home) ? 0 : 1 });
         continue;
       }
       // The dot names the stop to a screen reader even when its label is hidden for want of room
@@ -212,78 +229,190 @@ export function createMap(app, nav) {
       const dot = h('span', { class: `dot${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, role: 'img', 'aria-label': s.name, tabindex: '-1', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id } });
       const label = h('span', { class: `stop-label${s.id === home ? ' home' : ''}${s.id === selected ? ' on' : ''}`, 'aria-hidden': 'true', style: `left:${p.x}%;top:${p.y}%`, dataset: { stop: s.id, ...(s.id === home ? { keep: '1' } : {}) } }, s.name);
       out.push(dot, label);
-      pairs.push({ dot, label, side: { dx: lab.dx, dy: lab.dy, ax: ANCHOR_AX[lab.anchor] ?? 0, ay: -0.5 }, rank: s.id === home ? 0 : s.id === selected ? 1 : 2 });
+      pairs.push({ dot, label, side: { dx: lab.dx, dy: lab.dy, ax: ANCHOR_AX[lab.anchor] ?? 0, ay: -0.5 }, rank: s.id === home ? 0 : s.id === selected || occupied.has(s.id) ? 1 : 2 });
     }
-    // expeditions as tokens along their leg; same leg and same place stack with a count
+    // expeditions as tokens (MER-137). A token's place is the trip's own: the stop it stands on, or the fraction of its leg done, and nothing
+    // the player has open (a selected stop, a free agent, a label) moves it. Parties that stand on one stop, whatever road each is about to
+    // take, are one token with a count; so are parties at one place on one leg.
     const groups = new Map();
     for (const x of app.state.expeditions) {
       const route = content.routes.find(r => r.id === x.route);
       const leg = route?.legs[x.leg];
       if (!leg || !pos[leg.from] || !pos[leg.to]) continue;
-      const total = leg.seasons, done = x.status === 'out' ? Math.max(0, Math.min(1, 1 - x.left / total)) : 0;
+      const total = seasonsOf(x, leg), done = x.status === 'out' ? Math.max(0, Math.min(1, 1 - x.left / total)) : 0;
       const frac = Math.round(done * 20) / 20;
-      const key = `${leg.from}>${leg.to}@${frac}`;
+      const key = frac === 0 ? `@${leg.from}` : `${leg.from}>${leg.to}@${frac}`;
       if (!groups.has(key)) groups.set(key, { leg, frac, list: [] });
       groups.get(key).list.push(x);
     }
-    for (const g of groups.values()) {
-      const a = pos[g.leg.from], b = pos[g.leg.to];
-      const x = a.x + (b.x - a.x) * g.frac, y = a.y + (b.y - a.y) * g.frac;
+    // MER-145 (play a025, a072): pieces closer than their own size are one stack, never a smudge of two. Two parties that are not at one place but
+    // at places a piece's width apart (one just out of Cairo on one road and one setting out on another) merge into one token with a count, standing
+    // at the middle of their places. The distance is in screen px, so it is the same test at every frame and zoom.
+    const size = parseFloat(getComputedStyle(el).getPropertyValue('--token')) || 64;
+    const wide = frame.clientWidth * k / 100, tall = frame.clientHeight * k / 100;
+    const place = g => ({ x: pos[g.leg.from].x + (pos[g.leg.to].x - pos[g.leg.from].x) * g.frac, y: pos[g.leg.from].y + (pos[g.leg.to].y - pos[g.leg.from].y) * g.frac });
+    // where a stack's piece stands on screen: a party still on its stop stands beside the dot, a piece's half-width and a gap along its road (placeLabels)
+    const where = g => {
+      const px = { x: g.x * wide, y: g.y * tall };
+      if (!g.start) return px;
+      const a = pos[g.leg.from], b = pos[g.leg.to], dx = (b.x - a.x) * wide, dy = (b.y - a.y) * tall, len = Math.hypot(dx, dy) || 1, d = Math.min(size / 2 + 6, len * 0.35);
+      return { x: px.x + dx / len * d, y: px.y + dy / len * d };
+    };
+    let stacks = [...groups.values()].map(g => ({ ...g, ...place(g), start: g.frac === 0, parts: [g] }));
+    if (wide && tall) {
+      for (let merged = true; merged;) {
+        merged = false;
+        outer: for (let i = 0; i < stacks.length; i++) for (let j = i + 1; j < stacks.length; j++) {
+          const a = stacks[i], b = stacks[j];
+          const pa = where(a), pb = where(b);
+          if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= size) continue;
+          const n = a.parts.length + b.parts.length, wa = a.parts.length / n;
+          stacks.splice(j, 1);
+          stacks[i] = { ...a, list: [...a.list, ...b.list], parts: [...a.parts, ...b.parts], x: a.x * wa + b.x * (1 - wa), y: a.y * wa + b.y * (1 - wa), start: a.start && b.start };
+          merged = true; break outer;
+        }
+      }
+    }
+    for (const g of stacks) {
+      const x = g.x, y = g.y;
       const first = g.list[0], agent = content.agents.find(ag => ag.id === first.agent), n = g.list.length;
       const tok = app.art.get(`token-${g.leg.by}`) ?? app.art.get('token-caravan');
-      const seal = agent && app.art.get(agent.seal);
-      // MER-131: a merged caption names each agent and the season that agent is due home (it said only the soonest, which hid Ali, due a year later)
-      const who = x => `${content.agents.find(ag => ag.id === x.agent)?.name ?? 'An agent'}, home about ${homeBy(app, [x])}`;
-      const text = n === 1 ? who(first) : `${n} expeditions: ${g.list.map(who).join('; ')}`;
-      out.push(h('div', { class: 'token', style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n), from: g.leg.from, to: g.leg.to } },
+      // a caption names each agent and the season that agent is due home (MER-131); a stack lists them, one line each (MER-137)
+      const who = e => `${content.agents.find(ag => ag.id === e.agent)?.name ?? 'An agent'}, home about ${homeBy(app, [e])}`;
+      const seal = e => { const ag = content.agents.find(q => q.id === e.agent), art = ag && app.art.get(ag.seal); return art ? h('img', { class: 'token-seal', src: `assets/art/${art.file}`, alt: '', width: 20, height: 20 }) : null; };
+      const spoken = n === 1 ? who(first) : `${n} expeditions: ${g.list.map(who).join('; ')}`;
+      const caption = n === 1
+        ? h('p', { class: 'token-label', 'aria-hidden': 'true' }, seal(first), who(first))
+        : h('p', { class: 'token-label token-stack', 'aria-hidden': 'true' }, h('span', { class: 'token-head' }, `${n} expeditions`),
+          ...g.list.map(e => h('span', { class: 'token-line' }, seal(e), who(e))));
+      out.push(h('div', { class: 'token', role: 'img', 'aria-label': spoken, style: `left:${x}%;top:${y}%`, dataset: { expedition: g.list.map(e => e.id).join(' '), count: String(n), from: g.leg.from, to: g.leg.to, ...(g.start ? { start: '1' } : {}) } },
+        h('span', { class: 'token-leader', 'aria-hidden': 'true' }),
         h('div', { class: 'token-piece' }, h('img', { src: `assets/art/${tok.file}`, alt: '', width: 64, height: 64 }), n > 1 ? h('span', { class: 'token-count' }, String(n)) : null),
-        h('p', { class: 'token-label' }, seal ? h('img', { class: 'token-seal', src: `assets/art/${seal.file}`, alt: '', width: 20, height: 20 }) : null, text)));
+        caption));
     }
     layer.replaceChildren(...out);
     placeLabels(pairs);
   }
 
-  /** Put each label on a side of its dot where it overlaps no other label, no dot, and stays whole inside the picture and clear of
-      the price panel (DESIGN 4.7). The stop's own `label` side goes first, then the other sides; a label that fits nowhere is hidden
-      and its dot stays, with the stop's name as its accessible name. Cairo and the selected stop choose first.
-      Then the tokens (MER-124): a party that has just set out sits on its own stop, and its caption is wider than the stop's label, so
-      the token used to lie across the label (Ali behind "Cairo") and two parties leaving the same stop lay on each other. The labels are
-      placed first, as the map's furniture; each token then keeps its own spot if nothing is there, and else moves to the nearest spot on its
-      own road (along it, and across it by at most CORRIDOR px) clear of every label and every other token. A label a token still cannot avoid
-      is hidden, and the token never leaves its road (MER-131). */
+  /** Put each caption beside its token and each label beside its dot, so that every name shows (DESIGN 4.7, MER-137).
+      A token never moves for a label: its place is the trip's own, a stop or a fraction of a leg (drawMap). So the tokens' pieces are the
+      fixed furniture, and the rest is placed round them in this order, each step the same for the same state whatever is selected or free:
+      1. each label takes a side of its dot where it overlaps no other label, no dot and no token piece; failing that one that covers a dot,
+         then one that covers a piece (a label is drawn above tokens, so the name still reads), never another label. Cairo's label, the
+         selected stop's and those of the stops a party stands on choose first. A label that fits nowhere on a crowded phone is hidden and
+         its dot keeps the name; no label is hidden for a token (play A, a008 a015 a031: Damascus, Aleppo, Famagusta, Qus, Quseir and
+         Alexandria lost theirs under a trip).
+      2. each token's caption takes the first of twelve places round its piece that covers no dot, label, piece or caption; failing that
+         one that covers no piece or caption; failing that the first that fits the picture. A caption is never dropped where a frame shows
+         captions at all (a phone's css hides them; its token still has the name as its accessible name).
+      A label too far from its dot to be read as its own (c034) is not used: past MAX_AWAY px of its dot it is hidden instead. */
   function placeLabels(pairs) {
     const fr = frame.getBoundingClientRect();
     if (!fr.width || !fr.height) return;
-    const clip = { left: fr.left, right: fr.right, top: fr.top, bottom: fr.bottom };
+    // MER-145: the picture is shown larger than the pane at the wide frames (css --crop), so its edge may lie outside the stage: a label or caption
+    // must be whole in what shows
+    const sr = stage.getBoundingClientRect();
+    const clip = { left: Math.max(fr.left, sr.left), right: Math.min(fr.right, sr.right), top: Math.max(fr.top, sr.top), bottom: Math.min(fr.bottom, sr.bottom) };
     const walls = [board, unzoom].filter(b => b && !b.hidden).map(b => b.getBoundingClientRect()).filter(r => r.width && r.height);
     const centre = d => { const r = d.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
     const tokens = qsa('.token', layer);
-    for (const t of tokens) { t.style.removeProperty('--ox'); t.style.removeProperty('--oy'); t.classList.remove('bare'); }   // measured from where the data puts them
-    // a label hidden by the last placement measures 0 by 0, so a redraw would place everything around an empty label and move a token (CI, PR #617): show them all before measuring
-    for (const p of pairs) p.label.hidden = false;
-    const marks = pairs.map(p => ({ p, at: centre(p.dot), w: p.label.offsetWidth, h: p.label.offsetHeight }));
-    // a dot is a thing a label would rather not cover
+    const k = Number(layer.style.getPropertyValue('--k')) || 1;
+    // A party that has not left its stop stands beside the stop's dot, on its road, not on it: one piece's half-width and a gap out, and never
+    // past the middle of the road. The offset is a function of the road and the frame alone, so it is the same whatever is selected or free.
+    for (const t of tokens) {
+      t.style.removeProperty('--ox'); t.style.removeProperty('--oy');
+      const a = pos[t.dataset.from], b = pos[t.dataset.to];
+      if (!t.dataset.start || !a || !b) continue;
+      const dx = (b.x - a.x) / 100 * frame.clientWidth * k, dy = (b.y - a.y) / 100 * frame.clientHeight * k, len = Math.hypot(dx, dy) || 1;
+      const d = Math.min(qs('.token-piece', t).offsetWidth / 2 + 6, len * 0.35);
+      t.style.setProperty('--ox', `${Math.round(dx / len * d * k)}px`); t.style.setProperty('--oy', `${Math.round(dy / len * d * k)}px`);
+    }
+    for (const t of tokens) {   // measured from the caption's own css place, below its piece
+      delete t.dataset.side; qs('.token-leader', t).hidden = true;
+      const c = qs('.token-label', t); c.style.removeProperty('left'); c.style.removeProperty('top'); c.style.removeProperty('transform');
+    }
     const dots = qsa('.dot', layer).map(n => ({ el: n, r: n.getBoundingClientRect() }));
-    // MER-131: a token stays on its road, so it cannot always step off a label the way it could when it was free to roam. The labels,
-    // placed first, keep off the tokens' own spots (piece and caption, as the data puts them) where a side is free, so Cairo's label
-    // moves to another side of its dot rather than being hidden under a caravan that has to stay put.
-    const spots0 = tokens.flatMap(t => [qs('.token-piece', t), qs('.token-label', t)]).filter(n => n && n.offsetWidth).map(n => n.getBoundingClientRect());
+    // ---- 1. captions
+    const taken = [];            // every token piece and the caption chosen for it
+    const pieces = tokens.map(t => qs('.token-piece', t).getBoundingClientRect());
+    // (the badge of a stack is its own obstacle, one a label may never cover: its number has to read)
+    pieces.forEach((r, i) => {
+      taken.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom, piece: true });
+      if (Number(tokens[i].dataset.count) > 1) taken.push({ left: r.right - 16, right: r.right + 10, top: r.top - 10, bottom: r.top + 16, piece: false, badge: true });
+    });
+    const squeezed = [];         // MER-145: captions that found no clear place, with the place that covers least
+    const placeCaptions = () => tokens.forEach((t, i) => {
+      const cap = qs('.token-label', t);
+      if (!cap.offsetWidth) return;                      // this frame shows no captions
+      const pr = pieces[i], cr = cap.getBoundingClientRect(), w = cr.width, hgt = cr.height, cx = pr.left + pr.width / 2, cy = pr.top + pr.height / 2;
+      // twelve places round the piece: four centred on a side, then each side with the caption flush to either end of the piece's edge; the
+      // same twelve again 22, 44 and 80 px further out where the near ones are taken (a crowd of stops round Qus leaves none close in). MER-145:
+      // never further than 120 px, and 90 where it has to cover anything (play a038, a093: a stack's landed 200 px away, by Gao, with its leader
+      // through two labels); where every place is crowded the one that covers least wins, and the labels are placed again round it
+      const sides = {};
+      for (const g of [0, 16, 32, 48, 64, 80, 90, 105, 120]) {
+        const at = (name, left, top) => { sides[g ? `${name}+${g}` : name] = { left, top }; };
+        at('below', cx - w / 2, pr.bottom + g); at('above', cx - w / 2, pr.top - hgt - g);
+        at('right', pr.right + g, cy - hgt / 2); at('left', pr.left - w - g, cy - hgt / 2);
+        at('below-start', pr.left, pr.bottom + g); at('below-end', pr.right - w, pr.bottom + g);
+        at('above-start', pr.left, pr.top - hgt - g); at('above-end', pr.right - w, pr.top - hgt - g);
+        at('right-top', pr.right + g, pr.top); at('right-bottom', pr.right + g, pr.bottom - hgt);
+        at('left-top', pr.left - w - g, pr.top); at('left-bottom', pr.left - w - g, pr.bottom - hgt);
+      }
+      const box = s => ({ left: s.left, right: s.left + w, top: s.top, bottom: s.top + hgt });
+      const others = taken.filter(q => !(q.piece && q.left === pr.left && q.top === pr.top) && q.owner !== i);
+      let won = null, clearlyFound = true;
+      const fits = r => inside(r, clip) && !walls.some(q => hits(r, q));
+      for (const [name, s] of Object.entries(sides)) {
+        const r = box(s);
+        if (!fits(r) || others.some(q => hits(r, q)) || dots.some(d => hits(r, d.r))) continue;
+        won = { name, r }; break;
+      }
+      // nowhere clear: the place that covers least (a piece counts three times, a dot a fixed amount), inside the picture if any is, and never
+      // just the first
+      if (!won) {
+        const area = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+        let best = Infinity;
+        for (const [name, s] of Object.entries(sides)) {
+          if (/\+(105|120)$/.test(name)) continue;   // a caption that must cover something stays within 90 px; the two last rings are for a clear place only
+          const r = box(s);
+          const cost = others.reduce((n, q) => n + area(r, q) * (q.piece ? 3 : 4), 0) + dots.filter(d => hits(r, d.r)).length * 2500 + (fits(r) ? 0 : 1e7);
+          if (cost < best) { best = cost; won = { name, r }; }
+        }
+      }
+      if (!clearlyFound) squeezed.push({ i, r: won.r });
+      t.dataset.side = won.name;
+      // the token is drawn at 1/k of the layer's scale, so a screen distance is k times as many of its own px
+      cap.style.left = `${(won.r.left - cx) * k}px`; cap.style.top = `${(won.r.top - cy) * k}px`; cap.style.transform = 'none';
+      taken.push({ ...won.r, piece: false });
+      // a caption set apart from its piece is tied to it by a line from the piece's centre to the nearest point of the caption
+      const lead = qs('.token-leader', t);
+      if (won.name.includes('+')) {
+        const px = Math.max(won.r.left, Math.min(cx, won.r.right)), py = Math.max(won.r.top, Math.min(cy, won.r.bottom));
+        lead.style.width = `${Math.hypot(px - cx, py - cy) * k}px`; lead.style.transform = `rotate(${Math.atan2(py - cy, px - cx)}rad)`; lead.hidden = false;
+      } else lead.hidden = true;
+    });
+    // ---- 2. labels, then captions. The house's, the selected stop's and the stops a party stands on choose first; a caption has a dozen
+    // places round its piece and a label of a crowded stop has few, so the captions choose last, among what the labels leave.
+    for (const p of pairs) p.label.hidden = false;   // a redraw must measure every label whole, not the 0 by 0 of one a pass hid
+    const marks = pairs.map(p => ({ p, at: centre(p.dot), w: p.label.offsetWidth, h: p.label.offsetHeight })).sort((a, b) => a.p.rank - b.p.rank);
     const placed = [];
-    for (const m of marks.slice().sort((a, b) => a.p.rank - b.p.rank)) {
-      // its own side, then every side close in, then every side one step further out (a crowd of
-      // dots on a phone leaves no room beside them); a label that fits nowhere is hidden
-      const out2 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 2.2, dy: t.dy * 2.2 }));
-      const tries = [m.p.side, ...Object.values(SIDES), ...out2].filter(Boolean);
+    const placeLabel = m => {
+      // its own side, then every side close in, then every side one step further out (a crowd of dots on a phone leaves no room beside them)
+      const out2 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 1.7, dy: t.dy * 1.7 })), out3 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 3.4, dy: t.dy * 3.4 }));
+      const tries = [m.p.side, ...Object.values(SIDES), ...out2, ...out3].filter(Boolean);
       let won = null;
-      // first a place that covers no other dot and no token; failing that, one that covers a dot (the press still goes to the nearest
-      // stop, and the list names every stop), then one that covers a token (which the token then hides), but never another label
-      for (const [clear, free] of [[true, true], [false, true], [true, false], [false, false]]) {
+      // a label over the edge of a token's piece still reads, a label over a caption does not, so the last tier alone covers one
+      // the fifth tier looks one ring further out (up to REACH_FAR px from the dot) before any label may lie over a caption
+      for (const [clear, free, capsOk, far] of [[true, true], [false, true], [true, false, false], [false, false, false], [false, true, false, true], [false, false, true]]) {
         for (const t of tries) {
           const left = m.at.x + t.dx + t.ax * m.w, top = m.at.y + t.dy + t.ay * m.h;
           const r = { left, top, right: left + m.w, bottom: top + m.h };
           if (!inside(r, clip) || walls.some(w => hits(r, w)) || placed.some(q => hits(r, q))) continue;
+          if (away(r, m.at) > (far ? REACH_FAR : MAX_AWAY)) continue;
+          if (taken.some(q => q.badge && hits(r, q))) continue;   // MER-145: a stack's number is never under a label, in any tier (the contrast case read paper on paper)
           if (clear && dots.some(o => o.el !== m.p.dot && hits(r, o.r))) continue;
-          if (free && spots0.some(q => hits(r, q))) continue;
+          if (free ? taken.some(q => hits(r, q)) : !capsOk && taken.some(q => !q.piece && hits(r, q))) continue;
           won = { t, r };
           break;
         }
@@ -293,65 +422,21 @@ export function createMap(app, nav) {
       el.hidden = !won;
       if (won) {
         placed.push({ ...won.r, el });
+        taken.push({ ...won.r, piece: false });
         el.style.setProperty('--dx', String(won.t.dx)); el.style.setProperty('--dy', String(won.t.dy));
         el.style.setProperty('--ax', `${won.t.ax * 100}%`); el.style.setProperty('--ay', `${won.t.ay * 100}%`);
       }
-    }
-    // tokens (MER-131). A token stands on its leg, between the leg's two stops, at the fraction done: that is where the data puts it and
-    // where it stays unless something is in the way. MER-124 let it slide up to 420 px in every direction to find a clear spot, and a
-    // Damascus caravan ended beside Aden and above Constantinople. Now it may move only along its own road (never past either stop) and
-    // across it by at most CORRIDOR px, so its centre is always within 24 px of the segment the road is drawn on. Where no clear spot
-    // exists in that corridor the token keeps its place on the road, drops its caption, and the labels it covers give way.
-    // The caption never lies on a stop's dot (play B, Yusuf over Aden). A piece's anchor is its own centre (css), so a caption's width
-    // no longer moves the spot the token is measured at.
-    const lay = layer.getBoundingClientRect();   // the layer as shown, zoom included
-    const where = id => ({ x: lay.left + pos[id].x / 100 * lay.width, y: lay.top + pos[id].y / 100 * lay.height });
-    const rel = (r, c) => ({ left: r.left - c.x, right: r.right - c.x, top: r.top - c.y, bottom: r.bottom - c.y });
-    const moved = (r, x, y) => ({ left: r.left + x, right: r.right + x, top: r.top + y, bottom: r.bottom + y });
-    const spots = [];            // (along, across) in px, nearest to the data's own place first; a fixed order, so a redraw picks the same spot
-    for (let s = -SLIDE; s <= SLIDE; s += 6) for (const c of [0, 8, -8, CORRIDOR, -CORRIDOR]) spots.push({ s, c, d: Math.hypot(s, c) });
-    spots.sort((p, q) => p.d - q.d || q.s - p.s || q.c - p.c);
-    const taken = [];            // every placed token's piece and caption
-    const sorted = tokens.map(el => {
-      const pr = qs('.token-piece', el).getBoundingClientRect(), c = { x: pr.left + pr.width / 2, y: pr.top + pr.height / 2 };
-      const cap = qs('.token-label', el), cr = cap.offsetWidth ? cap.getBoundingClientRect() : null;
-      return { el, c, piece: rel(pr, c), cap: cr && rel(cr, c), n: Number(el.dataset.count) || 1 };
-    }).sort((a, b) => b.n - a.n || a.c.y - b.c.y || a.c.x - b.c.x);
-    for (const t of sorted) {
-      const A = where(t.el.dataset.from), B = where(t.el.dataset.to), len = Math.hypot(B.x - A.x, B.y - A.y) || 1;
-      const u = { x: (B.x - A.x) / len, y: (B.y - A.y) / len }, t0 = Math.max(0, Math.min(len, (t.c.x - A.x) * u.x + (t.c.y - A.y) * u.y));
-      const boxes = (o, bare) => [moved(t.piece, t.c.x + o.x, t.c.y + o.y), ...(t.cap && !bare ? [moved(t.cap, t.c.x + o.x, t.c.y + o.y)] : [])];
-      // soft: two pieces may share their edges (a party and the one beside it on the same stop, on roads too short for two 64 px tokens) but
-      // never their middles, so both stay in view; captions are never allowed to touch another token
-      const core = r => { const k = (r.right - r.left) / 4; return { left: r.left + k, right: r.right - k, top: r.top + k, bottom: r.bottom - k }; };
-      const ok = (o, bare, strict, soft) => {
-        const bx = boxes(o, bare), cp = bx[1];
-        if (bx.some(r => !inside(r, clip) || walls.some(w => hits(r, w)))) return false;
-        if (soft ? bx.some((r, i) => taken.some(q => (i || q.cap) ? hits(r, q.r) : hits(core(r), core(q.r)))) : bx.some(r => taken.some(q => hits(r, q.r)))) return false;
-        if (cp && dots.some(d => hits(cp, d.r))) return false;
-        // strict: no label at all under it; 'home': none but the others may give way, the house's own label (data-keep, or the cluster label that holds it) never does
-        return !strict || !bx.some(r => placed.some(q => !q.el.hidden && (strict === true || q.el.dataset.keep) && hits(r, q)));
-      };
-      let won = null;
-      for (const [strict, bare, soft] of [[true, false], [true, true], ['home', true], [false, true], [false, true, true]]) {
-        if (!bare && !t.cap) continue;   // no caption to try (a phone): the bare attempts are the only ones
-        for (const sp of spots) {
-          if (t0 + sp.s < 0 || t0 + sp.s > len) continue;
-          const o = { x: u.x * sp.s - u.y * sp.c, y: u.y * sp.s + u.x * sp.c };
-          if (ok(o, bare, strict, soft)) { won = { o, bare }; break; }
-        }
-        if (won) break;
-      }
-      // nothing clear within the corridor: the token stays where the data put it, without its caption, and what it covers gives way
-      if (!won) won = { o: { x: 0, y: 0 }, bare: true };
-      if (t.cap) t.el.classList.toggle('bare', won.bare);
-      if (won.o.x || won.o.y) { t.el.style.setProperty('--ox', `${Math.round(won.o.x)}px`); t.el.style.setProperty('--oy', `${Math.round(won.o.y)}px`); }
-      const bx = boxes(won.o, won.bare);
-      // a label never lies under a token, except the house's own: with two parties out of Cairo on roads too short to clear it, Cairo's
-      // label stays, drawn over the token's edge, rather than the map losing the name of the place it is about (play B and A, DESIGN 4.7)
-      for (const r of bx) for (const q of placed) if (!q.el.hidden && !q.el.dataset.keep && hits(r, q)) q.el.hidden = true;
-      taken.push(...bx.map((r, i) => ({ r, cap: i === 1 })));
-    }
+    };
+    // MER-145: a caption that had to lie over a label (a stack's is 310 px wide, and a crowd of stops round Cairo leaves it no clear place within 90 px of its
+    // piece) takes its least-covering place, and the labels are placed again round it: a label has sides to choose from, a caption of that size has none
+    const base = taken.slice();
+    const run = reserved => {
+      taken.length = 0; taken.push(...base, ...reserved); placed.length = 0;
+      for (const m of marks) placeLabel(m);
+      squeezed.length = 0; placeCaptions();
+    };
+    run([]);
+    if (squeezed.length) run(squeezed.map(q => ({ ...q.r, piece: false, owner: q.i })));
   }
 
   // ---- a press on the picture goes to the nearest stop within 48 px
@@ -543,7 +628,14 @@ export function createMap(app, nav) {
     });
     outfit = { stopId, view };
     document.body.append(view.dialog);
-    view.dialog.addEventListener('close', () => { if (outfit?.view === view) { outfit = null; view.destroy(); nav.outfitClosed(); (opener?.isConnected ? opener : outfitBtn)?.focus(); } });
+    view.dialog.addEventListener('close', () => {
+      if (outfit?.view !== view) return;
+      outfit = null; view.destroy(); nav.outfitClosed();
+      // MER-138 (play b015): focus goes back to the button that opened the sheet unless that button is dead now (after Send nobody is free, so Outfit
+      // says "Nobody is free" and takes no press): then it goes to the stop list, which is always there and always works
+      const live = b => b?.isConnected && b.getAttribute('aria-disabled') !== 'true' && !b.disabled && b.checkVisibility?.() !== false;
+      (live(opener) ? opener : live(outfitBtn) ? outfitBtn : list).focus({ preventScroll: true });
+    });
     view.dialog.showModal();
     qs('h2', view.dialog).focus();
   }
