@@ -251,12 +251,13 @@ function plan(bot, state, content, agent, roll) {
 /** The warehouse after the season's plans are sent (MER-153): what is left of a good no plan carried is sold at home, as a player
     sells after a big return. careful, greedy and qirad sell the most loads of each good that the stop's market takes without the
     price of the last load falling under SELL_FLOOR of the home price, and no more than LIMITS.depthShare of the market's depth at
-    once (the rest waits for another season's price); a sale that brings in under SELL_MIN dinars is not worth the broker's cut and
+    once (the rest waits for another season's price), and only loads that a whole season's plans left alone (`idle`: the loads left at the last check); a sale that brings in under SELL_MIN dinars is not worth the broker's cut and
     is left. random sells a random part of each good at random; `first` sells nothing. Written in the strategy: not in LIMITS,
     RISK_WEIGHT or STAKE_SHARE. */
 const SELL_FLOOR = 0.7;
 const SELL_MIN = 20;
-export function sellSurplus(bot, state, content, roll = () => 0.5) {
+const SELL_PAR = 0.9;   // a load must also fetch this share of its base price after the cut: selling under it gave away more than the freed money earned (qirad's wealth part fell with a sale at any price)
+export function sellSurplus(bot, state, content, roll = () => 0.5, idle = null) {
   if (bot === 'first') return state;
   const home = cityOf(content, 'bots').home;
   let s = state;
@@ -269,10 +270,10 @@ export function sellSurplus(bot, state, content, roll = () => 0.5) {
       continue;
     }
     const homeP = truePrice(s, content, home, good);
-    let n = Math.min(held, Math.ceil(depth * LIMITS.depthShare));
+    let n = Math.min(Math.min(held, idle?.[good] ?? held), Math.ceil(depth * LIMITS.depthShare));
     for (; n >= 1; n--) {
       const q = sellHomeQuote(s, content, good, n);
-      if (q.ok && q.last >= SELL_FLOOR * homeP) break;
+      if (q.ok && q.last >= SELL_FLOOR * homeP && q.average >= SELL_PAR * baseOf(s, content, home, good)) break;
     }
     if (n >= 1 && sellHomeQuote(s, content, good, n).got >= SELL_MIN) s = sellHome(s, content, good, n);
   }
@@ -380,6 +381,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, priceDraw(tdice())]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
   let s = newGame(content, { seed, length, house });
   const out = { bot, seed, house, startMoney: s.money, trips: [], profits: [], cardMoney: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
+  const idle = {};   // loads of each good the last season's plans did not take (MER-153)
   const routeOfX = {};   // expedition id to its route, so a return or a settlement can be told by where it went
   for (let guard = 0; guard < 500; guard++) {
     if (s.phase === 'interlude') { s = openSeason(s, content); continue; }
@@ -414,7 +416,9 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
       s = outfit(s, content, p);
       out.routes[p.route] = (out.routes[p.route] ?? 0) + 1;
     }
-    s = sellSurplus(bot, s, content, roll);
+    s = sellSurplus(bot, s, content, roll, idle);
+    for (const k of Object.keys(idle)) delete idle[k];
+    for (const [g, n] of Object.entries(s.stock)) idle[g] = n;   // what a whole season's plans left alone: the next season may sell it
     const broke = s.money < 0 && !Object.values(s.stock).some(n => n > 0) && !s.expeditions.length;
     if (broke && out.brokeBy === null) out.brokeBy = s.t + 1;
     const can = canEndSeason(s);
