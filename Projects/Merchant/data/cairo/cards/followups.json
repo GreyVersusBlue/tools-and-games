@@ -1468,5 +1468,111 @@
         "at": "p. 458 (reporting Jean-Claude Garcin, 1976)"
       }
     ]
+  },
+  {
+    "id": "aydhab-costs",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Isaac, a merchant",
+      "role": "Aydhab",
+      "seal": null
+    },
+    "title": "Costs on the far side",
+    "body": "Isaac's accounts have come, and they show costs you did not expect. Goods sent over the sea pay for repacking, freight and customs. Some of the fees went to officials as small gifts. Isaac asks if you accept the accounts.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "accept",
+        "label": "Accept the accounts",
+        "hint": "It costs 6 dinars now. There is no quarrel, and your partners trust you.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "detail",
+        "label": "Ask for every cost, one by one",
+        "hint": "It costs 1 dinar now, for the letters. Isaac is hurt, and he trusts you less.",
+        "requires": {
+          "money": {
+            "gte": 1
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Offer to settle half",
+        "hint": "It costs 3 dinars now. Isaac takes it, and foreign houses think you fair.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a lawsuit of 1097, a merchant listed the costs of sending goods over the sea. Repacking at Aydhab cost a quarter dinar, freight to Dahlak six and a quarter, and customs six.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-aydhab"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "pp. 189 to 190 and note 25"
+      }
+    ]
   }
 ]

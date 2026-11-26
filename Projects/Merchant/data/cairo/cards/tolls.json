@@ -436,5 +436,233 @@
         "at": "p. 189"
       }
     ]
+  },
+  {
+    "id": "aydhab-customs-list",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Isaac, a merchant",
+      "role": "Aydhab",
+      "seal": null
+    },
+    "title": "A list of customs",
+    "body": "Isaac sends a list from Aydhab. Customs are taxes on goods that enter a port, and the list shows what each good pays. Frankincense pays a third of a dinar. He asks how you want the fees paid.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay as the list says",
+        "hint": "It costs 5 dinars now. Isaac sends his accounts in two seasons, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 2,
+            "card": "aydhab-costs"
+          }
+        ]
+      },
+      {
+        "id": "ask",
+        "label": "Ask the officials for a lower rate",
+        "hint": "It costs 2 dinars now, for gifts to the officials. They do not forget it.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "part",
+        "label": "Pay part now and the rest later",
+        "hint": "It costs 1 dinar now and 4 more in three seasons. Your partners like a house that pays in the end.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": -4
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a list written about 1152, a merchant noted the fees on five goods carried from Aden to Aydhab. Frankincense paid a third of a dinar in customs there.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-aydhab"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "p. 722 (III,40a, probably 1152)"
+      }
+    ]
+  },
+  {
+    "id": "aden-water-cut",
+    "group": "tolls",
+    "kind": "world",
+    "from": {
+      "name": "Amin, a cloth seller",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "The water is cut off",
+    "body": "Amin lives in Aden. Bedouins, people of the desert, have blocked the way to the town's water tanks. They let people through only for money and cloth. Amin asks you to share the cost.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "both",
+        "label": "Share the cost in cloth and coin",
+        "hint": "It costs 5 dinars now. The town has water, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coin",
+        "label": "Pay in coin only",
+        "hint": "It costs 8 dinars now. Amin thanks you, and your partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sea",
+        "label": "Bring water by sea",
+        "hint": "It costs 12 dinars now. The court at Aden is grateful.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Aden the bedouins often cut off the way to the water tanks. They kept the townspeople from the water until they bought the bedouins' consent with money and cloth.",
+    "unlocks": [
+      "term-dinar",
+      "place-aden"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, pp. 371 to 372"
+      }
+    ]
   }
 ]

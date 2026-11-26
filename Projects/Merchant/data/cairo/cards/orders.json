@@ -1604,5 +1604,86 @@
         "at": "p. 32 (the preference for Quseir is al-Qalqashandi, about 1400)"
       }
     ]
+  },
+  {
+    "id": "aden-pepper-week",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Salim, a pepper dealer",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "Pepper waits for the ships",
+    "body": "Salim is a pepper dealer in Aden. He writes that news from Egypt is poor, so pepper will hardly sell until a week before the ships sail. He asks if he should hold your pepper until then.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "stock": "pepper",
+          "gte": 1
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "hold",
+        "label": "Hold it to the last week",
+        "hint": "It costs 3 dinars now, for storage. Buyers come from far away at the end, and partners hear of the good price.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "early",
+        "label": "Sell early",
+        "hint": "Salim sends you 4 dinars now. The price is low, and partners hear of that too.",
+        "now": [
+          {
+            "money": 4
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "A merchant's letter from Aden of about 1135 says pepper would not sell until the week before the ships sailed. Then buyers came from afar, and the price was set at 23 dinars a bahar.",
+    "unlocks": [
+      "term-dinar",
+      "good-pepper",
+      "place-aden"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "pp. 342 to 343 (letter II,23, about 1135)"
+      }
+    ]
   }
 ]

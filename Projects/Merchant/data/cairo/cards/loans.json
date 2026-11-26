@@ -461,5 +461,113 @@
         "at": "p. 168"
       }
     ]
+  },
+  {
+    "id": "aden-shipowner-share",
+    "group": "loans",
+    "kind": "favour",
+    "from": {
+      "name": "Jalal, a shipowner",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "A share in a great ship",
+    "body": "Jalal is a rich shipowner in Aden. He owns his ship and all its cargo, with no partners. He offers you a small share in his next voyage.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Take a small share",
+        "hint": "It costs 10 dinars now. The voyage takes seasons, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "qirad",
+        "label": "Offer a qirad instead",
+        "hint": "It costs 14 dinars now. A qirad is a partnership: you give money and he does the trading. Partners think well of you.",
+        "requires": {
+          "money": {
+            "gte": 14
+          }
+        },
+        "now": [
+          {
+            "money": -14
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline, to be safe",
+        "hint": "It costs nothing. Jalal offers the share to someone else.",
+        "now": [
+          {
+            "flag": "jalal-share-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that one merchant at Aden might own a great ship and its whole cargo. He had no partner, because of the huge capital he held.",
+    "unlocks": [
+      "term-qirad",
+      "term-dinar",
+      "place-aden",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 372 (one merchant owning a great ship)"
+      }
+    ]
   }
 ]

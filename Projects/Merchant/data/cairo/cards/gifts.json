@@ -579,5 +579,79 @@
         "at": "vol. 3, p. 568"
       }
     ]
+  },
+  {
+    "id": "aden-room-for-kamal",
+    "group": "gifts",
+    "kind": "people",
+    "from": {
+      "name": "Kamal, a merchant",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "A room for a merchant",
+    "body": "Kamal has sailed to Aden from Calicut. Great ships come to Aden from India, and merchants of India and of Egypt live there. Kamal asks for a room in your warehouse.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "room",
+        "label": "Give him a room",
+        "hint": "It costs 2 dinars now. Kamal remembers a kind house when he trades again.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rent",
+        "label": "Charge him rent",
+        "hint": "He pays you 3 dinars now. He finds the rent high, and word gets round.",
+        "now": [
+          {
+            "money": 3
+          },
+          {
+            "rep": "foreign",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that Aden was the port of the merchants of India. Great ships came there from Cambay, Quilon, Calicut and other places, and merchants from India and Egypt lived there.",
+    "unlocks": [
+      "term-dinar",
+      "place-aden",
+      "place-calicut",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 372 (the port of the merchants of India)"
+      }
+    ]
   }
 ]

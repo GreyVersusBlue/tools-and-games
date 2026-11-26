@@ -624,5 +624,132 @@
         "at": "p. 238"
       }
     ]
+  },
+  {
+    "id": "aydhab-ships-sunk",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A courier",
+      "role": "Aydhab",
+      "seal": null
+    },
+    "title": "No ship will sail",
+    "body": "A courier comes from Aydhab. The king of the Beja is at war with the sultan's soldiers, and he has sunk the ships. No ship will cross the sea now.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1326,
+            1326
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "turn",
+        "label": "Turn back and sell what you brought",
+        "hint": "It costs 3 dinars now, a loss on the sale. Your goods come home safe, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait at Aydhab for a ship",
+        "hint": "It costs 6 dinars now, for an inn. A ship may come, and foreign houses see that you stayed.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "quseir",
+        "label": "Send the goods by Quseir",
+        "hint": "It costs 8 dinars now. The goods reach another port, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1326 Ibn Battuta found Aydhab's ships sunk by the Beja king, who was at war with the sultan's soldiers. He sold his food and went back to Qus.",
+    "unlocks": [
+      "term-dinar",
+      "place-aydhab",
+      "person-beja",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 68 to 69"
+      }
+    ]
   }
 ]

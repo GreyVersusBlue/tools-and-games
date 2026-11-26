@@ -236,5 +236,128 @@
         "at": "p. 34; Saladin repealed the tax on pilgrims at Aydhab, from Ibn Jubayr"
       }
     ]
+  },
+  {
+    "id": "jeddah-dry-year",
+    "group": "faith",
+    "kind": "favour",
+    "from": {
+      "name": "Qasim, a pilgrim guide",
+      "role": "Jeddah",
+      "seal": null
+    },
+    "title": "Pilgrims beg for water",
+    "body": "Qasim helps pilgrims at Jeddah. It is a dry year, and the town's water must come from a day's journey away. Pilgrims are begging for it at the doors of householders.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1328,
+            1330
+          ]
+        },
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "carriers",
+        "label": "Pay for water carriers",
+        "hint": "It costs 6 dinars now. The pilgrims remember your house.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Give a gift to the town rulers' men",
+        "hint": "It costs 4 dinars now. The men are pleased, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Send nothing",
+        "hint": "It costs nothing. Qasim says the pilgrims will not forget it.",
+        "now": [
+          {
+            "flag": "jeddah-water-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a dry year of Ibn Battuta's visit, water was brought to Jeddah from a day's journey away. The pilgrims begged for it from the owners of the houses.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar",
+      "place-jeddah",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 360 (the year is 1328 or 1330; both in the window)"
+      }
+    ]
   }
 ]

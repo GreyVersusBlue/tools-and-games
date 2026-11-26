@@ -376,5 +376,237 @@
         "at": "pp. 326 to 327; the ten years in court, and the yearly accounts"
       }
     ]
+  },
+  {
+    "id": "aydhab-debtor",
+    "group": "court",
+    "kind": "people",
+    "from": {
+      "name": "Rashid, a cloth seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A debtor runs to Aydhab",
+    "body": "A man in Cairo owes your house 12 dinars. He has run off to Aydhab, hoping to escape the debt. Rashid knows where he went.",
+    "when": {
+      "out": {
+        "gte": 1
+      }
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "find",
+        "label": "Send a man to find him",
+        "hint": "It costs 4 dinars now and pays back 6 in three seasons. The quarrel is in a foreign port, so foreign houses notice.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 6
+              },
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "write",
+        "label": "Write to the Beja chief with a gift",
+        "hint": "It costs 6 dinars now. The chief is pleased, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "give",
+        "label": "Give up the debt",
+        "hint": "It costs nothing. Others hear that your house lets debts go.",
+        "now": [
+          {
+            "flag": "aydhab-debt-forgiven",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Aydhab was ruled by the Beja and Egypt together, and Ibn Battuta saw the town split between them in 1326. In older records, a man who owed money might flee there.",
+    "unlocks": [
+      "term-dinar",
+      "place-aydhab",
+      "person-beja"
+    ],
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 34"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 69"
+      }
+    ]
+  },
+  {
+    "id": "jeddah-musa-posts",
+    "group": "court",
+    "kind": "favour",
+    "from": {
+      "name": "Zayn, a court friend",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Posts for the king of Mali",
+    "body": "The sultan has sent camels and food to help the king of Mali on his pilgrimage. A pilgrimage is a holy journey to Mecca. Zayn, a friend at court, asks you to help feed the animals at the posts on the road.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "season": [
+            "autumn"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "grain",
+        "label": "Supply grain for the posts",
+        "hint": "It costs 8 dinars now. The court is glad of your help.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cost",
+        "label": "Supply it at what it cost you",
+        "hint": "It costs 3 dinars now. Zayn thanks you, and the court thinks you careful.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. Zayn says the court will remember.",
+        "now": [
+          {
+            "flag": "musa-posts-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1324 the sultan of Egypt helped Mansa Musa's pilgrimage with silver, camels, food and posts on the road. He wrote to his officers to treat the king with care.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar",
+      "person-mansa-musa",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 78 (al-Umari, Masalik el absar; levtzion-hopkins-1981 pages not reached)"
+      }
+    ]
   }
 ]
