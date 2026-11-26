@@ -270,7 +270,7 @@ export function sellSurplus(bot, state, content, roll = () => 0.5, idle = null) 
       continue;
     }
     const homeP = truePrice(s, content, home, good);
-    let n = Math.min(Math.min(held, idle?.[good] ?? held), Math.ceil(depth * LIMITS.depthShare));
+    let n = Math.min((idle ? Math.min(held, idle[good] ?? 0) : held), Math.ceil(depth * LIMITS.depthShare));
     for (; n >= 1; n--) {
       const q = sellHomeQuote(s, content, good, n);
       if (q.ok && q.last >= SELL_FLOOR * homeP && q.average >= SELL_PAR * baseOf(s, content, home, good)) break;
