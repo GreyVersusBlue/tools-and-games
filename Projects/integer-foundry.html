@@ -203,7 +203,11 @@ body{
 .tool-btn .icon{font-size:16px;}
 .tool-btn:hover{border-color:var(--copper-dim);}
 .tool-btn.active{border-color:var(--copper); background:var(--iron-3); box-shadow:0 0 0 1px var(--copper) inset;}
-.tool-btn.locked{opacity:0.35; cursor:not-allowed;}
+/* Locked reads as locked by its dashed edge and flat ground, not by opacity:
+   opacity .35 put the icon and label at 2.6:1 on the button (axe, 2026-11-24).
+   #9c9082 on #25201a is above 5:1. */
+.tool-btn.locked{cursor:not-allowed; background:transparent; border-style:dashed; color:var(--paper-dim);}
+.tool-btn.locked .icon, .tool-btn.locked .cost{color:var(--paper-dim);}
 .tool-btn .cost{font-size:8px; color:var(--slag);}
 #tool-hint{font-size:11px; color:var(--paper-dim); margin-top:8px; line-height:1.5;}
 
@@ -282,7 +286,7 @@ footer a{color:var(--copper); text-decoration:none;}
   </div>
 </div>
 
-<div id="main">
+<div id="main" role="main">
   <div id="factory-wrap">
     <div id="grid-frame">
       <div id="grid"></div>

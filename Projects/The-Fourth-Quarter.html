@@ -12,21 +12,22 @@
 <link rel="canonical" href="https://greyversusblue.com/Projects/The-Fourth-Quarter.html">
 <meta property="og:title" content="Sports Bar Sim — greyversusblue">
 <meta property="og:description" content="The original flat build of the bar, kept up for anyone who liked it better in two dimensions.">
-<meta property="og:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta property="og:image" content="https://greyversusblue.com/assets/og/sports-bar-sim.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A tavern notice board headed 'The Guild Board of greyversusblue'.">
+<meta property="og:image:alt" content="Sports Bar Sim, mid-play.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Sports Bar Sim — greyversusblue">
 <meta name="twitter:description" content="The original flat build of the bar, kept up for anyone who liked it better in two dimensions.">
-<meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta name="twitter:image" content="https://greyversusblue.com/assets/og/sports-bar-sim.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
+<meta name="robots" content="noindex">
 <style>
 :root{
   --bg:#120d09; --panel:#221912; --panel2:#2a1f16; --line:#3d2f21;
   --amber:#e8a33d; --amberdim:#a5762f; --neon:#ff4e42; --chalk:#f2e9dc;
-  --muted:#8a7a66; --green:#58b368; --red:#e05548; --blue:#5aa7d6;
+  --muted:#9a8a76; --green:#58b368; --red:#e05548; --blue:#5aa7d6;
   --disp:Impact,'Arial Narrow Bold','Franklin Gothic Medium',sans-serif;
   --mono:'Consolas','Courier New',monospace;
   --body:'Segoe UI',system-ui,Arial,sans-serif;
@@ -171,7 +172,7 @@ textarea.saveio{width:100%;min-height:110px;background:#0b0805;color:var(--chalk
 <body>
 
 <div id="scorebug">
-  <div class="bug brand"><span class="lbl neonSign">THE FOURTH QUARTER</span><span class="val" id="dayLabel">Day 1 · Mon</span></div>
+  <div class="bug brand"><h1 class="lbl neonSign">THE FOURTH QUARTER</h1><span class="val" id="dayLabel">Day 1 · Mon</span></div>
   <div class="bug"><span class="lbl">Cash</span><span class="val" id="cash">$0</span></div>
   <div class="bug"><span class="lbl">Reputation</span><span class="val" id="rep">0</span></div>
   <div class="bug"><span class="lbl">Seats</span><span class="val" id="seats">0</span></div>
@@ -181,7 +182,7 @@ textarea.saveio{width:100%;min-height:110px;background:#0b0805;color:var(--chalk
   <div id="liveBadge"><div class="dot"></div><span>LIVE</span></div>
 </div>
 
-<div id="app">
+<main id="app">
 
   <!-- ============ PLANNING ============ -->
   <div id="planWrap">
@@ -275,7 +276,7 @@ textarea.saveio{width:100%;min-height:110px;background:#0b0805;color:var(--chalk
     </div>
   </div>
 
-</div>
+</main>
 
 <!-- ============ MODAL ============ -->
 <div id="modalBack">
@@ -1514,7 +1515,7 @@ const ui={
           <button data-ord="${it.id}" data-d="10">+10</button>
           <button data-ord="${it.id}" data-d="100">+100</button></span></td>
         <td class="parbtn"><input class="par" type="number" min="0" step="1" value="${S.pars[it.id]||""}"
-          placeholder="—" data-par="${it.id}" title="Target servings to keep on hand">
+          placeholder="—" data-par="${it.id}" aria-label="Par for ${it.name}" title="Target servings to keep on hand">
           <button class="btn small ghost" data-fillpar="${it.id}" title="Add enough to the cart to hit this item's par">→Par</button></td>
       </tr>`;}).join("");
     this.orderTotal();
@@ -1560,7 +1561,7 @@ const ui={
         const a=appeal(it.id);
         const cls=a>1?"good":a<0.7?"bad":"";
         return `<tr><td>${it.name}</td>
-        <td><input type="range" min="${Math.max(1,Math.round(it.base*0.6))}" max="${Math.round(it.base*1.8)}" step="0.5" value="${S.prices[it.id]}" data-price="${it.id}"></td>
+        <td><input type="range" min="${Math.max(1,Math.round(it.base*0.6))}" max="${Math.round(it.base*1.8)}" step="0.5" value="${S.prices[it.id]}" data-price="${it.id}" aria-label="Price for ${it.name}"></td>
         <td class="num money">$${S.prices[it.id].toFixed(2)}</td>
         <td class="num ${cls}">${Math.round(a*100)}%</td></tr>`;}).join("");
   },
@@ -1818,7 +1819,7 @@ const ui={
         <button class="btn small ghost ctl" data-exportsave="1">Show</button>
       </div>
       <div id="exportWrap" style="display:none">
-        <textarea class="saveio" id="exportBox" readonly></textarea>
+        <textarea class="saveio" id="exportBox" aria-label="Exported save" readonly></textarea>
         <div class="spread mt"><span class="hint">Day ${S.day} · ${S.venue.name}</span>
           <span><button class="btn small ghost" data-copysave="1">Copy</button>
           <button class="btn small ghost" data-dlsave="1">Download</button></span></div>
@@ -1828,7 +1829,7 @@ const ui={
         <button class="btn small ghost ctl" data-importtoggle="1">Paste</button>
       </div>
       <div id="importWrap" style="display:none">
-        <textarea class="saveio" id="importBox" placeholder='Paste the exported save JSON here…'></textarea>
+        <textarea class="saveio" id="importBox" aria-label="Save to import" placeholder='Paste the exported save JSON here…'></textarea>
         <div class="spread mt"><span class="hint bad" id="importMsg"></span>
           <button class="btn small" data-importsave="1">Load It</button></div>
       </div>
