@@ -222,6 +222,7 @@ export const GROUPS = {
     'browser/movement.mjs', // SV2-17
     'browser/movement-bells.mjs', // SV2-79
     'browser/movement-w8.mjs', // SV2-153
+    'browser/crowd-aware.mjs', // SV2-154
     'browser/hotspots.mjs', // SV2-18
     'browser/playback.mjs', // SV2-19
     'browser/m3-pass.mjs', // SV2-43
@@ -328,6 +329,7 @@ export const BROWSER_SECONDS = {
   'browser/staff-calendar.mjs': 13,
   'browser/movement.mjs': 13,
   'browser/movement-w8.mjs': 240, // 100 cases in one run, about 4 min on two slow cores (SV2-153)
+  'browser/crowd-aware.mjs': 240, // 55 cases at 390 and 51 at 1280 in one run, three modes each (SV2-154)
   'browser/staff-views-a.mjs': 13,
   'browser/calendar-review.mjs': 13,
   'browser/snapshots.mjs': 25, // 25 s on Huginn (SV2-118b)
