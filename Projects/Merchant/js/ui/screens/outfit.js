@@ -213,21 +213,6 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     return { ok: c.ok, reasons: c.reasons };
   }
 
-  // MER-122 (play a053): 'Change' on Where leaves for the map with the cargo set, and the next sheet of the same season keeps the loads the
-  // new stop still trades in, as many as the house can fill. A kept draft is used once, and not after the season turns.
-  const kept = app.outfitKeep && app.outfitKeep.t === app.state.t && app.outfitKeep.stop !== stopId ? app.outfitKeep : null;
-  app.outfitKeep = null;
-  if (kept && draft.agent) {
-    // MER-132: as many loads as the engine says the house can pay for (mostLoads), with the goods already kept counted in the plan
-    const fit = {}, was = draft.cargo;
-    for (const [g, n] of Object.entries(kept.cargo)) {
-      if (!(n > 0) || !carriable().includes(g)) continue;
-      draft.cargo = { ...fit };
-      const most = engine.mostLoads(app.state, content, plan(), g);
-      if (Math.min(n, most) > 0) fit[g] = Math.min(n, most);
-    }
-    draft.cargo = Object.keys(fit).length ? fit : was;
-  }
   // ---- sections
   const section = (id, title, ...body) => h('section', { class: 'step', id: `outfit-${id}`, 'aria-labelledby': `outfit-${id}-h` },
     h('h3', { id: `outfit-${id}-h`, tabindex: '-1' }, title), ...body);
@@ -273,7 +258,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     }
     const total = `About ${words(hit.seasons)} ${plural(hit.seasons, 'season', 'seasons')} out and back.`;
     if (!expanded('where')) {
-      return section('where', `2. Where: ${stop.name}`, summary('where', `${homeStop.name} to ${stop.name}. ${total}`, () => { app.outfitKeep = { t: app.state.t, stop: stopId, cargo: { ...draft.cargo } }; onCancel(); }, 'where'));
+      return section('where', `2. Where: ${stop.name}`, summary('where', `${homeStop.name} to ${stop.name}. ${total}`, () => onCancel(), 'where'));
     }
     return section('where', `2. Where: ${stop.name}`,
       h('ol', { class: 'legs' }, hit.route.legs.map((leg, i) => h('li', null,

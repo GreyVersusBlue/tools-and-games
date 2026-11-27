@@ -1863,45 +1863,37 @@ try {
       });
       await closeSheet();
     });
-    await test('MER-122: Change on Where keeps the cargo the new stop still trades, and drops the rest', async () => {
+    await test('MER-163 (play b024): Change on Where makes the house\'s plan for the new stop, as opening the sheet there would, and the old cargo does not follow', async () => {
       const g = await engineState(page);
       const view0 = await page.evaluate(() => window.__merchant.view);
       const trades = id => Object.keys(nodeContent.stops.find(x => x.id === id).sells ?? {});
       const roadOpen = id => { const r = eng.routeFor(g, nodeContent, id); return !!r && r.route.legs[0].opens.includes(view0.season); };
+      const linenAtDamascus = trades('damascus').includes('linen');
       await openSheet();
       await pressChange(page, '#change-carry'); await page.waitForSelector('#step-cargo-linen-plus');
       await page.click('#step-cargo-linen-plus'); await page.click('#step-cargo-linen-plus');
       const goods = await page.$eval('#outfit-total', e => e.textContent.replace(/^In all: /, '').replace(/ and [\d,]+ dinars?\.$/, '').replace(/\.$/, ''));
-      ok(/linen/.test(goods), `setup: linen is in the cargo: ${goods}`);
-      const [keeps, drops] = [['qus', trades('qus').includes('linen') && roadOpen('qus')], ['samarkand', !trades('samarkand').includes('linen') && roadOpen('samarkand')]];
-      ok(keeps[1] && drops[1], `setup: Qus trades linen and Samarkand does not, and both roads are open: ${keeps}, ${drops}`);
-      await pressChange(page, '#change-where');
-      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
-      await page.click('#stop-qus, .dot[data-stop="qus"]');
-      await page.click('#btn-outfit');
-      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      // what Qus still trades of the cargo set for Damascus stays, load for load; the rest (what only Damascus trades) is dropped
-      const kept = Object.fromEntries(Object.entries(cargoOfLine(goods, nodeContent)).filter(([g]) => trades('qus').includes(g)));
-      const keptLine = await page.$eval('#summary-carry', e => e.textContent);
-      ok(Object.keys(kept).includes('linen') && Object.keys(kept).length < Object.keys(cargoOfLine(goods, nodeContent)).length, `setup: Qus keeps some of the cargo and drops some: ${JSON.stringify(kept)}`);
-      eq(cargoOfLine(keptLine, nodeContent), kept, 'Qus: the cargo set for Damascus that Qus trades is still on the sheet');
-      await closeSheet();
-      // a draft is used once: the next sheet for Qus is the engine's own again
-      await page.click('#btn-outfit');
-      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      ok(await page.$eval('#summary-carry', (e, k) => e.textContent !== k, keptLine), 'the kept cargo was used once; the next sheet for Qus is the engine\'s own');
-      await closeSheet();
-      // Samarkand trades no linen: the loads are dropped and the engine's own plain plan stands
-      await openSheet();
-      await pressChange(page, '#change-carry'); await page.waitForSelector('#step-cargo-linen-plus');
-      await page.click('#step-cargo-linen-plus');
-      await pressChange(page, '#change-where');
-      await page.waitForFunction(() => !document.getElementById('panel-outfit'));
-      await page.click('#stop-samarkand, .dot[data-stop="samarkand"]');
-      await page.click('#btn-outfit');
-      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
-      ok(!/linen/.test(await page.$eval('#summary-carry', e => e.textContent)), `Samarkand: no linen goes: ${await page.$eval('#summary-carry', e => e.textContent)}`);
-      await closeSheet();
+      ok(/linen/.test(goods), `setup: linen is in the cargo the player set: ${goods} (Damascus trades linen: ${linenAtDamascus})`);
+      for (const id of ['qus', 'samarkand']) {
+        ok(roadOpen(id), `setup: the road to ${id} is open`);
+        if (id === 'samarkand') { await closeSheet(); await openSheet(); await pressChange(page, '#change-carry'); await page.waitForSelector('#step-cargo-linen-plus'); await page.click('#step-cargo-linen-plus'); }
+        await pressChange(page, '#change-where');
+        await page.waitForFunction(() => !document.getElementById('panel-outfit'));
+        await page.click(`#stop-${id}, .dot[data-stop="${id}"]`);
+        await page.click('#btn-outfit');
+        await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+        // the sheet is the plan the house makes for this stop: the cargo, the estimate and Send's state are the engine's, whatever was set for Damascus
+        const plan = sheetPlan(g, nodeContent, id);
+        const sheet = await page.evaluate(() => ({ carry: document.getElementById('summary-carry')?.textContent ?? '', send: document.getElementById('outfit-send')?.getAttribute('aria-disabled') }));
+        if (plan) {
+          eq(cargoOfLine(sheet.carry, nodeContent), plan.cargo, `${id}: the cargo on the sheet is the house's plan for ${id}`);
+          eq(sheet.send, eng.checkPlan(g, nodeContent, plan).ok ? 'false' : 'true', `${id}: Send is live only when the engine says the plan stands`);
+        } else eq(sheet.send, 'true', `${id}: no plan, so Send is not live`);
+        // the old cargo does not follow: loads of a good the plan does not carry are not on the sheet
+        const stray = Object.keys(cargoOfLine(sheet.carry, nodeContent)).filter(x => !(plan?.cargo ?? {})[x]);
+        eq(stray, [], `${id}: no good from the Damascus cargo rides along`);
+        await closeSheet();
+      }
       await page.click('#stop-damascus, .dot[data-stop="damascus"]');   // the map keeps the stop selected, and the cases after this one are about Damascus
       eq(await page.$eval('#board-title', e => e.textContent), 'Prices in Damascus');
     });
@@ -2855,6 +2847,43 @@ try {
         await sameScreen(page, model, 'after the question', { raisedFirst: false });
       });
       await test('letters: no offsite request, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+      await page.close();
+    }
+
+    // MER-163 (M4g play A a069, a070): "Send Ali out again" opened the sheet with Yusuf in "Who goes". The card's choice names `$agent`, the
+    // desk passed that word on as an agent's id, no free agent had it, and the sheet kept its own first pick. As with a letter, the card's draw is
+    // placed by hand (return-out-again is only the entry for a trip no other entry fits); the paper, the choices and the sheet are the engine's and the page's.
+    {
+      const { askOf } = await import(pathToFileURL(path.join(MER, 'engine', 'routes.js')).href);
+      let s = afterFirst();
+      s = eng.outfit(s, nodeContent, eng.proposePlan(s, nodeContent, 'ali', eng.routeFor(s, nodeContent, 'damascus').route.id));
+      for (let i = 0; i < 6 && !s.desk.some(p => p.state === 'open' && p.kind === 'return' && p.agent === 'ali'); i++) {
+        for (const p of s.desk.filter(p => p.state === 'open')) { const c = eng.paperChoices(s, nodeContent, p.id).find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } }); if (c) s = eng.choose(s, nodeContent, p.id, c.id); }
+        s = eng.endSeason(s, nodeContent); if (s.phase === 'interlude') s = eng.openSeason(s, nodeContent);
+      }
+      const ret = s.desk.find(p => p.state === 'open' && p.kind === 'return' && p.agent === 'ali');
+      ok(!!ret, 'setup: Ali is home with a return paper on the desk');
+      const entry = nodeContent.returns.find(e => e.id === 'return-out-again');
+      Object.assign(ret.data, askOf(nodeContent, entry, ret.data.trip));
+      for (const p of s.desk.filter(p => p.state === 'open' && p.id !== ret.id)) p.state = 'answered';
+      const free = nodeContent.agents.filter(a => s.agents[a.id].hired && s.agents[a.id].where === nodeContent.city.home && !s.expeditions.some(x => x.agent === a.id)).map(a => a.id);
+      ok(free.includes('yusuf') && free.includes('ali'), `setup: Yusuf and Ali are both free, so the sheet has a first pick other than Ali: ${free}`);
+      const { page, consoleErrors } = await open(FRAMES[0]);
+      await loadSave(page, s);
+      await test('MER-163 (a069): "Send Ali out again" opens the outfit sheet with Ali in "Who goes", not the first free agent', async () => {
+        await page.$eval(`#choice-${ret.id}-again`, b => b.scrollIntoView({ block: 'center' }));
+        await page.click(`#choice-${ret.id}-again`);
+        await page.waitForSelector(BACK);
+        await page.click('#btn-next');
+        await page.waitForSelector('#summary-who');
+        eq(await page.$eval('#summary-who', e => e.textContent.split(' (')[0]), 'Ali', 'the sheet names Ali');
+        eq(await page.evaluate(() => window.__merchant.state.log.some(e => e.kind === 'outfit')), true, 'setup: this is not the first sheet of the game');
+        await page.click('#outfit-send');
+        await page.waitForSelector('#map-toast:not([hidden])');
+        const sent = (await engineState(page)).expeditions.filter(x => x.agent === 'ali');
+        eq(sent.length, 1, 'Ali is the one sent');
+      });
+      await test('MER-163: the Ali paper page: nothing offsite, no console error', async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
       await page.close();
     }
     {

@@ -340,7 +340,7 @@ export function createDesk(app) {
     const answered = app.state.desk.find(p => p.id === paper.id);
     const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now, app, { agent: paper.agent, result: choice.result });
     const done = () => {
-      backOf = { paper: answered, now, fresh, outfit: outfitOf(choice, tripTo) };
+      backOf = { paper: answered, now, fresh, outfit: outfitOf(choice, tripTo, paper.agent) };
       busy = false;
       draw({ focus: 'back', flipped: true });
       // `data-flip` is on the back from its first frame until it lies flat: a press or a click on
@@ -357,9 +357,10 @@ export function createDesk(app) {
 
   /** What a choice asks of the outfit sheet: the `outfit` effect in its `now` (agent and contract),
       on the stop the card's trip names when it has one, or the plain one-press sheet for ui: outfit-first; null when it opens no sheet. */
-  function outfitOf(choice, tripTo) {
+  function outfitOf(choice, tripTo, paperAgent = null) {
     const e = (choice.now ?? []).find(x => x && x.outfit !== undefined);
-    if (e) return { agent: e.outfit, contract: e.contract, stop: tripTo };
+    // MER-163 (play problem 4): `$agent` is the paper's own agent, as in happened(); passed on unspoken it named nobody and the sheet opened on the first free hand
+    if (e) return { agent: e.outfit === '$agent' ? paperAgent : e.outfit, contract: e.contract, stop: tripTo };
     if (choice.ui === 'outfit-first') return {};
     // MER-145 (play a089, problem on Ali's and Samir's cards): hiring on a wage opens the sheet for the man hired, as the qirad does. The cards that hire
     // without an `outfit` effect (Ali's, Mariam's wage, Matteo's fee and wage) name the choice 'hire', 'wage' or 'fee'; a share of the profit is the other
