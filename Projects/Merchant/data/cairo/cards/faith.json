@@ -365,12 +365,12 @@
     "group": "faith",
     "kind": "trade",
     "from": {
-      "name": "A litter maker",
+      "name": "Salih, a litter maker",
       "role": "Cairo",
       "seal": null
     },
     "title": "Litters for the emirs' wives",
-    "body": "The wives of some emirs, the sultan's high officers, plan to go on the Hajj, the pilgrimage to Mecca. They want litters, covered seats that camels carry. They also want to give robes to the drivers.",
+    "body": "Salih makes litters, the covered seats that camels carry. The wives of some emirs, the sultan's high officers, plan to go on the Hajj, the pilgrimage to Mecca. They want litters from your house, and they also want to give robes to the drivers. Salih asks which litters you will rent them.",
     "when": {
       "all": [
         {
@@ -392,7 +392,7 @@
       {
         "id": "plain",
         "label": "Rent plain litters",
-        "hint": "They pay you 3 dinars now. It is a low fee, and partners think well of your house.",
+        "hint": "The wives pay your house 3 dinars now. It is a low fee, and partners think well of your house.",
         "now": [
           {
             "money": 3
@@ -413,7 +413,7 @@
       {
         "id": "showy",
         "label": "Rent showy litters",
-        "hint": "They pay you 8 dinars now. People complain of the show, and the court hears of it.",
+        "hint": "The wives pay your house 8 dinars now. People complain of the show, and the court hears of it.",
         "now": [
           {
             "money": 8
@@ -647,7 +647,7 @@
       {
         "id": "carry",
         "label": "Carry it yourself",
-        "hint": "It costs 6 dinars now. There is more profit, but the court may frown on it.",
+        "hint": "It costs 6 dinars now. You carry his pepper to Cyprus, and he pays you 12 dinars in two seasons, more than the Greek would earn. The court may frown on it, and partners like the profit.",
         "requires": {
           "money": {
             "gte": 6
@@ -662,6 +662,9 @@
           {
             "in": 2,
             "do": [
+              {
+                "money": 12
+              },
               {
                 "rep": "court",
                 "by": -1

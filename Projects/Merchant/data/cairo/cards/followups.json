@@ -1592,7 +1592,7 @@
       {
         "id": "claim",
         "label": "Claim the goods through a friend in Calicut",
-        "hint": "It costs 6 dinars now. If you win, foreign houses hear that your house fights for its goods.",
+        "hint": "It costs 6 dinars now. A friend in Calicut argues your claim, and foreign houses hear that your house fights for its goods.",
         "requires": {
           "money": {
             "gte": 6
@@ -1637,7 +1637,7 @@
       {
         "id": "gift",
         "label": "Give a gift to the ruler's men",
-        "hint": "It costs 9 dinars now. They give back part of the cargo, and the court hears of it.",
+        "hint": "It costs 9 dinars now. The ruler's men give back part of the cargo. In two seasons 1 lot of pepper reaches your warehouse, and the court hears of it.",
         "requires": {
           "money": {
             "gte": 9
@@ -1652,6 +1652,10 @@
           {
             "in": 2,
             "do": [
+              {
+                "stock": "pepper",
+                "by": 1
+              },
               {
                 "rep": "court",
                 "by": 1

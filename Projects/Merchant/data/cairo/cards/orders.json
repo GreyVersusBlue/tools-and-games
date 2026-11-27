@@ -1661,16 +1661,24 @@
       {
         "id": "early",
         "label": "Sell early",
-        "hint": "Salim sends you 4 dinars now. The price is low, and partners hear of that too.",
+        "hint": "Salim sells 1 lot of pepper for 60 dinars now. The price is low, and partners hear of that too.",
         "now": [
           {
-            "money": 4
+            "money": 60
+          },
+          {
+            "stock": "pepper",
+            "by": -1
           },
           {
             "rep": "partners",
             "by": -1
           }
-        ]
+        ],
+        "requires": {
+          "stock": "pepper",
+          "gte": 1
+        }
       }
     ],
     "note": "A merchant's letter from Aden of about 1135 says pepper would not sell until the week before the ships sailed. Then buyers came from afar, and the price was set at 23 dinars a bahar.",
@@ -1716,22 +1724,26 @@
     "choices": [
       {
         "id": "large",
-        "label": "Buy a large lot at harvest",
-        "hint": "It costs 10 dinars now. The pepper takes a season to ship, and partners think well of you.",
+        "label": "Buy two lots at harvest",
+        "hint": "It costs 200 dinars now for 2 lots of pepper, the harvest price with the cost of shipping. The pepper reaches your warehouse in three seasons, and partners think well of you.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 200
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -200
           }
         ],
         "later": [
           {
             "in": 3,
             "do": [
+              {
+                "stock": "pepper",
+                "by": 2
+              },
               {
                 "rep": "partners",
                 "by": 1
@@ -1742,22 +1754,26 @@
       },
       {
         "id": "small",
-        "label": "Buy a small lot",
-        "hint": "It costs 4 dinars now. Foreign houses see that you buy at the source.",
+        "label": "Buy one lot",
+        "hint": "It costs 100 dinars now for 1 lot of pepper, with the cost of shipping. It reaches your warehouse in two seasons, and foreign houses see that you buy at the source.",
         "requires": {
           "money": {
-            "gte": 4
+            "gte": 100
           }
         },
         "now": [
           {
-            "money": -4
+            "money": -100
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "pepper",
+                "by": 1
+              },
               {
                 "rep": "foreign",
                 "by": 1
@@ -1942,22 +1958,26 @@
     "choices": [
       {
         "id": "all",
-        "label": "Buy a load of salt",
-        "hint": "It costs 8 dinars now. The salt travels for seasons, and foreign houses hear of it.",
+        "label": "Buy two lots of salt",
+        "hint": "It costs 20 dinars now for 2 lots of salt at Taghaza. The salt reaches your warehouse in three seasons, and foreign houses hear of it.",
         "requires": {
           "money": {
-            "gte": 8
+            "gte": 20
           }
         },
         "now": [
           {
-            "money": -8
+            "money": -20
           }
         ],
         "later": [
           {
             "in": 3,
             "do": [
+              {
+                "stock": "salt",
+                "by": 2
+              },
               {
                 "rep": "foreign",
                 "by": 1
@@ -1968,22 +1988,26 @@
       },
       {
         "id": "half",
-        "label": "Buy half a load",
-        "hint": "It costs 4 dinars now. Partners think it a careful trade.",
+        "label": "Buy one lot",
+        "hint": "It costs 10 dinars now for 1 lot of salt. It reaches your warehouse in three seasons, and partners think it a careful trade.",
         "requires": {
           "money": {
-            "gte": 4
+            "gte": 10
           }
         },
         "now": [
           {
-            "money": -4
+            "money": -10
           }
         ],
         "later": [
           {
-            "in": 2,
+            "in": 3,
             "do": [
+              {
+                "stock": "salt",
+                "by": 1
+              },
               {
                 "rep": "partners",
                 "by": 1
@@ -2164,21 +2188,25 @@
       {
         "id": "rods",
         "label": "Take rods",
-        "hint": "It costs 8 dinars now. The rods travel well, and partners hear of it.",
+        "hint": "It costs 60 dinars now for 2 lots of copper in rods. The rods travel well and reach your warehouse in three seasons, and partners hear of it.",
         "requires": {
           "money": {
-            "gte": 8
+            "gte": 60
           }
         },
         "now": [
           {
-            "money": -8
+            "money": -60
           }
         ],
         "later": [
           {
             "in": 3,
             "do": [
+              {
+                "stock": "copper",
+                "by": 2
+              },
               {
                 "rep": "partners",
                 "by": 1
@@ -2190,21 +2218,25 @@
       {
         "id": "gold",
         "label": "Take gold instead",
-        "hint": "It costs 12 dinars now. Gold is light, and foreign houses hear of it.",
+        "hint": "It costs 100 dinars now for 1 chest of gold. Gold is light and reaches your warehouse in two seasons, and foreign houses hear of it.",
         "requires": {
           "money": {
-            "gte": 12
+            "gte": 100
           }
         },
         "now": [
           {
-            "money": -12
+            "money": -100
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "gold",
+                "by": 1
+              },
               {
                 "rep": "foreign",
                 "by": 1
@@ -2390,21 +2422,25 @@
       {
         "id": "sea",
         "label": "Send a ship in winter",
-        "hint": "It costs 6 dinars now, for the risk of the sea. Foreign houses admire your nerve.",
+        "hint": "It costs 226 dinars now. That is 220 for 2 lots of pepper at the winter price and 6 for the risk of the sea. The pepper reaches your warehouse in two seasons, and foreign houses admire your nerve.",
         "requires": {
           "money": {
-            "gte": 6
+            "gte": 226
           }
         },
         "now": [
           {
-            "money": -6
+            "money": -226
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "pepper",
+                "by": 2
+              },
               {
                 "rep": "foreign",
                 "by": 1
@@ -2416,21 +2452,25 @@
       {
         "id": "nile",
         "label": "Send a Nile boat to the warehouses",
-        "hint": "It costs 3 dinars now. The choice of goods is small, and partners like the care.",
+        "hint": "It costs 113 dinars now, 110 for 1 lot of pepper and 3 for the boat. The choice of goods is small, and the pepper reaches your warehouse in two seasons. Partners like the care.",
         "requires": {
           "money": {
-            "gte": 3
+            "gte": 113
           }
         },
         "now": [
           {
-            "money": -3
+            "money": -113
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "pepper",
+                "by": 1
+              },
               {
                 "rep": "partners",
                 "by": 1
@@ -2496,21 +2536,25 @@
       {
         "id": "aleppo",
         "label": "Order from the glass houses of Aleppo",
-        "hint": "It costs 9 dinars now. The glass is clear, and foreign houses hear of it.",
+        "hint": "It costs 100 dinars now for 2 lots of the clearest glass. The glass reaches your warehouse in two seasons, and foreign houses hear of it.",
         "requires": {
           "money": {
-            "gte": 9
+            "gte": 100
           }
         },
         "now": [
           {
-            "money": -9
+            "money": -100
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "glass",
+                "by": 2
+              },
               {
                 "rep": "foreign",
                 "by": 1
@@ -2522,21 +2566,25 @@
       {
         "id": "alexandria",
         "label": "Order from Alexandria",
-        "hint": "It costs 5 dinars now. It is cheaper and less clear, and partners like the price.",
+        "hint": "It costs 70 dinars now for 2 lots of plainer glass. It is cheaper and less clear, and partners like the price. It reaches your warehouse in two seasons.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 70
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -70
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "glass",
+                "by": 2
+              },
               {
                 "rep": "partners",
                 "by": 1
@@ -2610,8 +2658,8 @@
     "choices": [
       {
         "id": "large",
-        "label": "Order a large lot",
-        "hint": "It costs 10 dinars now. The dye sells dear, and foreign houses hear of it.",
+        "label": "Order a lot",
+        "hint": "It costs 10 dinars now, your share of the order. The dye sells dear, and foreign houses hear of it.",
         "requires": {
           "money": {
             "gte": 10

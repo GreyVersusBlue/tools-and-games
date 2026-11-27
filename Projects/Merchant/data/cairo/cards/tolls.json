@@ -913,22 +913,26 @@
     "choices": [
       {
         "id": "pay",
-        "label": "Pay the tax",
-        "hint": "It costs 8 dinars now. The court of Mali thinks well of your house.",
+        "label": "Pay the tax and take the copper",
+        "hint": "It costs 68 dinars now, 8 for the tax and 60 for 2 lots of copper. The copper reaches your warehouse in two seasons, and the court of Mali thinks well of your house.",
         "requires": {
           "money": {
-            "gte": 8
+            "gte": 68
           }
         },
         "now": [
           {
-            "money": -8
+            "money": -68
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "copper",
+                "by": 2
+              },
               {
                 "rep": "court",
                 "by": 1
@@ -940,13 +944,16 @@
       {
         "id": "hide",
         "label": "Hide the copper from the tax men",
-        "hint": "It costs nothing now and 5 dinars in two seasons, a fine if the tax men find it. Partners dislike a cheat.",
+        "hint": "It costs 60 dinars now for 2 lots of copper. It costs 5 more in two seasons, a fine if the tax men find it. Partners dislike a cheat.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 65
           }
         },
         "now": [
+          {
+            "money": -60
+          },
           {
             "flag": "copper-tax-dodged",
             "set": "now"
@@ -958,6 +965,10 @@
             "do": [
               {
                 "money": -5
+              },
+              {
+                "stock": "copper",
+                "by": 2
               },
               {
                 "rep": "partners",
@@ -1146,7 +1157,7 @@
     "choices": [
       {
         "id": "large",
-        "label": "Bring in a large load of silver",
+        "label": "Bring in a load of silver",
         "hint": "It costs 10 dinars now. The saving shows later, and foreign houses hear of it.",
         "requires": {
           "money": {
@@ -1616,7 +1627,7 @@
       {
         "id": "back",
         "label": "Turn back and ask a friend for a pass",
-        "hint": "It costs 3 dinars now. A season is lost, but the goods are safe, and partners hear of it.",
+        "hint": "It costs 3 dinars now. The goods lose time, but they are safe, and partners hear of it.",
         "requires": {
           "money": {
             "gte": 3

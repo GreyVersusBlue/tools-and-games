@@ -900,7 +900,7 @@
       },
       {
         "id": "cancel",
-        "label": "Cancel the trip",
+        "label": "Do not cross the desert",
         "hint": "It costs nothing. Yunus finds another customer.",
         "now": [
           {

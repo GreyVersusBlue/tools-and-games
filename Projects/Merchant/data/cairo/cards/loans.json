@@ -707,7 +707,7 @@
     "choices": [
       {
         "id": "lend",
-        "label": "Lend a large sum",
+        "label": "Lend 12 dinars",
         "hint": "It costs 12 dinars now and pays back 21 in three seasons. Other lenders say you lend too freely.",
         "requires": {
           "money": {
@@ -736,7 +736,7 @@
       },
       {
         "id": "little",
-        "label": "Lend a little",
+        "label": "Lend 4 dinars",
         "hint": "It costs 4 dinars now and pays back 7 in three seasons. Foreign houses hear that you lend to kings.",
         "requires": {
           "money": {
@@ -822,8 +822,12 @@
       {
         "id": "late",
         "label": "Let him pay late for a better price",
-        "hint": "He pays 12 dinars in three seasons, not now. You must chase him, and your people tire of it.",
+        "hint": "He takes 1 chest of gold now and pays you 115 dinars in three seasons, 15 more than coin today. You must chase him, and your people tire of it.",
         "now": [
+          {
+            "stock": "gold",
+            "by": -1
+          },
           {
             "flag": "alexandria-late-pay",
             "set": "now"
@@ -834,7 +838,7 @@
             "in": 3,
             "do": [
               {
-                "money": 12
+                "money": 115
               },
               {
                 "rep": "agents",
@@ -842,15 +846,23 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
       },
       {
         "id": "coin",
         "label": "Insist on coin on the day",
-        "hint": "He pays 8 dinars now. He is not pleased, but he pays.",
+        "hint": "He pays 100 dinars now for 1 chest of gold. He is not pleased, but he pays.",
         "now": [
           {
-            "money": 8
+            "money": 100
+          },
+          {
+            "stock": "gold",
+            "by": -1
           }
         ],
         "later": [
@@ -863,15 +875,23 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
       },
       {
         "id": "half",
         "label": "Take half now and a note for the rest",
-        "hint": "He pays 4 dinars now and 6 in three seasons. A note is a risk, and partners know it.",
+        "hint": "He takes 1 chest of gold and pays 55 dinars now and 55 in three seasons. A note is a risk, and partners know it.",
         "now": [
           {
-            "money": 4
+            "money": 55
+          },
+          {
+            "stock": "gold",
+            "by": -1
           }
         ],
         "later": [
@@ -879,7 +899,7 @@
             "in": 3,
             "do": [
               {
-                "money": 6
+                "money": 55
               },
               {
                 "rep": "partners",
@@ -887,7 +907,11 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
       }
     ],
     "note": "Gold and silver sold in Egypt were often paid for late. Treaties in 1238, 1254, 1290, 1302 and 1345 ordered buyers to pay at once.",

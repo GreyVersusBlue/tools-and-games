@@ -787,8 +787,8 @@
       },
       {
         "id": "loan",
-        "label": "Lend money to his house",
-        "hint": "It costs 10 dinars now. The loan helps the Venetians, and foreign houses hear of it.",
+        "label": "Give money to his house",
+        "hint": "It costs 10 dinars now, a gift to help the Venetians. Foreign houses hear of it.",
         "requires": {
           "money": {
             "gte": 10
@@ -1120,16 +1120,20 @@
     "choices": [
       {
         "id": "buy",
-        "label": "Buy at his price",
-        "hint": "It costs 12 dinars now. The official is your friend for seasons to come.",
+        "label": "Buy the cloth at his price",
+        "hint": "It costs 120 dinars now for 2 lots of linen, which sell for about 90 in the market. You leave the oil and tar. The official is your friend for seasons to come.",
         "requires": {
           "money": {
-            "gte": 12
+            "gte": 120
           }
         },
         "now": [
           {
-            "money": -12
+            "money": -120
+          },
+          {
+            "stock": "linen",
+            "by": 2
           }
         ],
         "later": [
@@ -1146,16 +1150,20 @@
       },
       {
         "id": "half",
-        "label": "Buy half",
-        "hint": "It costs 6 dinars now. He is a little cold, and partners hear of it.",
+        "label": "Buy one lot",
+        "hint": "It costs 60 dinars now for 1 lot of linen, which sells for about 45 in the market. He is a little cold, and partners hear of it.",
         "requires": {
           "money": {
-            "gte": 6
+            "gte": 60
           }
         },
         "now": [
           {
-            "money": -6
+            "money": -60
+          },
+          {
+            "stock": "linen",
+            "by": 1
           }
         ],
         "later": [

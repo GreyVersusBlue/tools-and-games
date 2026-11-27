@@ -515,7 +515,7 @@
       "seal": null
     },
     "title": "A shirt for five dinars",
-    "body": "A visitor from Mali comes to Dawud's stall to buy a shirt. The shirt is worth less than one dinar. Dawud asks what price you think he should name.",
+    "body": "A visitor from Mali wants to buy a shirt at Dawud's stall. The shirt is worth less than one dinar. Dawud asks your house what price he should name.",
     "when": {
       "all": [
         {
@@ -537,7 +537,7 @@
       {
         "id": "fair",
         "label": "Tell him to name a fair price",
-        "hint": "It costs 2 dinars now, the profit he gives up. The Malians remember a fair house.",
+        "hint": "Your house pays Dawud 2 dinars now for the profit he gives up. The Malians remember a fair house.",
         "requires": {
           "money": {
             "gte": 2
@@ -563,7 +563,7 @@
       {
         "id": "five",
         "label": "Tell him to name five dinars",
-        "hint": "Dawud pays you 5 dinars now. The Malians do not forget it, and foreign houses hear of it.",
+        "hint": "Dawud names five dinars and gives your house the 5 dinars now. The Malians do not forget it, and foreign houses hear of it.",
         "now": [
           {
             "money": 5

@@ -809,7 +809,7 @@
       {
         "id": "home",
         "label": "Bring your people home",
-        "hint": "It costs 3 dinars now, and the season is lost. Partners are not pleased.",
+        "hint": "It costs 3 dinars now, for the road home. The work there stops for now, and partners are not pleased.",
         "requires": {
           "money": {
             "gte": 3
@@ -1034,15 +1034,31 @@
       {
         "id": "cloth",
         "label": "Turn the gold into cloth first",
-        "hint": "It costs 5 dinars now. You hold goods while coin is scarce, and foreign houses hear of it.",
+        "hint": "It costs 5 dinars now. A chest of gold becomes 2 lots of linen, worth about 90. You hold goods while coin is scarce, and foreign houses hear of it.",
         "requires": {
-          "money": {
-            "gte": 5
-          }
+          "all": [
+            {
+              "money": {
+                "gte": 5
+              }
+            },
+            {
+              "stock": "gold",
+              "gte": 1
+            }
+          ]
         },
         "now": [
           {
             "money": -5
+          },
+          {
+            "stock": "gold",
+            "by": -1
+          },
+          {
+            "stock": "linen",
+            "by": 2
           }
         ],
         "later": [
@@ -1135,16 +1151,20 @@
     "choices": [
       {
         "id": "cyprus",
-        "label": "Buy pepper for buyers who go round the ban",
-        "hint": "It costs 10 dinars now. The road is long, and foreign houses think well of you.",
+        "label": "Buy pepper to send round the ban",
+        "hint": "It costs 240 dinars now for 2 lots of pepper. Greek merchants of Cyprus will carry it where Venetians may not go, and foreign houses think well of you.",
         "requires": {
           "money": {
-            "gte": 10
+            "gte": 240
           }
         },
         "now": [
           {
-            "money": -10
+            "money": -240
+          },
+          {
+            "stock": "pepper",
+            "by": 2
           }
         ],
         "later": [
@@ -1161,16 +1181,19 @@
       },
       {
         "id": "sell",
-        "label": "Sell pepper in Cairo for what it fetches",
-        "hint": "It costs 4 dinars now, a loss on the sale. Partners see you sell fast.",
+        "label": "Sell a lot of pepper in Cairo",
+        "hint": "You sell 1 lot of pepper for 105 dinars, less than the usual 120 while no galleys come. Partners see you sell fast.",
         "requires": {
-          "money": {
-            "gte": 4
-          }
+          "stock": "pepper",
+          "gte": 1
         },
         "now": [
           {
-            "money": -4
+            "money": 105
+          },
+          {
+            "stock": "pepper",
+            "by": -1
           }
         ],
         "later": [
@@ -1190,9 +1213,17 @@
         "label": "Hold the pepper and wait",
         "hint": "It costs 2 dinars now, for storage. If the ban lifts, you are ready.",
         "requires": {
-          "money": {
-            "gte": 2
-          }
+          "all": [
+            {
+              "money": {
+                "gte": 2
+              }
+            },
+            {
+              "stock": "pepper",
+              "gte": 1
+            }
+          ]
         },
         "now": [
           {
@@ -1259,7 +1290,7 @@
       {
         "id": "wait",
         "label": "Wait for the road to clear",
-        "hint": "It costs nothing. A season is lost, and partners grow restless.",
+        "hint": "It costs nothing. Your goods sit at Aleppo while the army passes, and partners grow restless.",
         "now": [
           {
             "flag": "aleppo-road-waited",
@@ -1416,16 +1447,20 @@
       },
       {
         "id": "cyprus",
-        "label": "Buy from the dealers of Cyprus",
-        "hint": "It costs 5 dinars now, a middleman's cut. Partners like the ease.",
+        "label": "Buy pepper from the dealers of Cyprus",
+        "hint": "It costs 125 dinars now for 1 lot of pepper, 5 of it a middleman's cut. Partners like the ease.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 125
           }
         },
         "now": [
           {
-            "money": -5
+            "money": -125
+          },
+          {
+            "stock": "pepper",
+            "by": 1
           }
         ],
         "later": [
@@ -1492,7 +1527,7 @@
       {
         "id": "recall",
         "label": "Call your people home",
-        "hint": "It costs 2 dinars now. A season is lost, but your goods are safe, and your people are glad.",
+        "hint": "It costs 2 dinars now. Your goods are safe, and your people are glad.",
         "requires": {
           "money": {
             "gte": 2
@@ -1617,7 +1652,7 @@
       {
         "id": "pull",
         "label": "Pull your goods out",
-        "hint": "It costs 4 dinars now. A season is lost, and partners are glad your goods are safe.",
+        "hint": "It costs 4 dinars now. Your goods are out of danger, and partners are glad.",
         "requires": {
           "money": {
             "gte": 4
