@@ -1178,14 +1178,15 @@ function answerAll(s, c) {
   }
   return s;
 }
-/** Seeded games of the real city played on, six seeds of fourteen seasons, a third agent hired from the start and a trip sent from the
+/** Seeded games of the real city played on, eight seeds of fourteen seasons, a third agent hired from the start and a trip sent from the
     sheet's own draft whenever it has one. The desks after the first trip has gone (the sheet opens on a proposal from then on), once
     for the suite: [{ s, at }]. */
 let playedDesks = null;
 function played(c, visit) {
   if (!playedDesks) {
     playedDesks = [];
-    for (const seed of [1, 2, 3, 4, 5, 6]) {
+    // MER-155: seeds 1 to 6 became 1 to 8. The 43 cards of MER-152 move the draws, and six seeds gave 43 states with two agents at home against the 100 MER-144 (1) and (2) ask for.
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
       let s = newGame(c, { seed, length: 'acts', house: c.houses[0].id });
       s.agents.ali.hired = true; s.agents.ali.where = 'cairo';
       for (let i = 0; i < 14 && s.phase !== 'ended' && s.phase !== 'recall'; i++) {
