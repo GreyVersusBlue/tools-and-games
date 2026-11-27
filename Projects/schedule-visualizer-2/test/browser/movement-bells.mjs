@@ -544,6 +544,32 @@ test('a bell schedule deleted while it is chosen: a polite status says the view 
   await change({ ...OPEN });
 });
 
+test('Crowd-aware on a bell schedule that is deleted and brought back by Undo: the lens is asked again for the bells that return, and does not stay at "Working out"', async () => {
+  // SV2-153b (the review of SV2-154, item 7): the view puts the bells back in its own choice as it draws, which is a choice the
+  // lens had not been asked about
+  const crowdIs = (wanted) => page.waitForFunction((state) => document.querySelector('.mov')?.dataset.crowd === state, { timeout: 30000 }, wanted);
+  const lensBells = () => page.evaluate(() => {
+    const lens = document.querySelector('.mov').movement.state.results.crowdAware;
+    return lens ? lens.bellsId : 'no lens';
+  });
+  await change({ ...OPEN, bellsId: AS, routes: 'crowd' });
+  await crowdIs('ready');
+  await settled();
+  assert.equal(await lensBells(), AS);
+  await page.evaluate((id) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteBellSchedule, { bellScheduleId: id }), AS);
+  await settled();
+  await crowdIs('ready');
+  await settled();
+  assert.equal(await lensBells(), null, 'the bells are gone: the lens is of the regular ones');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await settled();
+  assert.equal(await page.$eval('[data-control="bells"]', (el) => el.value), AS);
+  await crowdIs('ready');
+  await settled();
+  assert.equal(await lensBells(), AS, 'the bells came back but the lens is not of them');
+  await change({ ...OPEN, routes: 'usual' });
+});
+
 test('the lab\'s findings are those of the run chosen: under Early Release a walk late only under other bells is not listed', async () => {
   await go(page, '#scenarios');
   await page.evaluate(async () => {
