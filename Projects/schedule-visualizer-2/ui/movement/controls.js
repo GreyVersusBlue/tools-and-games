@@ -3,13 +3,14 @@
 // transition, the two drawing options and Clear. Every change applies at
 // once; nothing here is staged.
 //
-//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe(tab), tryAgain(), folded, fold(folded) })
-//     -> { element, update(project, picture, sentence, crowd), folded, setFolded(folded) }
+//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe(tab), tryAgain(), folded, fold(folded), narrow() })
+//     -> { element, update(project, picture, sentence, crowd), folded, setFolded(folded), widthChanged() }
 //
 // `crowd` is where the crowd-aware answer stands: { state: 'off' | 'working' | 'ready' | 'failed', message }
 // (DESIGN 17.4, 17.7 items 6, 8, 9). Under the first line a band says it is being worked out, or that it
-// could not be, with Try again; and when Routes is folded behind Change and some place has waiting, the
-// first line ends "· Try crowd-aware routes", a link that chooses it.
+// could not be, with Try again; and when Routes is folded behind Change in a window narrow enough to fold
+// the controls by itself (`narrow()`, under 900 px) and some place has waiting, the first line ends
+// "· Try crowd-aware routes", a link that chooses it. A wide window folded by hand is not offered it.
 //
 // The pieces are built once and filled in on update, so a control keeps the
 // focus while the picture behind it changes.
@@ -64,6 +65,7 @@ export function controls(options) {
     changeButton.focus();
   } } }, 'Try crowd-aware routes');
   const tryBox = h('span', { class: 'mov-line__try', hidden: true }, '\u00b7 ', tryCrowd);
+  const trySpace = document.createTextNode(' ');
   const boxId = uid('mov-controls');
   let folded = options.folded === true;
   const changeButton = h('button', { type: 'button', class: 'mov-link mov-change', 'aria-expanded': String(!folded), 'aria-controls': boxId, data: { action: 'change' } }, 'Change');
@@ -235,14 +237,21 @@ export function controls(options) {
     routesBox.hidden = !picture || picture.choice.who === 'teacher';
   }
 
-  // the offer is made wherever Routes is folded behind Change (DESIGN 17.7 item 9: a phone, and a window under 900 px where the
-  // controls fold), only where the usual routes have a place with waiting. No window-width test of its own, so there is no
-  // listener to take off when the view goes.
+  // the offer is made where Routes is folded behind Change in a window that folds the controls by itself (DESIGN 17.7 item 9:
+  // a phone, and a window under 900 px), only where the usual routes have a place with waiting; a desktop folded by hand is
+  // not offered it. The width is the view's test (`narrow()`), and the view says when it changes (`widthChanged`), so there
+  // is no listener here to take off when the view goes.
   function drawTry() {
-    tryBox.hidden = !(folded && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
+    const narrow = typeof options.narrow === 'function' && options.narrow();
+    tryBox.hidden = !(folded && narrow && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
     // it is part of the sentence only while it is offered (a hidden link's words would still be read as the sentence's)
-    if (tryBox.hidden) tryBox.remove();
-    else if (tryBox.parentNode !== words) words.append(' ', tryBox);
+    // and the space before it goes with it: a sentence the offer has left ends where its words end, not in a space
+    if (tryBox.hidden) {
+      trySpace.remove();
+      tryBox.remove();
+    } else if (tryBox.parentNode !== words) {
+      words.append(trySpace, tryBox);
+    }
   }
 
   function drawCrowd(crowd) {
@@ -371,6 +380,10 @@ export function controls(options) {
       return folded;
     },
     setFolded,
+    // the window crossed 900 px: the offer is made again or taken back
+    widthChanged() {
+      if (picture) drawTry();
+    },
     update(nextProject, nextPicture, sentence, crowd) {
       project = nextProject;
       picture = nextPicture;
