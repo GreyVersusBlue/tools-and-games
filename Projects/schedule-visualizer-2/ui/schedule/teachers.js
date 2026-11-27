@@ -16,6 +16,7 @@ import { roomName } from '../../engine/findings.js';
 import { buildExport } from '../../engine/exports.js';
 import { printButtons } from '../prints/index.js';
 import { printButton, openPrintPreview } from '../components/print-preview.js';
+import { movementHash } from '../movement/address.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, deletedText, quote, collator, download } from './common.js';
 
 const WHAT = 'A teacher is a named member of staff, with a subject and one or more rooms.';
@@ -511,7 +512,7 @@ export function mount(env) {
       h('td', { class: 'sch-teachers__notes' }, notes.element),
       h('td', { class: 'sch-teachers__part', data: { label: 'Part-time' } }, partButton(project, teacher)),
       h('td', { class: 'sch-teachers__duties' }, duties(teacher, dutyCounts.get(teacher.id) || 0)),
-      h('td', null, button('Route sheet', (opener) => openPrintPreview(ctx, 'route-sheet', { teacherId: teacher.id, opener }), { small: true, key: key + 'route-sheet', action: 'route-sheet', more: ' for ' + teacher.name }), button('Delete', () => {
+      h('td', null, button('Movement', () => ctx.navigate(movementHash({ who: 'teacher', teacherId: teacher.id })), { small: true, key: key + 'movement', action: 'movement', more: ' for ' + teacher.name }), button('Route sheet', (opener) => openPrintPreview(ctx, 'route-sheet', { teacherId: teacher.id, opener }), { small: true, key: key + 'route-sheet', action: 'route-sheet', more: ' for ' + teacher.name }), button('Delete', () => {
         const index = project.teachers.indexOf(teacher);
         if (!apply(env, deleteTeacher, { id: teacher.id })) return;
         ctx.toast({ text: deletedText(ctx.store.undoOutcome, 'teacher ', teacher.name), action: { label: 'Undo', run: ctx.undo } });

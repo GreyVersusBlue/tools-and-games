@@ -15,6 +15,7 @@ import { floorOfRoom } from '../../engine/schema.js';
 import { fill, apply, button, keyed, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
 import { choosingGroup, openAddress } from './groups.js';
 import { groupHash, slotHash } from './address.js';
+import { movementHash } from '../movement/address.js';
 import { printButtons } from '../prints/index.js';
 import { printButton } from '../components/print-preview.js';
 import { openFix } from './checks-fix.js';
@@ -29,11 +30,16 @@ const PANEL_LIMIT = 12;
 export const SHEET = '(max-width: 900px)';
 
 // Where Show takes a finding: a group's slot, a teacher's row, or the floor
-// the room is on.
+// the room is on; a teacher-walk finding's is that teacher's walk in Movement.
 export function showFinding(env, finding) {
   const { ctx, view } = env;
   const where = finding.where;
-  if (where.groupIds.length > 0) {
+  if (typeof finding.id === 'string' && finding.id.startsWith('teacher-walk:') && where.teacherId !== null) {
+    // the teacher's own walk, on its day type and out of its period, in Movement (DESIGN 17.7 item 10); Back returns
+    const choice = { who: 'teacher', teacherId: where.teacherId };
+    if (where.dayTypeId && Number.isInteger(where.period)) Object.assign(choice, { dayTypeId: where.dayTypeId, transition: where.period });
+    ctx.navigate(movementHash(choice));
+  } else if (where.groupIds.length > 0) {
     const groupId = where.groupIds.includes(view.groupId) ? view.groupId : where.groupIds[0];
     // the slot's address: it chooses the group, takes off a filter that
     // hides it, and on a phone leaves the list a Back away
