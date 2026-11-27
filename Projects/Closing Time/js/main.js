@@ -56,7 +56,7 @@ function showStartScreen() {
   root.innerHTML = `
     <div class="modal-back">
       <div class="modal modal-wide start-screen">
-        <h2 class="modal-title">CLOSING TIME</h2>
+        <h1 class="modal-title">CLOSING TIME</h1>
         <p class="start-tag">Alder Falls, pop. 41,000. Six neighborhoods, five rival agents, one freshly printed real-estate license: yours.</p>
         <p>Where do you hang it?</p>
         <div class="start-choices">

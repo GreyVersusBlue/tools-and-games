@@ -82,6 +82,9 @@
      Tools/board-check/check-tavern-clicks.mjs). */
   #page { position: relative; z-index: 2; pointer-events: none; }
   #page > * { pointer-events: auto; }
+  /* <main> wraps the cards (TG-106): it must stay click-through like #page, or it covers the tavern scene. */
+  #page > main { pointer-events: none; }
+  #page > main > :not(#about):not(#flavor) { pointer-events: auto; }
 
   /* ---------- hanging sign ---------- */
   @keyframes sway { 0%,100% { transform: rotate(-.5deg); } 50% { transform: rotate(.5deg); } }
@@ -125,7 +128,7 @@
     font-family: 'Alegreya SC', serif; font-size: clamp(.78rem, 2vw, .95rem); letter-spacing: .22em; color: #2C1F12;
     background: linear-gradient(180deg, #D8B968, var(--brass)); border: 1px solid #7A5E24; border-radius: 3px;
     padding: .35rem 1.3rem; box-shadow: inset 0 1px 0 rgba(255,250,220,.6), 0 3px 8px rgba(0,0,0,.5);
-    scroll-margin-top: 1rem;
+    scroll-margin-top: 1rem; font-weight: 400; /* now an h2: site sweep 2026-11-24, heading order */
   }
   .plaque.first { margin-top: calc(var(--band) - 34px); }
   .ledger { max-width: 1060px; margin: 0 auto 1.3rem; padding: 0 1.2rem; display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; justify-content: center; }
@@ -383,10 +386,11 @@
     <h1>The Guild Board <span class="amp">of</span> greyversusblue</h1>
     <div class="sub">QUESTS POSTED · SERVICES OFFERED · ALL COMERS WELCOME</div>
   </header>
+  <main>
   <p id="about">Browser games and a few classroom tools, free to play, nothing to install.</p>
   <p id="flavor">Take a notice down to accept the job. The barkeep vouches for every posting.</p>
 
-  <div class="plaque first" id="quests">QUESTS</div>
+  <h2 class="plaque first" id="quests">QUESTS</h2>
   <div class="ledger" id="ledger" aria-label="Filter quests by kind"></div>
 <div class="board" id="quest-board">
   <a class="notice has-suite" data-tags="CRPG" data-preview="assets/previews/absalom-inheritance.jpg" href="Projects/absalom_inheritance.html">
@@ -503,7 +507,7 @@
     <div class="reward">REWARD: <b>A CLEAN INSERTION</b> · GRAVITY PUZZLE</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-orbit"/></svg></span>
   </a>
-  <a class="notice" data-tags="Sim" href="Projects/bell-to-bell/">
+  <a class="notice" data-tags="Sim" data-preview="assets/previews/bell-to-bell.jpg" href="Projects/bell-to-bell/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Bell to Bell</h3>
@@ -567,7 +571,7 @@
     <div class="reward">REWARD: <b>A NAME IN EVERY PORT</b> · TRADING SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-scales"/></svg></span>
   </a>
-  <a class="notice archived" data-tags="Sim" href="Projects/The-Fourth-Quarter.html">
+  <a class="notice archived" data-tags="Sim" data-preview="assets/previews/sports-bar-sim.jpg" href="Projects/The-Fourth-Quarter.html">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">OLD NOTICE — STILL PINNED</div>
     <h3>Sports Bar Sim</h3>
@@ -577,9 +581,9 @@
   </a>
 </div>
 
-  <div class="plaque" id="pathfinder">PATHFINDER — CHRONICLES OF THE TABLE</div>
+  <h2 class="plaque" id="pathfinder">PATHFINDER — CHRONICLES OF THE TABLE</h2>
   <div class="board">
-    <a class="notice has-suite" href="Pathfinder/Anathema_Archive.html">
+    <a class="notice has-suite" data-preview="assets/previews/anathema-archive.jpg" href="Pathfinder/Anathema_Archive.html">
       <span class="pin" aria-hidden="true"></span>
       <div class="eyebrow">QUEST POSTED</div>
       <h3>Anathema Archive</h3>
@@ -588,7 +592,7 @@
       <span class="suite" data-suite tabindex="0" role="button" title="Light up the other PF2e Remaster notices">◆ PF2E REMASTER SUITE</span>
       <span class="seal" id="p-seal" aria-hidden="true"><svg class="glyph"><use href="#g-scroll"/></svg></span>
     </a>
-    <a class="notice" href="Pathfinder/campaigns.html">
+    <a class="notice" data-preview="assets/previews/campaigns.jpg" href="Pathfinder/campaigns.html">
       <span class="pin" aria-hidden="true"></span>
       <div class="eyebrow">QUEST POSTED</div>
       <h3>Campaigns &amp; Scenarios</h3>
@@ -596,7 +600,7 @@
       <div class="reward">REWARD: <b>TALES WORTH THE TELLING</b> · CV</div>
       <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-d20"/></svg></span>
     </a>
-    <a class="notice" href="Pathfinder/characters.html">
+    <a class="notice" data-preview="assets/previews/characters.jpg" href="Pathfinder/characters.html">
       <span class="pin" aria-hidden="true"></span>
       <div class="eyebrow">QUEST POSTED</div>
       <h3>Characters</h3>
@@ -617,7 +621,7 @@
 
   </div>
 
-  <div class="plaque" id="numina">NUMINA — A LARP IN THE WORLD OF AELEDD</div>
+  <h2 class="plaque" id="numina">NUMINA — A LARP IN THE WORLD OF AELEDD</h2>
   <div class="board">
     <a class="notice" href="Numina/">
       <span class="pin" aria-hidden="true"></span>
@@ -629,7 +633,7 @@
     </a>
   </div>
 
-  <div class="plaque" id="services">TOWN SERVICES — POSTED BY THE SCHOOLHOUSE</div>
+  <h2 class="plaque" id="services">TOWN SERVICES — POSTED BY THE SCHOOLHOUSE</h2>
   <div class="board services">
     <a class="notice" href="https://aspermylessonplan.com/">
       <div class="eyebrow">SERVICE</div>
@@ -638,6 +642,8 @@
       <span class="stamp" aria-hidden="true"><svg class="glyph"><use href="#g-school"/></svg></span>
     </a>
   </div>
+
+  </main>
 
   <footer>
     GREYVERSUSBLUE.COM — EVERY QUEST HERE IS NOT ACTUALLY FINISHED

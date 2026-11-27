@@ -797,7 +797,12 @@ select {
   gap: 0.35rem;
 }
 .campaign-card.is-active { border-color: var(--brass); box-shadow: inset 0 0 0 1px rgba(210, 162, 76, 0.3); }
-.campaign-card.locked { opacity: 0.5; }
+/* Locked reads as locked by its dashed edge and flat ground, not by opacity:
+   opacity .5 put the flavour line and tag at about 2.5:1 (axe, 2026-11-24). */
+.campaign-card.locked { background: var(--pitch); border-style: dashed; }
+.campaign-card.locked strong { color: var(--vellum-dim); }
+.campaign-card.locked .flavor { color: var(--vellum-dim); }
+.campaign-card.locked .hint-tag { background: transparent; color: var(--vellum-faint); }
 .campaign-card .flavor { margin: 0; font-size: 0.86rem; }
 .campaign-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
 .campaign-head strong { font-family: var(--font-ui); font-size: 0.95rem; }

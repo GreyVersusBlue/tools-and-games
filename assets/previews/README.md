@@ -28,6 +28,8 @@ are enforced by the promote step.
 | `corner-and-kettle.jpg` | Corner & Kettle |
 | `hearth.jpg` | Hearth (captured by `npm run hearth`, not `npm run previews`) |
 | `converter.jpg` | Conversion Codex (a tool; `headless: true` in `games.mjs`) |
+| `bell-to-bell.jpg`, `sports-bar-sim.jpg` | Bell to Bell; the flat Fourth Quarter (first screens, TG-106) |
+| `anathema-archive.jpg`, `campaigns.jpg`, `characters.jpg` | The three Pathfinder pages (first screens, TG-106) |
 
 Torchbearer is the one remaining quest with neither — see
 `HISTORY.md`, site session 8, for why (it needs a prebuilt save file from

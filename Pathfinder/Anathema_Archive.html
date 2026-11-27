@@ -30,14 +30,14 @@ NOTES: The "jsdom harness, 94 assertions" claim once here didn't match anything 
 <link rel="canonical" href="https://greyversusblue.com/Pathfinder/Anathema_Archive.html">
 <meta property="og:title" content="Anathema Archive — greyversusblue">
 <meta property="og:description" content="A quick search tool to look up Pathfinder rules and details.">
-<meta property="og:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta property="og:image" content="https://greyversusblue.com/assets/og/anathema-archive.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A tavern notice board headed 'The Guild Board of greyversusblue'.">
+<meta property="og:image:alt" content="Anathema Archive, in use.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Anathema Archive — greyversusblue">
 <meta name="twitter:description" content="A quick search tool to look up Pathfinder rules and details.">
-<meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta name="twitter:image" content="https://greyversusblue.com/assets/og/anathema-archive.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
 <style>
@@ -63,6 +63,10 @@ a{color:var(--gold)}
 .brand h1{font:700 17px/1.2 'Palatino Linotype','Iowan Old Style',Palatino,Georgia,serif;letter-spacing:.02em}
 .brand h1 span{color:var(--crimson-text)}
 .brand p{font-size:11px;color:var(--text-faint);margin-top:2px}
+/* The way back to the board (site sweep 2026-11-24): the brand block is hidden on
+   phones, which left nothing here that linked out. Top of the rail on a desktop,
+   first item in the row on a phone, 44px tall either way. */
+.home{display:flex;align-items:center;min-height:44px;padding:0 16px;color:var(--gold);font-size:13px;white-space:nowrap;border-bottom:1px solid var(--border)}
 .cats{overflow-y:auto;flex:1;padding:6px 0}
 .cat{display:flex;justify-content:space-between;align-items:center;width:100%;padding:7px 16px;text-align:left;color:var(--text-dim);border-left:3px solid transparent}
 .cat:hover{background:var(--panel);color:var(--text)}
@@ -163,7 +167,9 @@ a{color:var(--gold)}
 @media (max-width:900px){
   .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .sidebar{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border)}
-  .brand{display:none}.status{display:none}
+  /* The brand block holds the page's only h1, so on a phone it is clipped out of sight, not display:none (site sweep 2026-11-24). */
+  .brand{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}.status{display:none}
+  .home{border-bottom:none;flex:none}
   .cats{display:flex;flex-direction:row;padding:0}
   .cat{white-space:nowrap;border-left:none;border-bottom:3px solid transparent}
   .cat.active{border-bottom-color:var(--crimson)}
@@ -178,9 +184,10 @@ a{color:var(--gold)}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" role="main">
   <nav class="sidebar">
     <div class="brand"><h1>Anathema <span>Archive</span></h1><p>Remaster compendium</p></div>
+    <a class="home" href="/">All games</a>
     <div class="cats" id="cats"></div>
     <div class="status" id="status">Loading manifest…</div>
   </nav>
