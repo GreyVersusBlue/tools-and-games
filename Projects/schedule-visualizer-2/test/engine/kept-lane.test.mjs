@@ -611,7 +611,7 @@ test('on the main thread the other building is searched on a cache of its own, a
 test('client.laneStats counts all four lanes', async () => {
   const store = withScenarios(storeOf(sampleSchool()));
   const client = engineFor(store, { worker: false });
-  assert.deepEqual(Object.keys(client.laneStats).sort(), ['kept', 'other', 'scenario', 'suggest']);
+  assert.deepEqual(Object.keys(client.laneStats).sort(), ['crowd', 'kept', 'other', 'scenario', 'suggest']);
   await store.derived.kept(keptNamed(store.project, 'Ease the walk').id);
   store.derived.setOther(otherBuilding(), 'a.json');
   await store.derived.other();
