@@ -78,8 +78,8 @@ export function roadLeaves(when) {
   return Object.entries(when).flatMap(([k, v]) => k === 'road' ? v : roadLeaves(v));
 }
 /** Every card id the content hands out on purpose rather than by a draw: the `card` of any effect or queued item anywhere in the content (cards, letters,
-    events, returns), and the city's scripted openings (MER-162). A weight-0 card nothing names is an orphan: nothing can ever put it on a desk. */
-export function namedCards(content) {
+    events, returns), and with `opening` the city's scripted openings too (MER-162). The bots' row uses the effects alone: an opening card is on every desk from the first season. A weight-0 card nothing names is an orphan: nothing can ever put it on a desk. */
+export function namedCards(content, { opening = false } = {}) {
   const out = new Set();
   const walk = (v, key) => {
     if (typeof v === 'string') { if (key === 'card') out.add(v); return; }
@@ -87,7 +87,7 @@ export function namedCards(content) {
     if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k);
   };
   walk({ cards: content.cards, letters: content.letters, events: content.events, returns: content.returns });
-  for (const list of Object.values(content.city?.opening ?? {})) for (const id of list) out.add(id);
+  if (opening) for (const list of Object.values(content.city?.opening ?? {})) for (const id of list) out.add(id);
   return out;
 }
 /** The calendar years the length plays (every year with at least one played season). */

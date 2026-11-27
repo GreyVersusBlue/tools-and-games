@@ -1120,7 +1120,7 @@ test('road cards: a card whose years never meet a season of the game fails the c
 
 // ---- MER-162: the bots' 1% row leaves out a weight-0 card a parent deals and a card dated outside the length, so each must be real
 test('orphans: every weight-0 card is named by some card, letter, event, return or opening (an orphan can never reach a desk)', () => {
-  const named = namedCards(cairoContent);
+  const named = namedCards(cairoContent, { opening: true });
   const orphans = cairoContent.cards.filter(c => c.weight === 0 && !named.has(c.id)).map(c => c.id);
   eq(orphans, [], 'a weight-0 card no card or letter names is dealt by nothing: wire it to its parent or remove it');
 });
