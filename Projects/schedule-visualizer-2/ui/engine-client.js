@@ -135,6 +135,29 @@
 //   and the newest is asked for (null when the scenario is gone). A failure
 //   is not remembered, as everywhere here.
 //
+// The crowd lane (ARCHITECTURE 23.5, 23.12), for Movement's crowd-aware routes:
+//
+//   const { run, versions, where, generation } = await store.derived.crowd({ dayTypeId, bellsId });
+//     run       crowdRun() (engine/worker.js) of the main lane's result for
+//               the store's counters: crowdAwareRun's answer for that one run,
+//               a transition it left alone being the main answer's own object
+//               (`===`). `dayTypeId` is asked as its effective day type (a day
+//               type that is the same as another asks as that one); `bellsId`
+//               is a bell schedule's id, or left out for the regular bells.
+//     null      when the counters moved before the answer was given (the page
+//               asks again as the store is now), when no such run exists, and
+//               to an asking another asking replaced (a different day type or
+//               bells)
+//     { failed } a message, when the run threw: never remembered, so the next
+//               asking is a new run
+//   Asked only once the main answer for exactly the store's counters is held
+//   (the worker packs the answer against it and works from its pipeline's
+//   result for the same counters), and asked of the worker with `whole: true`
+//   when that answer could not be put together from the one held. A worker
+//   that has not answered after READY_WAIT_MS (an older cached worker.js
+//   ignores a message type it does not know) is left to it: the run is
+//   worked out on the main thread, and later askings go straight there.
+//
 //   store.derived.setOther(project, fileName)   hold another building's project
 //   const { result, where, generation, fileName } = await store.derived.other(options);
 //   store.derived.closeOther()                  let it go
@@ -149,10 +172,11 @@
 //     the store are not touched: the other project is view state.
 
 import {
-  createPipeline, unpack, scenarioRun, suggestRun, keptRun, otherRun,
+  createPipeline, unpack, scenarioRun, suggestRun, keptRun, otherRun, crowdRun, packCrowd, unpackCrowd,
   REQUEST, ANSWER, READY, SCENARIO_REQUEST, SCENARIO_ANSWER, SUGGEST_REQUEST, SUGGEST_ANSWER,
-  KEPT_REQUEST, KEPT_ANSWER, KEPT_CLOSE, OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE,
+  KEPT_REQUEST, KEPT_ANSWER, KEPT_CLOSE, OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE, CROWD_REQUEST, CROWD_ANSWER,
 } from '../engine/worker.js';
+import { effectiveDayType } from '../engine/day-types.js';
 import { reconcile, trimResult, compareResults, leverRouteOptions, leverOptionsKey, keptScenarios, SCENARIOS_MOST } from '../engine/scenario.js';
 import { NO_SUGGESTION } from '../engine/suggest.js';
 
@@ -224,6 +248,8 @@ export function createEngineClient(store, options) {
     suggest: { request: SUGGEST_REQUEST, answer: SUGGEST_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts() },
     kept: { request: KEPT_REQUEST, answer: KEPT_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts() },
     other: { request: OTHER_REQUEST, answer: OTHER_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts(), projectSentFor: null },
+    // noWorker: the worker did not answer in time once (an older worker.js), so this lane runs here
+    crowd: { request: CROWD_REQUEST, answer: CROWD_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts(), noWorker: false },
   };
   let localScenario = null;
   let localSuggest = null;
@@ -363,10 +389,37 @@ export function createEngineClient(store, options) {
     return lane === lanes.kept ? keptJobs.get(job.scenario) === job : lane.wanted === job;
   }
 
+  function stopCrowdTimer(job) {
+    if (job && job.timer) clearTimeout(job.timer);
+    if (job) job.timer = null;
+  }
+
+  // The crowd lane's job has been with the worker for READY_WAIT_MS and not
+  // answered: this worker does not know the message. Work it out here, and
+  // ask nothing of the worker's crowd lane again.
+  function crowdTimedOut(job) {
+    const lane = lanes.crowd;
+    job.timer = null;
+    if (closed || job.settled || lane.flying !== job.generation) return;
+    lane.flying = null;
+    lane.noWorker = true;
+    if (dropStale(lane, job)) return;
+    runLaneHere(lane, job);
+  }
+
   function runLaneHere(lane, job) {
     try {
       let answer;
-      if (lane === lanes.scenario) {
+      if (lane === lanes.crowd) {
+        answer = crowdRun(localMain(), job.project, job.versions, { dayTypeId: job.dayTypeId, bellsId: job.bellsId });
+        // The main answer held may be the worker's, whose objects are not this
+        // pipeline's: put the run together from those, as the worker's would
+        // be, so a part the run left alone is still the held answer's own.
+        if (answer !== null && job.main && job.main.where === 'worker') {
+          const together = unpackCrowd(packCrowd(answer, job.versions, localMain().run(job.project, job.versions)), job.main);
+          if (together !== null) answer = together;
+        }
+      } else if (lane === lanes.scenario) {
         if (!localScenario) localScenario = createPipeline({ cache: localMain().cache });
         try {
           answer = scenarioRun(localScenario, job.project, job.versions);
@@ -427,6 +480,7 @@ export function createEngineClient(store, options) {
     lane.stats.dropped += 1;
     if (lane === lanes.scenario) askScenario();
     else if (lane === lanes.kept) askKept(job.scenario, job.given);
+    else if (lane === lanes.crowd) stopCrowdTimer(job); // the page asks again as the store is now: this one answers null
     else if (lane !== lanes.other) client.suggest(job.findingId, job.given);
     // the asking above settles the job (laneJob) when it makes a new one;
     // when it makes none (no scenario open, no such kept scenario, the other
@@ -449,6 +503,7 @@ export function createEngineClient(store, options) {
     const base = { type: lane.request, generation: job.generation, versions: job.versions };
     if (lane === lanes.kept) return { ...base, project: job.project, scenario: job.scenario };
     if (lane === lanes.other) return lane.projectSentFor === job.comparison ? { ...base, comparison: job.comparison } : { ...base, comparison: job.comparison, project: job.project };
+    if (lane === lanes.crowd) return { ...base, project: job.project, dayTypeId: job.dayTypeId, bellsId: job.bellsId, whole: job.whole === true };
     return { ...base, project: job.project, finding: job.finding, options: job.options };
   }
 
@@ -469,11 +524,26 @@ export function createEngineClient(store, options) {
     if (lane.flying !== null) return;
     if (dropStale(lane, job)) return;
     job.sent = true;
-    lane.flying = job.generation;
     lane.stats.sent += 1;
+    if (lane === lanes.crowd && lane.noWorker) {
+      Promise.resolve().then(() => {
+        if (!isWanted(lane, job) || closed || job.settled) return;
+        if (dropStale(lane, job)) return;
+        runLaneHere(lane, job);
+      });
+      return;
+    }
+    lane.flying = job.generation;
     try {
       worker.postMessage(laneMessage(lane, job));
       if (lane === lanes.other) lane.projectSentFor = job.comparison;
+      if (lane === lanes.crowd) {
+        const wait = Number.isFinite(opts.readyWait) ? opts.readyWait : READY_WAIT_MS;
+        stopCrowdTimer(job);
+        job.timer = setTimeout(() => crowdTimedOut(job), wait);
+        // in Node (the tests) a pending timer must not keep the process alive
+        if (job.timer && typeof job.timer.unref === 'function') job.timer.unref();
+      }
     } catch (error) {
       giveUpOnWorker('The project could not be sent to the worker: ' + error.message);
     }
@@ -507,6 +577,10 @@ export function createEngineClient(store, options) {
     if (message.generation !== lane.flying) return;
     lane.flying = null;
     const job = liveJobs(lane).find((one) => one.generation === message.generation) || null;
+    if (lane === lanes.crowd) {
+      stopCrowdTimer(job);
+      return onCrowdMessage(job, message);
+    }
     if (message.ok !== true) {
       if (job) laneFail(lane, job, new Error(message.error));
       else lane.stats.dropped += 1;
@@ -515,6 +589,35 @@ export function createEngineClient(store, options) {
       if (job) laneSettle(lane, job, { answer: message.answer, where: 'worker', generation: message.generation });
       else lane.stats.dropped += 1;
     }
+    pumpLane(lane);
+  }
+
+  // The worker's crowd answer, put together with the main answer held for the
+  // same counters. An answer that cannot be (the worker packed it against a
+  // result this side does not hold) is asked for again whole, once.
+  function onCrowdMessage(job, message) {
+    const lane = lanes.crowd;
+    if (!job) {
+      lane.stats.dropped += 1;
+      return;
+    }
+    if (message.ok !== true) {
+      laneFail(lane, job, new Error(message.error));
+      return;
+    }
+    const run = unpackCrowd(message.answer, job.main);
+    if (message.answer !== null && run === null) {
+      if (job.whole === true) {
+        laneFail(lane, job, new Error('The crowd-aware answer could not be read.'));
+        return;
+      }
+      job.whole = true;
+      job.sent = false;
+      pumpLane(lane);
+      return;
+    }
+    lane.stats.answered += 1;
+    laneSettle(lane, job, { answer: run, where: 'worker', generation: message.generation });
     pumpLane(lane);
   }
 
@@ -723,7 +826,10 @@ export function createEngineClient(store, options) {
     if (wanted && !wanted.settled) wanted.sent = false;
     for (const lane of Object.values(lanes)) {
       lane.flying = null;
-      for (const job of liveJobs(lane)) job.sent = false;
+      for (const job of liveJobs(lane)) {
+        job.sent = false;
+        if (lane === lanes.crowd) stopCrowdTimer(job);
+      }
     }
     if (typeof opts.onFallback === 'function') opts.onFallback(reason);
     pump();
@@ -735,7 +841,8 @@ export function createEngineClient(store, options) {
 
   function onMessage(event) {
     const message = event.data;
-    if (message && (message.type === READY || message.type === ANSWER || message.type === SCENARIO_ANSWER || message.type === SUGGEST_ANSWER || message.type === KEPT_ANSWER || message.type === OTHER_ANSWER)) stopWaitingForReady();
+    if (message && (message.type === READY || message.type === ANSWER || message.type === SCENARIO_ANSWER || message.type === SUGGEST_ANSWER || message.type === KEPT_ANSWER || message.type === OTHER_ANSWER || message.type === CROWD_ANSWER)) stopWaitingForReady();
+    if (message && message.type === CROWD_ANSWER) return onLaneMessage(lanes.crowd, message);
     if (message && message.type === KEPT_ANSWER) return onLaneMessage(lanes.kept, message);
     if (message && message.type === OTHER_ANSWER) return onLaneMessage(lanes.other, message);
     if (message && message.type === SCENARIO_ANSWER) return onLaneMessage(lanes.scenario, message);
@@ -805,7 +912,7 @@ export function createEngineClient(store, options) {
       return searchesReleased + Array.from(caches).reduce((sum, cache) => sum + cache.searches, 0);
     },
     get laneStats() {
-      return { scenario: lanes.scenario.stats, suggest: lanes.suggest.stats, kept: lanes.kept.stats, other: lanes.other.stats };
+      return { scenario: lanes.scenario.stats, suggest: lanes.suggest.stats, kept: lanes.kept.stats, other: lanes.other.stats, crowd: lanes.crowd.stats };
     },
     // A promise for the result of the store's project as it is now.
     results() {
@@ -912,6 +1019,52 @@ export function createEngineClient(store, options) {
       const job = askKept(id, options);
       return job ? job.answered : Promise.resolve(null);
     },
+    // The crowd-aware run of one day type (and bell schedule), for the store as it is now. The shape is in the header.
+    crowd(options) {
+      if (closed) return Promise.reject(new Error('This engine client has been closed.'));
+      const lane = lanes.crowd;
+      lane.stats.asked += 1;
+      const given = options || {};
+      const versions = currentVersions();
+      const stamp = stampOf(versions);
+      const dayType = effectiveDayType(store.project, given.dayTypeId);
+      if (!dayType) return Promise.resolve(null);
+      const bellsId = typeof given.bellsId === 'string' ? given.bellsId : null;
+      const subject = dayType.id + '\u0000' + (bellsId === null ? '' : bellsId);
+      const key = stamp + '|' + subject;
+      if (lane.wanted && lane.wanted.key === key && !lane.wanted.failed && !lane.wanted.dead) {
+        lane.stats.remembered += 1;
+        return lane.wanted.answered;
+      }
+      const job = laneJob(lane, { key, stamp, subject, given: options, project: store.project, storeVersions: versions, versions, dayTypeId: dayType.id, bellsId, whole: false, main: null, ready: false });
+      job.answered = job.promise.then((run) => {
+        if (run === null) return null;
+        // the counters moved while it was worked out: nobody is showing this any more
+        if (stampOf(run.storeVersions) !== stampOf(currentVersions()) || run.answer === null) {
+          if (run.answer !== null) lane.stats.dropped += 1;
+          return null;
+        }
+        return { run: run.answer, versions: run.storeVersions, where: run.where, generation: run.generation };
+      }, (error) => ({ failed: error && error.message ? String(error.message) : String(error) }));
+      // asked of the worker only once the main answer for exactly these counters is held
+      client.results().then((main) => {
+        if (job.settled || closed) return;
+        if (stampOf(main.versions) !== job.stamp || stampOf(currentVersions()) !== job.stamp) {
+          lane.stats.dropped += 1;
+          job.settled = true;
+          job.dead = true;
+          job.resolve(null);
+          if (lane.wanted === job) lane.wanted = null;
+          return;
+        }
+        job.main = main;
+        job.ready = true;
+        pumpLane(lane);
+      }, (error) => {
+        if (!job.settled) laneFail(lane, job, error);
+      });
+      return job.answered;
+    },
     // Hold another building's project for a comparison, replacing one held.
     setOther(project, fileName) {
       if (closed) throw new Error('This engine client has been closed.');
@@ -968,7 +1121,10 @@ export function createEngineClient(store, options) {
       worker = null;
       if (wanted && !wanted.settled) fail(wanted, new Error('This engine client has been closed.'));
       for (const lane of Object.values(lanes)) {
-        for (const job of liveJobs(lane)) laneFail(lane, job, new Error('This engine client has been closed.'));
+        for (const job of liveJobs(lane)) {
+          if (lane === lanes.crowd) stopCrowdTimer(job);
+          laneFail(lane, job, new Error('This engine client has been closed.'));
+        }
       }
       if (keptIdleTimer !== null) clearTimeout(keptIdleTimer);
       keptIdleTimer = null;
@@ -985,7 +1141,7 @@ export function createEngineClient(store, options) {
 }
 
 // store.derived.scenario(options), store.derived.suggest(findingId,
-// options), store.derived.kept(id, options), store.derived.other(options),
+// options), store.derived.kept(id, options), store.derived.crowd(options), store.derived.other(options),
 // setOther(project, fileName) and closeOther(), beside store.derived.results(): each asks the engine attached
 // with use(), and refuses in the same words while none is. engine/store.js
 // is not this file's, so they are put on the store's derived object here,
@@ -1004,6 +1160,9 @@ function addLanes(derived) {
   }
   if (typeof derived.other !== 'function') {
     derived.other = (options) => (derived.engine && typeof derived.engine.other === 'function' ? derived.engine.other(options) : Promise.reject(new Error(NOTHING_ATTACHED)));
+  }
+  if (typeof derived.crowd !== 'function') {
+    derived.crowd = (options) => (derived.engine && typeof derived.engine.crowd === 'function' ? derived.engine.crowd(options) : Promise.reject(new Error(NOTHING_ATTACHED)));
   }
   if (typeof derived.setOther !== 'function') {
     derived.setOther = (project, fileName) => {

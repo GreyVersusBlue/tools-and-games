@@ -112,6 +112,18 @@
 //         the comparison ended: the held project and the other pipeline's
 //         routes, crowd and route cache are let go. No answer.
 //
+//   in    { type: 'sv2-derive-crowd', generation, project, versions, dayTypeId, bellsId, whole }
+//   out   { type: 'sv2-derived-crowd', generation, ok, answer | error }
+//         answer is crowdRun(): the crowd-aware run (engine/crowd-routes.js,
+//         ARCHITECTURE 23.4, 23.5, 23.12) of one run of the main pipeline's
+//         result for `versions`, null when that result has no such run.
+//         `dayTypeId` is the effective day type (a follower asks as the day
+//         it copies); `bellsId` is a string or null. The answer is packCrowd()
+//         of it: against the main answer this worker last sent when that was
+//         for these very versions (and `whole` is not true), whole otherwise.
+//         The worker keeps its last two answers, by the three counters, the
+//         day type and the bells id, and nothing else.
+//
 // Five lanes have a pipeline each. The scenario, suggestion and kept
 // pipelines share the main one's route cache; the other-building pipeline
 // has a cache of its own, so one building's routes can never be served for
@@ -141,6 +153,7 @@ import { checkSchedule } from './checks.js';
 import { buildingChecks } from './building-checks.js';
 import { scenarioInputs, trimResult } from './scenario.js';
 import { suggest } from './suggest.js';
+import { crowdAwareRun } from './crowd-routes.js';
 
 export const REQUEST = 'sv2-derive';
 export const ANSWER = 'sv2-derived';
@@ -155,6 +168,8 @@ export const OTHER_REQUEST = 'sv2-derive-other';
 export const OTHER_ANSWER = 'sv2-derived-other';
 export const OTHER_CLOSE = 'sv2-other-close';
 export const KEPT_CLOSE = 'sv2-kept-close';
+export const CROWD_REQUEST = 'sv2-derive-crowd';
+export const CROWD_ANSWER = 'sv2-derived-crowd';
 
 // The parts of a result that are kept or sent whole.
 export const WHOLE_PARTS = ['places', 'walks', 'findings', 'buildingFindings'];
@@ -391,6 +406,11 @@ export function createPipeline(options) {
     run,
     // the route cache, for a pipeline that is to share it
     cache,
+    // the routing graph the held result was worked out on (null before the
+    // first run), for a lane that has to read the result's routes by it
+    graph() {
+      return held ? held.graph : null;
+    },
     // Forget everything: the next run works it all out. A cache handed in
     // is the pipeline's that made it, and stays as it is.
     clear() {
@@ -422,6 +442,131 @@ export function runResults(result, dayTypeId, bellsId) {
     loads: result ? pick(regular ? result.loads : result.bellLoads) : null,
     walks: { groups: mine(walks ? walks.groups : null), teachers: mine(walks ? walks.teachers : null) },
   };
+}
+
+// The crowd lane's answer (ARCHITECTURE 23.5, 23.12): the crowd-aware run of
+// one run of the main pipeline's result for `versions`. It takes that result
+// from `pipeline` (worked out if the pipeline does not hold it yet, and the
+// very result the main lane has when it does), so every route, crowd
+// transition and loads object the run did not change is the main lane's own,
+// and calls crowdAwareRun on the pipeline's graph. The same function in the
+// worker and on the main thread. `dayTypeId` is the effective day type (the
+// page asks as the day a follower copies; crowdAwareRun settles it again, so
+// an own day type is its own either way); `bellsId` is a bell schedule's id
+// or null for the regular bells. Null when the result has no such run. The
+// project and the pipeline are not changed.
+export function crowdRun(pipeline, project, versions, options) {
+  const opts = options || {};
+  const results = pipeline.run(project, versions);
+  return crowdAwareRun(project, results, pipeline.graph(), {
+    dayTypeId: opts.dayTypeId,
+    bellsId: typeof opts.bellsId === 'string' ? opts.bellsId : null,
+    cache: pipeline.cache,
+  });
+}
+
+function stampOfVersions(versions) {
+  const counters = countersOf(versions);
+  return counters ? counters.geometry + ':' + counters.building + ':' + counters.schedule + (counters.levers !== undefined ? ':' + counters.levers : '') : null;
+}
+
+// What to send for a crowd run worked out for `versions`. Against `sent`, the
+// main result the other side holds, but only when that is a result for the
+// same versions (and `whole` is not true); anything else goes whole, so the other
+// side is never asked to find a part it never had. In a packed answer a null
+// is the part `sent` has: the day's whole routes or crowd or loads entry, one
+// group's routes, one route of a group that moved, one transition, one group
+// walk (as { kept: its place in sent's walks of the run }).
+export function packCrowd(run, versions, sent, whole) {
+  if (run === null || run === undefined) return null;
+  const mine = stampOfVersions(versions);
+  if (whole === true || !sent || mine === null || stampOfVersions(sent.versions) !== mine) return { versions, whole: true, run };
+  const was = runResults(sent, run.dayTypeId, run.bellsId);
+  if (!was.routes || !was.crowd || !was.loads) return { versions, whole: true, run };
+  const wasGroups = new Map(was.routes.groups.map((group) => [group.groupId, group.routes]));
+  const wasWalks = new Map(was.walks.groups.map((walk, index) => [walk, index]));
+  const packed = { ...run };
+  packed.routes = run.routes === was.routes ? null : {
+    ...run.routes,
+    groups: run.routes.groups.map((group) => {
+      const before = wasGroups.get(group.groupId);
+      if (before === undefined) return group;
+      if (before === group.routes) return { groupId: group.groupId, routes: null };
+      if (before.length !== group.routes.length) return group;
+      return { groupId: group.groupId, routes: group.routes.map((found, t) => (found === before[t] ? null : found)) };
+    }),
+  };
+  packed.crowd = run.crowd === was.crowd ? null : { ...run.crowd, transitions: run.crowd.transitions.map((transition, t) => (was.crowd.transitions[t] === transition ? null : transition)) };
+  packed.loads = run.loads === was.loads ? null : run.loads;
+  packed.walks = { ...run.walks, groups: run.walks.groups.map((walk) => (wasWalks.has(walk) ? { kept: wasWalks.get(walk) } : walk)) };
+  return { versions, whole: false, run: packed };
+}
+
+// The run an answer stands for, given `main`, the page's own main result for
+// the same versions. Never throws: a part the answer keeps that `main` does
+// not have, or an answer for other versions, gives null, and the page asks
+// again for the whole answer. A part that was kept is the very object in
+// `main`, so a transition the crowd-aware run left alone is `===` the main
+// lane's.
+export function unpackCrowd(answer, main) {
+  try {
+    if (answer === null || answer === undefined) return null;
+    if (answer.whole === true) return answer.run;
+    if (!main || stampOfVersions(answer.versions) !== stampOfVersions(main.versions)) return null;
+    const run = answer.run;
+    const was = runResults(main, run.dayTypeId, run.bellsId);
+    if (!was.routes || !was.crowd || !was.loads) return null;
+    const out = { ...run };
+    if (run.routes === null) {
+      out.routes = was.routes;
+    } else {
+      const wasGroups = new Map(was.routes.groups.map((group) => [group.groupId, group.routes]));
+      const groups = [];
+      for (const group of run.routes.groups) {
+        if (group.routes === null) {
+          const before = wasGroups.get(group.groupId);
+          if (before === undefined) return null;
+          groups.push(was.routes.groups.find((entry) => entry.groupId === group.groupId));
+        } else if (group.routes.some((found) => found === null)) {
+          const before = wasGroups.get(group.groupId);
+          if (before === undefined || before.length !== group.routes.length) return null;
+          groups.push({ groupId: group.groupId, routes: group.routes.map((found, t) => (found === null ? before[t] : found)) });
+        } else {
+          groups.push(group);
+        }
+      }
+      out.routes = { ...run.routes, groups };
+    }
+    if (run.crowd === null) {
+      out.crowd = was.crowd;
+    } else {
+      const transitions = [];
+      for (let t = 0; t < run.crowd.transitions.length; t += 1) {
+        const found = run.crowd.transitions[t];
+        if (found === null) {
+          if (!was.crowd.transitions[t]) return null;
+          transitions.push(was.crowd.transitions[t]);
+        } else {
+          transitions.push(found);
+        }
+      }
+      out.crowd = { ...run.crowd, transitions };
+    }
+    out.loads = run.loads === null ? was.loads : run.loads;
+    const walks = [];
+    for (const walk of run.walks.groups) {
+      if (walk && walk.kept !== undefined && Object.keys(walk).length === 1) {
+        if (!was.walks.groups[walk.kept]) return null;
+        walks.push(was.walks.groups[walk.kept]);
+      } else {
+        walks.push(walk);
+      }
+    }
+    out.walks = { ...run.walks, groups: walks };
+    return out;
+  } catch (error) {
+    return null;
+  }
 }
 
 // The scenario lane's answer: the project with its open scenario's changes
@@ -601,6 +746,8 @@ if (scope) {
   const otherPipeline = createPipeline();
   let otherHeld = null; // { comparison, project }: the last one sent
   let sent = null;
+  // the last two crowd answers worked out, newest last: { key, run }
+  let crowdKept = [];
   const said = (error) => (error && error.message ? String(error.message) : String(error));
   scope.addEventListener('message', (event) => {
     const message = event.data;
@@ -646,6 +793,22 @@ if (scope) {
       otherPipeline.clear();
       return;
     }
+    if (message && message.type === CROWD_REQUEST) {
+      try {
+        const bellsId = typeof message.bellsId === 'string' ? message.bellsId : null;
+        const stamp = stampOfVersions(message.versions);
+        const key = stamp === null ? null : stamp + '|' + message.dayTypeId + '|' + (bellsId === null ? '' : bellsId);
+        const found = key === null ? undefined : crowdKept.find((one) => one.key === key);
+        const run = found ? found.run : crowdRun(pipeline, message.project, message.versions, { dayTypeId: message.dayTypeId, bellsId });
+        if (!found && key !== null) crowdKept = crowdKept.concat([{ key, run }]).slice(-2);
+        const answer = packCrowd(run, message.versions, sent, message.whole === true);
+        scope.postMessage({ type: CROWD_ANSWER, generation: message.generation, ok: true, answer });
+      } catch (error) {
+        crowdKept = [];
+        scope.postMessage({ type: CROWD_ANSWER, generation: message.generation, ok: false, error: said(error) });
+      }
+      return;
+    }
     if (message && message.type === SUGGEST_REQUEST) {
       try {
         const answer = suggestRun(suggestionPipeline, message.project, message.versions, message.finding, message.options);
@@ -666,6 +829,7 @@ if (scope) {
       // the page starts again from nothing after a failure, so this side does too
       pipeline.clear();
       sent = null;
+      crowdKept = [];
       scope.postMessage({ type: ANSWER, generation: message.generation, ok: false, error: said(error) });
     }
   });
