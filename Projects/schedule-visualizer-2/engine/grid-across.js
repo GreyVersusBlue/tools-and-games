@@ -14,12 +14,15 @@
 //   { slots, moved, cleared, taken, refused }
 //   slots    [{ groupId, dayTypeId, period, fields }], fields as setSlot's slot
 //            ({ room, roomText, teacherIds } of them): staged as they are
-//   moved    [{ groupId, fromRoomId, fromText, droppedTeacherIds }] groups put
-//            in another room than the one they had (fromRoomId null and
-//            fromText the number typed for a room not in the building, or ''
-//            for none); droppedTeacherIds are the teachers the slot named
-//            that were taken off it because none of them is based in the new
-//            room
+//   moved    [{ groupId, dayTypeId, period, fromRoomId, fromText,
+//            droppedTeacherIds, takenBy }] groups put in another room than
+//            the one they had (fromRoomId null and fromText the number typed
+//            for a room not in the building, or '' for none);
+//            droppedTeacherIds are the teachers the slot named that were
+//            taken off it, and takenBy says why: null when it was a Rooms
+//            cell and none of them is based in the new room, or the id of the
+//            teacher whose cell took the group (then the slot names that
+//            teacher, and a teacher taken off may well be based in the room)
 //   cleared  [groupId] groups left with no room by the edit
 //   taken    [{ groupId, roomId }] groups a teacher's cell gained
 //   refused  null, or one sentence saying what was wrong and what to do; a
@@ -185,7 +188,7 @@ export function roomCellEdit(project, edit, options) {
       dropped.push(...slot.teacherIds);
     }
     out.slots.push({ groupId, dayTypeId, period, fields });
-    out.moved.push({ groupId, fromRoomId: from.room ? from.room.id : null, fromText: from.room ? '' : from.text, droppedTeacherIds: dropped });
+    out.moved.push({ groupId, dayTypeId, period, fromRoomId: from.room ? from.room.id : null, fromText: from.room ? '' : from.text, droppedTeacherIds: dropped, takenBy: null });
   }
   for (const groupId of inRoom) {
     if (named.includes(groupId)) continue;
@@ -264,7 +267,7 @@ export function teacherCellEdit(project, edit, options) {
     if (!sameList(teacherIds, slot.teacherIds)) fields.teacherIds = teacherIds;
     out.slots.push({ groupId, dayTypeId, period, fields });
     out.taken.push({ groupId, roomId: target });
-    if (!inTarget) out.moved.push({ groupId, fromRoomId: from.room ? from.room.id : null, fromText: from.room ? '' : from.text, droppedTeacherIds: dropped });
+    if (!inTarget) out.moved.push({ groupId, dayTypeId, period, fromRoomId: from.room ? from.room.id : null, fromText: from.room ? '' : from.text, droppedTeacherIds: dropped, takenBy: teacherId });
   }
   for (const groupId of now) {
     if (named.includes(groupId)) continue;
@@ -319,6 +322,8 @@ export function acrossBlock(project, cells, options) {
   const where = new Map();
   const finals = new Map();
   const began = new Map();
+  // the teacher whose cell last moved each slot's group (null: a Rooms cell)
+  const takers = new Map();
   const taken = [];
   for (const cell of cells) {
     let groupIds = cell.groupIds;
@@ -346,6 +351,7 @@ export function acrossBlock(project, cells, options) {
       if (!began.has(key)) began.set(key, slotOf(working, slot.groupId, slot.dayTypeId, slot.period));
       finals.set(key, { ...slot, fields: { ...(finals.has(key) ? finals.get(key).fields : {}), ...slot.fields } });
     }
+    for (const move of result.moved) takers.set(move.groupId + '|' + cell.dayTypeId + '|' + cell.period, move.takenBy);
     taken.push(...result.taken);
     working = laid(working, result.slots);
   }
@@ -359,7 +365,7 @@ export function acrossBlock(project, cells, options) {
     if (end.room === null && end.roomText === '' && (start.room !== null || start.roomText !== '')) cleared.push(groupId);
     if (end.room === null || end.room === start.room) continue;
     const from = resolveSlotRoom(project, start);
-    moved.push({ groupId, fromRoomId: from.room ? from.room.id : null, fromText: from.room ? '' : from.text, droppedTeacherIds: start.teacherIds.filter((id) => !end.teacherIds.includes(id)) });
+    moved.push({ groupId, dayTypeId, period: Number(periodText), fromRoomId: from.room ? from.room.id : null, fromText: from.room ? '' : from.text, droppedTeacherIds: start.teacherIds.filter((id) => !end.teacherIds.includes(id)), takenBy: takers.has(key) ? takers.get(key) : null });
   }
   return { slots, moved, cleared, taken, refused: null, project: working, payload: { slots: slots.map(({ groupId, dayTypeId, period, fields }) => ({ groupId, dayTypeId, period, slot: fields })) } };
 }

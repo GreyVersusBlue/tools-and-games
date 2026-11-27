@@ -14,6 +14,8 @@
 //   teacherRooms(project, teacherId)   a teacher's rooms, for the In field
 //   defaultRoom(model, row, column)    the room In starts at
 //   cellsOf(model, r, c, block)        a pasted block as cells to edit
+//   copiedAs(model, columns, block)    what a copy remembers of its columns
+//   withoutDuties(model, block, copy)  a pasted block with the copy's duty columns dropped
 //   followersLeft(project, columns)    the sentence for slots of a day type that follows another
 //   wordsFor(project, block, cells)    the sentence for an edit: segments
 //   plain(segments)                    the same as text
@@ -188,6 +190,36 @@ export function cellsOf(model, r, c, block) {
   return { cells, skipped, runOff, followers };
 }
 
+// What a copy of these rows remembers about the block it wrote: the block,
+// and for each of its columns the header it was copied under ("Period 7",
+// "Before", "After") and whether that is a duty column. `columns` are the
+// model's column indexes the block was copied from.
+export function copiedAs(model, columns, block) {
+  return {
+    block: block.map((texts) => texts.slice()),
+    headers: columns.map((c) => model.columns[c].short || model.columns[c].label),
+    duty: columns.map((c) => model.columns[c].kind === 'extra'),
+  };
+}
+
+function sameBlock(a, b) {
+  return a.length === b.length && a.every((texts, r) => texts.length === b[r].length && texts.every((text, c) => text === b[r][c]));
+}
+
+// A block copied from the Teachers rows with their Before and After columns,
+// pasted where there are no duty columns (the Rooms rows; Teachers rows when
+// no teacher has a duty): the duty columns are dropped by the header they
+// were copied under, so the periods land on periods and never shift onto the
+// next ones. `copy` is copiedAs's for the last copy; a block that is not that
+// copy (text from elsewhere) is laid as it is. Where the rows have duty
+// columns of their own the block is laid as it is too, and what falls on
+// them is left out by place (cellsOf).
+export function withoutDuties(model, block, copy) {
+  if (!copy || !copy.duty.some(Boolean) || model.columns.some((column) => column.kind === 'extra')) return block;
+  if (!sameBlock(copy.block, block)) return block;
+  return block.map((texts) => texts.filter((text, c) => !copy.duty[c]));
+}
+
 // "3 slots were left as they are: B Day is the same as A Day. Make its own
 // copy in the column header to change them" (no full stop: the caller ends
 // the sentence). `columns` are the follower columns an edit passed over.
@@ -245,14 +277,19 @@ export function wordsFor(project, block, cells, limit) {
     const when = inPeriod(project, slot.dayTypeId, slot.period);
     const takes = Boolean(teacher) && block.taken.some((each) => each.groupId === slot.groupId);
     if (now === was && !takes) continue;
-    // Teachers the slot named, taken off it because the new room is not theirs
-    // (engine/grid-across.js `moved[].droppedTeacherIds`, here for this slot):
-    // said after the move, never silently.
-    const dropped = now === '' ? [] : group.days[slot.dayTypeId][slot.period].teacherIds.filter((id) => !after.days[slot.dayTypeId][slot.period].teacherIds.includes(id));
+    // Teachers the slot named and taken off it, and why, are the engine's
+    // (engine/grid-across.js `moved[]`, here for this slot): said after the
+    // move, never silently. Only a Rooms cell drops them for not being based
+    // in the new room; a teacher's cell drops the others because the slot now
+    // names that teacher, whatever room the others are based in.
+    const move = now === '' ? null : block.moved.find((each) => each.groupId === slot.groupId && each.dayTypeId === slot.dayTypeId && each.period === slot.period);
+    const dropped = move ? move.droppedTeacherIds : [];
+    const taker = move && move.takenBy ? project.teachers.find((each) => each.id === move.takenBy) : null;
+    const why = move && move.takenBy ? [' (', named(taker ? taker.name : 'another teacher'), ' has it now).'] : [' (not based in ', named(now), ').'];
     const dropWords = dropped.length === 0 ? [] : [' ', ...dropped.flatMap((id, index) => {
       const who = project.teachers.find((each) => each.id === id);
       return [...(index === 0 ? [] : [index === dropped.length - 1 ? ' and ' : ', ']), named(who ? who.name : 'A teacher who is no longer in the schedule')];
-    }), dropped.length === 1 ? ' is' : ' are', ' no longer named on ', named(group.name), ' there (not based in ', named(now), ').'];
+    }), dropped.length === 1 ? ' is' : ' are', ' no longer named on ', named(group.name), ' there', ...why];
     if (now === '') {
       if (teacher) lost.push([named(group.name), ' has no room', ...when, ' now (it was in ', named(was), ' with ', named(teacher.name), ').']);
       else lost.push([named(group.name), ' now has no room', ...when, ' (was ', named(was), ').']);

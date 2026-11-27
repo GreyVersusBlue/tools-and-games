@@ -87,16 +87,19 @@ function watchPage() {
     if (!grid || !grid.sheet().has(document.activeElement)) return;
     const text = grid.sheet().copy();
     if (text === null) return;
-    event.clipboardData.setData('text/plain', text);
     event.preventDefault();
+    // false: nothing to copy, said so; the clipboard keeps what it held
+    if (text === false) return;
+    event.clipboardData.setData('text/plain', text);
   });
   document.addEventListener('cut', (event) => {
     const grid = current();
     if (!grid || !grid.sheet().has(document.activeElement)) return;
     const text = grid.sheet().copy();
     if (text === null) return;
-    event.clipboardData.setData('text/plain', text);
     event.preventDefault();
+    if (text === false) return;
+    event.clipboardData.setData('text/plain', text);
     grid.sheet().clear();
   });
   document.addEventListener('paste', (event) => {
@@ -265,13 +268,13 @@ export function mount(env) {
     roomLabel,
     focusCursor: (key) => env.focusAfter(key),
     undo() {
-      if (!takeBack(projectId())) return false;
+      if (!takeBack(projectId(), ctx.store.project)) return false;
       say('Took back the last change in the grid.');
       env.render();
       return true;
     },
     redo() {
-      if (!putBack(projectId())) return false;
+      if (!putBack(projectId(), ctx.store.project)) return false;
       say('Brought back the last change taken back in the grid.');
       env.render();
       return true;

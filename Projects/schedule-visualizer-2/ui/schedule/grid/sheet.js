@@ -18,17 +18,23 @@
 //   focusCursor(key)   the cursor was moved by a drawing while the focus was
 //           in the sheet (its column went out of sight): put the focus on
 //           the cell with this key once the drawing is done
-// returns { element, draw(model), copy(), paste(text), clear(), fillDown(), keyOfCursor(), has(node) }
+// returns { element, draw(model), copy() (text, null, or false for nothing copied on purpose), paste(text), clear(), fillDown(), keyOfCursor(), has(node) }
 
 import { h, uid } from '../../components/dom.js';
 import { SEVERITY_WORDS } from '../common.js';
 import { cellState as groupState, cellText as groupText, readCell, planPaste, namesOf } from './model.js';
-import { cellState as acrossState, cellText as acrossText, namesUnknown, acrossOptions, teacherRooms, defaultRoom, cellRequest, cellsOf, followersLeft } from './across.js';
+import { cellState as acrossState, cellText as acrossText, namesUnknown, acrossOptions, teacherRooms, defaultRoom, cellRequest, cellsOf, followersLeft, copiedAs, withoutDuties } from './across.js';
 import { watchWhy } from './why.js';
 import { parseTsv, writeTsv } from './tsv.js';
 import { findingWords, worstFirst, MARK_WORDS } from './words.js';
 
 const LIST_LIMIT = 60;
+
+// The last block copied from the Teachers or Rooms rows, with the header of
+// each of its columns (across.js copiedAs): a paste of it into rows with no
+// duty columns drops its duty columns (withoutDuties). One for the page, as
+// the clipboard is.
+let lastAcrossCopy = null;
 
 // Under this width the grid shows Group and the periods, and the other field
 // columns wait behind the Fields button. grid.css has the same number.
@@ -1008,9 +1014,17 @@ export function sheet(options) {
     // columns the way it was copied, so the two agree on where each is.
     const columns = shownIn(box).filter((c) => !across || model.columns[c].kind !== 'name');
     if (columns.length === 0) return null;
+    // a block of duties alone (Before, After) holds no slot: its text pasted
+    // would be read as group names, so nothing goes on the clipboard (false:
+    // the page's own copy is stopped too)
+    if (across && !columns.some((c) => model.columns[c].kind === 'slot')) {
+      options.say('Nothing was copied: Copy takes the slots of the periods, and a duty is not a slot. Duties are changed in the Duties tab.');
+      return false;
+    }
     const rows = [];
     for (let r = box.r0; r <= box.r1; r += 1) rows.push(columns.map((c) => (across && model.columns[c].kind === 'extra' ? dutyText(model.rows[r], model.columns[c]) : cellText(model, model.rows[r], model.columns[c]))));
     const slots = across ? columns.filter((c) => model.columns[c].kind === 'slot').length * rows.length : rows.length * rows[0].length;
+    if (across) lastAcrossCopy = copiedAs(model, columns, rows);
     options.say('Copied ' + cellCount(slots) + '.');
     return writeTsv(rows);
   }
@@ -1073,7 +1087,7 @@ export function sheet(options) {
     if (block.length === 0 || !model) return;
     const box = range() || { r0: 0, r1: 0, c0: 0, c1: 0 };
     if (across) {
-      pasteAcross(block, box);
+      pasteAcross(withoutDuties(model, block, lastAcrossCopy), box);
       return;
     }
     if (block.length === 1 && block[0].length === 1 && (box.r1 > box.r0 || box.c1 > box.c0)) {

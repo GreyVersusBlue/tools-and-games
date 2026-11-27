@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setDayTypeKind, setRoomTeachers, editGroup, setSlot } from '../../engine/actions.js';
-import { acrossModel, cellState, cellText, acrossOptions, namesUnknown, teacherRooms, defaultRoom, cellRequest, cellsOf, followersLeft, runAcross, wordsFor, plain } from '../../ui/schedule/grid/across.js';
+import { acrossModel, cellState, cellText, acrossOptions, namesUnknown, teacherRooms, defaultRoom, cellRequest, cellsOf, followersLeft, runAcross, wordsFor, plain, copiedAs, withoutDuties } from '../../ui/schedule/grid/across.js';
 import { school, ctx } from '../engine/helpers.mjs';
 import { sampleSchool } from '../../data/sample-school.js';
 
@@ -254,4 +254,51 @@ test('an edit that moves a group off a slot that named teachers says which teach
   const asked = [cellRequest(again, rowOf(again, 'rsample101'), columnOf(again, A + ':0'), '6A')];
   const lost = runAcross(gone, asked);
   if (!lost.refused) assert.match(plain(wordsFor(gone, lost, asked)), /A teacher who is no longer in the schedule is no longer named on 6A there/);
+});
+
+// ---------------------------------------------------------------- SV2-155c
+
+test('a block copied from the Teachers rows with Before and After, pasted into the Rooms rows, drops the duty columns by their header and lands period by period', () => {
+  // (the full sample: Coach Dunmore and others have duties, so the Teachers rows have Before and After)
+  const project = sampleSchool({ level: true });
+  const from = teachers(project);
+  const to = rooms(project);
+  const c = from.columns.findIndex((column) => column.id === A + ':6');
+  const columns = [c, c + 1, c + 2, c + 3, c + 4];
+  assert.deepEqual(columns.map((i) => from.columns[i].id), [A + ':6', A + ':7', A + ':before', A + ':after', B + ':0']);
+  const block = [['6A', '7C', 'Bus duty', 'Car line', '8B'], ['', '8B', '', '', '6A']];
+  const copy = copiedAs(from, columns, block);
+  assert.deepEqual(copy.headers.slice(2, 4), ['Before', 'After'], 'each column keeps the header it was copied under: ' + copy.headers.join(', '));
+  assert.deepEqual(copy.duty, [false, false, true, true, false]);
+  const kept = withoutDuties(to, block, copy);
+  assert.deepEqual(kept, [['6A', '7C', '8B'], ['', '8B', '6A']], 'the Rooms rows have no duty columns: Before and After are dropped');
+  const r6 = to.columns.findIndex((column) => column.id === A + ':6');
+  const laid = cellsOf(to, 0, r6, kept);
+  assert.deepEqual(laid.cells.map((cell) => cell.dayTypeId + ':' + cell.period + '=' + cell.text), [A + ':6=6A', A + ':7=7C', B + ':0=8B', A + ':6=', A + ':7=8B', B + ':0=6A'], 'A Day’s last two periods and B Day’s first, none shifted onto the next');
+  assert.equal(laid.skipped, 0, 'no duty text is laid on a slot');
+  // the Teachers rows have duty columns of their own: the block is laid by place, as before
+  assert.equal(withoutDuties(from, block, copy), block);
+  // text that is not the last copy (from a spreadsheet) is laid as it is
+  const other = [['6A', '7C', 'Bus duty', 'Car line', '7A']];
+  assert.equal(withoutDuties(to, other, copy), other);
+  assert.equal(withoutDuties(to, block, null), block);
+});
+
+test('a co-teacher based in the room a teacher’s slot takes a group into is never said to be not based there: the words follow the engine’s reason', () => {
+  // Dr. Quillfeather shares 101 with Ms. Halloran; 6A in Period 1 on A Day is in 201 naming Ms. Halloran
+  const shared = setRoomTeachers(school(), { roomId: 'rsample101', teacherIds: ['tsample001', 'tsample003'] }, ctx());
+  const project = setSlot(shared, { groupId: 'gsample06a', dayTypeId: A, period: 0, slot: { teacherIds: ['tsample001'] } }, ctx());
+  const model = teachers(project);
+  const row = rowOf(model, 'tsample003');
+  const column = columnOf(model, A + ':0');
+  const there = cellText(model, row, column);
+  const cells = [cellRequest(model, row, column, there === '' ? '6A' : there + ', 6A', 'rsample101')];
+  const block = runAcross(project, cells);
+  assert.equal(block.refused, null, block.refused);
+  const move = block.moved.find((each) => each.groupId === 'gsample06a');
+  assert.deepEqual(move.droppedTeacherIds, ['tsample001'], 'the engine says Ms. Halloran was taken off 6A');
+  assert.equal(move.takenBy, 'tsample003', 'and why: Dr. Quillfeather’s slot took it');
+  const words = plain(wordsFor(project, block, cells));
+  assert.match(words, /Ms\. Halloran is no longer named on 6A there \(Dr\. Quillfeather has it now\)\./, words);
+  assert.doesNotMatch(words, /not based in/, 'Ms. Halloran is based in 101: ' + words);
 });

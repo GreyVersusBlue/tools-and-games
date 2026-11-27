@@ -251,13 +251,28 @@ export function remember(projectId) {
   if (draft.steps.length > STEPS) draft.steps.shift();
 }
 
+// What was taken back belongs to the project as it stood then. The store
+// hands out a new project object for every change it makes (an edit on
+// another tab, the shell's Undo or Redo), so a different object here means
+// the project changed outside the grid's staged steps since: bringing a
+// staged step back then would put it out of order with the shell's history,
+// so what was taken back is forgotten instead. `project` is optional only
+// for callers that never put back (the plain-Node tests).
+function undoneStillHolds(draft, project) {
+  if (draft.undoneOn !== project) {
+    draft.undone = [];
+    draft.undoneOn = project;
+  }
+}
+
 // Put the draft back as it was before the last change. False when there is
-// nothing to take back. What was taken back can be brought back (putBack).
-export function takeBack(projectId) {
+// nothing to take back. What was taken back can be brought back (putBack)
+// while the project stays as it is.
+export function takeBack(projectId, project) {
   const draft = draftFor(projectId);
   const step = draft.steps && draft.steps.pop();
   if (!step) return false;
-  if (!draft.undone) draft.undone = [];
+  undoneStillHolds(draft, project);
   draft.undone.push(snapshot(draft));
   Object.assign(draft, step);
   touch(projectId);
@@ -265,10 +280,13 @@ export function takeBack(projectId) {
 }
 
 // Bring back the change that was last taken back. False when nothing was
-// taken back since the draft last changed.
-export function putBack(projectId) {
+// taken back since the draft last changed, or when the project has changed
+// since by anything outside the grid's staged steps (then nothing ever
+// comes back: the next Redo is the shell's).
+export function putBack(projectId, project) {
   const draft = draftFor(projectId);
-  const step = draft.undone && draft.undone.pop();
+  undoneStillHolds(draft, project);
+  const step = draft.undone.pop();
   if (!step) return false;
   if (!draft.steps) draft.steps = [];
   draft.steps.push(snapshot(draft));
