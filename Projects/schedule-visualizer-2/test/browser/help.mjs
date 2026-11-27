@@ -105,8 +105,8 @@ async function checkHelp(page, id, rail) {
   assert.deepEqual(seen.keys, registered.map((entry) => entry.id), id + ': the shortcuts are not the shell’s list');
   assert.deepEqual(seen.groups, [...new Set(registered.map((entry) => entry.group))], id + ': a group of shortcuts is not explained');
   assert.deepEqual(seen.devices, ['mouse', 'touch', 'pen', 'keyboard']);
-  assert.equal(seen.words.length, 48, id + ': DESIGN 16.1 adds Feature, Period name, Not in school, Stairwell, Flight and Dead end; spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal, DESIGN 13.1 adds Step-free, Area of refuge and Route sheet, DESIGN 14.1 adds Blocked, Lockdown map, Evacuation poster and Map pack, and DESIGN 15.1 adds Label, Kept scenario and Building comparison');
-  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet', 'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack', 'Label', 'Kept scenario', 'Building comparison', 'Feature', 'Period name', 'Not in school', 'Stairwell', 'Flight', 'Dead end']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
+  assert.equal(seen.words.length, 50, id + ': DESIGN 17.1 adds Going to and Crowd-aware routes; DESIGN 16.1 adds Feature, Period name, Not in school, Stairwell, Flight and Dead end; spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal, DESIGN 13.1 adds Step-free, Area of refuge and Route sheet, DESIGN 14.1 adds Blocked, Lockdown map, Evacuation poster and Map pack, and DESIGN 15.1 adds Label, Kept scenario and Building comparison');
+  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet', 'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack', 'Label', 'Kept scenario', 'Building comparison', 'Feature', 'Period name', 'Not in school', 'Stairwell', 'Flight', 'Dead end', 'Going to', 'Crowd-aware routes']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
   assert.deepEqual(seen.numbers, ['load', 'travel', 'late']);
   assert.deepEqual(seen.jumps, ['sections', 'keys', 'gestures', 'words', 'numbers']);
   assert.doesNotMatch(seen.text, /—/, 'an em dash in Help');
@@ -949,6 +949,122 @@ test('Help\'s glossary has the six W7 words, each one sentence, and the threshol
     const travel = await page.$eval('#help-dialog [data-numbers="travel"]', (el) => el.textContent);
     assert.ok(travel.includes('longer than ' + DEAD_END_CELLS + ' cells, or, with a Cell scale, longer than ' + DEAD_END_FEET + ' feet (' + DEAD_END_METRES + ' metres)'), 'the travel numbers do not give the thresholds Checks uses: ' + travel);
     assert.match(travel, /counts as served, with a door or without/);
+    await page.keyboard.press('Escape');
+    await helpGone(page);
+  });
+});
+
+// ---- W8 (SV2-156): a teacher's day, Going to, Routes and the grid's rows ----
+
+const sayingOf = (page, selector) => page.$eval(selector, (el) => el.textContent.replace(/\s+/g, ' ').trim());
+const movementReady = (page) => page.waitForFunction(() => {
+  const section = document.querySelector('.mov');
+  if (!section || section.dataset.styled !== 'true' || section.dataset.pending === 'true' || !section.movement) return false;
+  const { movement } = section;
+  return movement.state !== null && movement.state.results !== null && movement.state.project === globalThis.sv2.store.project && movement.view.width > 0;
+}, { timeout: 30000 });
+
+test('Help\'s Movement part names Who\'s A teacher, Going to, Rooms of subject and Routes as Movement labels them, and the ways in as Schedule labels them', async () => {
+  let labels;
+  await on(DESK, '#movement', async (page) => {
+    await movementReady(page);
+    labels = await page.evaluate(() => {
+      const text = (selector) => Array.from(document.querySelectorAll(selector)).map((el) => el.textContent.replace(/\s+/g, ' ').trim());
+      return {
+        radios: Array.from(document.querySelectorAll('.mov input[type="radio"]')).map((el) => (el.labels && el.labels[0] ? el.labels[0].textContent.replace(/\s+/g, ' ').trim() : '')),
+        going: text('.mov .mov-ctl__label'),
+      };
+    });
+    assert.ok(labels.radios.includes('A teacher'), 'Movement\'s Who has no A teacher: ' + labels.radios.join(' | '));
+    assert.ok(labels.radios.includes('Usual (quickest)') && labels.radios.includes('Crowd-aware'), 'Movement\'s Routes labels changed: ' + labels.radios.join(' | '));
+    assert.ok(labels.going.includes('Going to') && labels.going.includes('Rooms of subject'), 'Movement\'s Going to and Rooms of subject labels changed: ' + labels.going.join(' | '));
+    const said = await helpPart(page, 'movement');
+    for (const phrase of ['A teacher', 'Going to', 'Rooms of subject', 'Any room', 'Any subject', 'No subject', 'Usual (quickest)', 'Crowd-aware', 'a what-if', 'Try crowd-aware routes', 'Try again', 'Use the absolute scale', 'Clear the filter', 'with a free period between', 'another way', 'Usual column', 'Show me', 'Movement for', 'checks use the usual routes', 'Playback']) {
+      assert.ok(said.includes(phrase), 'Help\'s Movement part lacks "' + phrase + '"');
+    }
+    assert.doesNotMatch(said, /\boptimal\b|\bbest route\b|\bsmart\b/i, 'Help calls a route optimal, best or smart');
+  });
+  await on(DESK, '#schedule/teachers', async (page) => {
+    await page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true' && Boolean(document.querySelector('.sch-teachers [data-action="movement"]')), { timeout: 30000 });
+    const name = await sayingOf(page, '.sch-teachers [data-action="movement"]');
+    assert.match(name, /^Movement for /, 'the Teachers row\'s button changed its name: ' + name);
+    const said = await helpPart(page, 'movement');
+    assert.ok(said.includes('Movement button on each row of Schedule › Teachers'), 'Help does not name the Teachers row\'s Movement button');
+  });
+});
+
+test('Help\'s Schedule part says the Grid reads Rows as Groups, Teachers and Rooms, that all three are edited, that Fill down is for Groups rows, and what takes a change back and puts it again', async () => {
+  await on(DESK, '#schedule/grid', async (page) => {
+    await page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true' && Boolean(document.querySelector('.grd-toolbar')), { timeout: 30000 });
+    const grid = await page.evaluate(() => ({
+      labels: Array.from(document.querySelectorAll('.grd-toolbar__label')).map((el) => el.textContent.trim()),
+      rows: Array.from(document.querySelectorAll('.grd-toolbar input[type="radio"]')).map((el) => (el.labels && el.labels[0] ? el.labels[0].textContent.trim() : '')),
+      keys: globalThis.sv2.shortcuts.list().filter((entry) => entry.group === 'Schedule grid' || entry.id === 'redo' || entry.id === 'redo-y').map((entry) => entry.id + ' ' + entry.shown),
+    }));
+    assert.ok(grid.labels.includes('Rows:'), 'the Grid has no Rows: choice: ' + grid.labels.join(' | '));
+    for (const word of ['Groups', 'Teachers', 'Rooms']) assert.ok(grid.rows.some((text) => text.includes(word)), 'the Grid\'s Rows choice has no ' + word + ': ' + grid.rows.join(' | '));
+    const said = await helpPart(page, 'schedule');
+    for (const phrase of ['Rows choice', 'Groups, Teachers or Rooms', 'Not applied yet', 'Apply and Discard', 'Typing replaces who is there', '7-3, 7-1', 'Delete takes the class out of the room', 'now has no room', 'names one group twice in one period', 'Fill down, Ctrl+D', 'is for Groups rows', 'Ctrl+Shift+Z or Ctrl+Y', 'link to that teacher’s walks in Movement']) {
+      assert.ok(said.includes(phrase), 'Help\'s Schedule part lacks "' + phrase + '"');
+    }
+    await blurAll(page);
+    await page.keyboard.press('?');
+    await page.waitForSelector(OPEN);
+    // every key of the grid, Ctrl+D's line included, and both redo chords, are in Help's keys
+    const keys = await page.$eval('#help-dialog', (el) => el.textContent.replace(/\s+/g, ' '));
+    assert.match(keys, /Fill down from the top row of the selection, in the Groups rows \(the Teachers and Rooms rows say it is not for them\)/, 'Help\'s Keys has no line for Ctrl+D');
+    assert.ok(keys.includes('Ctrl+Shift+Z') && keys.includes('Ctrl+Y'), 'Help\'s Keys names neither Ctrl+Shift+Z nor Ctrl+Y for Redo');
+    for (const entry of grid.keys) {
+      const shown = entry.slice(entry.indexOf(' ') + 1);
+      if (shown && shown !== 'undefined') assert.ok(keys.includes(shown), 'Help\'s Keys lacks ' + shown);
+    }
+    await page.keyboard.press('Escape');
+    await helpGone(page);
+  });
+});
+
+test('Help\'s glossary has Going to and Crowd-aware routes, each one sentence', async () => {
+  await on(DESK, '#movement', async (page) => {
+    await blurAll(page);
+    await page.keyboard.press('?');
+    await page.waitForSelector(OPEN);
+    for (const term of ['Going to', 'Crowd-aware routes']) {
+      const meaning = await page.$eval('#help-dialog dt[data-term="' + term + '"] + dd', (el) => el.textContent);
+      assert.ok(meaning.endsWith('.') && !meaning.includes('. '), term + ' is not one sentence: ' + meaning);
+    }
+    const crowd = await page.$eval('#help-dialog dt[data-term="Crowd-aware routes"] + dd', (el) => el.textContent);
+    assert.match(crowd, /what-if/);
+    assert.match(crowd, /never used by Checks/);
+    const travel = await page.$eval('#help-dialog [data-numbers="travel"]', (el) => el.textContent);
+    assert.match(travel, /Crowd-aware routes try again with the waiting seen on the usual routes charged to each lane and each flight of stairs/);
+    const late = await page.$eval('#help-dialog [data-numbers="late"]', (el) => el.textContent);
+    assert.match(late, /Groups late counts groups, not walks/);
+    await page.keyboard.press('Escape');
+    await helpGone(page);
+  });
+});
+
+test('Search help finds the four abilities and their words: a teacher\'s day, Going to, Crowd-aware routes and the Grid\'s Teachers and Rooms rows, Fill down and Redo', async () => {
+  await on(DESK, '#building', async (page) => {
+    await openHelpOn(page, '#building');
+    const found = async (query) => {
+      await typeQuery(page, query);
+      return resultsNow(page);
+    };
+    let results = await found('crowd-aware routes');
+    assert.equal(results[0].title, 'Crowd-aware routes', 'the glossary word does not come first: ' + results.map((r) => r.title).join(' | '));
+    assert.ok(results.some((r) => r.section === 'Movement' || /Movement/.test(r.title)), 'no result in the Movement part for crowd-aware routes: ' + JSON.stringify(results.map((r) => [r.title, r.section])));
+    results = await found('going to');
+    assert.equal(results[0].title, 'Going to');
+    results = await found('rooms of subject');
+    assert.ok(results.length > 0 && results.some((r) => /Movement/.test(r.title + r.section)), 'Rooms of subject is not found in Movement\'s part');
+    results = await found('teacher\'s day free period');
+    assert.ok(results.some((r) => /Movement/.test(r.title + r.section)), 'a teacher\'s day is not found in Movement\'s part');
+    results = await found('fill down groups rows');
+    assert.ok(results.some((r) => /Schedule/.test(r.title + r.section) || /Fill down/.test(r.title + r.text)), 'Fill down is not found');
+    results = await found('redo ctrl y');
+    assert.ok(results.length > 0, 'nothing is found for Redo and Ctrl+Y');
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await helpGone(page);
   });

@@ -261,6 +261,19 @@ test('the sweep visits W7\'s screens: the floor menu, Duplicate floor, Auto-numb
   assert.ok(side && side.viewport.width === 844 && side.viewport.height === 390, 'Help with no results on a phone on its side is not visited');
 });
 
+// SV2-156: W8's states, at 1280 and at 390 with touch, are visited by the four passes above:
+// a teacher's day, Going to, Rooms of subject, Routes in each of its states, the grid's Teachers
+// and Rooms rows with edits waiting, and Help's W8 words.
+test('the sweep visits W8\'s screens: a teacher\'s day, Going to, Rooms of subject, Routes (the answer, the wait, the failure, the usual route beside it), the grid\'s Teachers and Rooms rows with edits waiting, and Help\'s W8 words, at 1280 and 390', () => {
+  const ids = SCREENS.map((screen) => screen.id);
+  for (const id of ['w8-teacher-day', 'w8-teacher-one-walk', 'w8-teacher-nothing-to-walk', 'w8-teacher-travel-time', 'w8-teacher-playback', 'w8-going-to', 'w8-rooms-of-subject', 'w8-filter-empty', 'w8-crowd-nothing-found', 'w8-crowd-another-way', 'w8-crowd-usual-beside', 'w8-crowd-working', 'w8-crowd-failed', 'w8-crowd-travel-time', 'w8-grid-teachers-edit', 'w8-grid-rooms-edit', 'w8-grid-rooms-refused', 'w8-help-movement', 'w8-help-crowd-aware', 'w8-help-going-to']) {
+    assert.ok(ids.includes(id), 'screens.mjs has no ' + id + ', so axe does not check it');
+    const phone = SCREENS.find((screen) => screen.id === id + '-phone');
+    assert.ok(phone && phone.viewport.width === 390 && phone.viewport.mobile === true, id + ' has no screen at 390 with touch');
+  }
+  assert.ok(ids.includes('w8-crowd-try-link-phone'), 'the phone\'s Try crowd-aware routes link is not visited');
+});
+
 test('every entry in the allow-list still matches something', () => {
   assert.deepEqual(ALLOW.filter((entry) => !used.has(entry)).map((entry) => entry.rule + (entry.screen ? ' on ' + entry.screen : '') + (entry.where ? ' (' + entry.where + ')' : '')), []);
 });
