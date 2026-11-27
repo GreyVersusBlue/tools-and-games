@@ -602,6 +602,13 @@
   font-size: var(--t-xs);
 }
 
+/* (a word that fits its slot has nothing to cut: no ellipsis for the browser
+   to work out in each of a window's thousand slots) */
+.grd-table--windowed .grd-cell--across.is-free:not([data-editing]) {
+  overflow: visible;
+  text-overflow: clip;
+}
+
 /* A table of more than 60 rows is drawn a screenful and a margin at a time
    (sheet.js ROW_WINDOW), so its rows are one height: a name that does not fit
    is cut at the slot's edge, and the whole of it is the slot's name for a
