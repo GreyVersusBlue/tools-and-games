@@ -183,7 +183,8 @@ test('Getting started is under the map at full width, and the surface scrolls do
 test('the controls fold behind Change: folded under 900 px, open from it, and the reader’s choice is kept on the device', async () => {
   // a phone: folded, the sentence alone, and the floors’ row folded with it
   await on('#movement', PHONE, async (p) => {
-    assert.equal(await text(p, '#movement-line .mov-line__words'), 'Showing 8 groups on A Day, all transitions. No route failed.');
+    // folded, with some place waiting on the usual routes, the line ends with the way to Crowd-aware (SV2-154, DESIGN 17.7 item 9)
+    assert.equal(await text(p, '#movement-line .mov-line__words'), 'Showing 8 groups on A Day, all transitions. No route failed. \u00b7 Try crowd-aware routes');
     assert.equal(await p.$eval('[data-action="change"]', (el) => el.getAttribute('aria-expanded')), 'false');
     assert.equal(await box(p, '.mov-controls'), null, 'the controls are on screen');
     assert.equal(await box(p, '.mov-floors'), null, 'the floors’ row is on screen on a phone with the controls folded');

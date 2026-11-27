@@ -71,14 +71,32 @@ export function controls(options) {
     setFolded(!folded);
     if (options.fold) options.fold(folded);
   });
-  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', changeButton);
+  // ---- which routes (DESIGN 17.4): the usual, quickest ones on every visit, or crowd-aware, a what-if. It stands in the
+  // first line's row, beside Change, while the controls are open: every place in the controls' own rows made them a row
+  // taller in some state of the window, and the map comes first (DESIGN 5.3; the report says so).
+  const routesId = uid('mov-routes');
+  const routesHint = uid('mov-routes-hint');
+  const routes = segmented({
+    name: 'movement-routes',
+    labelledBy: routesId,
+    value: 'usual',
+    onChange: (value) => options.change({ routes: value }),
+    options: [{ value: 'usual', label: 'Usual (quickest)' }, { value: 'crowd', label: 'Crowd-aware' }],
+  });
+  routes.element.setAttribute('aria-describedby', routesHint);
+  // the line under Routes (DESIGN 17.4) stands under the choice while it is hovered or has the focus, over the map's top edge
+  // rather than pushing it down (movement.css); the choice is described by it either way
+  const routesBox = h('span', { class: 'mov-line__routes', hidden: true, data: { control: 'routes' } }, h('span', { class: 'mov-ctl__label', id: routesId }, 'Routes'), routes.element,
+    h('span', { class: 'mov-ctl__hint mov-ctl__hint--routes', id: routesHint, data: { part: 'routes-line' } }, ROUTES_HINT));
+
+  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', routesBox, ' ', changeButton);
 
   // ---- under the first line: crowd-aware routes being worked out, or not worked out, and what they are for
   const crowdStatus = h('span', { class: 'mov-crowd__words', role: 'status', data: { part: 'crowd-status' } });
   const tryAgain = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'try-again' }, on: { click: () => {
     // the button goes with the failure: the focus goes to the choice it answers, or to Change where that is folded away
     options.tryAgain();
-    const checked = routesBox.hidden || box.hidden ? null : box.querySelector('input[name="movement-routes"]:checked');
+    const checked = routesBox.hidden ? null : routesBox.querySelector('input[name="movement-routes"]:checked');
     (checked || changeButton).focus();
   } } }, 'Try again');
   const crowdNote = h('p', { class: 'mov-crowd__note', hidden: true, data: { part: 'crowd-note' } }, CROWD_NOTE);
@@ -165,19 +183,6 @@ export function controls(options) {
   const daySelect = h('select', { class: 'field__input mov-ctl__select', id: dayId, data: { control: 'day' }, on: { change: () => options.change({ dayTypeId: daySelect.value }) } });
   const dayBox = h('div', { class: 'mov-ctl' }, h('label', { class: 'mov-ctl__label', for: dayId }, 'Day type'), daySelect);
 
-  // ---- which routes (DESIGN 17.4): the usual, quickest ones on every visit, or crowd-aware, a what-if
-  const routesId = uid('mov-routes');
-  const routesHint = uid('mov-routes-hint');
-  const routes = segmented({
-    name: 'movement-routes',
-    labelledBy: routesId,
-    value: 'usual',
-    onChange: (value) => options.change({ routes: value }),
-    options: [{ value: 'usual', label: 'Usual (quickest)' }, { value: 'crowd', label: 'Crowd-aware' }],
-  });
-  routes.element.setAttribute('aria-describedby', routesHint);
-  const routesBox = h('div', { class: 'mov-ctl mov-ctl--routes', data: { control: 'routes' } }, label('Routes', routesId), routes.element, h('p', { class: 'mov-ctl__hint', id: routesHint }, ROUTES_HINT));
-
   // ---- which bells: shown only when there is a bell schedule besides the regular ones
   const bellsId = uid('mov-bells');
   const bellsSelect = h('select', { class: 'field__input mov-ctl__select', id: bellsId, data: { control: 'bells' }, on: { change: () => options.change({ bellsId: bellsSelect.value === '' ? null : bellsSelect.value }) } });
@@ -218,12 +223,20 @@ export function controls(options) {
   const clear = h('button', { type: 'button', class: 'btn mov-clear', data: { action: 'clear' }, on: { click: () => options.clear() } }, 'Clear');
   const optionsBox = h('div', { class: 'mov-ctl mov-ctl--options' }, label('Show', null), h('div', { class: 'mov-ctl__checks' }, labels.element, constant.element), clear);
 
-  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, filtersBox, dayBox, routesBox, bellsBox, stripBox, optionsBox);
+  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, filtersBox, dayBox, bellsBox, stripBox, optionsBox);
   const element = h('div', { class: 'mov-top', data: { folded: String(folded) } }, line, crowdBand, box);
 
-  // the offer is made only with Routes out of sight, and only where the usual routes have a place with waiting
+  // Routes is shown with the controls (not folded away) and never for a teacher, who is not rerouted
+  function drawRoutes() {
+    routesBox.hidden = folded || !picture || picture.choice.who === 'teacher';
+  }
+
+  // the offer is made on a phone (DESIGN 17.7 item 9; a tablet's line has the room and the map is not moved for it), only with
+  // Routes out of sight, and only where the usual routes have a place with waiting
+  const phone = matchMedia('(max-width: 640px)');
+  phone.addEventListener('change', () => drawTry());
   function drawTry() {
-    tryBox.hidden = !(folded && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
+    tryBox.hidden = !(folded && phone.matches && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
     // it is part of the sentence only while it is offered (a hidden link's words would still be read as the sentence's)
     if (tryBox.hidden) tryBox.remove();
     else if (tryBox.parentNode !== words) words.append(' ', tryBox);
@@ -248,6 +261,7 @@ export function controls(options) {
     element.dataset.folded = String(folded);
     changeButton.setAttribute('aria-expanded', String(!folded));
     drawTry();
+    drawRoutes();
     if (held) changeButton.focus();
   }
 
@@ -357,7 +371,7 @@ export function controls(options) {
       picture = nextPicture;
       const choice = picture.choice;
       routes.set(choice.routes);
-      routesBox.hidden = choice.who === 'teacher';
+      drawRoutes();
       drawCrowd(crowd);
       words.replaceChildren(...sentence.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
       // the offer ends the sentence, in its own flow, so a phone's first line stays at three lines before Change

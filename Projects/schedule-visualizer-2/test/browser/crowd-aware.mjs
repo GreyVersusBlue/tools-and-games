@@ -253,7 +253,7 @@ for (const size of SIZES) {
         assert.equal(await checked(page, 'movement-routes'), 'usual');
         const labels = await page.$$eval('input[name="movement-routes"] + span', (els) => els.map((el) => el.textContent.trim()));
         assert.deepEqual(labels, ['Usual (quickest)', 'Crowd-aware']);
-        assert.equal(await text(page, '[data-control="routes"] .mov-ctl__hint'), HINT);
+        assert.equal(await text(page, '[data-part="routes-line"]'), HINT);
         assert.equal((await choice(page)).routes, 'usual');
         assert.equal(await page.$eval('.mov', (el) => el.dataset.crowd), 'off');
         assert.equal(await hidden(page, '[data-part="crowd"]'), true, 'no band');

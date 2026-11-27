@@ -1462,17 +1462,55 @@
    with Try again, and, with the answer, the one line that says what the lens
    is for. The card's count, the legend's rows and the Usual column read in
    the panels' own type. */
-.mov-ctl--routes {
-  max-width: 18rem;
-}
-
-.mov-ctl--routes[hidden] {
+.mov-line__routes[hidden] {
   display: none;
 }
 
-.mov-ctl--routes .mov-ctl__hint {
-  max-width: 18rem;
-  margin-top: var(--s-1);
+/* Routes: label and the two choices in the first line's row, as small as the legend's own two, so the line is no taller for
+   it; under 640 px or with a coarse pointer the choices are a finger's size (the rule above) and the line wraps as it does */
+.mov-line__routes {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  /* centred in the line, not set on its baseline, so the line is no taller than the sentence */
+  align-self: center;
+  gap: var(--s-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-regular, 400);
+}
+
+@media (min-width: 641px) and (pointer: fine) {
+  .mov-line__routes .seg__label {
+    min-height: 24px;
+    padding: 0 6px;
+    font-size: var(--t-xs);
+  }
+}
+
+/* what Routes says: under the choice while it is hovered or has the focus, over the map's top edge rather than pushing it down */
+.mov-ctl__hint--routes {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 7;
+  width: min(22rem, 90vw);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-2);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-regular, 400);
+  /* it says what Routes is and never takes a press meant for what lies under it (the band's Try again, the map's top edge) */
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.mov-line__routes:hover .mov-ctl__hint--routes,
+.mov-line__routes:focus-within .mov-ctl__hint--routes {
+  visibility: visible;
 }
 
 .mov-line__try[hidden] {
