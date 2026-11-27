@@ -192,7 +192,8 @@ export function comparisonParts(picture) {
   return parts;
 }
 
-// The link that offers the lens where Routes is folded away: some place has waiting, on the usual routes.
+// The link that offers the lens where Routes is folded away: some place has waiting, on the usual routes, and the lens is not
+// already chosen (being worked out, or failed).
 export function hasWaiting(picture) {
-  return picture.routesMode === 'usual' && picture.waiting === true;
+  return picture.routesMode === 'usual' && picture.waiting === true && picture.choice.routes !== 'crowd';
 }

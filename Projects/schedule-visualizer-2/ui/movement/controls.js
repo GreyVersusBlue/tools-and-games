@@ -71,7 +71,7 @@ export function controls(options) {
     setFolded(!folded);
     if (options.fold) options.fold(folded);
   });
-  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', tryBox, ' ', changeButton);
+  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', changeButton);
 
   // ---- under the first line: crowd-aware routes being worked out, or not worked out, and what they are for
   const crowdStatus = h('span', { class: 'mov-crowd__words', role: 'status', data: { part: 'crowd-status' } });
@@ -224,6 +224,9 @@ export function controls(options) {
   // the offer is made only with Routes out of sight, and only where the usual routes have a place with waiting
   function drawTry() {
     tryBox.hidden = !(folded && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
+    // it is part of the sentence only while it is offered (a hidden link's words would still be read as the sentence's)
+    if (tryBox.hidden) tryBox.remove();
+    else if (tryBox.parentNode !== words) words.append(' ', tryBox);
   }
 
   function drawCrowd(crowd) {
@@ -355,9 +358,10 @@ export function controls(options) {
       const choice = picture.choice;
       routes.set(choice.routes);
       routesBox.hidden = choice.who === 'teacher';
-      drawTry();
       drawCrowd(crowd);
       words.replaceChildren(...sentence.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
+      // the offer ends the sentence, in its own flow, so a phone's first line stays at three lines before Change
+      drawTry();
       showMe.hidden = !sentence.showMe;
       showTab = sentence.showTab || 'summary';
       clearFilter.hidden = sentence.clearFilter !== true;

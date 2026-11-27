@@ -306,6 +306,7 @@ test('the offer "Try crowd-aware routes" is made where the usual routes have wai
   assert.equal(usual.waiting, true);
   assert.equal(hasWaiting(usual), true);
   assert.equal(hasWaiting(picture(project, view, graph)), false, 'not once it is chosen');
+  assert.equal(hasWaiting(picture(project, main, graph)), false, 'nor while it is being worked out, or after it failed');
   // nobody waits: the sample
   const sample = plainSchool();
   const results = createPipeline().run(sample, VERSIONS);
