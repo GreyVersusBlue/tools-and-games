@@ -292,7 +292,10 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     const now = checked().estimate, then = engine.checkPlan(app.state, content, { ...plan(), purse: more }).estimate;
     if (!now || !then) return false;
     const loads = e => Object.values(e.back ?? {}).reduce((n, x) => n + x, 0);
-    return loads(then) === loads(now);
+    // MER-159: the same loads is not enough since MER-149: the sheet pays a toll the way the trip does (loads for what the purse cannot pay, change into
+    // the purse), so 50 more dinars can change the tolls and the net with the loads home unchanged, and the sheet said "buys nothing" over a line that moved.
+    // The words promise that one more press changes nothing the player reads, so the estimate's own line must be the same too.
+    return loads(then) === loads(now) && then.line === now.line;
   }
 
   function carrySection() {

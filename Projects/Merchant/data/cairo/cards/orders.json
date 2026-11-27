@@ -116,11 +116,7 @@
       {
         "id": "keep",
         "label": "Keep them for the next trip",
-        "requires": {
-          "stock": "linen",
-          "gte": 10
-        },
-        "hint": "Nothing now. The linen stays in your warehouse for your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
+        "hint": "Nothing now. The linen stays yours, in the warehouse or on your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
         "now": [],
         "later": [
           {
