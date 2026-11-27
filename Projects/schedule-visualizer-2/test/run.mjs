@@ -135,6 +135,7 @@ export const GROUPS = {
     'ui/movement-across.test.mjs', // SV2-79b
     'ui/movement-filters.test.mjs', // SV2-151
     'ui/movement-teacher.test.mjs', // SV2-153
+    'ui/crowd-view.test.mjs', // SV2-154
     'ui/walk-across.test.mjs', // SV2-79c
     'ui/playback.test.mjs', // SV2-44
     'ui/room-picker.test.mjs', // SV2-48

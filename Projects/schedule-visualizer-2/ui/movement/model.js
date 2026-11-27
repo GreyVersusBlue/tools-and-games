@@ -13,6 +13,8 @@
 //     teacherId,             the teacher shown when who is 'teacher' (null: nothing is shown yet)
 //     toRoomId, subjectId,   Going to and Rooms of subject (ARCHITECTURE 23.7): null for any, subjectId '' for a room with no subject;
 //                            left alone while who is 'teacher' (teachers have no such filters) and ignored there
+//     routes: 'usual' | 'crowd',   which routes are drawn and timed (ARCHITECTURE 23.2): 'usual' on every visit, never remembered on the device;
+//                            'crowd' is a what-if, drawn from crowdResultsView's results (./crowd-view.js), ignored in teacher mode
 //     measure: 'busiest' | 'total',   what the colours count over a whole day
 //     floors: 'auto' | 'side' | 'stacked' | a floor id,
 //     labels,                period labels on the room markers
@@ -55,6 +57,7 @@ import { buildLanes, BAND_EXCLUDED } from '../surface/overlays/lanes.js';
 import { teacherTrail } from '../../engine/teacher-trail.js';
 import { createRouteCache } from '../../engine/routing.js';
 import { filteredRoutes, destinationWords } from './filters.js';
+import { lensOf, lensFits, lensFigures, anotherWay, movedBy, usualOf, waitingIn, comparisonParts } from './crowd-view.js';
 
 export const COMPARE_LIMIT = 4;
 
@@ -77,7 +80,7 @@ export function compareFull(limit) {
 export const COMPARE_REASON = compareReason(COMPARE_LIMIT);
 
 export function defaultChoice(project) {
-  return { who: 'all', grade: '', groupIds: [], teacherId: null, toRoomId: null, subjectId: null, dayTypeId: project.dayTypes[0].id, bellsId: null, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
+  return { who: 'all', grade: '', groupIds: [], teacherId: null, toRoomId: null, subjectId: null, dayTypeId: project.dayTypes[0].id, bellsId: null, transition: null, routes: 'usual', measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
 }
 
 // Grades are one grade whatever their spaces and case (spacelessKey), as the
@@ -113,6 +116,7 @@ export function settleChoice(project, choice) {
   }
   // a transition is one between two periods that meet under the bells chosen
   if (!transitionsOf(project, next.dayTypeId, next.bellsId).some((each) => each.period === next.transition)) next.transition = null;
+  next.routes = next.routes === 'crowd' ? 'crowd' : 'usual';
   if (!['busiest', 'total'].includes(next.measure)) next.measure = 'busiest';
   if (!['auto', 'side', 'stacked'].includes(next.floors) && !project.building.floors.some((floor) => floor.id === next.floors)) next.floors = 'auto';
   next.labels = next.labels !== false;
@@ -405,6 +409,15 @@ export function pictureOf(project, results, graph, input) {
     // the routes object the picture is of when a filter is set (every walk that does not pass is null), and its entry
     routesObject: null,
     routesEntry: null,
+    // which routes the picture is of: 'crowd' when the results are crowdResultsView's for this run, else 'usual'; routesPending is a
+    // crowd-aware choice whose answer has not come (the usual picture stands); compare = { usual, aware } sums over the walks on screen,
+    // changed = the walks on screen that took another way, elsewhere = groups not on screen that did; waiting = some walk on screen waits
+    routesMode: 'usual',
+    routesPending: false,
+    compare: null,
+    changed: [],
+    elsewhere: 0,
+    waiting: false,
     drawn: 0,
     same: 0,
     failed: [],
@@ -422,6 +435,9 @@ export function pictureOf(project, results, graph, input) {
   const firstPeriod = choice.transition === null ? 0 : choice.transition;
   const run = runOf(results, dayType.id, picture.bellsId);
   const routes = run.routes;
+  const lens = !teaching && results && lensFits(results, dayType.id, picture.bellsId) ? lensOf(results) : null;
+  picture.routesMode = lens ? 'crowd' : 'usual';
+  picture.routesPending = !teaching && choice.routes === 'crowd' && !lens;
 
   if (teaching) {
     for (const floor of floors) picture.markers.set(floor.id, []);
@@ -452,6 +468,18 @@ export function pictureOf(project, results, graph, input) {
     picture.filter = { toRoomId: filter.toRoomId, subjectId: filter.subjectId, words: destinationWords(project, choice), walks, groups: groups.length, empty: groups.length === 0 ? emptyFilterWords(project, picture, choice) : null };
   } else if (filter) {
     picture.filter = { toRoomId: filter.toRoomId, subjectId: filter.subjectId, words: destinationWords(project, choice), walks: 0, groups: groups.length, empty: null };
+  }
+
+  // crowd-aware routes: what the lens changed for the groups on screen, and, for the usual routes, whether anything waits to be eased
+  if (results && routes) {
+    const onScreen = new Set(groups.map((group) => group.id));
+    if (lens) {
+      picture.compare = lensFigures(results, picture);
+      picture.changed = anotherWay(lens, onScreen, choice.transition);
+      picture.elsewhere = new Set(lens.run.changed.filter((row) => !onScreen.has(row.groupId)).map((row) => row.groupId)).size;
+    } else {
+      picture.waiting = groups.length > 0 && waitingIn(results, dayType.id, picture.bellsId, onScreen);
+    }
   }
 
   // the room markers: where each group on screen is, period by period. With
@@ -1106,6 +1134,17 @@ export function sentenceOf(project, picture, health) {
     parts.push({ text: 'Nothing is shown. Choose a group, a grade or every group to see where they walk.' });
     return { parts, showMe: false };
   }
+  // crowd-aware routes: the comparison is the first line (DESIGN 17.4, 17.7 item 4); a route that failed is said after it
+  if (picture.routesMode === 'crowd' && picture.ready && !nothingMeets(project, picture.bellsId)) {
+    parts.push(...comparisonParts(picture));
+    const failed = picture.failed.length;
+    if (failed > 0) {
+      parts.push({ text: ' ' + plural(failed, 'route') + ' failed' + (failed === 1 ? ': ' : '. The first: ') });
+      parts.push(...failureParts(project, { ...picture.failed[0], dayTypeId: picture.dayTypeId }, false));
+      parts.push({ text: '.' });
+    }
+    return { parts, showMe: failed > 0 };
+  }
   if (picture.filter) return filterSentence(project, picture, health);
   parts.push({ text: 'Showing ' });
   if (n === 1) parts.push({ text: picture.groups[0].name, name: true });
@@ -1147,13 +1186,16 @@ export function sentenceOf(project, picture, health) {
 //   late      how many transitions it cannot make in time
 //   released  seconds it was held back by a staggered dismissal, over the day (0 with none)
 //   lateHeld  the longest it was held back on a walk that is late (0 when no late walk was held back)
+//   another   with crowd-aware routes: { walks, saved, periods } for a group that took another way (saved is the seconds its own
+//             total fell over those walks, negative when it rose), else null
 export function groupRows(project, results, picture) {
   const run = runOf(results, picture.dayTypeId, picture.bellsId);
   const routes = run.routes;
   const crowd = run.crowd;
   const walks = run.walks.groups;
+  const lens = lensFits(results, picture.dayTypeId, picture.bellsId) ? lensOf(results) : null;
   return picture.groups.map((group) => {
-    const row = { group, walking: 0, riding: 0, waiting: 0, stairs: false, rides: false, failed: 0, late: 0, walks: 0, released: 0, lateHeld: 0 };
+    const row = { group, walking: 0, riding: 0, waiting: 0, stairs: false, rides: false, failed: 0, late: 0, walks: 0, released: 0, lateHeld: 0, another: lens ? movedBy(lens, group.id) : null };
     const entry = routes ? routes.groups.find((each) => each.groupId === group.id) : null;
     (entry ? entry.routes : []).forEach((route, t) => {
       if (!meets(picture.transitions, t)) return;
@@ -1263,10 +1305,21 @@ export function cellCard(project, results, graph, picture, floorId, cell) {
     const part = all && all.cells ? (period !== null ? all.cells.byTransition[period] : picture.choice.measure === 'total' ? all.cells.total : all.cells.busiest) : null;
     everyone = part ? part[node] : null;
   }
+  // crowd-aware routes: how many of the groups on screen cross here, and how many did on the usual routes (DESIGN 17.4)
+  let crowd = null;
+  if (picture.routesMode === 'crowd') {
+    const usual = runOf(usualOf(results), picture.dayTypeId, picture.bellsId).routes;
+    if (usual) {
+      const entry = picture.filter ? entryOfRoutes(filteredRoutes(project, usual, picture.groups, picture.choice)) : usual;
+      const there = contributors(project, routesOfRun(entry, entry.groups.filter((each) => shown.has(each.groupId))), picture.dayTypeId, { nodes: [node] }, graph, { bellsId: picture.bellsId, ...(period === null ? {} : { period }) });
+      crowd = { aware: crossing.filter((each) => groups.has(each.groupId)).length, usual: there.filter((each) => groups.has(each.groupId)).length };
+    }
+  }
   return {
     place,
     parts: place.parts,
     floorName: graph.floors[f].name,
+    ...(crowd ? { crowd } : {}),
     load: picture.load ? picture.load.cells[node] : 0,
     unit: picture.load ? picture.load.unit : 'students',
     measure: period !== null ? 'transition' : picture.choice.measure,
