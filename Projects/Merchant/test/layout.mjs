@@ -454,14 +454,6 @@ const SCREENS = [
       await load(p, '#map', { state: tripsOn([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1]]), large: f.large });
       await p.waitForSelector('#screen-map[data-ready]');
     } },
-  // MER-163 (play a015, a036, a140): a label stands where it stood unless something on the map is now in its way. Two parties home at Damascus are one stack
-  // with a wide caption; every label that is on another side than with nobody out must have had its old place taken by a caption, a piece, a leader, a dot or
-  // another label's new place.
-  { name: 'map-labels-stack',
-    go: async (p, f) => {
-      await load(p, '#map', { state: tripsOn([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-damascus', 1, 1]]), large: f.large });
-      await p.waitForSelector('#screen-map[data-ready]');
-    } },
   { name: 'price-board-news',
     go: async (p, f) => {
       await load(p, '#map', { state: states.second, large: f.large });
@@ -1201,38 +1193,6 @@ try {
             });
             ok(got.cairo, "no label says Cairo (on the house's own stop, or on the group that holds it)");
             eq(got.far, [], 'a label stands more than 36 px from its dot');
-          });
-        }
-        if (screen.name === 'map-labels-stack') {
-          await test(`${tag}: a label that moved for the stack had its old place taken`, async () => {
-            const snap = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.stop-label[data-stop]')].map(l => {
-              const d = document.querySelector(`.dot[data-stop="${l.dataset.stop}"]`).getBoundingClientRect(), r = l.getBoundingClientRect();
-              return [l.dataset.stop, l.hidden ? null : { dx: r.left - d.left, dy: r.top - d.top, w: r.width, h: r.height }];
-            })));
-            const now = await snap();
-            await load(page, '#map', { state: states.firstDone, large: frame.large });
-            await page.waitForSelector('#screen-map[data-ready]');
-            await settle(page);
-            const rest = await snap();
-            await load(page, '#map', { state: tripsOn([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-damascus', 1, 1]]), large: frame.large });
-            await page.waitForSelector('#screen-map[data-ready]');
-            await settle(page);
-            const bad = await page.evaluate((now, rest) => {
-              const out = [], box = e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
-              const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1;
-              const things = (skip) => [...document.querySelectorAll('.token-label, .token-piece, .token-leader, .dot, .stop-label')].filter(e => e !== skip && !e.hidden && e.checkVisibility() && e.getBoundingClientRect().width).map(box);
-              for (const id of Object.keys(rest)) {
-                const a = rest[id], b = now[id]; if (!a || !b) continue;
-                if (Math.abs(a.dx - b.dx) < 2 && Math.abs(a.dy - b.dy) < 2) continue;
-                const d = document.querySelector(`.dot[data-stop="${id}"]`).getBoundingClientRect(), l = document.querySelector(`.stop-label[data-stop="${id}"]`);
-                const GAP = 4;   // the map keeps a label this far clear of everything (map.js GAP, 3)
-                const old = { left: d.left + a.dx - GAP, top: d.top + a.dy - GAP, right: d.left + a.dx + a.w + GAP, bottom: d.top + a.dy + a.h + GAP };
-                const own = document.querySelector(`.dot[data-stop="${id}"]`);
-                if (!things(l).filter(q => !(q.left === box(own).left && q.top === box(own).top)).some(q => hit(old, q))) out.push(`${id} moved from (${Math.round(a.dx)},${Math.round(a.dy)}) to (${Math.round(b.dx)},${Math.round(b.dy)}) and nothing stood on its old place`);
-              }
-              return out;
-            }, now, rest);
-            ok(!bad.length, bad.join('; '));
           });
         }
         if (screen.name === 'map-nobody' || screen.name === 'map-board') {

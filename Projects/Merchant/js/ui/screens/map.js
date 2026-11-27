@@ -406,7 +406,6 @@ export function createMap(app, nav) {
     for (const p of pairs) p.label.hidden = false;   // a redraw must measure every label whole, not the 0 by 0 of one a pass hid
     const marks = pairs.map(p => ({ p, at: centre(p.dot), w: p.label.offsetWidth, h: p.label.offsetHeight })).sort((a, b) => a.p.rank - b.p.rank);
     const placed = [];
-    let rest = null;   // where each label stood in the run without captions
     const placeLabel = m => {
       // its own side, then every side close in, then every side one step further out (a crowd of dots on a phone leaves no room beside them)
       const out2 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 1.7, dy: t.dy * 1.7 })), out3 = Object.values(SIDES).map(t => ({ ...t, dx: t.dx * 3.4, dy: t.dy * 3.4 }));
@@ -431,16 +430,12 @@ export function createMap(app, nav) {
           { dots: false, cover: 'any' }, { dots: false, cover: 'any', badge: true }, { dots: true, cover: 'any', badge: true }]
         : [{ dots: false, cover: 'all' }, { dots: false, cover: 'core' }, { dots: false, cover: 'pieces' }, { dots: true, cover: 'pieces' }];   // a stop's label never lies over a caption: it is hidden first (the dot keeps the name)
       const mid = q => { const k = (q.right - q.left) / 4; return { left: q.left + k, right: q.right - k, top: q.top + k, bottom: q.bottom - k }; };
-      // MER-163 (M4g play problem 15): `spare` is the resting places of the labels not yet placed, from the run without captions. A label that has to leave
-      // its own side for a caption takes a side that leaves them alone, so one move is not a cascade (Damascus above, onto Aleppo's side, moved Aleppo too).
-      const search = spare => {
       for (const { dots: overDots, cover, reach = 1, badge = false } of tiers) {
         let fewest = Infinity;      // a tier that may cover dots takes the cheapest side, not the first
         for (const t of tries) {
           const left = m.at.x + t.dx + t.ax * m.w, top = m.at.y + t.dy + t.ay * m.h;
           const r = { left, top, right: left + m.w, bottom: top + m.h };
           if (!inside(r, clip) || walls.some(w => hits(r, w)) || placed.some(q => hits(r, q))) continue;
-          if (spare && spare.some(q => hits(r, q))) continue;
           if (away(r, m.at) > MAX_AWAY * reach) continue;
           if (taken.some(q => q.lead && hits(r, q))) continue;   // a caption's leader is never under a label, in any tier: the label is hidden first
           if (!badge && taken.some(q => q.badge && hits(r, q))) continue;   // MER-145: a stack's number is never under a label, in any tier (the contrast case read paper on paper)
@@ -454,10 +449,6 @@ export function createMap(app, nav) {
         }
         if (won) break;
       }
-      return won;
-      };
-      const spare = rest ? [...rest].filter(([el]) => el !== m.p.label && !placed.some(q => q.el === el)).map(([, q]) => q) : null;
-      won = (spare?.length ? search(spare) : null) ?? search(null);
       const el = m.p.label;
       el.hidden = !won;
       if (won) {
@@ -476,7 +467,6 @@ export function createMap(app, nav) {
       squeezed.length = 0; chosen.length = 0; placeCaptions();
     };
     run([]);
-    rest = new Map(placed.map(q => [q.el, { left: q.left, right: q.right, top: q.top, bottom: q.bottom }]));
     if (squeezed.length) run(chosen.flatMap(q => [{ ...q.r, piece: false, owner: q.i }, ...q.lead.map(b => ({ ...b, piece: false, owner: q.i, lead: true }))]));
   }
 
