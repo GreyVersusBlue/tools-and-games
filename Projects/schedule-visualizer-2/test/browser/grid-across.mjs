@@ -160,6 +160,28 @@ async function shut(turn, failed) {
   assert.deepEqual(found, { errors: [], blocked: [], shimmed: [] });
 }
 
+// The big fixture is loaded in a browser of its own: a page that is a second
+// tab of another cannot change the project, and the other two are open.
+let big = null;
+async function bigPage() {
+  if (big) return big.session.page;
+  const own = await launch();
+  const session = await openPlanner({ server, browser: own, hash: '#schedule/grid', theme: 'light', width: 1280, height: 900 });
+  await session.page.waitForFunction(() => document.querySelector('link[data-sheet="grid"]')?.sheet && getComputedStyle(document.querySelector('.grd-sheet')).position === 'relative');
+  await settled(session.page);
+  await session.page.evaluate(async () => {
+    const { bigProject } = await import('./test/fixtures/big.mjs');
+    const actions = await import('./engine/actions.js');
+    const project = bigProject({ seed: 1 });
+    project.onboarding.dismissed = true;
+    globalThis.sv2.store.apply(actions.replaceProject, { project, label: 'Load the timing fixture' });
+  });
+  await session.page.waitForFunction(() => globalThis.sv2.store.project.groups.length === 80, { timeout: 10000 });
+  await settled(session.page);
+  big = { browser: own, session };
+  return session.page;
+}
+
 before(async () => {
   server = await startServer();
   browser = await launch();
@@ -169,6 +191,8 @@ before(async () => {
 
 after(async () => {
   const problems = [desk, phone].filter(Boolean).map((session) => session.problems());
+  if (big) problems.push(big.session.problems());
+  if (big) await big.browser.close();
   if (browser) await browser.close();
   if (server) await server.close();
   for (const found of problems) assert.deepEqual(found, { errors: [], blocked: [], shimmed: [] });
@@ -685,18 +709,7 @@ test('at 390 px a day type that follows another says so in a header that fits, w
 // ---------------------------------------------------------------- the budget
 
 test('a large school\u2019s Rooms rows are drawn a window at a time: the keys reach every row, the scroll bar is the whole table\u2019s, and the grid is still one Tab stop', async () => {
-  // the first page, with the fixture the next case measures (loaded here: a
-  // second tab cannot change the project)
-  const { page } = desk;
-  await page.evaluate(async () => {
-    const { bigProject } = await import('./test/fixtures/big.mjs');
-    const actions = await import('./engine/actions.js');
-    const project = bigProject({ seed: 1 });
-    project.onboarding.dismissed = true;
-    globalThis.sv2.store.apply(actions.replaceProject, { project, label: 'Load the timing fixture' });
-  });
-  await settled(page);
-  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.groups.length), 80, 'the fixture is the project now');
+  const page = await bigPage();
   await rowsAre(page, 'rooms');
   const table = '.grd-sheet[data-role="rooms"] .grd-table';
   const drawn = () => page.$$eval(table + ' tbody tr.grd-row', (all) => all.map((tr) => Number(tr.getAttribute('aria-rowindex'))));
@@ -739,19 +752,8 @@ test('a large school\u2019s Rooms rows are drawn a window at a time: the keys re
 });
 
 test('one edit in the Rooms rows of the big fixture is drawn in under ' + REDRAW_BUDGET + ' ms, and the case fails at ' + REDRAW_BUDGET * SLACK, async () => {
-  // last, on the first page (a second tab cannot change the project), which
-  // keeps the fixture
-  const { page } = desk;
+  const page = await bigPage();
   {
-    await page.evaluate(async () => {
-      const { bigProject } = await import('./test/fixtures/big.mjs');
-      const actions = await import('./engine/actions.js');
-      const project = bigProject({ seed: 1 });
-      project.onboarding.dismissed = true;
-      globalThis.sv2.store.apply(actions.replaceProject, { project, label: 'Load the timing fixture' });
-    });
-    await settled(page);
-    assert.equal(await page.evaluate(() => globalThis.sv2.store.project.groups.length), 80, 'the fixture is the project now');
     await rowsAre(page, 'rooms');
     // 150 rows, drawn a window of them at a time (sheet.js ROW_WINDOW): the table says how many it has
     assert.equal(await page.$eval('.grd-sheet:not([hidden]) .grd-table', (el) => el.getAttribute('aria-rowcount')), '152', 'a row for each of the fixture\u2019s 150 rooms, and two of headings');

@@ -392,7 +392,7 @@ export function sheet(options) {
       return;
     }
     sigs.set(cell.dataset.key, sig);
-    cell.className = 'grd-cell grd-cell--read grd-cell--across' + (name ? ' grd-cell--name' : '') + (slot && state.text === '' ? ' is-free' : '') + (state.duty ? ' is-duty' : '')
+    cell.className = 'grd-cell grd-cell--read grd-cell--across' + (name ? ' grd-cell--name' : '') + (!name && state.text === '' ? ' is-free' : '') + (state.duty ? ' is-duty' : '')
       + (state.staged ? ' is-staged' : '') + (state.follower ? ' is-follower' : '') + (marked ? ' is-marked' : '');
     setAttr(cell, 'aria-label', slot ? rowWords(row) + ', ' + column.label + ': ' + (state.text === '' ? row.free : state.text) : null);
     setAttr(cell, 'aria-describedby', marked ? state.findings.map(lineFor).join(' ') : null);
@@ -405,7 +405,7 @@ export function sheet(options) {
     // (a free slot says so as plain text that grid.css draws at no size: an
     // element for each of the three thousand would double what the browser
     // lays out at every edit)
-    else parts.push(state.text === '' && slot ? row.free : state.text);
+    else parts.push(state.text === '' ? (slot ? row.free : 'No duty') : state.text);
     if (marked) {
       const worst = state.findings[0].severity;
       parts.push(
