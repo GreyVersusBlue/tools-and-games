@@ -388,11 +388,6 @@
     },
     "title": "A debtor runs to Aydhab",
     "body": "A man in Cairo owes your house 12 dinars. He has run off to Aydhab, hoping to escape the debt. Rashid knows where he went.",
-    "when": {
-      "out": {
-        "gte": 1
-      }
-    },
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -871,9 +866,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "famagusta"
+          ]
         }
       ]
     },
@@ -991,9 +986,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "tunis"
+          ]
         }
       ]
     },
@@ -1109,9 +1104,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "damascus"
+          ]
         }
       ]
     },

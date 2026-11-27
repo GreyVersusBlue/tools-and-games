@@ -293,7 +293,9 @@ export function unsoldLine(d, content = null) {
     return `${cap(goodsList(content, d.goodsBack))} ${one ? 'is' : 'are'} in the warehouse, worth about ${num(d.cargoValue ?? 0)} at ${place}'s price.`;
   }
   const row = (d?.account ?? []).find(r => r.label === 'Back home');
-  const m = /^(.+?) \(worth ([\d,]+)(?: [^)]*?)? in ([^)]+?) now\)/.exec(row?.text ?? '');
+  // MER-159: the row now reads "14 loads of wool cloth (Cairo would pay 880 dinars for them now, after the broker's cut), 880 dinars in all" (MER-148);
+  // the older "(worth 880 dinars in Cairo now)" still reads, for a save from before it
+  const m = /^(.+?) \(worth ([\d,]+)(?: [^)]*?)? in ([^)]+?) now\)/.exec(row?.text ?? '') ?? (t => t && [t[0], t[1], t[3], t[2]])(/^(.+?) \((.+?) would pay ([\d,]+)(?: [^)]*?)? for them now/.exec(row?.text ?? ''));
   if (!m) return null;
   const [, what, worth, place] = m;
   const one = /^1 [^ ]+ of /.test(what) && !/, | and /.test(what);

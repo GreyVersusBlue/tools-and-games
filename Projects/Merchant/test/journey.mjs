@@ -1082,9 +1082,11 @@ try {
       await page.waitForSelector('#map-toast:not([hidden])');
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.kind === 'card');
-      await page.keyboard.press('1');
+      // MER-159: the neighbour's second answer ('keep'), key 2. The first trip's plan takes the warehouse linen first (MER-148), so fewer than ten
+      // loads are left and 'sell' (key 1) is rightly disabled; the keys, Enter, Esc and E are what this case is about, and 'keep' asks for no stock.
+      await page.keyboard.press('2');
       await page.waitForSelector(BACK);
-      model = eng.choose(model, nodeContent, 'p0-2', 'sell');
+      model = eng.choose(model, nodeContent, 'p0-2', 'keep');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.activeElement.id === 'btn-end');
       eq(await engineState(page), JSON.parse(JSON.stringify(model)));
@@ -3098,7 +3100,9 @@ try {
         const moneyOnly = structuredClone(after); moneyOnly.expeditions[0].cargo = {}; moneyOnly.expeditions[0].purse = 90;
         await barOf(moneyOnly);
         ok(/: 90 dinars sent to buy with\.$/.test((await said())[0]) && !/loads of goods/.test((await said())[0]), `a money-only trip: ${(await said())[0]}`);
-        const unpriced = structuredClone(after); unpriced.known = {};
+        // MER-159: since MER-148 a load of a good the home market trades is worth what Sell would pay there, known price or not, so clearing `known` alone
+        // leaves nothing unpriced; two loads of salt, which Cairo does not trade, are the goods with no price at home
+        const unpriced = structuredClone(after); unpriced.known = {}; unpriced.expeditions[0].cargo = { ...unpriced.expeditions[0].cargo, salt: 2 };
         await barOf(unpriced);
         ok(/\d+ loads of goods \(\d+ with no known price, counted for nothing\)\.$/.test((await said())[0]), `unpriced loads: ${(await said())[0]}`);
         await barOf(before);
@@ -3453,7 +3457,7 @@ try {
         const back = await page.$eval(`#back-${x.expedition}`, e => e.textContent.replace(/\s+/g, ' ')).catch(() => null);
         ok(back, `no "what came back" line for ${x.expedition}`);
         for (const [good, n] of Object.entries(x.back.goods ?? {})) if (n > 0) ok(back.includes(`${n} `) && back.toLowerCase().includes(nodeContent.goods.find(y => y.id === good).name.toLowerCase()), `${good} x ${n} is not named: ${back}`);
-        if (x.back.money > 0) ok(back.includes(String(x.back.money)), `${x.back.money} dinars is not named: ${back}`);
+        if (x.back.money > 0) ok(back.includes(withCommas(x.back.money)), `${x.back.money} dinars is not named: ${back}`);   // MER-159: the page prints 1,388, the case looked for 1388 (a trip that brings back a thousand or more is the first the case meets)
         if (x.seasons > 0) ok(back.includes(`${x.seasons} season`), `${x.seasons} seasons is not named: ${back}`);
         if (Object.values(x.cargo ?? {}).some(n => n > 0)) ok(await page.$(`#cargo-${x.expedition}`), `no "what it carried" line for ${x.expedition}`);
       }
@@ -3895,6 +3899,15 @@ try {
       eq(lines, ['1 load of wool cloth is in the warehouse, worth about 63 at Cairo\'s price.',
         '3 loads of linen, 2 loads of silk are in the warehouse, worth about 1,240 at Cairo\'s price.', null, null, null]);
     });
+    await test('MER-159: unsoldLine reads the account row in the words the engine writes since MER-148 ("Cairo would pay N for them now")', async () => {
+      const lines = await page.evaluate(async () => {
+        const { unsoldLine } = await import('./js/ui/screens/paper.js');
+        const row = text => ({ account: [{ label: 'Back home', text }] });
+        return [unsoldLine(row("1 load of linen (Cairo would pay 63 dinars for them now, after the broker's cut), 63 dinars in all")),
+          unsoldLine(row("3 loads of linen, 2 loads of silk (Cairo would pay 1,240 dinars for them now, after the broker's cut) and 50 dinars, 1,290 dinars in all"))];
+      });
+      eq(lines, ["1 load of linen is in the warehouse, worth about 63 at Cairo's price.", "3 loads of linen, 2 loads of silk are in the warehouse, worth about 1,240 at Cairo's price."]);
+    });
     await test('MER-104: unsoldLine reads goodsBack and cargoValue when the paper has them, and the page shows that sentence', async () => {
       const st = askingReturn(), r = st.desk[0];
       r.data.goodsBack = { linen: 7, wool: 3 }; r.data.cargoValue = 1234;
@@ -3920,10 +3933,12 @@ try {
           // the engine's own proposals are sent every season, so trips come home with goods bought on the road
           for (const p of st.desk) if (p.state === 'open') { const c = firstOpen(st, p.id); st = eng.choose(st, content80, p.id, c.id); if (c.ui === 'outfit-first') { const first = sheetPlan(st, content80, 'damascus'); if (first) st = eng.outfit(st, content80, first); } }
           const plan = st.log.some(e => e.kind === 'outfit') ? sheetPlan(st, content80, 'damascus') : null;
-          if (plan) { try { st = eng.outfit(st, content80, plan); } catch { /* a plan the house cannot afford this season */ } }
+          // MER-159: since MER-148 the engine's own proposal sells every good it carries, so no trip of its own came home with goods; this one is told to sell the
+          // first two goods only, and the rest come home unsold, which is the paper the case reads
+          if (plan) { try { st = eng.outfit(st, content80, { ...plan, sell: plan.sell.slice(0, 2) }); } catch { /* a plan the house cannot afford this season */ } }
           st = eng.endSeason(st, content80);
         }
-        for (const p of st.desk) if (p.kind === 'return' && (p.data.account.find(x => x.label === 'Back home')?.text ?? '').includes('(worth')) {
+        for (const p of st.desk) if (p.kind === 'return' && /\((worth|.+? would pay) /.test(p.data.account.find(x => x.label === 'Back home')?.text ?? '')   /* MER-159: the engine's row says "Cairo would pay N for them now" since MER-148 */) {
           seen++;
           const line = unsoldLine(p.data);
           ok(line && / (is|are) in the warehouse, worth about [\d,]+ at Cairo's price\.$/.test(line), `${p.data.account.find(x => x.label === 'Back home').text} -> ${line}`);
@@ -5125,7 +5140,9 @@ try {
           const got = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(); const t = r('#map-toast');
             return { toast: t.bottom, title: r('#board-title').top, list: r('#stoplist').top }; });
           ok(got.title >= got.toast - 0.5 && got.list >= got.toast - 0.5, `send ${i + 1}: the note ends at ${got.toast}, the heading begins at ${got.title}, the list at ${got.list}`);
-          if (i === 0) { await page.click('#stop-qus'); }
+          // MER-159: Alexandria, not Qus: the first send now takes the warehouse goods first (MER-148), and with what is left no plan pays on the road to Qus
+          // (the engine's `why`), so the sheet had no Send to press. The second send is the same case at any stop whose plan pays.
+          if (i === 0) { await page.click('#stop-alexandria'); }
         }
       });
       await test('MER-145 board: "Every price" is whole above the buttons at the foot of the board, opened and focused (1366 is the frame it was cut at)', async () => {
@@ -5158,6 +5175,9 @@ try {
         const last = seasons.at(-1);
         // the season with a 309 return: the money moved +1, the worth +309 (the play's problem 8)
         last.change = 1; last.worthChange = 309; last.worth = (last.worth ?? 0) + 309;
+        // MER-159: since MER-148 the engine writes its own worth lines for the season (here a +77 for the goods' price), and they print first under it, so the
+        // line this case adds would come second; the season's own worth lines are cleared and the case's one stands alone, as before
+        st.log = st.log.filter(e => !(e.kind === 'worth' && e.at === last.at));
         st.log.push({ at: last.at, kind: 'worth', cause: 'prices', change: 81, text: 'The goods in the warehouse rose in price: +81.' });
         await putState(page, st, '#desk');
         await page.waitForSelector('#btn-menu');

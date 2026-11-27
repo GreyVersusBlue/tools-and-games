@@ -602,9 +602,9 @@
     "title": "Camels for the desert",
     "body": "Fuad owns camels in Qus. Goods go from Qus over the desert to the port of Aydhab. He asks five dinars to carry about 800 pounds of your goods on two camels.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aydhab"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -722,9 +722,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "gao"
+          ]
         }
       ]
     },
@@ -839,9 +839,9 @@
     "title": "Fourteen days without water",
     "body": "Yunus is a guide at Tuat. He says the road to Walata has fourteen days with no water. Only camels used to thirst can cross it. He offers to lead your caravan.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "walata"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -956,9 +956,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "walata"
+          ]
         }
       ]
     },
@@ -1076,7 +1076,7 @@
         },
         {
           "season": [
-            "autumn"
+            "summer"
           ]
         }
       ]
@@ -1185,9 +1185,9 @@
     "title": "A broker offers to sell",
     "body": "A broker at Pera offers to sell your goods. A broker is a go-between who finds buyers. He takes a fee from each side.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "constantinople"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1292,9 +1292,9 @@
     "title": "Silver into gold, if it pays",
     "body": "A Venetian house sends silver to Famagusta. It wants it turned into gold for its galleys, but only if the profit is 8 in 100 or more. It asks you to take the post.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "famagusta"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1399,9 +1399,9 @@
     "title": "An interpreter for the long road",
     "body": "A merchant bound far east asks you to name a guide who speaks the languages of the road. A good interpreter is dear, and a poor one is cheap.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "samarkand"
+      ]
     },
     "weight": 3,
     "repeat": false,

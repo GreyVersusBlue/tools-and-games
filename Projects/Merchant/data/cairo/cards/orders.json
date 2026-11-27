@@ -116,11 +116,7 @@
       {
         "id": "keep",
         "label": "Keep them for the next trip",
-        "requires": {
-          "stock": "linen",
-          "gte": 10
-        },
-        "hint": "Nothing now. The linen stays in your warehouse for your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
+        "hint": "Nothing now. The linen stays yours, in the warehouse or on your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
         "now": [],
         "later": [
           {
@@ -1400,9 +1396,9 @@
     "title": "Silver from the eastern mountains",
     "body": "Farrukh makes silver cups in Cairo. He hears that a mountain near Samarkand has a silver mine that is easy to work. He wants to pay for a first lot of silver and asks you to put in some money too.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "samarkand"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1506,9 +1502,10 @@
     "title": "Quseir or Aydhab",
     "body": "Ghazi ships goods to the Red Sea. He asks if you want them sent by Quseir or by Aydhab. Quseir is the port nearest Qus. But the sea voyage from it is hard, because fierce north winds blow against the ships.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "quseir",
+        "aydhab"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1713,9 +1710,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "calicut"
+          ]
         }
       ]
     },
@@ -1832,9 +1829,9 @@
     "title": "Where India meets Persia",
     "body": "Bilal is a broker in Hormuz, a port on an island. He writes that goods from India are sent on from there to buyers in Persia. He asks if you will send a buyer of your own.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "hormuz"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1947,9 +1944,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "walata"
+          ]
         }
       ]
     },
@@ -2067,9 +2064,9 @@
     "title": "What goes south for gold",
     "body": "Bakr asks what goods go south across the Sahara, and what comes back. He wants to send a load of goods from your house. He asks what to choose.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tuat"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -2178,9 +2175,9 @@
     "title": "Copper in rods",
     "body": "A dealer at Takadda offers copper rods for your goods. The rods are a span and a half long, and a thick rod is worth more than a thin one. He asks if you will take rods or gold.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "gao"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -2295,9 +2292,8 @@
     "title": "Room for pepper",
     "body": "A Genoese buyer asks you to book space for pepper at Alexandria. Pepper is packed for the ships in a sporta, a big load. He asks how many you will book.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "stock": "pepper",
+      "gte": 1
     },
     "weight": 3,
     "repeat": false,
@@ -2410,9 +2406,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "alexandria"
+          ]
         }
       ]
     },
@@ -2526,9 +2522,9 @@
     "title": "The clearest glass",
     "body": "A Persian buyer asks you to find glass bottles of the very clearest kind. He will pay well for them in the east.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aleppo"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -2647,9 +2643,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "tabriz"
+          ]
         }
       ]
     },

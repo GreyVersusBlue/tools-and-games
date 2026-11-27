@@ -342,9 +342,9 @@
     "title": "Small tolls on the Nile",
     "body": "Nuh takes goods up the Nile from Cairo to Qus. At each town on the way a small toll is paid, a fee to pass. He asks you to pay each toll as the boat goes, so it is never held up.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "qus"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -449,9 +449,9 @@
     "title": "A list of customs",
     "body": "Isaac sends a list from Aydhab. Customs are taxes on goods that enter a port, and the list shows what each good pays. Frankincense pays a third of a dinar. He asks how you want the fees paid.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aydhab"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -567,9 +567,9 @@
     "title": "The water is cut off",
     "body": "Amin lives in Aden. Bedouins, people of the desert, have blocked the way to the town's water tanks. They let people through only for money and cloth. Amin asks you to share the cost.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aden"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -677,9 +677,9 @@
     "title": "The ruler's men signal",
     "body": "A ship of yours passes a town on the Malabar coast. The ruler's men signal it to anchor and give a present. The pilot asks what to do.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "calicut"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -796,9 +796,9 @@
     "title": "Pepper in public warehouses",
     "body": "Zaid writes from Calicut. The town keeps its pepper in public warehouses and sells it by the bahar, a large weight. The customs are two parts in every ten. He asks if you will ship now.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "calicut"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -904,9 +904,9 @@
     "title": "The king taxes copper",
     "body": "A copper dealer says the king of Mali taxes the raw copper brought in from the mine at Takedda. The tax is heavy. He asks if your house will pay it and take a share of the copper.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "gao"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1028,9 +1028,9 @@
     "title": "Silver bars for the mint",
     "body": "A Venetian buyer pays you in silver bars. The sultan's mint at Alexandria turns bars into coins for a fee. Some merchants the sultan favours pay a lower fee.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "alexandria"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1260,9 +1260,9 @@
     "title": "Whose name on the goods",
     "body": "Orhan trades at Constantinople. Genoese and Venetians there pay no customs, and others pay 2 in 100. He asks under whose name your goods should go.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "constantinople"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1379,9 +1379,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "famagusta"
+          ]
         }
       ]
     },
@@ -1492,9 +1492,9 @@
     "title": "The duty at Tunis",
     "body": "Piero ships goods to Tunis. He says Christians there pay 10 in every 100 on all they bring in. He asks how you want your goods shipped.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tunis"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1615,9 +1615,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "damascus"
+          ]
         }
       ]
     },
@@ -1735,9 +1735,9 @@
     "title": "Guards of the desert road",
     "body": "Bedouins who guard the desert road ask a payment from your caravan. The sultan pays them too. Your guide asks what to do.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "damascus"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1850,9 +1850,9 @@
     "title": "The toll bill from Ayas",
     "body": "A trader at Tabriz sends the toll bill for the road from Ayas. Tolls are fees to pass. There is one at nearly every stage, and Mongol horsemen take more on top.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tabriz"
+      ]
     },
     "weight": 3,
     "repeat": false,
