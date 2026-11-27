@@ -856,6 +856,58 @@ for (const size of SIZES) {
   }
 }
 
+// ---- the same link on a tablet: Routes is folded behind Change from 641 to 899 px too (DESIGN 17.7 item 9; SV2-153b)
+
+describe('Try crowd-aware routes, touch at 768 (a tablet: the controls fold, Routes goes with them)', () => {
+  const tablet = { name: '768', width: 768, height: 1024, phone: true };
+  let session;
+  let page;
+  let act;
+  before(async () => {
+    session = await open(tablet, 'halls');
+    page = session.page;
+    act = hands(page, 'touch');
+    // the device may remember the controls open from an earlier visit: they are folded for this one
+    if (await page.$eval('[data-action="change"]', (el) => el.getAttribute('aria-expanded') === 'true')) await act.press('[data-action="change"]');
+    await page.waitForFunction(() => document.querySelector('.mov-controls').hidden);
+  });
+  after(async () => {
+    if (session) await session.close();
+  });
+
+  test('folded, with a place that has waiting, the first line ends with the link, a finger\'s size, and it chooses Crowd-aware', async () => {
+    assert.equal(await page.$eval('.mov-controls', (el) => el.hidden), true, 'the controls are folded at 768 px');
+    assert.equal(await hidden(page, '[data-action="try-crowd"]'), false, 'the link is not offered between 641 and 899 px');
+    assert.equal(await text(page, '.mov-line__try'), '· Try crowd-aware routes');
+    assert.ok((await page.$eval('[data-action="try-crowd"]', (el) => el.getBoundingClientRect().height)) >= 44, 'a finger\'s target');
+    // the first line stays a sentence and its offer: at most two lines before Change
+    const lines = await page.evaluate(() => {
+      const words = document.querySelector('#movement-line .mov-line__words');
+      const centres = [];
+      for (const node of words.childNodes) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects()) if (rect.width > 0) centres.push((rect.top + rect.bottom) / 2);
+      }
+      centres.sort((a, b) => a - b);
+      let found = 0;
+      let last = -Infinity;
+      for (const centre of centres) {
+        if (centre - last > 12) found += 1;
+        last = centre;
+      }
+      return found;
+    });
+    assert.ok(lines <= 2, 'the first line is ' + lines + ' lines');
+    await act.press('[data-action="try-crowd"]');
+    await crowd(page, 'ready');
+    assert.equal((await choice(page)).routes, 'crowd');
+    assert.equal(await line(page), TWO_HALLS_LINE);
+    assert.equal(await page.$('[data-action="try-crowd"]'), null, 'chosen, it is not offered again');
+    assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
+  });
+});
+
 // ---- the sample school: no group finds a quicker way round
 
 for (const size of SIZES) {
