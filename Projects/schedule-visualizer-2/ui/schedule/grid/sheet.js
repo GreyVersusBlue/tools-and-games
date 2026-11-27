@@ -23,7 +23,7 @@
 import { h, uid } from '../../components/dom.js';
 import { SEVERITY_WORDS } from '../common.js';
 import { cellState as groupState, cellText as groupText, readCell, planPaste, namesOf } from './model.js';
-import { cellState as acrossState, cellText as acrossText, namesUnknown, acrossOptions, teacherRooms, defaultRoom, cellRequest, cellsOf } from './across.js';
+import { cellState as acrossState, cellText as acrossText, namesUnknown, acrossOptions, teacherRooms, defaultRoom, cellRequest, cellsOf, followersLeft } from './across.js';
 import { watchWhy } from './why.js';
 import { parseTsv, writeTsv } from './tsv.js';
 import { findingWords, worstFirst, MARK_WORDS } from './words.js';
@@ -94,8 +94,6 @@ export function sheet(options) {
   let to = 0;
   let rowEls = new Map();
   let body = null;
-  let padTop = null;
-  let padBottom = null;
   // Does the sheet have the focus? Asked of the page first; but a cell that
   // goes out of sight while it has the focus (its column hidden at 640 px)
   // loses it to the page without a word, or with a blur from a cell whose
@@ -171,8 +169,10 @@ export function sheet(options) {
 
   // ---------------------------------------------------------------- the rows drawn
 
-  function pad() {
-    return h('tr', { class: 'grd-pad', 'aria-hidden': 'true' }, h('td', { colspan: String(model.columns.length) }));
+  function pad(rows) {
+    const el = h('tr', { class: 'grd-pad', 'aria-hidden': 'true' }, h('td', { colspan: String(model.columns.length) }));
+    el.firstChild.style.height = rows * rowPx + 'px';
+    return el;
   }
 
   function buildRow(r) {
@@ -180,11 +180,45 @@ export function sheet(options) {
     return h('tr', { class: 'grd-row', 'aria-rowindex': windowed ? String(r + 3) : null }, model.columns.map((column) => cellElement(row, column)));
   }
 
-  // Draw rows [a, b) and no others: the ones that were drawn and still are
-  // stay as they are.
-  function setWindow(a, b) {
+  // The rows that stay drawn wherever the window goes: the one being edited
+  // and the one the cursor is on (the focus is in one of them, and a row
+  // taken out of the page would drop it to the body).
+  function kept(extra) {
+    const rows = new Set();
+    if (extra !== undefined && extra !== null) rows.add(extra);
+    const at = place(view.at);
+    if (at) rows.add(at.r);
+    const editing = editor ? place({ row: editor.row.id, col: editor.column.id }) : null;
+    if (editing) rows.add(editing.r);
+    return rows;
+  }
+
+  // The pad rows stand for the rows not drawn, so the scroll bar is as long
+  // as the whole table: one before the first row drawn, one in each gap
+  // between two (a kept row can be far from the window), one after the last.
+  function layoutPads() {
+    for (const el of Array.from(body.children)) if (el.classList.contains('grd-pad')) el.remove();
+    const drawn = Array.from(rowEls.keys()).sort((x, y) => x - y);
+    let next = 0;
+    for (const r of drawn) {
+      if (r > next) body.insertBefore(pad(r - next), rowEls.get(r));
+      next = r + 1;
+    }
+    if (next < model.rows.length) body.append(pad(model.rows.length - next));
+  }
+
+  // The lines of the findings of the rows now drawn are in the page, so a
+  // slot's `aria-describedby` never names an id that is not there.
+  function syncWhy() {
+    for (const line of lineEls.values()) if (line.parentNode !== why) why.append(line);
+  }
+
+  // Draw rows [a, b) and the kept ones, and no others: the ones that were
+  // drawn and still are stay as they are.
+  function setWindow(a, b, extra) {
+    const keep = windowed ? kept(extra) : new Set();
     for (const [r, tr] of Array.from(rowEls)) {
-      if (r >= a && r < b) continue;
+      if ((r >= a && r < b) || keep.has(r)) continue;
       for (const column of model.columns) {
         const key = cellKey(model.rows[r].id, column.id);
         cells.delete(key);
@@ -193,25 +227,20 @@ export function sheet(options) {
       tr.remove();
       rowEls.delete(r);
     }
-    for (let r = a; r < b; r += 1) {
-      if (rowEls.has(r)) continue;
-      let next = null;
-      for (let k = r + 1; k < b; k += 1) {
-        if (rowEls.has(k)) {
-          next = rowEls.get(k);
-          break;
-        }
-      }
+    const add = (r) => {
+      if (rowEls.has(r) || r < 0 || r >= model.rows.length) return;
+      let after = null;
+      for (const [k, el] of rowEls) if (k > r && (after === null || k < after.k)) after = { k, el };
       const tr = buildRow(r);
-      body.insertBefore(tr, next || padBottom);
+      body.insertBefore(tr, after ? after.el : null);
       rowEls.set(r, tr);
-    }
+    };
+    for (let r = a; r < b; r += 1) add(r);
+    for (const r of keep) add(r);
     from = a;
     to = b;
-    if (windowed) {
-      padTop.firstChild.style.height = a * rowPx + 'px';
-      padBottom.firstChild.style.height = (model.rows.length - b) * rowPx + 'px';
-    }
+    if (windowed) layoutPads();
+    syncWhy();
   }
 
   // The rows the scroll position asks for: what is in view and a margin.
@@ -233,7 +262,11 @@ export function sheet(options) {
 
   // The heights the page gave: read when nothing is waiting to be laid out.
   function measure() {
-    const one = rowEls.get(from);
+    // (a row with the field open is taller than a row is: not the one measured)
+    const editing = editor ? place({ row: editor.row.id, col: editor.column.id }) : null;
+    let one = null;
+    for (const [r, el] of rowEls) if ((!editing || r !== editing.r) && (one === null || r < one.r)) one = { r, el };
+    one = one ? one.el : null;
     const head = table.tHead;
     let moved = false;
     if (one && one.offsetHeight > 0 && one.offsetHeight !== rowPx) {
@@ -252,7 +285,7 @@ export function sheet(options) {
     if (top < at) scroll.scrollTop = top;
     else if (top + rowPx + headPx > at + scroll.clientHeight) scroll.scrollTop = top + rowPx + headPx - scroll.clientHeight;
     const ask = wanted();
-    setWindow(Math.min(ask.a, r), Math.max(ask.b, r + 1));
+    setWindow(ask.a, ask.b, r);
   }
 
   // On a narrow screen the field columns after Group are hidden until the
@@ -519,9 +552,6 @@ export function sheet(options) {
         rowEls = new Map();
         windowed = model.rows.length > ROW_WINDOW;
         body = h('tbody', null);
-        padTop = windowed ? pad() : null;
-        padBottom = windowed ? pad() : null;
-        if (windowed) body.append(padTop, padBottom);
         table.classList.toggle('grd-table--windowed', windowed);
         // Fixed columns: the browser does not measure every slot of a table of
         // three thousand to find a width (grid.css)
@@ -531,8 +561,7 @@ export function sheet(options) {
           body);
         table.style.setProperty('--grd-periods', String(model.columns.length - 1));
         const ask = wanted();
-        const at = place(view.at);
-        setWindow(windowed ? (at ? Math.min(ask.a, at.r) : ask.a) : 0, windowed ? (at ? Math.max(ask.b, at.r + 1) : ask.b) : model.rows.length);
+        setWindow(windowed ? ask.a : 0, windowed ? ask.b : model.rows.length);
         // the heights are the page's to say once it has drawn them
         if (windowed) requestAnimationFrame(() => {
           measure();
@@ -658,7 +687,11 @@ export function sheet(options) {
     list.hidden = false;
     refusal.style.left = Math.max(0, Math.min(box.left - base.left, base.width - refusal.offsetWidth)) + 'px';
     refusal.style.top = box.bottom - base.top + 'px';
-    const below = refusal.hidden ? 0 : refusal.offsetHeight;
+    // the In field of a teacher with several rooms is the first thing under the slot
+    const field = editor.cell.querySelector('.grd-in__field');
+    const under = field ? field.offsetHeight : 0;
+    refusal.style.top = box.bottom - base.top + under + 'px';
+    const below = (refusal.hidden ? 0 : refusal.offsetHeight) + under;
     list.style.left = Math.max(0, Math.min(box.left - base.left, base.width - list.offsetWidth)) + 'px';
     list.style.top = box.bottom - base.top + below + 'px';
   }
@@ -685,6 +718,11 @@ export function sheet(options) {
     return 'Duties before and after school are set on the Day tab, not in the grid.';
   }
 
+  function followerWords(column) {
+    const dayType = model.after.dayTypes.find((each) => each.id === column.dayTypeId);
+    return dayType.name + ' is the same as ' + column.follows.name + '.';
+  }
+
   function openAcrossEditor(r, c, opts) {
     reveal(r);
     const row = model.rows[r];
@@ -692,6 +730,12 @@ export function sheet(options) {
     const cell = cellAt(r, c);
     if (column.kind !== 'slot') {
       options.say(notTyped(column));
+      return;
+    }
+    // a day type that follows another has no slots of its own to type into:
+    // the edit could only be refused, so no field opens
+    if (column.follows) {
+      options.say(followerWords(column) + ' Make its own copy in the column header to change it.');
       return;
     }
     const input = h('input', {
@@ -886,6 +930,9 @@ export function sheet(options) {
   // Read what is in the field into the cell. dr, dc: where the cursor goes
   // after. False when the text was refused; the field then stays to be fixed.
   function commit(dr, dc, leaving) {
+    // an edit already staged waits for the drawing it brought: a second Enter,
+    // or the blur that drawing causes, must not stage it again
+    if (editor.committed) return true;
     if (editor.across) return commitAcross(dr, dc, leaving);
     const { row, column, input, was } = editor;
     const at = place({ row: row.id, col: column.id });
@@ -951,13 +998,22 @@ export function sheet(options) {
   function copy() {
     const box = range();
     if (!box) return null;
-    // the Teachers and Rooms rows copy their slots: the names of the groups in each
-    const columns = shownIn(box).filter((c) => !across || model.columns[c].kind === 'slot');
+    // The Teachers and Rooms rows copy a slot as the names of the groups in
+    // it, and a duty column as the duty shown; a paste lays the block on the
+    // columns the way it was copied, so the two agree on where each is.
+    const columns = shownIn(box).filter((c) => !across || model.columns[c].kind !== 'name');
     if (columns.length === 0) return null;
     const rows = [];
-    for (let r = box.r0; r <= box.r1; r += 1) rows.push(columns.map((c) => cellText(model, model.rows[r], model.columns[c])));
-    options.say('Copied ' + cellCount(rows.length * rows[0].length) + '.');
+    for (let r = box.r0; r <= box.r1; r += 1) rows.push(columns.map((c) => (across && model.columns[c].kind === 'extra' ? dutyText(model.rows[r], model.columns[c]) : cellText(model, model.rows[r], model.columns[c]))));
+    const slots = across ? columns.filter((c) => model.columns[c].kind === 'slot').length * rows.length : rows.length * rows[0].length;
+    options.say('Copied ' + cellCount(slots) + '.');
     return writeTsv(rows);
+  }
+
+  // what a duty column shows: the duty, or nothing where there is none
+  function dutyText(row, column) {
+    const text = cellState(model, row, column).text;
+    return text === 'No duty' ? '' : text;
   }
 
   // said as slots: spec 2's cell is a floor's
@@ -978,20 +1034,28 @@ export function sheet(options) {
   // worked out against the schedule the ones before it left, and all of it
   // one staged step. A copied slot pasted over a selection fills the slots in it.
   function pasteAcross(block, box) {
+    const corner = Math.max(box.c0, model.columns.findIndex((column) => column.kind === 'slot'));
     const columns = [];
-    for (let c = box.c0; c <= box.c1; c += 1) if (model.columns[c].kind === 'slot') columns.push(c);
+    for (let c = corner; c <= box.c1; c += 1) if (model.columns[c].kind === 'slot') columns.push(c);
     if (block.length === 1 && block[0].length === 1 && columns.length > 0 && (box.r1 > box.r0 || columns.length > 1)) {
+      // one copied slot fills the slots of the selection; a duty column between
+      // them keeps its place in the block and is left alone (null)
       const one = block[0][0];
       block = [];
-      for (let r = box.r0; r <= box.r1; r += 1) block.push(new Array(columns.length).fill(one));
+      for (let r = box.r0; r <= box.r1; r += 1) {
+        const texts = [];
+        for (let c = corner; c <= box.c1; c += 1) texts.push(model.columns[c].kind === 'slot' ? one : null);
+        block.push(texts);
+      }
     }
-    const corner = Math.max(box.c0, model.columns.findIndex((column) => column.kind === 'slot'));
     const laid = cellsOf(model, box.r0, corner, block);
     if (laid.cells.length === 0) {
-      options.say('Nothing was pasted: a block goes into the periods, and the name and the duties are not changed here.');
+      options.say(laid.followers.length > 0
+        ? 'Nothing was pasted: ' + followersLeft(model.after, laid.followers) + '.'
+        : 'Nothing was pasted: a block goes into the periods, and the name and the duties are not changed here.');
       return;
     }
-    const done = options.edit(laid.cells, 'paste', { skipped: laid.skipped, runOff: laid.runOff });
+    const done = options.edit(laid.cells, 'paste', { skipped: laid.skipped, runOff: laid.runOff, followers: laid.followers });
     if (!done.ok) return;
     const r1 = Math.min(box.r0 + block.length - 1, model.rows.length - 1);
     const c1 = Math.min(corner + Math.max(...block.map((texts) => texts.length)) - 1, model.columns.length - 1);
@@ -1033,18 +1097,24 @@ export function sheet(options) {
 
   function clearAcross(box) {
     const cellsToEmpty = [];
+    const followers = [];
     for (let r = box.r0; r <= box.r1; r += 1) {
       for (let c = box.c0; c <= box.c1; c += 1) {
         const column = model.columns[c];
         if (column.kind !== 'slot' || cellText(model, model.rows[r], column) === '') continue;
+        // a day type that follows another has no slots of its own to empty
+        if (column.follows) {
+          followers.push(column);
+          continue;
+        }
         cellsToEmpty.push(cellRequest(model, model.rows[r], column, ''));
       }
     }
     if (cellsToEmpty.length === 0) {
-      options.say('Nothing to empty: no group is in the slots selected.');
+      options.say(followers.length > 0 ? 'Nothing was emptied: ' + followersLeft(model.after, followers) + '.' : 'Nothing to empty: no group is in the slots selected.');
       return;
     }
-    options.edit(cellsToEmpty, 'delete');
+    options.edit(cellsToEmpty, 'delete', { followers });
   }
 
   function clear() {
@@ -1249,6 +1319,8 @@ export function sheet(options) {
       why.replaceChildren();
     },
     has(node) {
+      // (the frame has the focus when the cursor's row is not drawn)
+      if (across && node === scroll) return true;
       const cell = cellOf(node);
       return Boolean(cell) && node === cell;
     },

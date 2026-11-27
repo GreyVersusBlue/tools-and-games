@@ -31,7 +31,7 @@ import { fill, apply, button, keyed, emptyState, roomLabel } from '../common.js'
 import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, touch, discard, remember, takeBack, forgetSteps, stageSlot, stageField, stageAdd, stageRemove, stageKeep } from './staged.js';
 import { sheetModel, namesOf, newGroup } from './model.js';
 import { sheet as makeSheet, cellKey } from './sheet.js';
-import { acrossModel, runAcross, wordsFor, plain } from './across.js';
+import { acrossModel, runAcross, wordsFor, plain, followersLeft } from './across.js';
 import { printButtons, buttonLabel } from '../../prints/index.js';
 import { readGridDay, writeGridDay } from '../../../storage/device.js';
 import { printButton } from '../../components/print-preview.js';
@@ -246,13 +246,14 @@ export function mount(env) {
     const count = (k) => k + (k === 1 ? ' slot' : ' slots');
     const lead = how === 'paste' ? 'Pasted ' + count(cells.length) + '. ' : how === 'delete' ? 'Emptied ' + count(cells.length) + '. ' : '';
     const notes = extra && extra.skipped > 0 ? ' ' + count(extra.skipped) + ' of the block fell on the name or the duties and ' + (extra.skipped === 1 ? 'was' : 'were') + ' left out.' : '';
+    const left = extra && extra.followers && extra.followers.length > 0 ? ' ' + followersLeft(staged.project, extra.followers) + '.' : '';
     const run = extra && extra.runOff > 0 ? ' ' + count(extra.runOff) + ' ran past the table’s end and ' + (extra.runOff === 1 ? 'was' : 'were') + ' left out.' : '';
     if (n === 0) {
-      say(lead + 'Nothing changed: it is already so.' + notes + run);
+      say(lead + 'Nothing changed: it is already so.' + notes + run + left);
       return { ok: true, why: null, staged: false };
     }
     const words = wordsFor(staged.project, block, cells, how === 'edit' ? 3 : 4);
-    const said = [lead].concat(words || ['Changed ' + count(n) + '.'], [notes + run, ' It is not applied yet.']);
+    const said = [lead].concat(words || ['Changed ' + count(n) + '.'], [notes + run + left, ' It is not applied yet.']);
     stage(block.slots.map(({ groupId, dayTypeId, period, fields }) => ({ op: 'slot', groupId, dayTypeId, period, fields })), said);
     return { ok: true, why: null, staged: true };
   }
@@ -545,7 +546,7 @@ export function mount(env) {
       const room = state.rows === 'rooms';
       return h('p', { class: 'sch-hint grd-hint' },
         h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace who is ' + (room ? 'in the room' : 'with the teacher') + '; Enter or F2 edits the slot; Escape leaves it as it was. Shift with the arrows selects a block. '
-          + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; Delete takes ' + (room ? 'the class out of the room' : 'the class away from the teacher') + '. '
+          + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; Delete takes ' + (room ? 'the class out of the room' : 'the class away from the teacher') + '; ' + MOD + 'Z takes back the last change here. '
           + 'Typing replaces who is ' + (room ? 'in the room' : 'there') + '; to add a class, type both: 7-3, 7-1. Fill down is for Groups rows. '),
         'Group names are typed as they are in the Groups rows. A dotted line under a name is a group the schedule does not have.');
     }

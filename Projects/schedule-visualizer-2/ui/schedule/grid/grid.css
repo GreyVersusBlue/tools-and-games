@@ -500,12 +500,21 @@
 }
 
 .grd-cell--across[data-editing] {
+  position: relative;
   min-width: 11rem;
   overflow: visible;
 }
 
 /* A teacher with several rooms says which one a class goes in. */
 .grd-in__field {
+  /* under the slot, out of the flow: a row with the field open stays a row's
+     height (the windowed table's pads are counted in rows of one height) */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--s-2);
@@ -584,11 +593,13 @@
   max-width: none;
 }
 
-/* A free slot of the Teachers and Rooms rows says "Planning" or "Empty" to a
-   screen reader and in what is copied from the page, and shows nothing. */
+/* A free slot of the Teachers and Rooms rows shows its word ("Planning",
+   "Empty") in the muted ink, as the Groups rows' marked periods do. It is
+   plain text in the slot, not an element of its own: an element for each of
+   three thousand slots would double what the browser lays out at every edit. */
 .grd-cell--across.is-free:not([data-editing]) {
-  font-size: 0;
-  line-height: 0;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
 }
 
 /* A table of more than 60 rows is drawn a screenful and a margin at a time
@@ -600,6 +611,10 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.grd-table--windowed .grd-cell--across[data-editing] {
+  overflow: visible;
 }
 
 .grd-pad td {

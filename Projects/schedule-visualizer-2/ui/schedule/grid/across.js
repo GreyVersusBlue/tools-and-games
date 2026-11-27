@@ -14,6 +14,7 @@
 //   teacherRooms(project, teacherId)   a teacher's rooms, for the In field
 //   defaultRoom(model, row, column)    the room In starts at
 //   cellsOf(model, r, c, block)        a pasted block as cells to edit
+//   followersLeft(project, columns)    the sentence for slots of a day type that follows another
 //   wordsFor(project, block, cells)    the sentence for an edit: segments
 //   plain(segments)                    the same as text
 
@@ -158,6 +159,7 @@ export function cellRequest(model, row, column, text, roomId) {
 // columns past the table's end that were left out.
 export function cellsOf(model, r, c, block) {
   const cells = [];
+  const followers = [];
   let skipped = 0;
   let runOff = 0;
   block.forEach((texts, dr) => {
@@ -168,14 +170,36 @@ export function cellsOf(model, r, c, block) {
         runOff += 1;
         return;
       }
+      // a place the block holds nothing for (a fill passes over a duty column)
+      if (text === null) return;
       if (column.kind !== 'slot') {
         skipped += 1;
+        return;
+      }
+      // a day type that follows another has no slots of its own: what is
+      // laid on it is left out, and said, not refused with the rest
+      if (column.follows) {
+        followers.push(column);
         return;
       }
       cells.push(cellRequest(model, row, column, text));
     });
   });
-  return { cells, skipped, runOff };
+  return { cells, skipped, runOff, followers };
+}
+
+// "3 slots were left as they are: B Day is the same as A Day. Make its own
+// copy in the column header to change them" (no full stop: the caller ends
+// the sentence). `columns` are the follower columns an edit passed over.
+export function followersLeft(project, columns) {
+  const words = [];
+  for (const column of columns) {
+    const dayType = project.dayTypes.find((each) => each.id === column.dayTypeId);
+    const said = dayType.name + ' is the same as ' + column.follows.name;
+    if (!words.includes(said)) words.push(said);
+  }
+  const one = columns.length === 1;
+  return columns.length + (one ? ' slot was' : ' slots were') + ' left as ' + (one ? 'it is' : 'they are') + ': ' + words.join('; ') + '. Make its own copy in the column header to change ' + (one ? 'it' : 'them');
 }
 
 // Work an edit out against the schedule as the staged edits leave it.
@@ -221,15 +245,23 @@ export function wordsFor(project, block, cells, limit) {
     const when = inPeriod(project, slot.dayTypeId, slot.period);
     const takes = Boolean(teacher) && block.taken.some((each) => each.groupId === slot.groupId);
     if (now === was && !takes) continue;
+    // Teachers the slot named, taken off it because the new room is not theirs
+    // (engine/grid-across.js `moved[].droppedTeacherIds`, here for this slot):
+    // said after the move, never silently.
+    const dropped = now === '' ? [] : group.days[slot.dayTypeId][slot.period].teacherIds.filter((id) => !after.days[slot.dayTypeId][slot.period].teacherIds.includes(id));
+    const dropWords = dropped.length === 0 ? [] : [' ', ...dropped.flatMap((id, index) => {
+      const who = project.teachers.find((each) => each.id === id);
+      return [...(index === 0 ? [] : [index === dropped.length - 1 ? ' and ' : ', ']), named(who ? who.name : 'A teacher who is no longer in the schedule')];
+    }), dropped.length === 1 ? ' is' : ' are', ' no longer named on ', named(group.name), ' there (not based in ', named(now), ').'];
     if (now === '') {
       if (teacher) lost.push([named(group.name), ' has no room', ...when, ' now (it was in ', named(was), ' with ', named(teacher.name), ').']);
       else lost.push([named(group.name), ' now has no room', ...when, ' (was ', named(was), ').']);
     } else if (takes) {
-      moved.push([named(teacher.name), ' takes ', named(group.name), ...when, ', in ', named(now), ...(was === '' || was === now ? ['.'] : [' (it was in ', named(was), ').'])]);
+      moved.push([named(teacher.name), ' takes ', named(group.name), ...when, ', in ', named(now), ...(was === '' || was === now ? ['.'] : [' (it was in ', named(was), ').']), ...dropWords]);
     } else if (was === '') {
-      moved.push([named(group.name), ' goes into ', named(now), ...when, ' (it had no room).']);
+      moved.push([named(group.name), ' goes into ', named(now), ...when, ' (it had no room).', ...dropWords]);
     } else {
-      moved.push([named(group.name), ' moves from ', named(was), ' to ', named(now), ...when, '.']);
+      moved.push([named(group.name), ' moves from ', named(was), ' to ', named(now), ...when, '.', ...dropWords]);
     }
   }
   const all = lost.concat(moved);
