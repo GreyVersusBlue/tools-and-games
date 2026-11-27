@@ -558,3 +558,53 @@
     min-height: 2.75rem;
   }
 }
+
+/* The Teachers and Rooms rows have a table of 150 rows and 20 slots or more:
+   with fixed columns the browser lays it out from the columns, not from
+   everything in them (an edit has to be drawn in 150 ms, ARCHITECTURE 23.12).
+   A name is as wide as the Groups rows' Group, a period as wide as its words
+   wrap in. */
+.grd-sheet[data-role="teachers"] .grd-table,
+.grd-sheet[data-role="rooms"] .grd-table {
+  table-layout: fixed;
+  width: calc(9rem + var(--grd-periods, 16) * 7.5rem);
+}
+
+.grd-col--name {
+  width: 9rem;
+}
+
+.grd-col--period {
+  width: 7.5rem;
+}
+
+.grd-sheet[data-role="teachers"] .grd-cell--read,
+.grd-sheet[data-role="rooms"] .grd-cell--read {
+  min-width: 0;
+  max-width: none;
+}
+
+/* A free slot of the Teachers and Rooms rows says "Planning" or "Empty" to a
+   screen reader and in what is copied from the page, and shows nothing. */
+.grd-cell--across.is-free:not([data-editing]) {
+  font-size: 0;
+  line-height: 0;
+}
+
+/* A table of more than 60 rows is drawn a screenful and a margin at a time
+   (sheet.js ROW_WINDOW), so its rows are one height: a name that does not fit
+   is cut at the slot's edge, and the whole of it is the slot's name for a
+   screen reader and when it is edited. The pad rows stand for the rows not
+   drawn, so the scroll bar is as long as the whole table. */
+.grd-table--windowed .grd-cell--across {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grd-pad td {
+  height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}

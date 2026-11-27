@@ -249,12 +249,12 @@ export function mount(env) {
     const run = extra && extra.runOff > 0 ? ' ' + count(extra.runOff) + ' ran past the table’s end and ' + (extra.runOff === 1 ? 'was' : 'were') + ' left out.' : '';
     if (n === 0) {
       say(lead + 'Nothing changed: it is already so.' + notes + run);
-      return { ok: true, why: null };
+      return { ok: true, why: null, staged: false };
     }
     const words = wordsFor(staged.project, block, cells, how === 'edit' ? 3 : 4);
     const said = [lead].concat(words || ['Changed ' + count(n) + '.'], [notes + run, ' It is not applied yet.']);
     stage(block.slots.map(({ groupId, dayTypeId, period, fields }) => ({ op: 'slot', groupId, dayTypeId, period, fields })), said);
-    return { ok: true, why: null };
+    return { ok: true, why: null, staged: true };
   }
 
   const shared = {

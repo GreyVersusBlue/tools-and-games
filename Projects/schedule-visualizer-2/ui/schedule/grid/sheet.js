@@ -34,6 +34,15 @@ const LIST_LIMIT = 60;
 // columns wait behind the Fields button. grid.css has the same number.
 export const NARROW = '(max-width: 640px)';
 
+// The Teachers and Rooms rows of a large school (the timing fixture's 150
+// rooms by 20 periods is three thousand slots) are drawn a screenful of rows
+// and a margin at a time: the browser's cost of an edit is the cost of the
+// table it has to lay out, and a table of three thousand slots takes it
+// 190 ms a time on the machine ARCHITECTURE 23.12 measured on. A table of
+// up to ROW_WINDOW rows is drawn whole, as the Groups rows are.
+export const ROW_WINDOW = 60;
+const MARGIN = 12;
+
 export function cellKey(rowId, columnId) {
   return 'grid:' + rowId + ':' + columnId;
 }
@@ -54,6 +63,17 @@ export function sheet(options) {
   const element = h('div', { class: 'grd-sheet', data: { role } }, scroll, list, refusal);
   // (watched from the first drawing, so a table never drawn adds nothing to the page)
   let watched = false;
+  if (across) {
+    scroll.addEventListener('scroll', () => follow(), { passive: true });
+    // the frame itself has the focus when the cursor's row is not drawn: it
+    // goes to the cursor, which brings the row back
+    scroll.addEventListener('focus', (event) => {
+      if (event.target !== scroll || !model || !view.at) return;
+      const at = place(view.at);
+      if (at) goTo(at.r, at.c, false);
+    });
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => follow()).observe(scroll);
+  }
   const cellState = (current, row, column) => (across ? acrossState(current, row, column) : groupState(current, row, column));
   const cellText = (current, row, column) => (across ? acrossText(current, row, column) : groupText(current, row, column));
 
@@ -64,6 +84,18 @@ export function sheet(options) {
   let painted = [];
   let drag = null;
   let lastPointer = { type: 'mouse', onCursor: false };
+  let shape = null;
+  // windowed drawing (across, more than ROW_WINDOW rows): the rows drawn are
+  // [from, to); a row is `rowPx` tall and the header `headPx`, both measured
+  let windowed = false;
+  let rowPx = 36;
+  let headPx = 58;
+  let from = 0;
+  let to = 0;
+  let rowEls = new Map();
+  let body = null;
+  let padTop = null;
+  let padBottom = null;
   // Does the sheet have the focus? Asked of the page first; but a cell that
   // goes out of sight while it has the focus (its column hidden at 640 px)
   // loses it to the page without a word, or with a blur from a cell whose
@@ -120,12 +152,107 @@ export function sheet(options) {
         // a block is what is on screen of it
         if (hidden[c]) continue;
         const cell = cellAt(r, c);
+        // (a row of a windowed table that is not drawn has no slots to mark)
+        if (!cell) continue;
         cell.setAttribute('aria-selected', 'true');
         painted.push(cell);
       }
     }
     const at = place(view.at);
-    cellAt(at.r, at.c).tabIndex = 0;
+    const cursor = cellAt(at.r, at.c);
+    if (cursor) cursor.tabIndex = 0;
+    // a cursor on a row that is not drawn leaves the frame the Tab stop; it
+    // brings the row back when it has the focus
+    if (windowed) {
+      if (cursor) scroll.removeAttribute('tabindex');
+      else scroll.tabIndex = 0;
+    }
+  }
+
+  // ---------------------------------------------------------------- the rows drawn
+
+  function pad() {
+    return h('tr', { class: 'grd-pad', 'aria-hidden': 'true' }, h('td', { colspan: String(model.columns.length) }));
+  }
+
+  function buildRow(r) {
+    const row = model.rows[r];
+    return h('tr', { class: 'grd-row', 'aria-rowindex': windowed ? String(r + 3) : null }, model.columns.map((column) => cellElement(row, column)));
+  }
+
+  // Draw rows [a, b) and no others: the ones that were drawn and still are
+  // stay as they are.
+  function setWindow(a, b) {
+    for (const [r, tr] of Array.from(rowEls)) {
+      if (r >= a && r < b) continue;
+      for (const column of model.columns) {
+        const key = cellKey(model.rows[r].id, column.id);
+        cells.delete(key);
+        sigs.delete(key);
+      }
+      tr.remove();
+      rowEls.delete(r);
+    }
+    for (let r = a; r < b; r += 1) {
+      if (rowEls.has(r)) continue;
+      let next = null;
+      for (let k = r + 1; k < b; k += 1) {
+        if (rowEls.has(k)) {
+          next = rowEls.get(k);
+          break;
+        }
+      }
+      const tr = buildRow(r);
+      body.insertBefore(tr, next || padBottom);
+      rowEls.set(r, tr);
+    }
+    from = a;
+    to = b;
+    if (windowed) {
+      padTop.firstChild.style.height = a * rowPx + 'px';
+      padBottom.firstChild.style.height = (model.rows.length - b) * rowPx + 'px';
+    }
+  }
+
+  // The rows the scroll position asks for: what is in view and a margin.
+  function wanted() {
+    const first = Math.max(0, Math.floor((scroll.scrollTop - headPx) / rowPx));
+    const count = Math.ceil((scroll.clientHeight || rowPx * 30) / rowPx) + 1;
+    return { first, last: first + count, a: Math.max(0, first - MARGIN), b: Math.min(model.rows.length, first + count + MARGIN) };
+  }
+
+  // The window follows the scroll when what is in view comes near its edge.
+  function follow() {
+    if (!windowed || !model) return;
+    const ask = wanted();
+    if ((ask.first < from + 3 && from > 0) || (ask.last > to - 3 && to < model.rows.length)) {
+      setWindow(ask.a, ask.b);
+      paint();
+    }
+  }
+
+  // The heights the page gave: read when nothing is waiting to be laid out.
+  function measure() {
+    const one = rowEls.get(from);
+    const head = table.tHead;
+    let moved = false;
+    if (one && one.offsetHeight > 0 && one.offsetHeight !== rowPx) {
+      rowPx = one.offsetHeight;
+      moved = true;
+    }
+    if (head && head.offsetHeight > 0) headPx = head.offsetHeight;
+    if (moved) setWindow(from, to);
+  }
+
+  // Row r drawn, and in view.
+  function reveal(r) {
+    if (!windowed || !model) return;
+    const top = r * rowPx;
+    const at = scroll.scrollTop;
+    if (top < at) scroll.scrollTop = top;
+    else if (top + rowPx + headPx > at + scroll.clientHeight) scroll.scrollTop = top + rowPx + headPx - scroll.clientHeight;
+    const ask = wanted();
+    setWindow(Math.min(ask.a, r), Math.max(ask.b, r + 1));
   }
 
   // On a narrow screen the field columns after Group are hidden until the
@@ -133,6 +260,8 @@ export function sheet(options) {
   // The rule is asked, not the page: a sheet that is not in the page yet, or
   // is out of sight, has no boxes to go by.
   function hiddenColumns() {
+    // (the Teachers and Rooms rows hide no column, and ask the page nothing)
+    if (across) return model.columns.map(() => false);
     const hide = view.fields !== true && window.matchMedia(NARROW).matches;
     return model.columns.map((column) => hide && column.kind === 'field' && column.field !== 'name');
   }
@@ -163,6 +292,7 @@ export function sheet(options) {
     const row = Math.min(Math.max(r, 0), model.rows.length - 1);
     const was = place(view.at);
     const column = landing(Math.min(Math.max(c, 0), model.columns.length - 1), was ? was.c : null);
+    reveal(row);
     view.at = refAt(row, column);
     if (!extend) view.anchor = view.at;
     paint();
@@ -215,51 +345,88 @@ export function sheet(options) {
   }
 
   // One finding's sentence, drawn once under the table however many slots
-  // carry it: a marked slot's description names it (`aria-describedby`).
-  let lines = new Map();
+  // carry it: a marked slot's description names it (`aria-describedby`). A
+  // finding keeps its line (and the line its id) from one drawing to the next,
+  // so a slot that did not change need not be touched for it.
+  let lineEls = new Map();
+  let usedLines = new Set();
   const lineFor = (finding) => {
-    if (!lines.has(finding.id)) lines.set(finding.id, h('p', { id: uid('grid-why') }, findingWords([finding])));
-    return lines.get(finding.id).id;
+    let line = lineEls.get(finding.id);
+    if (!line) {
+      line = h('p', { id: uid('grid-why') });
+      lineEls.set(finding.id, line);
+    }
+    const words = findingWords([finding]);
+    if (line.textContent !== words) line.textContent = words;
+    usedLines.add(finding.id);
+    return line.id;
   };
 
-  // A slot of the Teachers or Rooms rows. The sentence of a finding is its
-  // `data-why`, drawn beside the slot while the cursor is on it (why.js,
-  // grid.css), and is what a screen reader is told through the line under
-  // the table. A slot of a day type that follows another is greyed.
-  function acrossCell(row, column) {
+  // What a screen reader calls a row: a room by its number is "Room 204"
+  const rowWords = (row) => (row.kind === 'room' && /^\d/.test(row.name) ? 'Room ' + row.name : row.name);
+
+  const setAttr = (node, name, value) => {
+    if (value === null || value === undefined) node.removeAttribute(name);
+    else if (node.getAttribute(name) !== value) node.setAttribute(name, value);
+  };
+
+  // What a slot of the Teachers or Rooms rows holds, written into its element.
+  // The sentence of a finding is its `data-why`, drawn beside the slot while
+  // the cursor is on it (why.js, grid.css), and is what a screen reader is
+  // told through the line under the table. A slot of a day type that follows
+  // another is greyed. A slot whose words, mark and look are what they were is
+  // left alone: an edit changes a few slots of a table of three thousand, and
+  // the table is drawn again from them, not from nothing (ARCHITECTURE 23.12's
+  // budget of 150 ms an edit).
+  const sigs = new Map();
+  function fillAcross(cell, row, column) {
     const state = cellState(model, row, column);
     const name = column.kind === 'name';
     const slot = column.kind === 'slot';
     const marked = state.findings.length > 0;
     const words = marked ? findingWords(state.findings) : '';
+    const sig = [rowWords(row), state.text, state.staged, state.follower, state.duty, marked ? state.findings.map((finding) => finding.id).join(',') + words : ''].join('\u0001');
+    if (sigs.get(cell.dataset.key) === sig) {
+      // (the lines it names still count as in use)
+      if (marked) state.findings.forEach(lineFor);
+      return;
+    }
+    sigs.set(cell.dataset.key, sig);
+    cell.className = 'grd-cell grd-cell--read grd-cell--across' + (name ? ' grd-cell--name' : '') + (slot && state.text === '' ? ' is-free' : '') + (state.duty ? ' is-duty' : '')
+      + (state.staged ? ' is-staged' : '') + (state.follower ? ' is-follower' : '') + (marked ? ' is-marked' : '');
+    setAttr(cell, 'aria-label', slot ? rowWords(row) + ', ' + column.label + ': ' + (state.text === '' ? row.free : state.text) : null);
+    setAttr(cell, 'aria-describedby', marked ? state.findings.map(lineFor).join(' ') : null);
+    setAttr(cell, 'aria-disabled', state.follower ? 'true' : null);
+    setAttr(cell, 'title', marked ? words : state.follower ? model.after.dayTypes.find((dayType) => dayType.id === column.dayTypeId).name + ' is the same as ' + column.follows.name + '. Make its own copy to change it.' : null);
+    setAttr(cell, 'data-severity', marked ? state.findings[0].severity : null);
+    setAttr(cell, 'data-why', marked ? words : null);
+    const parts = [];
+    if (name) parts.push(h('span', { class: 'grd-cell__text' }, row.name));
+    // (a free slot says so as plain text that grid.css draws at no size: an
+    // element for each of the three thousand would double what the browser
+    // lays out at every edit)
+    else parts.push(state.text === '' && slot ? row.free : state.text);
+    if (marked) {
+      const worst = state.findings[0].severity;
+      parts.push(
+        h('span', { class: 'grd-cell__mark sch-mark--' + worst, 'aria-hidden': 'true' }, SEVERITY_WORDS[worst].glyph),
+        h('span', { class: 'vh' }, ' (' + SEVERITY_WORDS[worst].one + ')'));
+    }
+    cell.replaceChildren(...parts);
+  }
+
+  function acrossCell(row, column) {
+    const name = column.kind === 'name';
     const cell = h(name ? 'th' : 'td', {
-      class: 'grd-cell grd-cell--read grd-cell--across' + (name ? ' grd-cell--name' : '') + (slot && state.text === '' ? ' is-free' : '') + (state.duty ? ' is-duty' : '')
-        + (state.staged ? ' is-staged' : '') + (state.follower ? ' is-follower' : '') + (marked ? ' is-marked' : ''),
       role: name ? 'rowheader' : 'gridcell',
       scope: name ? 'row' : null,
       tabindex: '-1',
       'aria-selected': 'false',
-      'aria-readonly': slot ? null : 'true',
-      'aria-disabled': state.follower ? 'true' : null,
-      'aria-label': slot ? row.name + ', ' + column.label + ': ' + (state.text === '' ? row.free : state.text) : null,
-      'aria-describedby': marked ? state.findings.map(lineFor).join(' ') : null,
-      title: marked ? words : state.follower ? model.after.dayTypes.find((dayType) => dayType.id === column.dayTypeId).name + ' is the same as ' + column.follows.name + '. Make its own copy to change it.' : null,
+      'aria-readonly': column.kind === 'slot' ? null : 'true',
       data: { key: cellKey(row.id, column.id), row: row.id, col: column.id },
     });
-    if (name) {
-      cell.append(h('span', { class: 'grd-cell__text' }, row.name));
-    } else {
-      cell.append(state.text === '' && slot ? h('span', { class: 'vh' }, row.free) : state.text);
-    }
-    if (marked) {
-      const worst = state.findings[0].severity;
-      cell.dataset.severity = worst;
-      cell.dataset.why = words;
-      cell.append(
-        h('span', { class: 'grd-cell__mark sch-mark--' + worst, 'aria-hidden': 'true' }, SEVERITY_WORDS[worst].glyph),
-        h('span', { class: 'vh' }, ' (' + SEVERITY_WORDS[worst].one + ')'));
-    }
     cells.set(cell.dataset.key, cell);
+    fillAcross(cell, row, column);
     return cell;
   }
 
@@ -322,7 +489,7 @@ export function sheet(options) {
     // again in a cell with no box, where it would hold the table's keys and
     // show nothing. What it held is read into the cell as leaving it does,
     // so what was typed is staged; text that cannot be read is let go.
-    let reopen = editor ? { row: editor.row.id, col: editor.column.id } : null;
+    let reopen = editor && !editor.committed ? { row: editor.row.id, col: editor.column.id } : null;
     if (editor && model) {
       const at = place(reopen);
       if (at && hiddenColumns()[at.c]) {
@@ -337,14 +504,47 @@ export function sheet(options) {
     drawing = true;
     closeEditor();
     model = next;
-    cells = new Map();
-    lines = new Map();
-    painted = [];
     if (across) {
-      table.replaceChildren(head(), h('tbody', null, model.rows.map((row) => h('tr', { class: 'grd-row' }, model.columns.map((column) => cellElement(row, column))))));
-      why.replaceChildren(...lines.values());
+      // the same rows and columns as the drawing before: only the slots that
+      // changed are written, and what has the focus keeps it
+      const shaped = model.rows.map((row) => row.id).join(',') + '|' + model.columns.map((column) => column.id + '/' + column.label + (column.follows ? '/' + column.follows.id : '')).join(',') + '|' + model.days.map((day) => day.dayType.name).join(',') + '|' + model.first;
+      usedLines = new Set();
+      if (shaped === shape && table.firstChild) {
+        for (const [r] of rowEls) for (const column of model.columns) fillAcross(cells.get(cellKey(model.rows[r].id, column.id)), model.rows[r], column);
+      } else {
+        shape = shaped;
+        cells = new Map();
+        sigs.clear();
+        painted = [];
+        rowEls = new Map();
+        windowed = model.rows.length > ROW_WINDOW;
+        body = h('tbody', null);
+        padTop = windowed ? pad() : null;
+        padBottom = windowed ? pad() : null;
+        if (windowed) body.append(padTop, padBottom);
+        table.classList.toggle('grd-table--windowed', windowed);
+        // Fixed columns: the browser does not measure every slot of a table of
+        // three thousand to find a width (grid.css)
+        table.replaceChildren(
+          h('colgroup', null, model.columns.map((column) => h('col', { class: 'grd-col grd-col--' + (column.kind === 'name' ? 'name' : 'period') }))),
+          head(),
+          body);
+        table.style.setProperty('--grd-periods', String(model.columns.length - 1));
+        const ask = wanted();
+        const at = place(view.at);
+        setWindow(windowed ? (at ? Math.min(ask.a, at.r) : ask.a) : 0, windowed ? (at ? Math.max(ask.b, at.r + 1) : ask.b) : model.rows.length);
+        // the heights are the page's to say once it has drawn them
+        if (windowed) requestAnimationFrame(() => {
+          measure();
+          follow();
+        });
+      }
+      for (const [id, line] of Array.from(lineEls)) if (!usedLines.has(id)) lineEls.delete(id);
+      why.replaceChildren(...Array.from(lineEls.values()));
       table.setAttribute('aria-rowcount', String(model.rows.length + 2));
     } else {
+      cells = new Map();
+      painted = [];
       table.replaceChildren(head(), ...model.sections.map((section) => h('tbody', null,
         h('tr', { class: 'grd-grade' }, h('th', { scope: 'rowgroup', colspan: String(model.columns.length) },
           section.label, h('span', { class: 'grd-grade__count' }, ' · ' + section.rows.length + (section.rows.length === 1 ? ' group' : ' groups')))),
@@ -486,6 +686,7 @@ export function sheet(options) {
   }
 
   function openAcrossEditor(r, c, opts) {
+    reveal(r);
     const row = model.rows[r];
     const column = model.columns[c];
     const cell = cellAt(r, c);
@@ -498,7 +699,7 @@ export function sheet(options) {
       type: 'text',
       autocomplete: 'off',
       spellcheck: 'false',
-      'aria-label': row.name + ', ' + column.label + ', groups',
+      'aria-label': rowWords(row) + ', ' + column.label + ', groups',
       role: 'combobox',
       'aria-autocomplete': 'list',
       'aria-expanded': 'true',
@@ -570,6 +771,22 @@ export function sheet(options) {
     if (!done.ok) {
       refuse(done.why);
       return false;
+    }
+    if (done.staged) {
+      // The field stays until the drawing the edit has brought (a moment from
+      // now), which takes it away and puts the focus on the cursor's slot in
+      // the one pass: taking it away here and moving the focus here would lay
+      // a table of three thousand slots out twice more before that drawing
+      // lays it out again (ARCHITECTURE 23.12: 150 ms an edit).
+      editor.committed = true;
+      if (!leaving) {
+        const r = Math.min(Math.max(at.r + dr, 0), model.rows.length - 1);
+        const c = landing(Math.min(Math.max(at.c + dc, 0), model.columns.length - 1), at.c);
+        reveal(r);
+        view.at = view.anchor = refAt(r, c);
+        if (options.focusCursor) options.focusCursor(cellKey(view.at.row, view.at.col));
+      }
+      return true;
     }
     drawing = true;
     closeEditor();
@@ -1023,6 +1240,11 @@ export function sheet(options) {
       model = null;
       cells = new Map();
       painted = [];
+      shape = null;
+      windowed = false;
+      rowEls = new Map();
+      sigs.clear();
+      lineEls = new Map();
       table.replaceChildren();
       why.replaceChildren();
     },
