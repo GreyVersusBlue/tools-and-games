@@ -9,8 +9,10 @@ import { holds, tripOf, tripLeaf } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { lintContent, tripFailures } from '../tools/lint-content.mjs';
 import { destinations, risk, accountItem, repSentence, estimate } from '../js/engine/routes.js';
-import { moneyTrail, jumpWords } from '../js/ui/screens/ledger.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view, sellHomeQuote } from '../js/engine/index.js';
+import { moneyTrail, jumpWords, trailJumpWords, seasonLines, whereIsExpedition, whereIsAgent, wherePlace } from '../js/ui/screens/ledger.js';
+import { whyLine } from '../js/engine/routes.js';
+import { trail } from '../js/engine/turn.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view, sellHomeQuote, suggestPlan, canEndSeason, recall } from '../js/engine/index.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import { cityOf } from '../js/engine/state.js';
 import * as M from '../js/engine/market.js';
@@ -430,7 +432,7 @@ test('MER-119 (2) a trip settled by quotes says so, and does not say the party w
   const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''), { hopedHigh: true });
   ok(j, 'no calendar had a quoted trip whose why names a home price');
   const d = j.paper.data;
-  ok(/^The years passed before Mira was home, so salt was counted at \d+ at home, (not|more than|less than) the \d+ we hoped for\.$/.test(d.why), d.why);
+  ok(/^The years passed before Mira was home, so salt was counted at \d+( a load)? at home, (not|more than|less than) the \d+( a load)? we hoped for\.$/.test(d.why), d.why);
   ok(!/by the time|was back/.test(d.why), d.why);
   eq(j.line.why, d.why);
 });
@@ -572,6 +574,96 @@ test('MER-125 (6) good name is said as a sentence a child reads, one per group w
   eq(repSentence('court', 0), null);
   const item = accountItem(game(), calm, { do: [{ money: 40 }, { rep: 'court', by: 1 }], from: 'x/y' });
   eq(item.text, 'From x/y: +40 coins. The court thinks better of the house.', 'the money runs on, the sentence follows whole');
+});
+
+/** A whole three-act game of a plain player: answers each paper with the first choice the house can take, sends every free agent on the first stop that has a plan, and lets
+    the seasons pass. Returns the final state, which holds the log the ledger reads. */
+function playOut(c, { seed, house }) {
+  let s = newGame(c, { seed, length: 'acts', house });
+  const stops = c.stops.filter(q => q.id !== cityOf(c, 'trip').home).map(q => q.id);
+  for (let i = 0; i < 400 && s.phase !== 'ended'; i++) {
+    if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
+    if (s.phase === 'recall') { s = recall(s, c, {}); continue; }
+    s = answer(s, c);
+    for (const stop of stops) { const p = suggestPlan(s, c, stop); if (!p) continue; try { s = outfit(s, c, p); } catch { /* the house cannot fit this one out */ } }
+    s = canEndSeason(s).ok ? endSeason(s, c) : s;
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------------------------
+// MER-160 (M4g play problems 8, 10 and 16): the ledger and the house's worth tell the truth, season by season
+
+test('MER-160 (1) every closed season\'s listed lines add up to its shown change, card money and tolls included', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  let seasons = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    // the log of a finished game, read back one closed season at a time: the trail at each season's entry is what the ledger showed then
+    const kept = playOut(cairo, { seed, house: cairo.houses[seed % cairo.houses.length].id }), bot = 'player';
+    const entries = kept.log.map((e, i) => [e, i]).filter(([e]) => e.kind === 'season');
+    for (const [e, i] of entries) {
+      const row = trail({ ...kept, log: kept.log.slice(0, i + 1) }, cairo).at(-1);
+      eq(row.at, e.at);
+      const lines = seasonLines(row, kept.log);
+      eq(lines.reduce((n, l) => n + l.change, 0), row.change, `${bot}/${seed} ${row.season}: the lines ${JSON.stringify(lines.map(l => l.change))} against the change`);
+      seasons++;
+    }
+  }
+  ok(seasons >= 100, `${seasons} seasons were checked`);
+});
+
+test('MER-160 (3) the ledger\'s road section and People say the same place for an agent out on a road, going and coming back', () => {
+  let s = outfit(game(), calm, WOOL);
+  const app = () => ({ content: calm, state: s });
+  const seen = new Set();
+  for (let i = 0; i < 14 && s.expeditions.length; i++) {
+    const x = s.expeditions[0], p = wherePlace(calm, x);
+    const road = whereIsExpedition(app(), x), agent = whereIsAgent(app(), calm.agents.find(a => a.id === 'mira'), s.agents.mira);
+    const route = calm.routes.find(r => r.id === x.route), leg = route.legs[x.leg];
+    if (p.at === 'road') {
+      const from = calm.stops.find(q => q.id === leg.from).name, to = calm.stops.find(q => q.id === leg.to).name;
+      ok(road.includes(`from ${from} to ${to}`), road);
+      ok(agent.includes(from) && agent.includes(to), `People says "${agent}" while the road section says "${road}"`);
+      // going out the agent is on the road to the far end; coming back she is on the way home, never "on the road to" the far end she has left
+      if (x.leg > 0) ok(agent.startsWith('On the way home') && !agent.includes(`On the road to ${calm.stops.find(q => q.id === route.to).name}`), agent);
+      else ok(agent.startsWith(`On the road to ${to}`), agent);
+      seen.add(x.leg);
+    }
+    s = step(s, calm);
+  }
+  ok(seen.has(0) && seen.has(1), `both directions were met: ${[...seen]}`);
+});
+
+test('MER-160 (4) a return that counted loads below the price hoped says the loads\' average a load, and never "less than" a figure equal to its own', () => {
+  const x = { id: 'x1', agent: 'mira', route: 'harbour-hilltown', hope: { net: 200, home: { salt: 90 }, homeValue: { salt: 450 }, homeLoads: { salt: 5 }, ageWords: 'a season old', tolls: 0 },
+    book: { tolls: 0, sold: [], bought: [], seen: [], lost: {}, orders: [] }, cargo: { salt: 5 }, contract: { kind: 'own' } };
+  const r = { houseNet: 55, goodsBack: { salt: 5 }, homePrice: { salt: 90 }, cargoParts: { salt: 305 } };
+  const s = { market: {}, known: {}, stock: {}, t: 0, log: [] };
+  const quoted = whyLine(s, calm, x, { ...r, jump: { quoted: true, at: 3 } });
+  eq(quoted, 'The years passed before Mira was home, so salt was counted at 61 a load at home, not the 90 a load we hoped for.');
+  const home = whyLine(s, calm, x, r);
+  ok(/counted at 61 a load/.test(home) || /61/.test(home), home);
+  for (const w of [quoted, home]) { const m = w.match(/(\d+)[^\d]+(?:less than|not|more than) the (\d+)/); ok(!m || m[1] !== m[2], `a sentence that compares ${m?.[1]} with ${m?.[2]}: ${w}`); }
+});
+
+test('MER-160 (4) the years line does not call the gap between the money and the trips\' net goods in the warehouse', () => {
+  for (const after of [{ years: 10, change: 120, trips: 100, net: 235 }, { years: 10, change: 0, trips: 0, net: 235 }]) {
+    ok(!/warehouse|the rest being/.test(trailJumpWords(after)), trailJumpWords(after));
+    ok(!/warehouse|the rest being/.test(jumpWords(after)), jumpWords(after));
+  }
+  eq(trailJumpWords({ years: 10, change: 120, trips: 100, net: 235 }), '10 years passed. The trips made 235 dinars for the house.');
+});
+
+test('MER-160 (2) the line a far-end sale writes says the trip is not home, and every move of 10 dinars or more in a season has a line in that season', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  let traded = 0;
+  const kept = playOut(cairo, { seed: 3, house: 'cloth' });
+  for (const e of kept.log.filter(x => x.kind === 'worth' && x.cause === 'trade' && / traded at /.test(x.text))) {
+    ok(/is not home yet|came home/.test(e.text) || e.text.includes('and is home'), e.text);
+    traded++;
+  }
+  ok(traded > 0, 'the game had a far-end sale to read');
+  for (const e of kept.log.filter(x => x.kind === 'worth')) ok(Number.isInteger(e.at) && Math.abs(e.change) >= 10 && e.text, JSON.stringify(e));
 });
 
 await done();

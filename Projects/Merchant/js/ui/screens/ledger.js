@@ -55,9 +55,10 @@ export function jumpWords(a) {
   const n = a.years === 1 ? 'A year passed.' : `${a.years} years passed.`;
   if (!Number.isInteger(a.net)) return n;
   const made = a.net > 0 ? `The trips made ${dinars(a.net)} for the house.` : a.net < 0 ? `The trips cost the house ${dinars(-a.net)}.` : 'The trips came out even.';
-  const cash = a.trips === a.net ? '' : ` In the money it shows as ${signed(a.trips)}, the rest being goods in the warehouse.`;
+  // MER-160 (M4g play problem 8): the clause that said the rest of a gap between the money and the trips' net "being goods in the warehouse" is gone. The
+  // gap is mostly the money the trips took with them, paid out when they left, and the warehouse was empty on the page that said it.
   const other = a.change - a.trips;
-  return `${n} ${made}${cash}${other ? ` Loans and other news moved the money by ${signed(other)}.` : ''}`;
+  return `${n} ${made}${other ? ` Loans and other news moved the money by ${signed(other)}.` : ''}`;
 }
 
 /** MER-145 (MER-146's `worth` log entries, M4e play problem 7: worth moved by +81 and +368 with no paper): the lines the log holds for what moved the house's
@@ -67,10 +68,20 @@ export function worthBySeason(log) {
   const by = new Map();
   for (const e of log ?? []) {
     if (e.kind !== 'worth' || !Number.isInteger(e.at) || !e.text) continue;
+    if (e.cause === 'reset') continue;   // the years' own move belongs to the jump line, and no season's change holds it (turn.js trail)
     if (!by.has(e.at)) by.set(e.at, []);
     by.get(e.at).push(e.text);
   }
   return by;
+}
+
+/** MER-160 (M4g play problem 10: Summer 1324 showed +217 and its lines listed +219): the lines the ledger prints for one closed season of the trail, as
+    { text, change }, so that they add up to the season's `change` exactly. The log's `worth` lines come first, in the order they were written; what the
+    moves too small to have a line of their own come to (the trail's `rest`: a card's few dinars, a toll) is one last line. */
+export function seasonLines(row, log) {
+  const lines = (log ?? []).filter(e => e.kind === 'worth' && e.at === row.at && e.cause !== 'reset' && e.text && Number.isInteger(e.change)).map(e => ({ text: e.text, change: e.change }));
+  if (Number.isInteger(row.rest) && row.rest !== 0) lines.push({ text: `${signed(row.rest)} from small moves with no line of their own, such as card money and tolls.`, change: row.rest, small: true });
+  return lines;
 }
 
 /** The line for the years of a jump as the engine's trail gives them (`after`: { years, change, trips, net }, `change` being the jump's change in worth):
@@ -79,26 +90,42 @@ export function trailJumpWords(a) {
   const n = a.years === 1 ? 'A year passed.' : `${a.years} years passed.`;
   if (!Number.isInteger(a.net)) return n;
   const made = a.net > 0 ? `The trips made ${dinars(a.net)} for the house.` : a.net < 0 ? `The trips cost the house ${dinars(-a.net)}.` : 'The trips came out even.';
-  return `${n} ${made}${a.trips === a.net ? '' : ` In the money it shows as ${signed(a.trips)}, the rest being goods in the warehouse.`}`;
+  return `${n} ${made}`;
 }
 
-function whereIsExpedition(app, x) {
-  const { content } = app;
+/** MER-160 (M4g play problem 10: the road line said "from Damascus to Cairo" while People said "On the road to Damascus"): where an expedition is, read once from its
+    leg, so the road section and the People list say the same thing. { at: 'home' } | { at: 'stop', stop, to } | { at: 'road', from, to, by, out }, `out` true on the way
+    to the far end of the road and false on the way back. */
+export function wherePlace(content, x) {
   const route = content.routes.find(r => r.id === x.route);
   const leg = route?.legs[x.leg];
-  if (x.status === 'home') return 'Back in Cairo, waiting to be met.';
-  if (!leg) return 'Last heard of on the road.';
-  const by = VESSEL[leg.by] ?? leg.by;
-  if (x.status === 'waiting') return `Last heard of at ${stopName(content, leg.from)}, waiting for the road to ${stopName(content, leg.to)} to open.`;
-  return `Last heard of on the ${by} from ${stopName(content, leg.from)} to ${stopName(content, leg.to)}.`;
+  if (x.status === 'home') return { at: 'home' };
+  if (!leg) return { at: 'unknown' };
+  const farEnd = route.legs.findIndex(l => l.to === route.to);
+  if (x.status === 'waiting') return { at: 'stop', stop: leg.from, to: leg.to };
+  return { at: 'road', from: leg.from, to: leg.to, by: VESSEL[leg.by] ?? leg.by, out: x.leg <= farEnd };
 }
 
-function whereIsAgent(app, a, r) {
+export function whereIsExpedition(app, x) {
+  const { content } = app;
+  const p = wherePlace(content, x);
+  if (p.at === 'home') return 'Back in Cairo, waiting to be met.';
+  if (p.at === 'unknown') return 'Last heard of on the road.';
+  if (p.at === 'stop') return `Last heard of at ${stopName(content, p.stop)}, waiting for the road to ${stopName(content, p.to)} to open.`;
+  return `Last heard of on the ${p.by} from ${stopName(content, p.from)} to ${stopName(content, p.to)}.`;
+}
+
+export function whereIsAgent(app, a, r) {
   const { content, state } = app;
   const out = state.expeditions.find(x => x.agent === a.id);
   if (r.where === 'dead') return 'Did not come home.';
   if (r.where === 'gone') return leftHow(app.state, a.id) === 'retired' ? 'Has retired.' : 'Has gone to work for another house.';
-  if (out) return `On the road to ${stopName(content, content.routes.find(x => x.id === out.route)?.to ?? '')}.`;
+  if (out) {
+    const p = wherePlace(content, out);
+    if (p.at === 'stop') return `Waiting at ${stopName(content, p.stop)} for the road to ${stopName(content, p.to)} to open.`;
+    if (p.at === 'road') return p.out ? `On the road to ${stopName(content, p.to)}, on the ${p.by} from ${stopName(content, p.from)}.` : `On the way home, on the ${p.by} from ${stopName(content, p.from)} to ${stopName(content, p.to)}.`;
+    if (p.at === 'home') return `Back in ${stopName(content, content.city.home)}, waiting to be met.`;
+  }
   return `At home in ${stopName(content, content.city.home)}.`;
 }
 
@@ -119,6 +146,8 @@ function money(app) {
   const closed = Math.max(-1, ...state.log.filter(e => e.kind === 'season' && Number.isInteger(e.at)).map(e => e.at));
   const saleLines = at => (sales.find(x => x.at === at)?.lines ?? []).map(l => h('li', { class: 'ledger-sale', dataset: { saleAt: String(at) } }, l));
   const worthLines = at => (worth.get(at) ?? []).map(l => h('li', { class: 'ledger-worth', dataset: { worthAt: String(at) } }, l));
+  // a closed season prints every line its change is made of, the small moves' one included (MER-160); an open season prints what has moved so far
+  const closedLines = row => seasonLines(row, state.log).map(l => h('li', { class: l.small ? 'ledger-worth ledger-small' : 'ledger-worth', dataset: { worthAt: String(row.at), lineChange: String(l.change) } }, l.text));
   const openAts = [...new Set([...sales.map(x => x.at), ...worth.keys()])].filter(at => at > closed).sort((a, b) => a - b);
   const loans = state.loans ?? [];
   return section('money', 'Money',
@@ -133,7 +162,7 @@ function money(app) {
         h('li', { dataset: { change: String(t.change), ...(Number.isInteger(t.cash) ? { cash: String(t.cash) } : {}) } },
           h('span', null, t.season), ' ', h('strong', null, `${signed(t.change)} ${Math.abs(t.change) === 1 ? 'dinar' : 'dinars'}`),
           Number.isInteger(t.cash) && t.cash !== t.change ? h('small', { class: 'ledger-cash' }, ` in worth, ${signed(t.cash)} in the money`) : null),
-        ...saleLines(t.at), ...worthLines(t.at),
+        ...saleLines(t.at), ...closedLines(t),
         ...(t.after ? [h('li', { class: 'ledger-jump', dataset: { gap: String(t.after.years) } }, trailJumpWords(t.after))] : [])]),
       // a season not yet closed has no change to show, only what the house sold in it so far and what moved its worth
       ...openAts.flatMap(at => [h('li', { class: 'ledger-open', dataset: { open: String(at) } }, h('span', null, `${writeSeason(content, at)}, not yet closed`)), ...saleLines(at), ...worthLines(at)])])

@@ -1725,7 +1725,10 @@ export function tolls(s, content) {
     const given = payFromExpedition(s, content, x, leg.toll, 'tolls');
     for (const [g, q] of Object.entries(given)) x.book.paidInGoods[g] = (x.book.paidInGoods[g] ?? 0) + q;
     const traded = rode.leg === outEnd(route);
-    const arrival = () => W.note(s, content, 'trade', w0, c => `${agentOf(content, x.agent).name} ${traded ? 'traded' : 'paid the toll'} at ${stopName(content, leg.to)}. At ${stopName(content, homeOf(content))}'s prices the house is worth ${W.signed(c)}.`, { agent: x.agent, stop: leg.to });
+    // MER-160 (M4g play problem 16: worth rose by 219, 233 and 244 before a trip was home): the line says the trip is still out and why its goods and money are worth more or less now
+    const arrival = () => W.note(s, content, 'trade', w0, c => traded && x.status !== 'home'
+      ? `${agentOf(content, x.agent).name} traded at ${stopName(content, leg.to)} and is not home yet. What ${agentOf(content, x.agent).name} carries is counted again at ${stopName(content, homeOf(content))}'s prices, the house's share only, and the house is worth ${W.signed(c)}.`
+      : `${agentOf(content, x.agent).name} ${traded ? 'traded' : 'paid the toll'} at ${stopName(content, leg.to)}. At ${stopName(content, homeOf(content))}'s prices the house is worth ${W.signed(c)}.`, { agent: x.agent, stop: leg.to });
     if (rode.leg === route.legs.length - 1) { x.status = 'home'; x.leg = route.legs.length; arrival(); continue; }
     x.leg = rode.leg + 1;
     // an order from a letter, or the agent's trait until one comes (letters.js): wait a season here
@@ -1845,7 +1848,11 @@ export function gapCauses(s, content, x, r) {
     // (the loads the sheet hoped for are scaled to the loads that came, so a load the road took is the road's loss and not the price's)
     const hopedLoads = hope.homeLoads?.[g];
     const dinars = hope.homeValue?.[g] !== undefined && hopedLoads > 0 && r.cargoParts?.[g] !== undefined ? hope.homeValue[g] * Math.min(1, n / hopedLoads) - r.cargoParts[g] : (pH - now) * n;
-    if (pH) note('news', dinars, { stop: home, good: g, side: 'home', got: now, hoped: pH, ...(then !== undefined ? { then } : {}) });
+    // MER-160 (M4g play problem 8: "counted at 90 at home, less than the 90 we hoped for" when the run was counted at 61 a load): the first load's price can be the one
+    // hoped for while the loads, sold one behind another, fetch less, so the sentence also has the average a load of what the house counted and of what it hoped
+    const avgGot = r.cargoParts?.[g] !== undefined && n > 0 ? Math.round(r.cargoParts[g] / n) : null;
+    const avgHoped = hope.homeValue?.[g] !== undefined && hopedLoads > 0 ? Math.round(hope.homeValue[g] / hopedLoads) : null;
+    if (pH) note('news', dinars, { stop: home, good: g, side: 'home', got: now, hoped: pH, avgGot, avgHoped, ...(then !== undefined ? { then } : {}) });
   }
   // a toll paid in goods that the far end would have bought costs what the last loads would have fetched there, less the toll they paid
   const dest = stopOf(content, routeOf(content, x.route).to);
@@ -1874,7 +1881,7 @@ export function gapCauses(s, content, x, r) {
     paper's why sentence and the clerk's complaint that an agent sold too cheaply read the same line (MER-148, M4f play problem 7: a paper called one agent's trip
     "about as hoped" and the next said he sold too cheaply). */
 export const hopeSmall = hoped => Math.max(10, Math.abs(hoped) * 0.1);
-function whyLine(s, content, x, r) {
+export function whyLine(s, content, x, r) {
   const found = gapCauses(s, content, x, r);
   if (!found) return null;
   const { gap, causes, named, low } = found;
@@ -1889,9 +1896,17 @@ function whyLine(s, content, x, r) {
     const good = goodName(content, n.good), place = stopName(content, n.stop);
     const rel = (up) => (better ? `${up ? 'more' : 'less'} than` : 'not');
     if (n.side === 'home') {
+      // the first load's price is the one the market quotes; when the two first-load prices are the same figure (or the loads are what moved the gap) the sentence names what
+      // a load counted for on average, the run the house's sale makes, which is the figure the dinars are made of (MER-160)
+      const run = Number.isInteger(n.avgGot) && Number.isInteger(n.avgHoped) && n.avgGot !== n.avgHoped;
       // a party settled by quotes was not back when the price was read: say so (MER-119); one that was back says the season
-      if (r.jump?.quoted) return `The years passed before ${agent.name} was home, so ${good} was counted at ${n.got} at home, ${rel(n.got > n.hoped)} the ${n.hoped} we hoped for.`;
+      if (r.jump?.quoted) {
+        if (run) return `The years passed before ${agent.name} was home, so ${good} was counted at ${n.avgGot} a load at home, ${rel(n.avgGot > n.avgHoped)} the ${n.avgHoped} a load we hoped for.`;
+        if (n.got === n.hoped) return 'Prices moved against the house on the way.';
+        return `The years passed before ${agent.name} was home, so ${good} was counted at ${n.got} at home, ${rel(n.got > n.hoped)} the ${n.hoped} we hoped for.`;
+      }
       const got = n.then ?? n.got, when = r.jump && n.then !== undefined ? `in ${M.writeSeason(content, r.jump.at)}, when ${agent.name} was back` : `by the time ${agent.name} was back`;
+      if (got === n.hoped) return run ? `${cap(good)} counted ${n.avgGot} a load at home ${when}, ${rel(n.avgGot > n.avgHoped)} the ${n.avgHoped} a load we hoped for.` : 'Prices moved against the house on the way.';
       return `${cap(good)} fetched ${got} at home ${when}, ${rel(got > n.hoped)} the ${n.hoped} it fetched when ${agent.name} left.`;
     }
     const was = guessed ? ` We had no news of ${place} and guessed ${n.hoped}.` : null;   // no news: say so in a sentence of its own
@@ -1916,7 +1931,9 @@ function whyLine(s, content, x, r) {
   }
   if (top === 'tolls') return `Tolls were paid in ${goodName(content, named.tolls.good)} that would have sold for more in ${stopName(content, routeOf(content, x.route).to)}.`;
   if (top === 'glut') { const n = named.glut; return n.side === 'sell' ? `${stopName(content, n.stop)} already had too much ${goodName(content, n.good)}: the house's own earlier sales there had pushed the price down.` : `${cap(goodName(content, n.good))} was dear in ${stopName(content, n.stop)}: the house's own earlier buying there had pushed the price up.`; }
-  if (!news || news.got === news.hoped) return 'Prices moved against the house on the way.';   // the price itself was as hoped: it was the cost of getting there
+  // the price itself was as hoped: it was the cost of getting there. A home price whose first load was as hoped can still have counted less a load over the run (MER-160)
+  const runMoved = news?.side === 'home' && Number.isInteger(news.avgGot) && Number.isInteger(news.avgHoped) && news.avgGot !== news.avgHoped;
+  if (!news || (news.got === news.hoped && !runMoved)) return 'Prices moved against the house on the way.';   // the price itself was as hoped: it was the cost of getting there
   return priceWords(news);
 }
 
