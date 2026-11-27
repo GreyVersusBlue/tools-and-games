@@ -368,9 +368,9 @@
     "title": "A share paid on paper",
     "body": "A trading house at Quseir offers you a share of its trade. It will pay you on paper, a written promise to pay later, not in coin. Many houses do this, and it is slow.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "quseir"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -474,9 +474,9 @@
     "title": "A share in a great ship",
     "body": "Jalal is a rich shipowner in Aden. He owns his ship and all its cargo, with no partners. He offers you a small share in his next voyage.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aden"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -582,9 +582,9 @@
     "title": "Horses for south India",
     "body": "Sabir sells horses that go by ship to south India. He offers you a share in a shipment. In the deal he offers, the king in India pays for any horse that is hurt or dies at sea.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "hormuz"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -812,9 +812,8 @@
     "title": "Pay when the goods sell",
     "body": "An Egyptian dealer wants to buy gold from your house. He promises to pay when his own goods are sold.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "stock": "gold",
+      "gte": 1
     },
     "weight": 3,
     "repeat": false,
@@ -915,9 +914,9 @@
     "title": "Gold coins by weight",
     "body": "A Pera trader pays you in gold perpers, the coins of the city. He says there is no need to weigh them. You can count them fast.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "constantinople"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1029,9 +1028,9 @@
     "title": "A debt on every pack animal",
     "body": "A man of Tabriz has won a claim of 4,000 bezants against the Venetians there. Until it is paid, each Venetian owes him 4 bezants a load.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tabriz"
+      ]
     },
     "weight": 3,
     "repeat": false,

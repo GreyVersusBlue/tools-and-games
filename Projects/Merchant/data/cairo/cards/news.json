@@ -525,9 +525,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "samarkand"
+          ]
         }
       ]
     },
@@ -650,9 +650,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "aydhab"
+          ]
         }
       ]
     },
@@ -771,9 +771,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "hormuz"
+          ]
         }
       ]
     },
@@ -887,9 +887,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "alexandria"
+          ]
         }
       ]
     },
@@ -997,9 +997,17 @@
     "title": "Hand your gold to the mint",
     "body": "Coin has run short in Egypt. The sultan's finance chief, al-Nashw, commands every merchant and goldsmith to hand their gold to the mint. A clerk brings the order to your house.",
     "when": {
-      "year": [
-        1335,
-        1335
+      "all": [
+        {
+          "year": [
+            1335,
+            1335
+          ]
+        },
+        {
+          "stock": "gold",
+          "gte": 1
+        }
       ]
     },
     "weight": 3,
@@ -1124,9 +1132,8 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "stock": "pepper",
+          "gte": 1
         }
       ]
     },
@@ -1247,9 +1254,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "aleppo"
+          ]
         }
       ]
     },
@@ -1355,9 +1362,9 @@
     "title": "Spice goes by another road",
     "body": "A spice dealer tells you that the Indian spice caravans no longer pass Aleppo. They go north, to the port of Ayas.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aleppo"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1480,9 +1487,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "tabriz"
+          ]
         }
       ]
     },
@@ -1605,9 +1612,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "samarkand"
+          ]
         }
       ]
     },

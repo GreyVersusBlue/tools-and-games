@@ -632,9 +632,9 @@
     "title": "Gold under the bales",
     "body": "At Tunis a rival's man was caught hiding gold under his bales. Now everyone asks if you will deal with him.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tunis"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -750,9 +750,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "damascus"
+          ]
         }
       ]
     },
@@ -871,9 +871,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "tabriz"
+          ]
         }
       ]
     },

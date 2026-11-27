@@ -262,9 +262,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "jeddah"
+          ]
         }
       ]
     },
@@ -478,9 +478,9 @@
     "title": "A city of two halves",
     "body": "A neighbour at Galata says the city is divided. Galata is the quarter kept for the Franks: Genoese, Venetians, men of Rome and French. He asks which side you will buy from.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "constantinople"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -589,9 +589,9 @@
     "title": "A go-between for pepper",
     "body": "A Venetian friend may not trade with Egypt, because the pope has forbidden it. He asks you to find a Greek merchant of Cyprus to carry his pepper.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "famagusta"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -700,9 +700,9 @@
     "title": "Oil in new barrels",
     "body": "A buyer at Tunis wants olive oil, but only in new barrels. Old barrels may have held wine or fat, and then the court could refuse the oil.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tunis"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -827,9 +827,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "damascus"
+          ]
         }
       ]
     },
