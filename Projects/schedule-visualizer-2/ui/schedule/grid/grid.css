@@ -476,3 +476,85 @@
 .grd-cell.is-noclass {
   background-image: repeating-linear-gradient(135deg, transparent 0, transparent 4px, var(--grid) 4px, var(--grid) 5px);
 }
+
+/* SV2-155: the Teachers and Rooms rows are edited like the Groups rows. A day
+   type that follows another is greyed (what its slots show is the other's);
+   the header says so and offers Make its own copy. */
+.grd-cell--across.is-follower,
+.grd-head.is-follower {
+  background: var(--paper);
+  color: var(--ink-2);
+}
+
+.grd-cell--across.is-follower {
+  font-style: italic;
+}
+
+.grd-head--day.is-follower {
+  white-space: normal;
+  font-weight: var(--w-regular);
+}
+
+.grd-head--day.is-follower .btn {
+  margin-left: var(--s-1);
+}
+
+.grd-cell--across[data-editing] {
+  min-width: 11rem;
+  overflow: visible;
+}
+
+/* A teacher with several rooms says which one a class goes in. */
+.grd-in__field {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  background: var(--card);
+  border: 2px solid var(--accent);
+  border-top: 0;
+}
+
+.grd-in__label {
+  font-size: var(--t-xs);
+  font-weight: var(--w-semibold);
+  color: var(--ink-2);
+}
+
+.grd-in {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 1.75rem;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* What the schedule said about an edit it did not take, under the slot. */
+.grd-refusal {
+  position: absolute;
+  z-index: 5;
+  width: 18rem;
+  max-width: calc(100vw - var(--s-6));
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--s-2);
+  border: var(--border-width) solid var(--problem);
+  border-radius: var(--r-1);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  white-space: normal;
+}
+
+.grd-refusal[hidden] {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .grd-in {
+    min-height: 2.75rem;
+  }
+}
