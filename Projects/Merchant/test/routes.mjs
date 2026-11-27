@@ -1287,7 +1287,8 @@ test('a seeded cairo three-act game with a scripted plan runs to the end in Node
   // MER-128: seed 13 became 15. A card whose dates end this season gets an extra slot, so the second season deals one more card and every later draw moves; no agent was home to face the plague in seed 13's game.
   // MER-139: seed 16 became 17 for the same reason as MER-79 and MER-128: the first sheet's plan moves every later draw, and no agent was home to face the plague in seed 16's game.
   // MER-155: seed 17 became 20. The 43 cards of MER-152 change the pool, so no agent was home to face the plague in seed 17's game (18 and 19 fail the same way).
-  const plan = { seed: 20, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  // MER-157: seed 20 became 21. The new road leaf changes which of the 81 new cards are dealt, so no agent was home to face the plague in seed 20's game.
+  const plan = { seed: 21, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
   const a = run(C, plan);
   const b = run(C, plan);
   ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');
