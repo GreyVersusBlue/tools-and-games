@@ -729,7 +729,7 @@ async function tabsToMap(page) {
     await page.keyboard.press('Tab');
     const stop = await page.evaluate(() => {
       const el = document.activeElement;
-      return el.id === 'movement-plan' ? 'the map' : el.dataset.control || el.dataset.action || (el.dataset.transition !== undefined ? 'transition ' + el.dataset.transition : el.tagName);
+      return el.id === 'movement-plan' ? 'the map' : el.name === 'movement-routes' ? 'routes' : el.dataset.control || el.dataset.action || (el.dataset.transition !== undefined ? 'transition ' + el.dataset.transition : el.tagName);
     });
     stops.push(stop);
     if (stop === 'the map') break;
@@ -737,9 +737,13 @@ async function tabsToMap(page) {
   return stops;
 }
 
-test('W6: from Who to the map is six Tabs whatever the number of periods: the transition strip is a radio group with one Tab stop, arrows, Home and End', async () => {
+// W6 counted six Tabs from Who to the map. SV2-153's Going to and Rooms of subject sit under Who (DESIGN 17.3) and SV2-154's
+// Routes under Day type (DESIGN 17.4), so the way is eight, in that order; what W6 pins is that it is the same however many
+// periods the day has, with the strip one Tab stop.
+const TABS = ['going-to', 'subject', 'day', 'routes'];
+test('W6: from Who to the map is eight Tabs whatever the number of periods: the transition strip is a radio group with one Tab stop, arrows, Home and End', async () => {
   await on('#movement', DESK, async (p) => {
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition all', 'labels', 'constant-width', 'clear', 'the map']);
+    assert.deepEqual(await tabsToMap(p), [...TABS, 'transition all', 'labels', 'constant-width', 'clear', 'the map']);
     const strip = () => p.evaluate(() => ({
       role: document.querySelector('[data-control="transition"]').getAttribute('role'),
       roles: Array.from(new Set(Array.from(document.querySelectorAll('.mov-strip__item')).map((item) => item.getAttribute('role')))),
@@ -757,18 +761,18 @@ test('W6: from Who to the map is six Tabs whatever the number of periods: the tr
       await drawn(p);
       assert.deepEqual(await strip(), { role: 'radiogroup', roles: ['radio'], stops: [to], checked: [to], focus: to, chosen, count: 8 }, 'after ' + key);
     }
-    // with a transition chosen it is that one the Tab lands on, and still six Tabs
+    // with a transition chosen it is that one the Tab lands on, and still eight Tabs
     await p.keyboard.press('ArrowRight');
     await drawn(p);
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
-    // a day of twelve periods: eleven transitions and All, and six Tabs
+    assert.deepEqual(await tabsToMap(p), [...TABS, 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
+    // a day of twelve periods: eleven transitions and All, and eight Tabs
     await p.evaluate(async () => {
       const actions = await import('./engine/actions.js');
       globalThis.sv2.store.apply(actions.setSetting, { key: 'periods', value: 12 });
     });
     await drawn(p);
     assert.equal((await strip()).count, 12);
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
+    assert.deepEqual(await tabsToMap(p), [...TABS, 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
   });
 });
 

@@ -71,9 +71,10 @@ export function controls(options) {
     setFolded(!folded);
     if (options.fold) options.fold(folded);
   });
-  // ---- which routes (DESIGN 17.4): the usual, quickest ones on every visit, or crowd-aware, a what-if. It stands in the
-  // first line's row, beside Change, while the controls are open: every place in the controls' own rows made them a row
-  // taller in some state of the window, and the map comes first (DESIGN 5.3; the report says so).
+  // ---- which routes (DESIGN 17.4): the usual, quickest ones on every visit, or crowd-aware, a what-if. It is one of the
+  // controls, under Day type, and the line that says what it is for stands under the choice as text, always: a line seen
+  // only while the choice was hovered covered the band, the failure and Try again beneath it (SV2-154's review). The block
+  // is in the controls' own flow, so choosing never moves the map: the line was there before the choice.
   const routesId = uid('mov-routes');
   const routesHint = uid('mov-routes-hint');
   const routes = segmented({
@@ -84,23 +85,25 @@ export function controls(options) {
     options: [{ value: 'usual', label: 'Usual (quickest)' }, { value: 'crowd', label: 'Crowd-aware' }],
   });
   routes.element.setAttribute('aria-describedby', routesHint);
-  // the line under Routes (DESIGN 17.4) stands under the choice while it is hovered or has the focus, over the map's top edge
-  // rather than pushing it down (movement.css); the choice is described by it either way
-  const routesBox = h('span', { class: 'mov-line__routes', hidden: true, data: { control: 'routes' } }, h('span', { class: 'mov-routes__label', id: routesId }, 'Routes'), routes.element,
-    h('span', { class: 'mov-routes__hint', id: routesHint, data: { part: 'routes-line' } }, ROUTES_HINT));
+  const routesBox = h('div', { class: 'mov-ctl mov-ctl--routes', hidden: true, data: { control: 'routes' } },
+    label('Routes', routesId), routes.element,
+    h('p', { class: 'mov-ctl__hint mov-routes__hint', id: routesHint, data: { part: 'routes-line' } }, ROUTES_HINT));
 
-  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', routesBox, ' ', changeButton);
+  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', changeButton);
 
   // ---- under the first line: crowd-aware routes being worked out, or not worked out, and what they are for
+  // only "working" is a live region of its own: the failure is said once, by the page's announcer (index.js), so a reader
+  // does not hear it twice
   const crowdStatus = h('span', { class: 'mov-crowd__words', role: 'status', data: { part: 'crowd-status' } });
+  const crowdFailed = h('span', { class: 'mov-crowd__words mov-crowd__failed', hidden: true, data: { part: 'crowd-failed' } });
   const tryAgain = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'try-again' }, on: { click: () => {
     // the button goes with the failure: the focus goes to the choice it answers, or to Change where that is folded away
     options.tryAgain();
-    const checked = routesBox.hidden ? null : routesBox.querySelector('input[name="movement-routes"]:checked');
+    const checked = folded || routesBox.hidden ? null : routesBox.querySelector('input[name="movement-routes"]:checked');
     (checked || changeButton).focus();
   } } }, 'Try again');
   const crowdNote = h('p', { class: 'mov-crowd__note', hidden: true, data: { part: 'crowd-note' } }, CROWD_NOTE);
-  const crowdBand = h('div', { class: 'mov-crowd', hidden: true, data: { part: 'crowd', state: 'off' } }, h('p', { class: 'mov-crowd__line' }, crowdStatus, ' ', tryAgain), crowdNote);
+  const crowdBand = h('div', { class: 'mov-crowd', hidden: true, data: { part: 'crowd', state: 'off' } }, h('p', { class: 'mov-crowd__line' }, crowdStatus, crowdFailed, ' ', tryAgain), crowdNote);
 
   // ---- who
   const whoId = uid('mov-who');
@@ -168,15 +171,16 @@ export function controls(options) {
   const subjectId = uid('mov-subject');
   const subjectHint = uid('mov-subject-hint');
   const subjectSelect = h('select', { class: 'field__input mov-ctl__select', id: subjectId, 'aria-describedby': subjectHint, data: { control: 'subject' }, on: { change: () => options.change({ subjectId: subjectSelect.value === ANY_SUBJECT ? null : subjectSelect.value === NO_SUBJECT ? '' : subjectSelect.value }) } });
-  // two blocks side by side, so the row of controls is no taller than Who's
+  // two blocks side by side and the hint in a line of its own under both, so the row of controls is as tall as a control and one
+  // line of hint, not a control and a hint wrapped to the width of one
   const filtersBox = h('div', { class: 'mov-ctl mov-ctl--filters', data: { control: 'filters' } },
     h('div', { class: 'mov-ctl' },
       h('span', { class: 'mov-ctl__label', id: uid('mov-going') }, 'Going to'),
       h('div', { class: 'mov-ctl__more mov-ctl__more--room' }, roomChip, roomPick.element)),
     h('div', { class: 'mov-ctl' },
       h('label', { class: 'mov-ctl__label', for: subjectId }, 'Rooms of subject'),
-      subjectSelect,
-      h('p', { class: 'mov-ctl__hint', id: subjectHint }, 'By the room\u2019s subject, not the class\u2019s.')));
+      subjectSelect),
+    h('p', { class: 'mov-ctl__hint mov-ctl__hint--filters', id: subjectHint }, 'By the room\u2019s subject, not the class\u2019s.'));
 
   // ---- which day type
   const dayId = uid('mov-day');
@@ -223,20 +227,19 @@ export function controls(options) {
   const clear = h('button', { type: 'button', class: 'btn mov-clear', data: { action: 'clear' }, on: { click: () => options.clear() } }, 'Clear');
   const optionsBox = h('div', { class: 'mov-ctl mov-ctl--options' }, label('Show', null), h('div', { class: 'mov-ctl__checks' }, labels.element, constant.element), clear);
 
-  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, filtersBox, dayBox, bellsBox, stripBox, optionsBox);
+  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, filtersBox, dayBox, bellsBox, routesBox, stripBox, optionsBox);
   const element = h('div', { class: 'mov-top', data: { folded: String(folded) } }, line, crowdBand, box);
 
-  // Routes is shown with the controls (not folded away) and never for a teacher, who is not rerouted
+  // Routes is one of the controls (folded away with them) and never offered for a teacher, who is not rerouted
   function drawRoutes() {
-    routesBox.hidden = folded || !picture || picture.choice.who === 'teacher';
+    routesBox.hidden = !picture || picture.choice.who === 'teacher';
   }
 
-  // the offer is made on a phone (DESIGN 17.7 item 9; a tablet's line has the room and the map is not moved for it), only with
-  // Routes out of sight, and only where the usual routes have a place with waiting
-  const phone = matchMedia('(max-width: 640px)');
-  phone.addEventListener('change', () => drawTry());
+  // the offer is made wherever Routes is folded behind Change (DESIGN 17.7 item 9: a phone, and a window under 900 px where the
+  // controls fold), only where the usual routes have a place with waiting. No window-width test of its own, so there is no
+  // listener to take off when the view goes.
   function drawTry() {
-    tryBox.hidden = !(folded && phone.matches && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
+    tryBox.hidden = !(folded && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
     // it is part of the sentence only while it is offered (a hidden link's words would still be read as the sentence's)
     if (tryBox.hidden) tryBox.remove();
     else if (tryBox.parentNode !== words) words.append(' ', tryBox);
@@ -247,7 +250,9 @@ export function controls(options) {
     const lens = state === 'ready' && picture.routesMode === 'crowd';
     crowdBand.dataset.state = state;
     crowdBand.hidden = state === 'off' || (state === 'ready' && !lens);
-    crowdStatus.textContent = state === 'working' ? CROWD_WORKING : state === 'failed' ? CROWD_FAILED + ' \u00b7' : '';
+    crowdStatus.textContent = state === 'working' ? CROWD_WORKING : '';
+    crowdFailed.textContent = state === 'failed' ? CROWD_FAILED + ' \u00b7' : '';
+    crowdFailed.hidden = state !== 'failed';
     tryAgain.hidden = state !== 'failed';
     crowdNote.hidden = !lens;
   }

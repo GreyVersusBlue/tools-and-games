@@ -227,6 +227,36 @@ async function dashesDrawn(page, pattern) {
   }, pattern);
 }
 
+// A box on screen: its rectangle, or null when it is not drawn (hidden, or no size)
+const rectOf = (page, selector) => page.evaluate((wanted) => {
+  const el = document.querySelector(wanted);
+  if (!el || el.closest('[hidden]') || el.getClientRects().length === 0) return null;
+  const style = getComputedStyle(el);
+  if (style.visibility === 'hidden' || Number(style.opacity) === 0) return null;
+  const rect = el.getBoundingClientRect();
+  return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+}, selector);
+const crosses = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+// What the live regions say: each time a region that a screen reader reads (aria-live, role status or alert) comes to hold
+// `phrase`, one entry. The hold is counted per change, so one sentence said by two regions, or twice, is two.
+const watchSays = (page, phrase) => page.evaluate((words) => {
+  globalThis.__says = [];
+  if (globalThis.__sayObserver) globalThis.__sayObserver.disconnect();
+  const live = (node) => {
+    const el = node.nodeType === 3 ? node.parentElement : node;
+    return el && el.closest ? el.closest('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"]') : null;
+  };
+  globalThis.__sayObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      const region = live(record.target);
+      if (region && !region.closest('[hidden]') && region.textContent.includes(words)) globalThis.__says.push(region.id || region.dataset.part || region.className);
+    }
+  });
+  globalThis.__sayObserver.observe(document.body, { subtree: true, childList: true, characterData: true });
+}, phrase);
+const says = (page) => page.evaluate(() => globalThis.__says.slice());
+
 const fitted = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
 // ---- the two-halls building, by pointer, keyboard and touch
@@ -254,6 +284,22 @@ for (const size of SIZES) {
         const labels = await page.$$eval('input[name="movement-routes"] + span', (els) => els.map((el) => el.textContent.trim()));
         assert.deepEqual(labels, ['Usual (quickest)', 'Crowd-aware']);
         assert.equal(await text(page, '[data-part="routes-line"]'), HINT);
+        // the line is text on the page, not a pop-up of the hover: drawn, visible, inside the window, with nobody over it
+        const hint = await rectOf(page, '[data-part="routes-line"]');
+        assert.ok(hint && hint.width > 0 && hint.height > 0, 'the what-if line is not drawn');
+        assert.ok(hint.left >= 0 && hint.right <= size.width && hint.top >= 0, 'the line leaves the window: ' + JSON.stringify(hint));
+        assert.equal(await page.$eval('[data-part="routes-line"]', (el) => getComputedStyle(el).position), 'static', 'the line floats over what is under it');
+        // the first line a screen reader reads is the sentence: the radio group is not in it
+        assert.equal(await page.$('#movement-line input'), null, 'the radio group is inside the first line');
+        assert.ok(!/Usual \(quickest\)|Crowd-aware/.test(await text(page, '#movement-line')), await text(page, '#movement-line'));
+        // and neither hovering nor focusing the choice moves the map or draws anything over it
+        const stage = () => rectOf(page, '.mov-stage');
+        const before = await stage();
+        await page.hover('input[name="movement-routes"] + span');
+        await page.focus('input[name="movement-routes"]:checked');
+        const after = await stage();
+        assert.deepEqual(after, before, 'the map moved with the hover and the focus');
+        await page.mouse.move(0, 0);
         assert.equal((await choice(page)).routes, 'usual');
         assert.equal(await page.$eval('.mov', (el) => el.dataset.crowd), 'off');
         assert.equal(await hidden(page, '[data-part="crowd"]'), true, 'no band');
@@ -267,6 +313,7 @@ for (const size of SIZES) {
           await tab(page, act, 'hotspots');
           return page.$eval('#inspector [data-panel="hotspots"]', (el) => el.textContent.replace(/\s+/g, ' '));
         })();
+        assert.equal(await hidden(page, '#inspector [data-hotspots="what-if"]'), true, 'the usual routes\' Hotspots carry the what-if line');
       });
 
       test('choosing Crowd-aware: a quiet band says it is being worked out, and the map keeps the usual picture under it', async () => {
@@ -292,6 +339,10 @@ for (const size of SIZES) {
           return band.bottom <= map.top + 1;
         });
         assert.equal(over, true, 'the band is above the map');
+        // the what-if line stands clear of the band and everything in it
+        const hint = await rectOf(page, '[data-part="routes-line"]');
+        const band = await rectOf(page, '[data-part="crowd"]');
+        assert.ok(hint && band && !crosses(hint, band), 'the what-if line covers the band: ' + JSON.stringify({ hint, band }));
       });
 
       test('the answer: the first line gives the comparison and its trade, the band gives way to the one line that says what it is for', async () => {
@@ -300,6 +351,9 @@ for (const size of SIZES) {
         assert.equal(await line(page), TWO_HALLS_LINE);
         assert.equal(await text(page, '[data-part="crowd-note"]'), NOTE);
         assert.equal(await text(page, '[data-part="crowd-status"]'), '', 'nothing is being worked out');
+        const hint = await rectOf(page, '[data-part="routes-line"]');
+        const note = await rectOf(page, '[data-part="crowd-note"]');
+        assert.ok(hint && note && !crosses(hint, note), 'the what-if line covers the note under the first line');
         const seen = await page.evaluate(() => {
           const shown = document.querySelector('.mov').movement.picture;
           return { mode: shown.routesMode, moved: shown.changed.length, waiting: shown.compare.aware.waiting, was: shown.compare.usual.waiting, late: [shown.compare.usual.late, shown.compare.aware.late] };
@@ -327,6 +381,8 @@ for (const size of SIZES) {
         assert.equal(moved.length, 4);
         assert.ok(moved.every((row) => /^another way · \d+ s saved$/.test(row.words)), moved.map((row) => row.words).join(' | '));
         assert.deepEqual(rows.filter((row) => !row.another).map((row) => row.words), ['', '', '', '']);
+        // the figure of groups that cannot make a transition is the lens's, and says so (Checks keep the usual routes' count)
+        assert.match(await text(page, '#inspector [data-figure="late"]'), /On crowd-aware routes \(a what-if\): checks use the usual routes\./);
         assert.ok(!(await dashesDrawn(page, '3,5')).includes('3,5'), 'no usual route is drawn until a row is chosen');
         const selector = '#inspector [data-action="show-usual"][data-group="' + moved[0].group + '"]';
         // drawing the map folded the phone's sheet: the tab is opened again for each press
@@ -369,6 +425,9 @@ for (const size of SIZES) {
         const now = await page.$eval('#inspector [data-panel="hotspots"]', (el) => el.textContent.replace(/\s+/g, ' '));
         assert.notEqual(now, usualHotspots, 'the delay at the places is the crowd-aware routes\'');
         assert.ok((await page.$$eval('#inspector [data-panel="hotspots"] tbody tr', (els) => els.length)) > 0);
+        // and the panel says the routes are a what-if (DESIGN 17.1, 17.4), where on the usual routes it says nothing of the kind
+        assert.equal(await text(page, '#inspector [data-hotspots="what-if"]'), 'Crowd-aware routes (a what-if): the places and their loads are the crowd-aware ones. Checks use the usual routes.');
+        assert.equal(await hidden(page, '#inspector [data-hotspots="what-if"]'), false);
       });
 
       test('the card of a corridor cell says how many groups cross on each routes', async () => {
@@ -487,9 +546,19 @@ for (const size of SIZES) {
         assert.equal(await page.$eval('.mov', (el) => el.dataset.crowd), 'off');
         assert.equal(await hidden(page, '[data-part="crowd"]'), true, 'the band goes with the choice');
         await failWith(page, 'the engine broke');
+        await watchSays(page, 'could not be worked out');
         await act.radio('movement-routes', 'crowd');
         await crowd(page, 'failed');
-        assert.equal(await text(page, '[data-part="crowd-status"]'), FAILED);
+        assert.equal(await text(page, '[data-part="crowd-failed"]'), FAILED);
+        assert.equal(await text(page, '[data-part="crowd-status"]'), '', 'the working region is empty: the failure is not said by it as well');
+        // said once, by the one region the page announces in, not twice
+        assert.deepEqual(await says(page), ['announcer']);
+        // the what-if line is clear of the failure line and Try again
+        const hint = await rectOf(page, '[data-part="routes-line"]');
+        const failed = await rectOf(page, '[data-part="crowd"]');
+        const again = await rectOf(page, '[data-action="try-again"]');
+        assert.ok(hint && failed && again, 'the line, the failure or Try again is not drawn');
+        assert.ok(!crosses(hint, failed) && !crosses(hint, again), 'the what-if line covers the failure or Try again');
         assert.equal(await checked(page, 'movement-routes'), 'crowd', 'the radio stays on Crowd-aware');
         assert.match(await line(page), /^Showing 8 groups on A Day, all transitions\./, 'the map shows the usual routes');
         assert.equal(await page.evaluate(() => document.querySelector('.mov').movement.picture.routesMode), 'usual');
@@ -541,6 +610,182 @@ for (const size of SIZES) {
     });
   }
 }
+
+// ---- the lens when what it was asked for is not what is on screen (SV2-153b; the review of SV2-154, items 6, 7 and 9)
+
+describe('crowd-aware routes: an answer that went out of date, a choice the project put right, a view that goes', () => {
+  let session;
+  let page;
+  before(async () => {
+    session = await open(SIZES[0], 'halls');
+    page = session.page;
+  });
+  after(async () => {
+    if (session) await session.close();
+  });
+
+  // A lane that answers null (the counters moved before it ran) for the first `nulls` askings, then for real; each asking is logged.
+  // Askings numbered in `held` wait for the test to let them go with `answerHeld`.
+  const lane = (nulls, held) => page.evaluate((count, holding) => {
+    const derived = globalThis.sv2.store.derived;
+    const real = globalThis.__crowdReal || derived.crowd;
+    globalThis.__crowdReal = real;
+    const log = { calls: 0, held: {} };
+    globalThis.__lane = log;
+    derived.crowd = (options) => {
+      log.calls += 1;
+      const n = log.calls;
+      if (holding.includes(n)) return new Promise((resolve) => { log.held[n] = () => resolve(null); });
+      if (n <= count) return Promise.resolve(null);
+      return real.call(derived, options);
+    };
+  }, nulls, held || []);
+  const calls = () => page.evaluate(() => globalThis.__lane.calls);
+  const unlane = () => page.evaluate(() => { globalThis.sv2.store.derived.crowd = globalThis.__crowdReal; globalThis.__lane = null; });
+
+  test('a null answer is asked for again, and the good one is on screen: one choice, two askings', async () => {
+    await lane(1);
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'crowd' }));
+    await crowd(page, 'ready');
+    assert.equal(await calls(), 2, 'the null was not asked for again, or was asked for more than once');
+    assert.equal(await line(page), TWO_HALLS_LINE);
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'usual' }));
+    await settled(page);
+    await unlane();
+  });
+
+  test('the count of a key\'s askings starts again when the key changes: a stale answer does not use up the next asking\'s tries', async () => {
+    // asking 1 and 2 answer null (two tries used), asking 3 is held while the project changes; askings 4 to 6 answer null (three
+    // tries) and asking 7 is the good one. Were the count kept across the change, the third null of the new project would fail it.
+    await lane(6, [3]);
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'crowd' }));
+    await page.waitForFunction(() => typeof globalThis.__lane.held[3] === 'function', { timeout: 10000 });
+    assert.equal(await calls(), 3);
+    await page.evaluate(async () => {
+      const { store } = globalThis.sv2;
+      store.replace(JSON.parse(JSON.stringify(store.project)));
+      await store.derived.results().catch(() => null);
+    });
+    await page.waitForFunction(() => globalThis.__lane.calls >= 7, { timeout: 10000 });
+    await crowd(page, 'ready');
+    assert.equal(await calls(), 7);
+    assert.equal(await line(page), TWO_HALLS_LINE);
+    // the old asking's answer, let go now, is dropped: nothing changes
+    await page.evaluate(() => globalThis.__lane.held[3]());
+    await settled(page);
+    assert.equal(await page.$eval('.mov', (el) => el.dataset.crowd), 'ready');
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'usual' }));
+    await settled(page);
+    await unlane();
+  });
+
+  test('the answer that never stops keeping out of date ends in the failure line, never in "Working out" for ever', async () => {
+    await lane(99);
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'crowd' }));
+    await crowd(page, 'failed');
+    assert.equal(await text(page, '[data-part="crowd-failed"]'), FAILED);
+    assert.equal(await calls(), 4, 'one asking and three tries');
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'usual' }));
+    await settled(page);
+    await unlane();
+  });
+
+  test('a main answer that fails while Crowd-aware is on ends in the routes\' failure line, and the next good one in the lens', async () => {
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'crowd' }));
+    await crowd(page, 'ready');
+    await page.evaluate(async () => {
+      const { store } = globalThis.sv2;
+      globalThis.__results = store.derived.results;
+      store.derived.results = () => Promise.reject(new Error('the engine broke'));
+      store.replace(JSON.parse(JSON.stringify(store.project)));
+      await store.derived.results().catch(() => null);
+    });
+    await page.waitForFunction(() => /could not be worked out/.test(document.querySelector('#movement-line .mov-line__words').textContent), { timeout: 10000 });
+    // not "Working out" with nothing left to wait for
+    assert.notEqual(await page.$eval('.mov', (el) => el.dataset.crowd), 'working');
+    assert.equal(await hidden(page, '[data-part="crowd-status"]'), true, 'the working band stands over a failure');
+    await page.evaluate(async () => {
+      const { store } = globalThis.sv2;
+      store.derived.results = globalThis.__results;
+      store.replace(JSON.parse(JSON.stringify(store.project)));
+      await store.derived.results().catch(() => null);
+    });
+    await settled(page);
+    await crowd(page, 'ready');
+    assert.equal(await line(page), TWO_HALLS_LINE);
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'usual' }));
+    await settled(page);
+  });
+
+  test('a day type the project takes away while Crowd-aware shows it: the choice goes to the day type left, and the lens is asked for that one', async () => {
+    // a school of two day types on the view's second, with Crowd-aware on
+    await page.evaluate(async () => {
+      const { store } = globalThis.sv2;
+      const next = JSON.parse(JSON.stringify(store.project));
+      const first = next.dayTypes[0];
+      const second = JSON.parse(JSON.stringify(first));
+      second.id = 'dtwo00000';
+      second.name = 'B Day';
+      next.dayTypes.push(second);
+      for (const group of next.groups) group.days[second.id] = JSON.parse(JSON.stringify(group.days[first.id]));
+      store.replace(next);
+      await store.derived.results().catch(() => null);
+    });
+    await settled(page);
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ dayTypeId: 'dtwo00000', routes: 'crowd' }));
+    await crowd(page, 'ready');
+    assert.match(await line(page), /^Crowd-aware routes on B Day: /);
+    await page.evaluate(async () => {
+      const { store } = globalThis.sv2;
+      const next = JSON.parse(JSON.stringify(store.project));
+      next.dayTypes = next.dayTypes.filter((dayType) => dayType.id !== 'dtwo00000');
+      for (const group of next.groups) delete group.days.dtwo00000;
+      store.replace(next);
+      await store.derived.results().catch(() => null);
+    });
+    await settled(page);
+    await crowd(page, 'ready');
+    assert.match(await line(page), /^Crowd-aware routes on A Day: /, 'the view is still waiting for an answer about the day type that is gone');
+    assert.equal((await choice(page)).dayTypeId, await page.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id));
+    assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
+  });
+
+  test('going to another section takes away every listener on a media query the view put up', async () => {
+    await page.evaluate(() => { location.hash = '#schedule'; });
+    await page.waitForFunction(() => document.querySelector('.surface__layout')?.dataset.section === 'schedule');
+    await page.evaluate(() => {
+      const live = new Map();
+      globalThis.__mql = { live, added: 0, removed: 0 };
+      const add = MediaQueryList.prototype.addEventListener;
+      const remove = MediaQueryList.prototype.removeEventListener;
+      MediaQueryList.prototype.addEventListener = function spiedAdd(type, listener, options) {
+        if (type === 'change') {
+          if (!live.has(this)) live.set(this, new Set());
+          live.get(this).add(listener);
+          globalThis.__mql.added += 1;
+        }
+        return add.call(this, type, listener, options);
+      };
+      MediaQueryList.prototype.removeEventListener = function spiedRemove(type, listener, options) {
+        if (type === 'change' && live.has(this) && live.get(this).delete(listener)) globalThis.__mql.removed += 1;
+        return remove.call(this, type, listener, options);
+      };
+    });
+    await page.evaluate(() => { location.hash = '#movement'; });
+    await page.waitForFunction(() => document.querySelector('.surface__layout')?.dataset.section === 'movement');
+    await settled(page);
+    const during = await page.evaluate(() => ({ added: globalThis.__mql.added, removed: globalThis.__mql.removed }));
+    assert.ok(during.added > 0, 'the view put up no listener: the case tests nothing');
+    await page.evaluate(() => { location.hash = '#schedule'; });
+    await page.waitForFunction(() => document.querySelector('.surface__layout')?.dataset.section === 'schedule');
+    const left = await page.evaluate(() => {
+      const open = [];
+      for (const [list, listeners] of globalThis.__mql.live) if (listeners.size > 0) open.push(list.media + ' x' + listeners.size);
+      return open;
+    });
+    assert.deepEqual(left, [], 'a media query is still listened to after the view went');
+  });
+});
 
 // ---- the phone's link, where Routes is folded behind Change
 

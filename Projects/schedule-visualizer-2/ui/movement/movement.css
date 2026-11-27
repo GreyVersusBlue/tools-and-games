@@ -119,7 +119,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: var(--s-3) var(--s-5);
+  /* the rows are close, so the controls and the map fit a 1280 by 800 window together (m3-pass: the map first) */
+  gap: var(--s-2) var(--s-5);
   margin-top: var(--s-3);
 }
 
@@ -168,12 +169,13 @@
   width: 13rem;
 }
 
-/* Going to and Rooms of subject: under Who, hidden for a teacher (DESIGN 17.3) */
+/* Going to and Rooms of subject: under Who, hidden for a teacher (DESIGN 17.3). The hint has a line of its own under the two. */
 .mov-ctl--filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--s-2) var(--s-4);
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: start;
+  gap: var(--s-1) var(--s-4);
 }
 
 .mov-ctl--filters[hidden] {
@@ -182,6 +184,11 @@
 
 .mov-ctl--filters .mov-ctl__more {
   margin-top: 0;
+}
+
+.mov-ctl__hint.mov-ctl__hint--filters {
+  grid-column: 1 / -1;
+  max-width: none;
 }
 
 .mov-ctl__hint {
@@ -1462,84 +1469,46 @@
    with Try again, and, with the answer, the one line that says what the lens
    is for. The card's count, the legend's rows and the Usual column read in
    the panels' own type. */
-.mov-line__routes[hidden] {
+/* Routes is one of the controls, under Day type, with the line that says what it is for as text beside the choice (DESIGN 17.4):
+   the choice under its name in one column and the line in the next, so the block is no taller than a control. On a phone the
+   line goes under the choice. */
+.mov-ctl--routes[hidden] {
   display: none;
 }
 
-/* Routes: label and the two choices in the first line's row, as small as the legend's own two, so the line is no taller for
-   it; under 640 px or with a coarse pointer the choices are a finger's size (the rule above) and the line wraps as it does */
-.mov-line__routes {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  /* centred in the line, not set on its baseline, so the line is no taller than the sentence */
+.mov-ctl--routes {
+  grid-template-columns: auto minmax(12rem, 1fr);
+  grid-template-areas: "label hint" "choice hint";
+  align-items: start;
+  column-gap: var(--s-4);
+  max-width: 34rem;
+}
+
+.mov-ctl--routes > .mov-ctl__label {
+  grid-area: label;
+}
+
+.mov-ctl--routes > .seg {
+  grid-area: choice;
+}
+
+.mov-ctl--routes > .mov-routes__hint {
+  grid-area: hint;
   align-self: center;
-  gap: var(--s-2);
-  font-size: var(--t-xs);
-  font-weight: var(--w-regular, 400);
-}
-
-.mov-line__routes .seg__label {
-  min-height: 24px;
-  padding: 0 6px;
-  font-size: var(--t-xs);
-}
-
-/* a finger's size (the rule for every control of the surface, above) wherever the pointer is coarse or the window a phone's */
-@media (max-width: 640px), (pointer: coarse) {
-  .mov-line__routes .seg__label {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 0 6px;
-    font-size: var(--t-xs);
-  }
-}
-
-/* on a phone the choice keeps the row Change is in (the stage keeps its room): its name is spoken, not drawn */
-@media (max-width: 640px) {
-  .mov-line__routes > .mov-routes__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-}
-
-/* what Routes says: under the choice while it is hovered or has the focus, over the map's top edge rather than pushing it down */
-.mov-routes__label {
-  font-size: var(--t-xs);
-  line-height: var(--lh-xs);
-  font-weight: var(--w-semibold);
-  color: var(--ink-2);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .mov-routes__hint {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 7;
-  width: min(22rem, 90vw);
-  padding: var(--s-2) var(--s-3);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--r-2);
-  background: var(--card);
-  box-shadow: var(--shadow);
-  color: var(--ink-2);
-  font-size: var(--t-sm);
-  line-height: var(--lh-sm);
-  font-weight: var(--w-regular, 400);
-  /* it says what Routes is and never takes a press meant for what lies under it (the band's Try again, the map's top edge) */
-  pointer-events: none;
-  visibility: hidden;
+  max-width: none;
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
 }
 
-.mov-line__routes:hover .mov-routes__hint,
-.mov-line__routes:focus-within .mov-routes__hint {
-  visibility: visible;
+@media (max-width: 640px) {
+  .mov-ctl--routes {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "label" "choice" "hint";
+    max-width: none;
+  }
 }
 
 .mov-line__try[hidden] {
