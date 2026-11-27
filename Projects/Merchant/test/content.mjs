@@ -320,6 +320,16 @@ test('rule 4: only the opening letters named in the lint\'s head are exempt', ()
   eq(lintContent(content, { banned }), []);
   eq(lintContent(dominated('some-other-card'), { banned }).map(f => f.rule), [4], 'welcome-note\'s choices are dominated; under another id the lint says so');
 });
+test('rule 20: a card or letter choice with an id the engine reserves fails (MER-155: tabriz-envoys-cairo had \'leave\')', () => {
+  const hit = c => lintContent(c, { banned }).filter(f => f.rule === 20);
+  eq(hit(content), [], 'testport as it stands');
+  const card = hit(variant(c => { c.cards.find(x => x.id === 'wool-offer').choices[1].id = 'leave'; }));
+  eq(card.length, 1, JSON.stringify(card));
+  ok(/cards\[wool-offer\]/.test(card[0].path) && /reserved/.test(card[0].message), JSON.stringify(card));
+  const letter = hit(variant(c => { c.letters[0].choices[0].id = 'leave'; }));
+  eq(letter.length, 1, JSON.stringify(letter));
+  ok(/letters\[/.test(letter[0].path), JSON.stringify(letter));
+});
 test('rule 3: a choice with no effect at all fails', () => {
   const f = lintContent(variant(c => { c.cards[0].choices[0].now = []; c.cards[0].choices[0].later = []; }), { banned });
   ok(f.some(x => x.rule === 3 && /has no effect/.test(x.message)), JSON.stringify(f));

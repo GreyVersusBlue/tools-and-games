@@ -35,12 +35,15 @@
 // 17 a money cost that could be a paper's only open choice says so (MER-141): the engine never lets a choice take money the
 //   house does not hold (it is shown closed, in words, and a card with none open is not dealt), so the content must name
 //   the sum in `requires` for any choice that takes money now and has no sibling open whatever the house holds
+// 20 no card or letter choice has an id the engine reserves (MER-155): the engine's LEAVE (js/engine/turn.js) is offered beside the open
+//   choices and choose() refuses it while another is open, so a choice with that id could never be taken
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadContent } from '../js/data.js';
 import { validateContent } from '../js/engine/content.js';
 import { tripLeaf } from '../js/engine/conditions.js';
+import { LEAVE } from '../js/engine/turn.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -73,6 +76,7 @@ export const RULES = {
   17: 'a money cost that could be the only open choice says so',
   18: 'a choice says only what is true of any house',
   19: 'a sum that lands later is named on the paper that chose it',
+  20: 'no choice id the engine reserves',
 };
 
 // Rule 9 (ARCHITECTURE 4.12): a card whose words name an agent and a stop or a road carries a `trip`
@@ -390,6 +394,12 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
 
   const cards = content.cards ?? [];
   const letters = content.letters ?? [];
+
+  // rule 20: the ids the engine reserves for itself. LEAVE is the only one (js/engine/turn.js, `export const LEAVE`); add any new one here.
+  const RESERVED = [LEAVE.id];
+  for (const [what, list] of [['card', cards], ['letter', letters]]) for (const c of list) for (const x of c.choices ?? []) {
+    if (RESERVED.includes(x?.id)) fail(20, `${what === 'card' ? 'cards' : 'letters'}[${c.id}].choices[${x.id}]`, `choice id '${x.id}' is reserved by the engine (it is the Leave it choice); rename it`);
+  }
 
   // rule 2
   const needSource = (what, x, where) => { if (!Array.isArray(x.sources) || !x.sources.length) fail(2, where, `${what} has no source`); };
