@@ -264,6 +264,8 @@ export const section = {
 
     const top = controls({
       folded: foldedByDefault(),
+      // the controls fold by themselves under 900 px: only there is the Try crowd-aware routes link offered
+      narrow: () => !wide.matches,
       fold(folded) {
         memory.controls = folded ? 'folded' : 'open';
         try {
@@ -364,6 +366,7 @@ export const section = {
     }
     function onWidth() {
       if (memory.controls === null) top.setFolded(!wide.matches);
+      top.widthChanged();
       placeFloors();
       dockLegend();
     }

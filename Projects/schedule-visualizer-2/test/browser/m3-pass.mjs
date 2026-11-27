@@ -163,6 +163,61 @@ for (const [name, size] of SIZES) {
   });
 }
 
+// The close spacing of a window under 900 px high with a mouse (movement.css's short-window block) closes the gaps between
+// the lines of a control, never the gaps beside them: Going to stands apart from Rooms of subject, and Clear from the two
+// checks. The checks are each a target of 24 by 24 (WCAG 2.5.8) that no other target covers. 1366 by 657 is the inside of
+// a 1366 by 768 laptop's window; there the map keeps its first place (the case above's rule) with the controls shown.
+for (const [name, size] of [['1366 by 657', { width: 1366, height: 657 }], ['1280 by 800', DESK]]) {
+  test('SV2-153c: at ' + name + ' with a mouse the close spacing keeps the gaps beside Going to and Clear, the checks are 24 px targets, and the map comes first', async () => {
+    await on('#movement', size, async (p) => {
+      assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'false', 'the controls are shown from 900 px wide');
+      const seen = await p.evaluate(() => {
+        const rect = (el) => el.getBoundingClientRect();
+        const [going, subject] = Array.from(document.querySelectorAll('.mov-ctl--filters > .mov-ctl')).map(rect);
+        const checks = rect(document.querySelector('.mov-ctl--options .mov-ctl__checks'));
+        const clear = rect(document.querySelector('.mov-ctl--options .mov-clear'));
+        const targets = Array.from(document.querySelectorAll('.mov-ctl--options .mov-check')).map((label) => {
+          const box = rect(label);
+          // the target's every edge is its own: what the pointer finds 1 px inside each (the two meet on a fraction of a pixel) is the
+          // label or what it holds
+          const x = box.left + Math.min(box.width / 2, 12);
+          const own = [[x, box.top + 1], [x, box.bottom - 1], [box.left + 1, box.top + box.height / 2]]
+            .every(([px, py]) => label.contains(document.elementFromPoint(px, py)));
+          return { width: box.width, height: box.height, top: box.top, bottom: box.bottom, own };
+        });
+        return { filters: subject.left - going.right, options: clear.left - checks.right, targets };
+      });
+      assert.ok(seen.filters >= 12, 'Going to and Rooms of subject are ' + seen.filters + ' px apart');
+      assert.ok(seen.options >= 12, 'the checks and Clear are ' + seen.options + ' px apart');
+      assert.equal(seen.targets.length, 2);
+      for (const target of seen.targets) {
+        assert.ok(target.width >= 24 && target.height >= 24, 'a check is a target of ' + target.width + ' by ' + target.height + ': ' + JSON.stringify(seen.targets));
+        assert.equal(target.own, true, 'another target covers a check’s edge: ' + JSON.stringify(seen.targets));
+      }
+      assert.ok(seen.targets[0].bottom <= seen.targets[1].top, 'the two checks’ targets overlap: ' + JSON.stringify(seen.targets));
+      if (size.height === 657) {
+        // the map first, as the case above has it. With the controls shown a window this short cannot hold them, the stage's
+        // least and the bar (the section scrolls inside itself, as 1280 by 480 does, SV2-52 item 1), so shown the stage keeps
+        // its least and the page itself never scrolls; folded, nothing scrolls at all and the stage ends inside the surface.
+        const floor = Math.max(320, Math.ceil(size.height * 0.45));
+        const shown = await mapRoom(p);
+        assert.ok(shown.stage >= floor, 'shown: the stage is ' + shown.stage + ' px high, under ' + floor + ': ' + JSON.stringify(shown));
+        assert.equal(shown.plan, shown.stage, 'shown: the canvas is not the stage’s height');
+        assert.deepEqual([shown.scrolled[0], shown.scrolled[2]], [0, 0], 'shown: the surface or the page is scrolled: ' + JSON.stringify(shown));
+        await p.click('[data-action="change"]');
+        await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');
+        await drawn(p);
+        const room = await mapRoom(p);
+        assert.ok(room.stage >= floor, 'folded: the stage is ' + room.stage + ' px high, under ' + floor + ': ' + JSON.stringify(room));
+        assert.equal(room.plan, room.stage, 'folded: the canvas is not the stage’s height');
+        assert.deepEqual(room.scrolled, [0, 0, 0], 'folded: something is scrolled: ' + JSON.stringify(room));
+        assert.ok(room.bottom <= room.surfaceBottom, 'folded: the stage runs under the foot of the surface: ' + JSON.stringify(room));
+        assert.equal(room.sectionScrolls, 0, 'folded: the section scrolls inside itself');
+      }
+    });
+  });
+}
+
 test('Getting started is under the map at full width, and the surface scrolls down to it', async () => {
   await on('#movement', DESK, async (p) => {
     const map = await box(p, '.mov');

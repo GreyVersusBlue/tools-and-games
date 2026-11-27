@@ -106,6 +106,9 @@ export const TEACHER_LINE = 'Playback is for groups. A teacher\u2019s walks are 
 export const REDUCED_LINE = 'Reduced motion is on, so nothing moves by itself: move the scrubber to walk the groups.';
 
 export const HINT = 'Playback walks one transition at a time. Press Play for the first, or choose one above.';
+// what the bar says of what it plays while Routes is Crowd-aware: the lens, never Checks' (DESIGN 17.1, 17.4)
+export const WHAT_IF = 'Playing crowd-aware routes (a what-if): checks use the usual routes.';
+export const LATE_WHAT_IF = 'Late on crowd-aware routes (a what-if).';
 export const HINT_REDUCED = 'Playback walks one transition at a time. Choose one above, or press Next for the first.';
 
 const LOOPS = [{ value: 'once', label: 'Once' }, { value: 'transition', label: 'This transition' }, { value: 'day', label: 'The whole day' }];
@@ -600,7 +603,9 @@ export function playbackBar(env) {
     if (chosen() === null) return playedHere ? '' : reduce.matches ? HINT_REDUCED : HINT;
     if (!scene) return 'Working out the routes.';
     if (scene.walkers.length === 0) return 'Nobody on screen walks in ' + scene.transition.name + '.';
-    return reduce.matches ? REDUCED_LINE : '';
+    // what is played on crowd-aware routes is the lens, and its clock and late groups are not Checks' (DESIGN 17.1, 17.4)
+    const lens = state.picture.routesMode === 'crowd' ? WHAT_IF : '';
+    return [reduce.matches ? REDUCED_LINE : '', lens].filter(Boolean).join(' ');
   }
 
   function render() {
@@ -668,13 +673,15 @@ export function playbackBar(env) {
     const names = moment && started ? lateNames(moment) : [];
     const walking = moment && started ? moment.walkers.filter((walker) => lateAt(walker, moment.clock) && walkingAt(walker, moment.clock)).map((walker) => walker.name) : [];
     const inRoom = names.filter((name) => !walking.includes(name));
-    const lineKey = walking.join('\n') + '\n\n' + inRoom.join('\n');
+    const crowdLate = Boolean(state && state.picture.routesMode === 'crowd');
+    const lineKey = walking.join('\n') + '\n\n' + inRoom.join('\n') + (crowdLate ? '\ncrowd' : '');
     if (late.dataset.key !== lineKey) {
       late.dataset.key = lineKey;
       late.replaceChildren(
         ...(walking.length > 0 ? ['Late, still walking after the passing time: ', ...listed(walking), '.'] : []),
         ...(walking.length > 0 && inRoom.length > 0 ? [' '] : []),
         ...(inRoom.length > 0 ? ['In their room, late: ', ...listed(inRoom), '.'] : []),
+        ...(crowdLate ? [' ' + LATE_WHAT_IF] : []),
       );
     }
     late.hidden = names.length === 0;

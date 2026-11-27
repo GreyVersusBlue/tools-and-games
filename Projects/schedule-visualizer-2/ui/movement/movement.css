@@ -1479,8 +1479,10 @@
     margin-top: 6px;
   }
 
+  /* the gap between the lines of a control only: the column gaps beside Going to, Rooms of subject and Clear keep their
+     16 px (a row-gap, never the `gap` shorthand, which would close them up too) */
   .mov-ctl {
-    gap: 2px;
+    row-gap: 2px;
   }
 
   .mov-ctl__hint,
@@ -1492,9 +1494,22 @@
     gap: 0;
   }
 
+  /* two checks 22 px apart, each a target of 24 by 24 (WCAG 2.5.8): the first reaches 2 px up into the gap under "Show",
+     the last 2 px down into the controls' margin, and the negative margins give the layout back what the padding takes,
+     so the map's room is the same. The two never overlap. */
   .mov-check {
-    min-height: 20px;
+    min-height: 22px;
     line-height: 1.2;
+  }
+
+  .mov-check:first-child {
+    padding-top: 2px;
+    margin-top: -2px;
+  }
+
+  .mov-check:last-child {
+    padding-bottom: 2px;
+    margin-bottom: -2px;
   }
 
   /* the docked legend line, a line of text, with no air above and below it */

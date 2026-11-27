@@ -24,6 +24,10 @@ import { anyHeldBack, anyRiding, heldWords, stepFreeTag } from './tables.js';
 import { failureParts, foldHealth, groupRows, unitWord, walkNamed } from './model.js';
 import { anotherWords } from './crowd-view.js';
 
+// what a figure of the crowd says while Routes is Crowd-aware (DESIGN 17.1: a crowd-aware line always carries it)
+const WHAT_IF = 'On crowd-aware routes (a what-if): checks use the usual routes.';
+const GROUPS_WHAT_IF = 'On crowd-aware routes (a what-if): Walking and Lost to crowds are the crowd-aware ones. Checks use the usual routes.';
+
 function parts(list) {
   return list.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
 }
@@ -46,6 +50,7 @@ export function summaryPanel(env) {
   const figures = h('dl', { class: 'mov-figures', data: { summary: 'figures' } });
   const groupsTitle = h('h3', { class: 'mov-panel__sub' }, 'Groups on screen');
   const groups = h('div', { class: 'mov-groups', data: { summary: 'groups' } });
+  const groupsWhatIf = h('p', { class: 'mov-panel__note', hidden: true, data: { summary: 'groups-what-if' } }, GROUPS_WHAT_IF);
   const healthTitle = h('h3', { class: 'mov-panel__sub', tabindex: '-1', id: 'movement-health' }, 'Route health');
   const healthLine = h('p', { class: 'mov-health__line', data: { summary: 'health-line' } });
   const health = h('ul', { class: 'mov-health', data: { summary: 'health' } });
@@ -54,7 +59,7 @@ export function summaryPanel(env) {
     'The routes could not be worked out after your last change. Every figure here is from before it.');
   const element = h('div', { class: 'mov-panel', data: { panel: 'summary' } },
     h('h2', { class: 'mov-panel__title' }, 'Summary'),
-    staleLine, figures, groupsTitle, groups, healthTitle, healthLine, health);
+    staleLine, figures, groupsTitle, groupsWhatIf, groups, healthTitle, healthLine, health);
 
   function figure(key, name, value, more) {
     return h('div', { class: 'mov-figure', data: { figure: key } },
@@ -79,15 +84,18 @@ export function summaryPanel(env) {
     }
     const settings = project.settings;
     const list = [];
+    // on crowd-aware routes the crowd's figures are the lens's, not Checks': each says so (DESIGN 17.1, 17.4)
+    const whatIf = picture.routesMode === 'crowd' ? WHAT_IF : null;
     list.push(figure('routes', 'Routes drawn', String(picture.drawn), picture.same > 0 ? [count(picture.same, 'transition') + ' with no walk: the group stays in its room.'] : null));
     if (picture.busiest) {
       const b = picture.busiest;
       const where = b.place ? parts(b.place.parts) : ['A corridor'];
       const floor = b.floorName && b.place && b.place.kind !== 'connection' && b.place.name !== b.floorName ? [' on ', h('bdi', null, b.floorName)] : [];
       const when = b.period !== null && picture.load.measure === 'busiest' ? [', ' + walkNamed(settings, picture.transitions, b.period)] : [];
-      list.push(figure('busiest', picture.load.measure === 'total' ? 'Highest total over the day' : 'Busiest load', b.load + ' ' + unitWord(b.unit, b.load), [...where, ...floor, ...when, '.']));
+      list.push(figure('busiest', picture.load.measure === 'total' ? 'Highest total over the day' : 'Busiest load', b.load + ' ' + unitWord(b.unit, b.load), [...where, ...floor, ...when, '.', ...(whatIf ? [' ' + whatIf] : [])]));
     } else {
-      list.push(figure('busiest', 'Busiest load', 'None', picture.mode === 'empty' ? null : ['Nobody on screen crosses a corridor.']));
+      const none = picture.mode === 'empty' ? [] : ['Nobody on screen crosses a corridor.'];
+      list.push(figure('busiest', 'Busiest load', 'None', none.length === 0 && !whatIf ? null : [...none, ...(whatIf ? [(none.length > 0 ? ' ' : '') + whatIf] : [])]));
     }
     const late = new Map();
     for (const walk of picture.late) {
@@ -100,8 +108,6 @@ export function summaryPanel(env) {
       if (lateWords.length > 0) lateWords.push('; ');
       lateWords.push(h('bdi', null, group ? group.name : '?'), ': ' + periods.map((period) => walkNamed(settings, picture.transitions, period)).join(', '));
     }
-    // on crowd-aware routes this is the lens's count, not Checks': the figure says so (DESIGN 17.1, 17.4)
-    const whatIf = picture.routesMode === 'crowd' ? 'On crowd-aware routes (a what-if): checks use the usual routes.' : null;
     list.push(figure('late', 'Cannot make a transition in time', late.size === 0 ? 'None' : count(late.size, 'group'), late.size === 0 ? (whatIf ? [whatIf] : null) : [...lateWords, '.', ...(whatIf ? [' ' + whatIf] : [])]));
     list.push(figure('failed', 'Routes that failed', picture.failed.length === 0 ? 'None' : String(picture.failed.length), picture.failed.length === 0 ? null : ['Named under Route health, below.']));
     figures.replaceChildren(...list);
@@ -123,6 +129,7 @@ export function summaryPanel(env) {
     const rows = groupRows(project, results, picture);
     groupsTitle.hidden = rows.length === 0;
     groups.hidden = rows.length === 0;
+    groupsWhatIf.hidden = rows.length === 0 || picture.routesMode !== 'crowd';
     if (rows.length === 0) return;
     // a column for the delay only when some group of this run has one: a school with none sees today's table
     const held = anyHeldBack(results, picture.dayTypeId, picture.bellsId);

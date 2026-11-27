@@ -388,6 +388,10 @@ for (const size of SIZES) {
         assert.deepEqual(rows.filter((row) => !row.another).map((row) => row.words), ['', '', '', '']);
         // the figure of groups that cannot make a transition is the lens's, and says so (Checks keep the usual routes' count)
         assert.match(await text(page, '#inspector [data-figure="late"]'), /On crowd-aware routes \(a what-if\): checks use the usual routes\./);
+        // and so are the crowd's other figures: the busiest load and the groups' Walking and Lost to crowds (DESIGN 17.1, SV2-153c)
+        assert.match(await text(page, '#inspector [data-figure="busiest"]'), /On crowd-aware routes \(a what-if\): checks use the usual routes\.$/);
+        assert.equal(await text(page, '#inspector [data-summary="groups-what-if"]'), 'On crowd-aware routes (a what-if): Walking and Lost to crowds are the crowd-aware ones. Checks use the usual routes.');
+        assert.equal(await hidden(page, '#inspector [data-summary="groups-what-if"]'), false);
         assert.ok(!(await dashesDrawn(page, '3,5')).includes('3,5'), 'no usual route is drawn until a row is chosen');
         const selector = '#inspector [data-action="show-usual"][data-group="' + moved[0].group + '"]';
         // drawing the map folded the phone's sheet: the tab is opened again for each press
@@ -491,6 +495,9 @@ for (const size of SIZES) {
         await act.press('.mov-strip__item[data-transition="0"]');
         await act.press('[data-action="play"]');
         await page.waitForFunction(() => document.querySelector('[data-bar="playback"]')?.dataset.started === 'true');
+        // what is played is the lens, and the bar says so under its clock (DESIGN 17.1, SV2-153c)
+        assert.match(await text(page, '[data-bar="playback"] [data-part="note"]'), /Playing crowd-aware routes \(a what-if\): checks use the usual routes\.$/);
+        assert.equal(await hidden(page, '[data-bar="playback"] [data-part="note"]'), false);
         await act.press('[data-action="play"]');
         assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
         await act.press('.mov-strip__item[data-transition="all"]');
@@ -904,6 +911,88 @@ describe('Try crowd-aware routes, touch at 768 (a tablet: the controls fold, Rou
     assert.equal((await choice(page)).routes, 'crowd');
     assert.equal(await line(page), TWO_HALLS_LINE);
     assert.equal(await page.$('[data-action="try-crowd"]'), null, 'chosen, it is not offered again');
+    assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
+  });
+});
+
+// ---- the link where the controls fold by themselves, never on a desktop folded by hand (DESIGN 17.6, 17.7 item 9; SV2-153c)
+
+describe('Try crowd-aware routes is offered under 900 px only, and the stage\'s place when the offer comes with an answer', () => {
+  let session;
+  let page;
+  after(async () => {
+    if (session) await session.close();
+  });
+  const stageTop = () => page.$eval('.mov-stage', (el) => el.getBoundingClientRect().top);
+  const offered = () => page.$('[data-action="try-crowd"]').then((el) => el !== null);
+
+  test('at 1280 folded by hand, a place with waiting is not offered the link; narrowed to 768 the folded controls are', async () => {
+    session = await open({ name: '1280', width: 1280, height: 900, phone: false }, 'halls');
+    page = session.page;
+    if (await page.$eval('[data-action="change"]', (el) => el.getAttribute('aria-expanded') === 'true')) await page.click('[data-action="change"]');
+    await page.waitForFunction(() => document.querySelector('.mov-controls').hidden);
+    await settled(page);
+    assert.equal(await page.evaluate(() => document.querySelector('.mov').movement.picture.waiting), true, 'some place has waiting');
+    assert.equal(await offered(), false, 'a desktop folded by hand is offered the link');
+    assert.ok(!/Try crowd-aware/.test(await line(page)), await line(page));
+    await page.setViewport({ width: 768, height: 1024 });
+    await page.waitForFunction(() => innerWidth === 768 && document.querySelector('[data-action="try-crowd"]') !== null, { timeout: 10000 });
+    assert.equal(await text(page, '.mov-line__try'), '· Try crowd-aware routes');
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.waitForFunction(() => innerWidth === 1280 && document.querySelector('[data-action="try-crowd"]') === null, { timeout: 10000 });
+    // the sentence the offer left ends in its own words, not a space
+    const raw = await page.$eval('#movement-line .mov-line__words', (el) => el.textContent);
+    assert.ok(!/\s$/.test(raw), 'the sentence ends in a space: ' + JSON.stringify(raw));
+    await session.close();
+    session = null;
+  });
+
+  test('at 768 the answer that brings a place with waiting brings the link, and the stage moves down by at most the line it adds', async () => {
+    session = await open({ name: '768', width: 768, height: 1024, phone: true }, 'halls');
+    page = session.page;
+    if (await page.$eval('[data-action="change"]', (el) => el.getAttribute('aria-expanded') === 'true')) await page.click('[data-action="change"]');
+    await page.waitForFunction(() => document.querySelector('.mov-controls').hidden);
+    // one group alone waits nowhere: no offer
+    await page.evaluate(async () => {
+      const { store } = globalThis.sv2;
+      const next = globalThis.sv2modules.halls.twoHalls();
+      next.settings.theme = store.project.settings.theme;
+      next.groups = next.groups.slice(0, 1);
+      store.replace(next);
+      await store.derived.results().catch(() => null);
+    });
+    await settled(page);
+    assert.equal(await offered(), false, 'one group alone is offered the link');
+    const before = await stageTop();
+    const lineBefore = await page.$eval('#movement-line', (el) => el.getBoundingClientRect().height);
+    // the whole school, its answer held until the view is pending on it
+    await page.evaluate(() => {
+      const derived = globalThis.sv2.store.derived;
+      const real = derived.results;
+      globalThis.__results = { real, release: null };
+      derived.results = (...args) => new Promise((resolve, reject) => {
+        globalThis.__results.release = () => { derived.results = real; real.apply(derived, args).then(resolve, reject); };
+      });
+      const next = globalThis.sv2modules.halls.twoHalls();
+      next.settings.theme = globalThis.sv2.store.project.settings.theme;
+      globalThis.sv2.store.replace(next);
+    });
+    await page.waitForFunction(() => document.querySelector('.mov').dataset.pending === 'true' && typeof globalThis.__results.release === 'function', { timeout: 10000 });
+    assert.equal(await offered(), false, 'offered before the answer came');
+    const pendingTop = await stageTop();
+    await page.evaluate(() => globalThis.__results.release());
+    await settled(page);
+    assert.equal(await page.evaluate(() => document.querySelector('.mov').movement.picture.waiting), true);
+    assert.equal(await offered(), true, 'the link is not offered');
+    assert.equal(await text(page, '.mov-line__try'), '· Try crowd-aware routes');
+    const after = await stageTop();
+    const lineAfter = await page.$eval('#movement-line', (el) => el.getBoundingClientRect().height);
+    assert.equal(pendingTop, before, 'the stage moved while the answer was awaited');
+    // the offer cannot be kept from moving the stage at 768 px: the sentence and the link do not fit on one line, so the
+    // first line grows by one line of its own (34 px with a finger's 44 px targets), and the stage moves by exactly that
+    assert.equal(after - before, lineAfter - lineBefore, 'the stage moved by more than the line the offer added: ' + JSON.stringify({ before, after, lineBefore, lineAfter }));
+    assert.ok(after - before <= 44, 'the stage moved by ' + (after - before) + ' px');
+    console.log('# SV2-153c: at 768 the offer moves the stage by ' + (after - before) + ' px');
     assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
   });
 });
