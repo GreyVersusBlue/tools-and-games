@@ -37,6 +37,17 @@ async function change(patch) {
   await settled();
 }
 
+// The legend's choices are where a finger or a mouse can press them: the card on the map, or, where the card would lie on a
+// floor and it is docked under the map as one line (W2), brought out by Scale. With W8's Going to, Rooms of subject and
+// Routes the controls are taller and the map shorter, so the card docks in more of the states these cases choose.
+async function legendOut() {
+  await settled();
+  if (await page.$eval('.mov-legend', (el) => el.dataset.docked === 'true' && el.dataset.open !== 'true')) {
+    await page.click('[data-action="scale"]');
+    await page.waitForFunction(() => document.querySelector('.mov-legend').dataset.open === 'true', { timeout: 5000 });
+  }
+}
+
 // Everything as the view opens it, whatever the case before left chosen.
 const OPEN = { who: 'all', groupIds: [], dayTypeId: 'dsample00a', transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
 
@@ -279,6 +290,7 @@ test('the absolute scale puts the school\'s own numbers in the legend, and undo 
   const relative = await ranges();
   assert.equal(relative.length, 5);
   assert.notDeepEqual(relative, ['1–9', '10–24', '25–49', '50–99', '100+']);
+  await legendOut();
   await page.click('.mov-legend input[name="movement-scale"][value="absolute"]');
   await page.waitForFunction(() => globalThis.sv2.store.project.settings.colourScale.mode === 'absolute', { timeout: 5000 });
   await settled();
@@ -300,12 +312,14 @@ test('the absolute scale puts the school\'s own numbers in the legend, and undo 
 test('total over the day is a second picture, named as such', async () => {
   await change(OPEN);
   await page.click('#inspector [role="tab"][data-tab="summary"]');
+  await legendOut();
   await page.click('.mov-legend input[name="movement-measure"][value="total"]');
   await settled();
   assert.equal(await page.$eval('.mov-legend', (el) => el.dataset.measure), 'total');
   assert.match(await text('.mov-legend [data-legend="what"]'), /^Total over the day: students crossing a corridor cell, every transition added up\.$/);
   assert.equal((await page.$$eval('.mov-legend__range', (all) => all.map((each) => each.textContent)))[4], '641–800');
   assert.equal(await text('#inspector [data-figure="busiest"] dt'), 'Highest total over the day');
+  await legendOut();
   await page.click('.mov-legend input[name="movement-measure"][value="busiest"]');
   await settled();
   assert.match(await text('.mov-legend [data-legend="what"]'), /^Busiest moment: /);

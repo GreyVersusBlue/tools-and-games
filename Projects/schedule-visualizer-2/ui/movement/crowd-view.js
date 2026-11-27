@@ -20,12 +20,13 @@
 //   crowdResultsView(main, crowd)       the view; main itself when either is missing
 //   lensOf(results), usualOf(results)   the view's mark; the usual routes' results
 //   lensFits(results, dayTypeId, bellsId)   does the lens answer for this run?
-//   lensFigures(results, picture)       { usual, aware } sums over the walks of the groups on screen
+//   lensFigures(results, picture)       { usual, aware } sums over the walks of the groups on screen (late: walks; lateGroups: groups)
 //   anotherWay(lens, groupIds, period)  the changed ways of those groups: [{ groupId, … }]
 //   movedBy(lens, groupId)              { walks, saved } for one group over the day
 //   usualRouteOf(results, groupId, period)   the usual route of one walk, or null
 //   usualWalkOf(results, dayTypeId, bellsId, groupId, period)   its usual walk figures, or null
 //   waitingIn(results, dayTypeId, bellsId, groupIds)   is some walk of these groups kept waiting WAIT_FROM or more?
+//   anotherWords(another)               "another way · 7 s saved", a group's row in the legend and the print (movedBy's answer)
 //   comparisonParts(picture)            the first line's words, in pieces
 //   hasWaiting(picture)                 is the link "Try crowd-aware routes" worth offering?
 
@@ -101,15 +102,22 @@ export function lensFits(results, dayTypeId, bellsId) {
   return lens !== null && lens.dayTypeId === dayTypeId && lens.bellsId === (typeof bellsId === 'string' ? bellsId : null);
 }
 
+// `late` counts walks that were late (the run's own `figures.late`, ARCHITECTURE 23.4); `lateGroups` counts the groups
+// that had at least one, which is what the words "groups late" say (a group late twice is one group).
 function sums(walks) {
-  const found = { waiting: 0, walking: 0, total: 0, late: 0, walks: 0 };
+  const found = { waiting: 0, walking: 0, total: 0, late: 0, lateGroups: 0, walks: 0 };
+  const lateOnes = new Set();
   for (const walk of walks) {
     found.walks += 1;
     found.waiting += walk.waiting;
     found.walking += walk.walking + (walk.riding > 0 ? walk.riding : 0);
     found.total += walk.total;
-    if (walk.late === true) found.late += 1;
+    if (walk.late === true) {
+      found.late += 1;
+      lateOnes.add(walk.groupId);
+    }
   }
+  found.lateGroups = lateOnes.size;
   return found;
 }
 
@@ -160,6 +168,11 @@ export function waitingIn(results, dayTypeId, bellsId, groupIds) {
   return runResults(usualOf(results), dayTypeId, bellsId).walks.groups.some((walk) => shown.has(walk.groupId) && walk.waiting >= WAIT_FROM);
 }
 
+// "another way · 7 s saved": the seconds a group's own total fell over the walks that took another way ("7 s more" when it rose)
+export function anotherWords(another) {
+  return 'another way \u00b7 ' + (another.saved > 0 ? formatDuration(another.saved) + ' saved' : another.saved < 0 ? formatDuration(-another.saved) + ' more' : 'no time saved');
+}
+
 function plural(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);
 }
@@ -185,7 +198,8 @@ export function comparisonParts(picture) {
     const more = aware.walking - usual.walking;
     const waiting = less === 0 ? 'the same waiting' : formatDuration(Math.abs(less)) + (less > 0 ? ' less waiting' : ' more waiting');
     const walking = more === 0 ? 'the same walking' : formatDuration(Math.abs(more)) + (more > 0 ? ' more walking' : ' less walking');
-    const late = usual.late === 0 && aware.late === 0 ? 'no group late' : 'groups late ' + usual.late + ' → ' + aware.late;
+    // groups, not walks: a group that is late in two transitions is one group late
+    const late = usual.lateGroups === 0 && aware.lateGroups === 0 ? 'no group late' : 'groups late ' + usual.lateGroups + ' → ' + aware.lateGroups;
     parts.push({ text: plural(moved, 'group takes', 'groups take') + ' another way: ' + waiting + ', ' + walking + ' (summed over the groups’ walks); ' + late + '.' });
   }
   parts.push({ text: ' A what-if: checks use the usual routes.' });

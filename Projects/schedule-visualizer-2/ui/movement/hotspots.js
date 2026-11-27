@@ -57,6 +57,7 @@ import { unitWord, runOf, nothingMeets, nothingMeetsParts } from './model.js';
 
 // What a row of a car in use says after the car's name.
 const USE_WORDS = ', in use';
+const WHAT_IF = 'Crowd-aware routes (a what-if): the places and their loads are the crowd-aware ones. Checks use the usual routes.';
 // How many places carry a ring on the map.
 export const PULSE_TOP = 3;
 // How many rows the table opens with.
@@ -417,9 +418,11 @@ export function hotspotsPanel(env) {
   const notes = h('p', { class: 'mov-panel__note', data: { hotspots: 'notes' } });
   // with Going to or Rooms of subject set: whose walks the load counts, and that the delay is everyone's (DESIGN 17.7 item 14)
   const filterHeading = h('h3', { class: 'mov-panel__sub', hidden: true, data: { hotspots: 'heading' } });
+  // with crowd-aware routes the places and loads are the crowd-aware ones, and the words say it is a what-if (DESIGN 17.1, 17.4)
+  const whatIf = h('p', { class: 'mov-panel__note', hidden: true, data: { hotspots: 'what-if' } }, WHAT_IF);
   const element = h('div', { class: 'mov-panel', data: { panel: 'hotspots', pulse: 'none' } },
     h('h2', { class: 'mov-panel__title' }, 'Hotspots'),
-    filterHeading, lead, scroller, all, elsewhereLine, notes);
+    whatIf, filterHeading, lead, scroller, all, elsewhereLine, notes);
 
   // Is this elevator held by a group at the second playback shows?
   const inUse = (carId) => Boolean(env.rides) && env.rides.now.some((rider) => rider.car === carId);
@@ -498,6 +501,7 @@ export function hotspotsPanel(env) {
       const floor = picture.floors.length < state.project.building.floors.length && picture.floors.length === 1 ? [' on ', h('bdi', null, picture.floors[0].name)] : [];
       lead.replaceChildren(rows.length === 1 ? 'The one place anyone crosses' : 'The ' + rows.length + ' places anyone crosses', ...floor, (rows.length === 1 ? '' : ', busiest first') + ': ' + who + ' on ', h('bdi', null, picture.dayTypeName), ', each place ' + what + '. Choose a place to see it on the map.');
     }
+    whatIf.hidden = !(picture.routesMode === 'crowd' && picture.mode !== 'empty');
     filterHeading.hidden = !picture.filter || picture.mode === 'empty';
     filterHeading.textContent = picture.filter ? 'Load: walks ' + picture.filter.words.map((part) => part.text).join('') + '. Delay: everyone\u2019s' : '';
     elsewhereLine.hidden = !picture.ready || elsewhere === 0;

@@ -14,8 +14,9 @@ import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
 import { createPipeline, crowdRun, runResults } from '../../engine/worker.js';
 import { defaultChoice, settleChoice, pictureOf, sentenceOf, groupRows, cellCard, runOf, routeHealth } from '../../ui/movement/model.js';
-import { crowdResultsView, lensOf, usualOf, lensFits, lensFigures, comparisonParts, movedBy, usualRouteOf, usualWalkOf, hasWaiting } from '../../ui/movement/crowd-view.js';
+import { crowdResultsView, lensOf, usualOf, lensFits, lensFigures, comparisonParts, anotherWords, movedBy, usualRouteOf, usualWalkOf, hasWaiting } from '../../ui/movement/crowd-view.js';
 import { hotspotRows } from '../../ui/movement/hotspots.js';
+import * as movementPrint from '../../ui/prints/movement.js';
 import { transitionRows, dayRows, travelDay } from '../../ui/movement/tables.js';
 import { twoHalls } from '../fixtures/buildings/two-halls.mjs';
 import { plainSchool } from '../engine/helpers.mjs';
@@ -197,8 +198,8 @@ test('the first line: the comparison with the trade, the day, and the what-if', 
 
 test('the first line says a rise plainly, and groups late as "groups late", never "late arrivals"', () => {
   const fake = (usual, aware) => ({ routesMode: 'crowd', dayTypeName: 'A Day', transition: null, elsewhere: 0, changed: [{ groupId: 'g1' }, { groupId: 'g2' }, { groupId: 'g1' }], compare: { usual, aware } });
-  const base = { waiting: 0, walking: 0, total: 0, late: 0, walks: 1 };
-  const rise = words(comparisonParts(fake({ ...base, late: 3 }, { ...base, late: 4 })));
+  const base = { waiting: 0, walking: 0, total: 0, late: 0, lateGroups: 0, walks: 1 };
+  const rise = words(comparisonParts(fake({ ...base, lateGroups: 3 }, { ...base, lateGroups: 4 })));
   assert.match(rise, /groups late 3 → 4\./);
   assert.ok(!/late arrivals/.test(rise));
   assert.match(rise, /^Crowd-aware routes on A Day: 2 groups take another way: /);
@@ -210,6 +211,34 @@ test('the first line says a rise plainly, and groups late as "groups late", neve
   const one = words(comparisonParts({ ...fake(base, base), changed: [{ groupId: 'g1' }] }));
   assert.match(one, /: 1 group takes another way: /);
   assert.deepEqual(comparisonParts({ routesMode: 'usual' }), []);
+});
+
+test('"groups late a → b" counts groups, not walks: a group late in two transitions is one group late', () => {
+  // g1 is late in two transitions on the usual routes and again in both on the crowd-aware ones; g2 is late once, then not at all
+  const walk = (groupId, period, late) => ({ dayTypeId: 'd1', groupId, period, waiting: 12, walking: 60, riding: 0, total: 72, late });
+  const entry = (tag) => ({ dayTypeId: 'd1', tag });
+  const main = {
+    versions: {}, findings: {}, places: {}, buildingFindings: {},
+    routes: { days: [entry('usual')], bells: [] }, crowd: { days: [entry('usual')], bells: [] }, loads: [entry('usual')], bellLoads: [],
+    walks: { groups: [walk('g1', 1, true), walk('g1', 2, true), walk('g2', 1, true)], teachers: [], bells: { groups: [], teachers: [] } },
+  };
+  const run = {
+    dayTypeId: 'd1', bellsId: null, routes: entry('aware'), crowd: entry('aware'), loads: entry('aware'),
+    walks: { groups: [walk('g1', 1, true), walk('g1', 2, true), walk('g2', 1, false)] },
+    changed: [{ groupId: 'g2', period: 1, usual: { total: 72 }, aware: { total: 72 } }], figures: {},
+  };
+  const view = crowdResultsView(main, run);
+  const on = { groups: [{ id: 'g1' }, { id: 'g2' }], choice: { transition: null } };
+  const figures = lensFigures(view, on);
+  assert.deepEqual({ walks: figures.usual.late, groups: figures.usual.lateGroups }, { walks: 3, groups: 2 }, 'three late walks, two groups');
+  assert.deepEqual({ walks: figures.aware.late, groups: figures.aware.lateGroups }, { walks: 2, groups: 1 });
+  const said = words(comparisonParts({ routesMode: 'crowd', dayTypeName: 'A Day', transition: null, elsewhere: 0, changed: run.changed, compare: figures }));
+  assert.match(said, /groups late 2 → 1\./, 'groups, not the walks 3 → 2');
+  // one transition chosen counts that transition's walks: g1 is late once there, g2 once then not
+  const first = lensFigures(view, { ...on, choice: { transition: 1 } });
+  assert.deepEqual({ usual: first.usual.lateGroups, aware: first.aware.lateGroups }, { usual: 2, aware: 1 });
+  const second = lensFigures(view, { ...on, choice: { transition: 2 } });
+  assert.deepEqual({ usual: second.usual.lateGroups, aware: second.aware.lateGroups }, { usual: 1, aware: 1 });
 });
 
 test('the first line with one transition chosen names it and counts only its walks', () => {
@@ -326,4 +355,19 @@ test('findings never change: the Checks counts are the same before and after cho
   assert.deepEqual(routeHealth(project, view), routeHealth(project, main));
   // a late walk of the lens is not a finding: findings are read from the main result only
   assert.ok(runOf(view, main.routes.days[0].dayTypeId, null).walks.groups.length > 0);
+});
+
+test('the movement print\'s group table marks a group that took another way (the legend\'s "another way" on paper), and has no such column on the usual routes', () => {
+  const { project, view, main, graph, dayTypeId } = halls();
+  const printed = (results, choice) => movementPrint.render(project, null, { movement: { project, results, graph, choice, parts: {} } }).html;
+  const lens = printed(view, { ...defaultChoice(project), routes: 'crowd' });
+  const usual = printed(main, defaultChoice(project));
+  assert.match(lens, /<th scope="col">Crowd-aware routes \(a what-if\)<\/th>/);
+  const moved = groupRows(project, view, picture(project, view, graph)).filter((row) => row.another);
+  assert.ok(moved.length > 0, 'the fixture moves groups');
+  for (const row of moved) assert.ok(lens.includes(anotherWords(row.another).replace(/&/g, '&amp;')), row.group.name + ' is marked');
+  assert.equal((lens.match(/another way/g) || []).length, moved.length, 'only the groups that moved');
+  assert.ok(lens.includes('the usual route'), 'the others say so');
+  assert.ok(!/another way|Crowd-aware routes \(a what-if\)<\/th>/.test(usual), 'the usual routes\' print has none of it');
+  assert.ok(dayTypeId);
 });

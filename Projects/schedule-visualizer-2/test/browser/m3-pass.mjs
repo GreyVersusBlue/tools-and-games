@@ -729,7 +729,7 @@ async function tabsToMap(page) {
     await page.keyboard.press('Tab');
     const stop = await page.evaluate(() => {
       const el = document.activeElement;
-      return el.id === 'movement-plan' ? 'the map' : el.dataset.control || el.dataset.action || (el.dataset.transition !== undefined ? 'transition ' + el.dataset.transition : el.tagName);
+      return el.id === 'movement-plan' ? 'the map' : el.name === 'movement-routes' ? 'routes' : el.dataset.control || el.dataset.action || (el.dataset.transition !== undefined ? 'transition ' + el.dataset.transition : el.tagName);
     });
     stops.push(stop);
     if (stop === 'the map') break;
@@ -737,9 +737,13 @@ async function tabsToMap(page) {
   return stops;
 }
 
-test('W6: from Who to the map is six Tabs whatever the number of periods: the transition strip is a radio group with one Tab stop, arrows, Home and End', async () => {
+// W6 counted six Tabs from Who to the map. SV2-153's Going to and Rooms of subject sit under Who (DESIGN 17.3) and SV2-154's
+// Routes under Day type (DESIGN 17.4), so the way is eight, in that order; what W6 pins is that it is the same however many
+// periods the day has, with the strip one Tab stop.
+const TABS = ['going-to', 'subject', 'day', 'routes'];
+test('W6: from Who to the map is eight Tabs whatever the number of periods: the transition strip is a radio group with one Tab stop, arrows, Home and End', async () => {
   await on('#movement', DESK, async (p) => {
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition all', 'labels', 'constant-width', 'clear', 'the map']);
+    assert.deepEqual(await tabsToMap(p), [...TABS, 'transition all', 'labels', 'constant-width', 'clear', 'the map']);
     const strip = () => p.evaluate(() => ({
       role: document.querySelector('[data-control="transition"]').getAttribute('role'),
       roles: Array.from(new Set(Array.from(document.querySelectorAll('.mov-strip__item')).map((item) => item.getAttribute('role')))),
@@ -757,18 +761,18 @@ test('W6: from Who to the map is six Tabs whatever the number of periods: the tr
       await drawn(p);
       assert.deepEqual(await strip(), { role: 'radiogroup', roles: ['radio'], stops: [to], checked: [to], focus: to, chosen, count: 8 }, 'after ' + key);
     }
-    // with a transition chosen it is that one the Tab lands on, and still six Tabs
+    // with a transition chosen it is that one the Tab lands on, and still eight Tabs
     await p.keyboard.press('ArrowRight');
     await drawn(p);
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
-    // a day of twelve periods: eleven transitions and All, and six Tabs
+    assert.deepEqual(await tabsToMap(p), [...TABS, 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
+    // a day of twelve periods: eleven transitions and All, and eight Tabs
     await p.evaluate(async () => {
       const actions = await import('./engine/actions.js');
       globalThis.sv2.store.apply(actions.setSetting, { key: 'periods', value: 12 });
     });
     await drawn(p);
     assert.equal((await strip()).count, 12);
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
+    assert.deepEqual(await tabsToMap(p), [...TABS, 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
   });
 });
 
@@ -1027,7 +1031,8 @@ for (const [name, size] of [['768 by 1024', { ...TABLET, mobile: true }], ['390 
         const now = view.toScreen(cell.x, cell.y);
         return { dx: now.x - (at.x - was.plan.left), dy: now.y - (at.y - was.plan.top), size: view.size / view.zoom };
       }, before, mid);
-      assert.equal(still.size, 24, 'a cell is not 24 px at 100 %: the arithmetic of this case is off');
+      // a cell is 24 px at 100 %, to the last bit of a float (24.000000000000004 at some stage heights)
+      assert.ok(Math.abs(still.size - 24) < 1e-6, 'a cell is ' + still.size + ' px at 100 %, not 24: the arithmetic of this case is off');
       assert.ok(Math.abs(still.dx) <= 3 && Math.abs(still.dy) <= 3, 'the map slid under the fingers by ' + JSON.stringify(still));
 
       // one finger, 90 px right and 60 down
@@ -1820,7 +1825,8 @@ test('SV2-52 item 4: a card that docks with the focus in it gives the focus to S
     await dismissStarted(p);
     assert.equal(await p.$eval('.mov-legend', (el) => el.dataset.docked), 'false');
     await p.focus('.mov-legend input[name="movement-scale"]');
-    await p.setViewport({ width: 1280, height: 900 });
+    // 1100 wide: with the controls W8 added the map at 1280 by 900 leaves the card room, and at 1100 it lies on a floor
+    await p.setViewport({ width: 1100, height: 900 });
     await shows(p, () => document.querySelector('.mov-legend').dataset.docked === 'true');
     assert.equal(await focusedAs(p), 'scale', 'docking the card dropped the focus');
     await p.setViewport({ width: 1440, height: 900 });
@@ -1853,8 +1859,9 @@ test('SV2-52 item 7: a message clears the dock after the controls fold and after
     await clearOfDock(p, 'folded');
     await closeToast(p);
   });
-  // 1280 by 560, folded: the stage is all the section has, so More makes the bar taller and leaves the stage as it is
-  await on('#movement', { width: 1280, height: 560 }, async (p) => {
+  // 1280 by 520, folded: the stage is all the section has, so More makes the bar taller and leaves the stage as it is
+  // (560 was 520 plus the room a short window's close spacing gives back: there the stage is not at what the section has)
+  await on('#movement', { width: 1280, height: 520 }, async (p) => {
     await dismissStarted(p);
     await p.click('[data-action="change"]');
     await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');

@@ -744,13 +744,31 @@ test('a late grant that holds the section full screen past the look for the wind
   try {
     await settled(page);
     await handTimers(page);
-    await holdFullscreen(page);
-    // the browser slow to give full screen back too: the exit reaches it only at release
+    // The browser's full screen is stood in for by a state the case sets: with the real one the grant crosses to the
+    // browser and back, and the plan map's measure of the window it comes back to (the frame after Leave) can win that
+    // race, which put the map back before the grant came and left the case testing nothing (SV2-153b). Here the grant
+    // and the exit are events the case fires, in the task it chooses, so which comes first is not left to the browser.
     await page.evaluate(() => {
-      const real = Document.prototype.exitFullscreen;
+      globalThis.__fullEl = null;
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => globalThis.__fullEl });
+      Element.prototype.requestFullscreen = function held() {
+        const element = this;
+        return new Promise((resolve) => {
+          globalThis.__releaseFullscreen = () => {
+            globalThis.__fullEl = element;
+            document.dispatchEvent(new Event('fullscreenchange'));
+            resolve();
+          };
+        });
+      };
+      // the browser slow to give full screen back too: the exit reaches it only at release
       Document.prototype.exitFullscreen = function heldExit() {
-        return new Promise((resolve, reject) => {
-          globalThis.__releaseExit = () => real.call(document).then(resolve, reject);
+        return new Promise((resolve) => {
+          globalThis.__releaseExit = () => {
+            globalThis.__fullEl = null;
+            document.dispatchEvent(new Event('fullscreenchange'));
+            resolve();
+          };
         });
       };
     });

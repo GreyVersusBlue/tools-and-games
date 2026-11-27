@@ -461,7 +461,9 @@ export const section = {
     const ask = () => asker.ask();
 
     // ---- the crowd lane: asked while the choice wants it, once for a project, day type and bells
-    const lens = { key: null, project: null, state: 'off', run: null, message: '', retries: 0 };
+    // `retries` counts the askings a null answer made for `retryKey`; another key (a project, day type or bells it was not asked
+    // for) starts the count again, so one stale answer never uses up the next asking's tries
+    const lens = { key: null, project: null, state: 'off', run: null, message: '', retries: 0, retryKey: null };
     const tokens = new WeakMap();
     let tokenCount = 0;
     const keyFor = (project) => {
@@ -478,11 +480,16 @@ export const section = {
         lens.run = null;
         lens.project = null;
         lens.retries = 0;
+        lens.retryKey = null;
         return;
       }
       const project = store.project;
       const key = keyFor(project);
       if (again !== true && lens.key === key) return;
+      if (lens.retryKey !== key) {
+        lens.retryKey = key;
+        lens.retries = 0;
+      }
       lens.key = key;
       lens.project = project;
       lens.state = 'working';
@@ -502,12 +509,13 @@ export const section = {
     function landed(key, answer) {
       if (gone || lens.key !== key) return;
       if (answer === null) {
-        lens.key = null;
         if (lens.retries < 3) {
           lens.retries += 1;
+          lens.key = null;
           askCrowd();
           return;
         }
+        // out of tries: the failure stays with this asking (its key kept), so drawing again never asks afresh
         answer = { failed: 'The answer kept going out of date. Try again.' };
       }
       if (answer.failed !== undefined) {
@@ -533,6 +541,9 @@ export const section = {
       noticeBells(wanted);
       memory.projectId = project.id;
       memory.choice = choice;
+      // the project can put the choice right itself (a day type or a bell schedule that is gone): the lens is asked for the
+      // choice as it is now, never left waiting on an answer for the one it had (a no-op when the key has not moved)
+      askCrowd();
       const f = figures(project);
       const nothing = f.groups === 0 || f.rooms === 0;
       map.hidden = nothing;
@@ -878,11 +889,18 @@ export const section = {
       // where the shell's "to the surface" goes: the map
       focus: () => plan.focus(),
       // the same section at another address (`#movement/teacher/…`, `#movement/to/…`): the choice it names is made
-      // here, nothing is mounted again, and Back goes to where the link was followed from. An address that names
-      // nothing (`#movement`, or something the project no longer has) leaves the view as it is.
+      // here, nothing is mounted again, and Back goes to where the link was followed from. An address of those two
+      // kinds that names nothing the project has (a teacher or a room that is gone) leaves the view as it is. Any other
+      // address of the section (`#movement`, `#movement/again`) is answered no, so the shell mounts the section again
+      // as it always did, and a presentation in progress is left and everything the section held is let go (SV2-31c).
       route(next) {
+        if (!/^(teacher|to)\/[^/]/.test(String(next))) return false;
         const named = readMovementAddress(store.project, next);
-        if (named) change(withAddress(choice, named));
+        if (named) {
+          // the choice an address makes is for the section as it stands, not for the mode's own picture of it
+          presenter.leave();
+          change(withAddress(choice, named));
+        }
         return true;
       },
       update() {
