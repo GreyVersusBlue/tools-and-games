@@ -5,7 +5,7 @@
 // key with ":edit" after it, so when the tab is drawn again mid-word the
 // section puts the text and the caret back (ui/schedule/index.js).
 //
-// sheet({ role, view, ids, stage(ops, said), edit(cells, kind), undo(), remove(row), keep(row), say(text), roomLabel(room), focusCursor(key), makeOwn(dayType) })
+// sheet({ role, view, ids, stage(ops, said), edit(cells, kind), undo(), redo(), remove(row), keep(row), say(text), roomLabel(room), focusCursor(key), makeOwn(dayType) })
 //   role    'groups' (the default), 'teachers' or 'rooms': what a row is. The
 //           last two are the same sheet drawn from the other sides
 //           (across.js): the same cursor and keys, a slot that holds group
@@ -1245,6 +1245,10 @@ export function sheet(options) {
       // the last thing staged here comes back first; with nothing staged
       // to take back, the shell undoes the last change to the project
       if (options.undo()) event.preventDefault();
+    } else if (mod && !event.altKey && ((event.shiftKey && event.key.toLowerCase() === 'z') || (!event.shiftKey && event.key.toLowerCase() === 'y'))) {
+      // what was taken back here comes back first; with nothing taken back,
+      // the shell redoes the last undone change to the project
+      if (options.redo()) event.preventDefault();
     } else if (event.key === ' ' && model.columns[at.c].kind === 'actions') {
       event.preventDefault();
       openEditor(at.r, at.c);

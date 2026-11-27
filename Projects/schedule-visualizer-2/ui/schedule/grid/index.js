@@ -28,7 +28,7 @@ import { applyGridEdits, makeOwnCopy } from '../../../engine/actions.js';
 import { ownDayTypes, isOwnCopy, effectiveDayType } from '../../../engine/day-types.js';
 import { allRooms } from '../../../engine/schema.js';
 import { fill, apply, button, keyed, emptyState, roomLabel } from '../common.js';
-import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, touch, discard, remember, takeBack, forgetSteps, stageSlot, stageField, stageAdd, stageRemove, stageKeep } from './staged.js';
+import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, touch, discard, remember, takeBack, putBack, forgetSteps, stageSlot, stageField, stageAdd, stageRemove, stageKeep } from './staged.js';
 import { sheetModel, namesOf, newGroup } from './model.js';
 import { sheet as makeSheet, cellKey } from './sheet.js';
 import { acrossModel, runAcross, wordsFor, plain, followersLeft } from './across.js';
@@ -267,6 +267,12 @@ export function mount(env) {
     undo() {
       if (!takeBack(projectId())) return false;
       say('Took back the last change in the grid.');
+      env.render();
+      return true;
+    },
+    redo() {
+      if (!putBack(projectId())) return false;
+      say('Brought back the last change taken back in the grid.');
       env.render();
       return true;
     },

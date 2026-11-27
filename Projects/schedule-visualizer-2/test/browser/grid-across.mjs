@@ -975,14 +975,27 @@ test('copy and paste agree on the Teachers rows’ Before and After columns: a c
     await pasteInto(page, slot('tsample005', DAY_A, 6), tsv);
     const said = await status(page);
     assert.match(said, /2 slots of the block fell on the name or the duties and were left out\./, said);
-    // one copied slot over a selection with duty columns in it fills the slots and nothing else
     await discard(page);
-    // (the page puts the focus back on the cursor after a discard: wait for that, then move it)
-    await page.waitForFunction(() => document.activeElement?.dataset?.key?.startsWith('grid:'));
+  } finally {
+    await undo(page, 2);
+    await rowsAre(page, 'groups');
+  }
+});
+
+test('one copied slot pasted over a selection that holds the Before and After columns fills the slots in it and passes the duties by without a word', async () => {
+  const { page } = desk;
+  await change(page, 'addDuty', { kind: 'duty', label: 'Bus duty', when: 'before', teacherIds: ['tsample004'] });
+  await change(page, 'addDuty', { kind: 'duty', label: 'Car line', when: 'after', teacherIds: ['tsample004'] });
+  try {
+    await rowsAre(page, 'teachers');
     await page.focus(slot('tsample005', DAY_A, 6));
+    // (a block kept from an earlier visit is still selected when the cursor's own slot is focused: Escape ends it)
+    await page.keyboard.press('Escape');
     await page.keyboard.down('Shift');
     for (let n = 0; n < 4; n += 1) await page.keyboard.press('ArrowRight');
     await page.keyboard.up('Shift');
+    const chosen = await page.$$eval('.grd-sheet:not([hidden]) [aria-selected="true"]', (all) => all.map((el) => el.dataset.key));
+    assert.equal(chosen.length, 5, 'two periods, two duties, one more period: ' + chosen.join(' ') + ' (focus on ' + (await activeKey(page)) + ')');
     await pasteHere(page, '6A');
     const filled = await status(page);
     assert.doesNotMatch(filled, /fell on the name or the duties/, 'a fill passes over the duty columns without a word: ' + filled);
@@ -1035,33 +1048,53 @@ test('Delete and a paste over a block that touches a follower day type take the 
   }
 });
 
-test('Ctrl+Shift+Z in the grid brings nothing back: staged steps have no redo, and the schedule is not touched by it', async () => {
+test('a step taken back with Ctrl+Z comes back with Ctrl+Shift+Z or Ctrl+Y, a new edit ends what could come back, and the schedule itself is never touched by it', async () => {
   const { page } = desk;
-  await rowsAre(page, 'rooms');
-  const before = await schedule(page);
-  await typeInto(page, slot('rsample101', DAY_A, 3), '7A');
-  await stagedIs(page, true);
-  await typeInto(page, slot('rsample102', DAY_A, 3), '7B');
-  assert.equal(await bar(page), 'Not applied yet: 2 groups changed');
-  await ctrlZ(page);
-  await ctrlZ(page);
-  await stagedIs(page, false);
-  await page.focus(slot('rsample101', DAY_A, 3));
-  await page.keyboard.down('Control');
-  await page.keyboard.down('Shift');
-  await page.keyboard.press('z');
-  await page.keyboard.up('Shift');
-  await page.keyboard.up('Control');
-  await settled(page);
-  assert.equal(await exists(page, '.grd-bar'), false, 'neither step came back');
-  assert.equal(await held(page, slot('rsample101', DAY_A, 3)), '');
-  assert.equal(await schedule(page), before, 'and the schedule is as it was');
-  // the steps can be made again, and each is one step again
-  await typeInto(page, slot('rsample101', DAY_A, 3), '7A');
-  await stagedIs(page, true);
-  await ctrlZ(page);
-  await stagedIs(page, false);
-  await rowsAre(page, 'groups');
+  // a change to the project now, so the shell has no redo of its own to fall to
+  await change(page, 'setRoomTeachers', { roomId: 'rsample102', teacherIds: ['tsample001'] });
+  try {
+    await rowsAre(page, 'rooms');
+    const before = await schedule(page);
+    const redo = async (key) => {
+      await page.keyboard.down('Control');
+      if (key === 'z') await page.keyboard.down('Shift');
+      await page.keyboard.press(key);
+      if (key === 'z') await page.keyboard.up('Shift');
+      await page.keyboard.up('Control');
+      await settled(page);
+    };
+    await typeInto(page, slot('rsample101', DAY_A, 3), '7A');
+    await stagedIs(page, true);
+    await typeInto(page, slot('rsample102', DAY_A, 3), '7B');
+    assert.equal(await bar(page), 'Not applied yet: 2 groups changed');
+    await ctrlZ(page);
+    await ctrlZ(page);
+    await stagedIs(page, false);
+    // Ctrl+Shift+Z brings the first step back, Ctrl+Y the second
+    await page.focus(slot('rsample101', DAY_A, 3));
+    await redo('z');
+    await stagedIs(page, true);
+    assert.equal(await bar(page), 'Not applied yet: 1 group changed');
+    assert.equal(await held(page, slot('rsample101', DAY_A, 3)), '7A');
+    assert.equal(await held(page, slot('rsample102', DAY_A, 3)), '');
+    assert.match(await status(page), /^Brought back the last change taken back in the grid\.$/);
+    await redo('y');
+    await page.waitForFunction(() => document.querySelector('.grd-bar__text')?.textContent === 'Not applied yet: 2 groups changed');
+    assert.equal(await held(page, slot('rsample102', DAY_A, 3)), '7B');
+    // one Ctrl+Z takes back one step again, and a new edit ends what could come back
+    await ctrlZ(page);
+    assert.equal(await bar(page), 'Not applied yet: 1 group changed');
+    await typeInto(page, slot('rsample101', DAY_A, 5), '7C');
+    await stagedIs(page, true);
+    await redo('z');
+    assert.equal(await held(page, slot('rsample102', DAY_A, 3)), '', 'the step taken back before the new edit is gone for good');
+    assert.equal(await held(page, slot('rsample101', DAY_A, 5)), '7C', 'and the new edit stands');
+    assert.equal(await schedule(page), before, 'the schedule is as it was throughout: nothing was applied, nothing redone in it');
+    await discard(page);
+  } finally {
+    await undo(page, 1);
+    await rowsAre(page, 'groups');
+  }
 });
 
 test('a second Enter, or the blur after a commit, stages the edit once; and a paste goes through when the frame has the focus', async () => {
@@ -1088,7 +1121,8 @@ test('a second Enter, or the blur after a commit, stages the edit once; and a pa
     frame.tabIndex = 0;
     frame.focus();
   });
-  assert.equal(await page.evaluate(() => document.activeElement.classList.contains('grd-scroll')), true);
+  // (the frame sends the focus to the cursor's slot at once, so what is pasted lands on the cursor either way)
+  await page.waitForFunction(() => document.activeElement?.dataset?.key?.startsWith('grid:'));
   await page.evaluate(() => {
     const data = new DataTransfer();
     data.setData('text/plain', '7A');

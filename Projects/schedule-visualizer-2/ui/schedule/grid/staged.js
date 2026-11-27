@@ -231,30 +231,54 @@ export function stageKeep(projectId, groupId) {
 
 const STEPS = 100;
 
-// Keep the draft as it is now, so the next change to it can be taken back.
-export function remember(projectId) {
-  const draft = draftFor(projectId);
-  if (!draft.steps) draft.steps = [];
-  draft.steps.push({
+// The draft as it is now, to be put back to.
+function snapshot(draft) {
+  return {
     slots: new Map(Array.from(draft.slots, ([key, slot]) => [key, { ...slot }])),
     groups: new Map(Array.from(draft.groups, ([id, fields]) => [id, { ...fields }])),
     added: draft.added.map((group) => ({ ...group })),
     removed: new Set(draft.removed),
-  });
+  };
+}
+
+// Keep the draft as it is now, so the next change to it can be taken back. A
+// new change ends what was taken back: there is nothing to bring back after it.
+export function remember(projectId) {
+  const draft = draftFor(projectId);
+  if (!draft.steps) draft.steps = [];
+  draft.steps.push(snapshot(draft));
+  draft.undone = [];
   if (draft.steps.length > STEPS) draft.steps.shift();
 }
 
 // Put the draft back as it was before the last change. False when there is
-// nothing to take back.
+// nothing to take back. What was taken back can be brought back (putBack).
 export function takeBack(projectId) {
   const draft = draftFor(projectId);
   const step = draft.steps && draft.steps.pop();
   if (!step) return false;
+  if (!draft.undone) draft.undone = [];
+  draft.undone.push(snapshot(draft));
+  Object.assign(draft, step);
+  touch(projectId);
+  return true;
+}
+
+// Bring back the change that was last taken back. False when nothing was
+// taken back since the draft last changed.
+export function putBack(projectId) {
+  const draft = draftFor(projectId);
+  const step = draft.undone && draft.undone.pop();
+  if (!step) return false;
+  if (!draft.steps) draft.steps = [];
+  draft.steps.push(snapshot(draft));
   Object.assign(draft, step);
   touch(projectId);
   return true;
 }
 
 export function forgetSteps(projectId) {
-  draftFor(projectId).steps = [];
+  const draft = draftFor(projectId);
+  draft.steps = [];
+  draft.undone = [];
 }
