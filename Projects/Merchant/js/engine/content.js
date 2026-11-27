@@ -40,7 +40,7 @@ const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 // pins that this table and the engine's agree (test/content.mjs).
 export const CONDITION_LEAVES = {
   season: [], year: [], act: [], length: [], notebook: [], out: [], money: [], stock: ['gte'],
-  flag: ['not', 'gte'], rep: ['gte', 'lte'], agent: ['hired', 'where'], trip: [],
+  flag: ['not', 'gte'], rep: ['gte', 'lte'], agent: ['hired', 'where'], trip: [], road: [],
 };
 // Leaves only a letter's `when` may use (ARCHITECTURE 5.7); letters.js reads them off the expedition.
 export const LETTER_LEAVES = { leg: [], at: [], trait: [] };
@@ -196,6 +196,7 @@ export function validateContent(raw, { art } = {}) {
       case 'leg': obj(v, q, { by: (x, r) => oneOf(BY, x, r) }, ['by']); break;
       case 'at': refOf('stops')(v, q); break;
       case 'trait': trait(v, q); break;
+      case 'road': arr(v, q, refOf('stops'), 1); break;
       case 'trip':
         obj(v, q, { agent: refOf('agents'), is: (x, r) => oneOf(TRIP_STATES, x, r) }, ['agent', 'is']);
         if (letter) schema(p, 'a letter reads its own expedition, so it takes no trip leaf');

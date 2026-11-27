@@ -236,6 +236,25 @@ test('condition out: counts expeditions on the road', () => {
   const s = { ...game(), expeditions: [{}, {}] };
   eq([cond({ out: { gte: 2 } }, s), cond({ out: { gte: 3 } }, s), cond({ out: { gte: 1 } })], [true, false, false]);
 });
+// MER-157: `{ road: [stop ids] }` holds while an expedition of the house is out on a route that goes to one of the stops.
+const onRoad = (...routes) => ({ ...game(), expeditions: routes.map((route, i) => ({ id: `x${i}`, agent: 'mira', route, status: 'riding' })) });
+test('condition road: holds for an expedition out on a route that goes to the stop', () => {
+  eq([cond({ road: ['hilltown'] }, onRoad('harbour-hilltown')), cond({ road: ['saltmarsh', 'hilltown'] }, onRoad('harbour-hilltown'))], [true, true]);
+});
+test('condition road: does not hold for another road, for no trip, or for an expedition already home', () => {
+  eq([cond({ road: ['hilltown'] }, onRoad('harbour-saltmarsh')), cond({ road: ['hilltown'] }),
+    cond({ road: ['hilltown'] }, { ...onRoad('harbour-hilltown'), expeditions: [{ id: 'x0', agent: 'mira', route: 'harbour-hilltown', status: 'home' }] })], [false, false, false]);
+});
+test('condition road: the home city is never a road, and an unknown route is on none', () => {
+  eq([cond({ road: ['harbour'] }, onRoad('harbour-hilltown')), cond({ road: ['hilltown'] }, onRoad('no-such-route'))], [false, false]);
+});
+test('condition road: two trips out, either one is enough', () => {
+  const s = onRoad('harbour-saltmarsh', 'harbour-hilltown');
+  eq([cond({ road: ['hilltown'] }, s), cond({ road: ['saltmarsh'] }, s), cond({ all: [{ road: ['hilltown'] }, { road: ['saltmarsh'] }] }, s)], [true, true, true]);
+});
+test('condition road: a bad value is an error, not a condition that never holds', () => {
+  for (const road of ['hilltown', [], [3], {}]) throws(() => cond({ road }, onRoad('harbour-hilltown')), /road/);
+});
 test('condition length: the chosen length', () => {
   eq([cond({ length: 'acts' }), cond({ length: 'full' })], [true, false]);
 });
