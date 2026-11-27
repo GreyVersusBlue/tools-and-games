@@ -1031,7 +1031,8 @@ for (const [name, size] of [['768 by 1024', { ...TABLET, mobile: true }], ['390 
         const now = view.toScreen(cell.x, cell.y);
         return { dx: now.x - (at.x - was.plan.left), dy: now.y - (at.y - was.plan.top), size: view.size / view.zoom };
       }, before, mid);
-      assert.equal(still.size, 24, 'a cell is not 24 px at 100 %: the arithmetic of this case is off');
+      // a cell is 24 px at 100 %, to the last bit of a float (24.000000000000004 at some stage heights)
+      assert.ok(Math.abs(still.size - 24) < 1e-6, 'a cell is ' + still.size + ' px at 100 %, not 24: the arithmetic of this case is off');
       assert.ok(Math.abs(still.dx) <= 3 && Math.abs(still.dy) <= 3, 'the map slid under the fingers by ' + JSON.stringify(still));
 
       // one finger, 90 px right and 60 down

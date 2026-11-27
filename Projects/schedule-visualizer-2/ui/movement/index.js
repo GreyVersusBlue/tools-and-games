@@ -509,12 +509,13 @@ export const section = {
     function landed(key, answer) {
       if (gone || lens.key !== key) return;
       if (answer === null) {
-        lens.key = null;
         if (lens.retries < 3) {
           lens.retries += 1;
+          lens.key = null;
           askCrowd();
           return;
         }
+        // out of tries: the failure stays with this asking (its key kept), so drawing again never asks afresh
         answer = { failed: 'The answer kept going out of date. Try again.' };
       }
       if (answer.failed !== undefined) {
@@ -888,11 +889,18 @@ export const section = {
       // where the shell's "to the surface" goes: the map
       focus: () => plan.focus(),
       // the same section at another address (`#movement/teacher/…`, `#movement/to/…`): the choice it names is made
-      // here, nothing is mounted again, and Back goes to where the link was followed from. An address that names
-      // nothing (`#movement`, or something the project no longer has) leaves the view as it is.
+      // here, nothing is mounted again, and Back goes to where the link was followed from. An address of those two
+      // kinds that names nothing the project has (a teacher or a room that is gone) leaves the view as it is. Any other
+      // address of the section (`#movement`, `#movement/again`) is answered no, so the shell mounts the section again
+      // as it always did, and a presentation in progress is left and everything the section held is let go (SV2-31c).
       route(next) {
+        if (!/^(teacher|to)\/[^/]/.test(String(next))) return false;
         const named = readMovementAddress(store.project, next);
-        if (named) change(withAddress(choice, named));
+        if (named) {
+          // the choice an address makes is for the section as it stands, not for the mode's own picture of it
+          presenter.leave();
+          change(withAddress(choice, named));
+        }
         return true;
       },
       update() {

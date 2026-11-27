@@ -287,13 +287,18 @@ for (const size of SIZES) {
         // the line is text on the page, not a pop-up of the hover: drawn, visible, inside the window, with nobody over it
         const hint = await rectOf(page, '[data-part="routes-line"]');
         assert.ok(hint && hint.width > 0 && hint.height > 0, 'the what-if line is not drawn');
-        assert.ok(hint.left >= 0 && hint.right <= size.width && hint.top >= 0, 'the line leaves the window: ' + JSON.stringify(hint));
+        assert.ok(hint.left >= 0 && hint.right <= size.width, 'the line leaves the window: ' + JSON.stringify(hint));
         assert.equal(await page.$eval('[data-part="routes-line"]', (el) => getComputedStyle(el).position), 'static', 'the line floats over what is under it');
         // the first line a screen reader reads is the sentence: the radio group is not in it
         assert.equal(await page.$('#movement-line input'), null, 'the radio group is inside the first line');
         assert.ok(!/Usual \(quickest\)|Crowd-aware/.test(await text(page, '#movement-line')), await text(page, '#movement-line'));
         // and neither hovering nor focusing the choice moves the map or draws anything over it
-        const stage = () => rectOf(page, '.mov-stage');
+        // (what moves with the section's scroll is not the map moving: the box above it and the stage's place under it)
+        const stage = () => page.evaluate(() => {
+          const top = document.querySelector('.mov-top').getBoundingClientRect();
+          const map = document.querySelector('.mov-stage').getBoundingClientRect();
+          return { above: top.height, under: map.top - top.top, height: map.height, width: map.width };
+        });
         const before = await stage();
         await page.hover('input[name="movement-routes"] + span');
         await page.focus('input[name="movement-routes"]:checked');

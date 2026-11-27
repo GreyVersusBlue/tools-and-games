@@ -119,8 +119,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  /* the rows are close, so the controls and the map fit a 1280 by 800 window together (m3-pass: the map first) */
-  gap: var(--s-2) var(--s-5);
+  gap: var(--s-3) var(--s-5);
   margin-top: var(--s-3);
 }
 
@@ -1460,6 +1459,48 @@
   height: 0;
   overflow: hidden;
   visibility: hidden;
+}
+
+/* ---------- A short window: the controls close up ----------
+
+   With Going to, Rooms of subject and Routes the open controls are three rows and two hints. In a window under 900 px high
+   (1280 by 800, a laptop) the map first (W1: at least 45 % of the height, nothing scrolling) leaves them room only if their
+   padding, the gaps between the rows and the lines inside them are close. Taller windows, and the controls folded away, keep
+   the roomier spacing. */
+@media (min-width: 641px) and (max-height: 899px) {
+  .mov-top[data-folded="false"] {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .mov-top[data-folded="false"] .mov-controls {
+    gap: 6px var(--s-5);
+    margin-top: 6px;
+  }
+
+  .mov-top[data-folded="false"] .mov-ctl {
+    gap: 2px;
+  }
+
+  .mov-top[data-folded="false"] .mov-ctl__hint,
+  .mov-top[data-folded="false"] .mov-routes__hint {
+    line-height: 1.15;
+  }
+
+  .mov-top[data-folded="false"] .mov-ctl__checks {
+    gap: 0;
+  }
+
+  .mov-top[data-folded="false"] .mov-check {
+    min-height: 20px;
+    line-height: 1.2;
+  }
+
+  /* the docked legend line, a line of text, with no air above and below it */
+  .mov:has(.mov-top[data-folded="false"]) .mov-legend-line {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
 }
 
 /* ---------- Crowd-aware routes (DESIGN 17.4, 17.7) ----------
