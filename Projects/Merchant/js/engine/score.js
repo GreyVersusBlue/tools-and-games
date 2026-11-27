@@ -9,7 +9,7 @@ export const REP_GROUP_POINTS = 2;   // most a group of reputation earns; counte
 export const HOME_POINTS = 10;      // per agent who made a trip for the house and is alive and home
 export const HOME_TRUST_BONUS = 3;  // more for one whose trust is 2 or 3
 export const TRUST_BONUS_AT = 2;
-export const NOTEBOOK_POINTS = 0.75; // per entry opened and read, not per entry found (1.05 until MER-162: qirad's notebook share was 54.8 percent, over the 50 limit; 0.75 gives 46.5)
+export const NOTEBOOK_POINTS = 1.05; // per entry opened and read, not per entry found
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
