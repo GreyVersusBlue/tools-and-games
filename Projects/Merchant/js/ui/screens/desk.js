@@ -254,7 +254,9 @@ export function createDesk(app) {
       const y = window.scrollY, endTop = window.innerHeight - endRow.offsetHeight;
       const clear = last.getBoundingClientRect().bottom + y + 6 - endTop;
       const lead = qs('.sheet-head', sheet) ?? title;   // MER-145: the seal, not the heading, is what stays under the bar's edge
-      const most = lead ? lead.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 8) : clear;
+      // MER-159: flush with the bar's foot (1 px of ground), not a hand's breadth under it: at 360 x 740 the 8 px kept the second choice of a
+      // return 4 px behind End the season, and the seal is never behind the bar either way (journey's MER-145 case measures that)
+      const most = lead ? lead.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 1) : clear;
       window.scrollTo({ top: Math.max(0, Math.min(clear, most)), behavior: 'instant' });
     });
   }
