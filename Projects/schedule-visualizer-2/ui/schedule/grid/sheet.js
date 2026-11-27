@@ -52,7 +52,8 @@ export function sheet(options) {
   // an edit the schedule refused is said under the slot, where the field is
   const refusal = h('p', { class: 'grd-refusal', role: 'alert', hidden: true });
   const element = h('div', { class: 'grd-sheet', data: { role } }, scroll, list, refusal);
-  if (across) watchWhy(scroll, table);
+  // (watched from the first drawing, so a table never drawn adds nothing to the page)
+  let watched = false;
   const cellState = (current, row, column) => (across ? acrossState(current, row, column) : groupState(current, row, column));
   const cellText = (current, row, column) => (across ? acrossText(current, row, column) : groupText(current, row, column));
 
@@ -328,6 +329,10 @@ export function sheet(options) {
         if (!commit(0, 0, true)) cancel(false);
         reopen = null;
       }
+    }
+    if (across && !watched) {
+      watched = true;
+      watchWhy(scroll, table);
     }
     drawing = true;
     closeEditor();

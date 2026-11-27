@@ -63,14 +63,16 @@ const popup = (page, selector) => page.$eval(selector, (cell) => {
   return { left, top, right: left + parseFloat(drawn.width), bottom: top + parseFloat(drawn.height), width: parseFloat(drawn.width), height: parseFloat(drawn.height) };
 });
 // The inside of the frame a table for reading scrolls in.
-const frameOf = (page) => page.$eval('.grd-below .grd-scroll', (el) => {
+const frameOf = (page) => page.$eval('.grd-sheet:not([hidden]) .grd-scroll', (el) => {
   const rect = el.getBoundingClientRect();
   return { left: rect.left + el.clientLeft, top: rect.top + el.clientTop, right: rect.left + el.clientLeft + el.clientWidth, bottom: rect.top + el.clientTop + el.clientHeight };
 });
-// Into a table for reading as the keyboard goes: its frame, then one Tab.
+// Into a table of the Teachers or Rooms rows as the keyboard goes: it is one
+// Tab stop, on the slot the cursor is on (SV2-155: they are grids now, not
+// tables of marks to jump between), so one Tab from the toolbar's last
+// control, or the focus put on that slot, is the same thing.
 async function tabInto(page) {
-  await page.focus('.grd-below .grd-scroll');
-  await page.keyboard.press('Tab');
+  await page.focus('.grd-sheet:not([hidden]) .grd-table [tabindex="0"]');
 }
 const why = (page) => page.evaluate(() => getComputedStyle(document.activeElement, '::after').content);
 const status = (page) => page.$eval('.grd-status', (el) => el.textContent);
@@ -131,7 +133,7 @@ async function tap(page, selector) {
 async function readSized(page, width, height) {
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
   await page.waitForFunction((w, h) => window.innerWidth === w && window.innerHeight === h
-    && document.querySelector('.grd-below .grd-scroll')?.dataset.placed === w + 'x' + h, { timeout: 5000 }, width, height);
+    && document.querySelector('.grd-sheet:not([hidden]) .grd-scroll')?.dataset.placed === w + 'x' + h, { timeout: 5000 }, width, height);
 }
 
 // Close a case's own page, and hold the page to having had no error. A case
@@ -423,21 +425,22 @@ test('the Teachers and Rooms tables mark the double-booking the Groups grid mark
   const described = await page.$eval(cell, (el) => el.getAttribute('aria-describedby').split(' ').map((id) => document.getElementById(id).textContent).join(' '));
   assert.match(described, sentence);
   assert.equal(described, await page.$eval(cell, (el) => el.title));
-  // and it can be reached and read without a pointer
-  assert.equal(await page.$eval(cell, (el) => el.tabIndex), 0);
+  // and it can be reached and read without a pointer: the cursor of the grid
+  // goes to it, and it is the sentence of the cell the cursor is on
   assert.equal(await page.$eval(cell, (el) => getComputedStyle(el, '::after').content), 'none');
-  await tabInto(page);
-  assert.equal(await page.$eval(cell, (el) => el === document.activeElement), true, 'one Tab from the frame is on the marked cell');
+  await page.focus(cell);
+  assert.equal(await page.$eval(cell, (el) => el === document.activeElement), true, 'the cursor is on the marked cell');
   assert.match(await page.$eval(cell, (el) => getComputedStyle(el, '::after').content), /Problem: Room 203 has two groups in Period 2 on A Day/, 'in the keyboard’s focus the sentence is drawn under the cell');
-  // an unmarked cell is not a Tab stop
-  assert.equal(await page.$$eval('.grd-table--read .grd-cell--read:not([data-severity])', (all) => all.filter((el) => el.hasAttribute('tabindex') || el.title !== '').length), 0);
+  // the grid is one Tab stop, and an unmarked cell has no sentence
+  assert.equal(await page.$$eval('.grd-sheet:not([hidden]) [tabindex="0"]', (all) => all.length), 1);
+  assert.equal(await page.$$eval('.grd-table--read .grd-cell--read:not([data-severity])', (all) => all.filter((el) => el.title !== '').length), 0);
 
   await rowsAre(page, 'rooms');
   assert.deepEqual(await marked(page), [['203', 2, 'problem'], ['Cafeteria', 4, 'note']]);
   assert.match(await page.$eval(cell, (el) => el.title), sentence);
   assert.equal(await page.$eval(cell, (el) => el.textContent), '6C, 7C● (problem)');
   // one line for a finding, whichever cells it is on
-  assert.equal(await page.$$eval('.grd-below .grd-why p', (all) => all.length), 2);
+  assert.equal(await page.$$eval('.grd-sheet:not([hidden]) .grd-why p', (all) => all.length), 2);
   await rowsAre(page, 'groups');
 });
 
@@ -597,40 +600,42 @@ test('on a phone Fill down fills only what is on screen of a block', async () =>
   }
 });
 
-test('the marks of a table for reading are one Tab stop, the arrow keys go from mark to mark, and a click on a mark draws its sentence as the keyboard does', async () => {
+test('the Teachers and Rooms tables are one Tab stop, the arrow keys go from slot to slot, a mark\u2019s sentence is drawn on the slot the cursor is on, and a click on a mark draws it as the keyboard does', async () => {
   const { page } = desk;
   await rowsAre(page, 'rooms');
-  const stops = () => page.$$eval('.grd-table--read .is-marked', (all) => all.map((cell) => cell.tabIndex));
+  const stops = () => page.$$eval('.grd-sheet:not([hidden]) [tabindex="0"]', (all) => all.length);
   const on = () => page.evaluate(() => {
     const cell = document.activeElement;
     return cell.classList.contains('is-marked') ? cell.parentElement.children[0].textContent + ' ' + cell.dataset.severity : null;
   });
+  const focusMark = (room, severity) => page.evaluate((name, level) => {
+    const row = Array.from(document.querySelectorAll('.grd-table--read tbody tr')).find((tr) => tr.children[0].textContent === name);
+    row.querySelector('[data-severity="' + level + '"]').focus();
+  }, room, severity);
   // Room 203's double-booking, then the Cafeteria's note
-  assert.deepEqual(await stops(), [0, -1]);
-  await tabInto(page);
+  assert.equal(await stops(), 1);
+  await focusMark('203', 'problem');
   assert.equal(await on(), '203 problem');
   assert.match(await why(page), /Problem: Room 203 has two groups/);
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await on(), 'Cafeteria note');
-  assert.deepEqual(await stops(), [-1, 0], 'the Tab stop goes with the focus');
-  assert.match(await why(page), /Note: /);
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await on(), 'Cafeteria note', 'no mark below: it stays');
+  assert.equal(await stops(), 1, 'the Tab stop goes with the focus');
+  // an arrow goes to the slot beside it, marked or not: its sentence goes
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await on(), null);
+  assert.equal(await why(page), 'none', 'a slot with no mark draws no sentence');
   await page.keyboard.press('ArrowLeft');
   assert.equal(await on(), '203 problem');
-  await page.keyboard.press('ArrowRight');
-  assert.equal(await on(), 'Cafeteria note');
+  assert.match(await why(page), /Problem: Room 203 has two groups/, 'back on the mark, its sentence is drawn again');
+  await focusMark('Cafeteria', 'note');
+  assert.match(await why(page), /Note: /);
   await page.keyboard.press('Home');
-  assert.equal(await on(), '203 problem');
+  assert.equal(await activeKey(page).then((value) => value.replace(/^grid:[^:]+:/, '')), 'name', 'Home is the row\u2019s first column, the room');
   await page.keyboard.press('End');
-  assert.equal(await on(), 'Cafeteria note');
-  await page.keyboard.press('ArrowUp');
-  assert.equal(await on(), '203 problem');
+  assert.equal(await activeKey(page).then((value) => /:dsample00b:7$/.test(value)), true, 'End is its last period');
   // one stop: the next Tab is out of the table
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest('.grd-table--read'))), false);
 
-  // a click puts the focus on a mark and draws its sentence too: the title
+  // a click puts the cursor on a mark and draws its sentence too: the title
   // needs a pointer that rests, and a finger has none (DECISIONS 2026-10-12 10:58)
   const note = '.grd-table--read .grd-cell--read[data-severity="note"]';
   await page.$eval(note, (el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
@@ -639,7 +644,7 @@ test('the marks of a table for reading are one Tab stop, the arrow keys go from 
   assert.equal(await on(), 'Cafeteria note');
   assert.match(await why(page), /^"Note: /, 'a click draws no sentence');
   assert.notEqual(await popup(page, note), null);
-  assert.deepEqual(await stops(), [-1, 0]);
+  assert.equal(await stops(), 1);
   // and a click away from it takes the sentence off again
   const name = await box(page, '.grd-table--read tbody tr:first-child th');
   await page.mouse.click(name.left + 10, name.top + name.height / 2);
@@ -667,8 +672,7 @@ test('the sentence of a mark stays inside the frame: at the right edge, and in t
     await rowsAre(page, 'rooms');
     const corner = '.grd-table--read tbody tr:last-child td:last-child';
     assert.equal(await page.$eval(corner, (el) => el.parentElement.children[0].textContent + ' ' + el.dataset.severity), 'Library warning');
-    await tabInto(page);
-    await page.keyboard.press('End');
+    await page.focus(corner);
     assert.equal(await page.$eval(corner, (el) => el === document.activeElement), true);
     await inside(corner, 'the corner cell of the Rooms table');
   } finally {
@@ -687,14 +691,14 @@ test('the sentence of a mark stays inside the frame: at the right edge, and in t
     const names = () => page.$$eval('.grd-table--read tbody tr', (rows) => rows.map((tr) => tr.children[0].textContent));
     await rowsAre(page, 'teachers');
     assert.deepEqual(await names(), ['Ms. Halloran', 'Mr. Brightwater', 'Ms. Vandermeer']);
-    await tabInto(page);
+    await page.focus(cell);
     await inside(cell, 'the last of three rows');
 
     await change(page, 'deleteTeacher', { id: 'tsample002' });
     changes += 1;
     await settled(page);
     assert.deepEqual(await names(), ['Ms. Halloran', 'Ms. Vandermeer']);
-    await tabInto(page);
+    await page.focus(cell);
     await inside(cell, 'the last of two rows');
   } finally {
     await undo(page, changes);
@@ -968,9 +972,9 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
     await sized(1280, 90);
     await refocus(cell);
     await inside(cell, 'in a window 90 px high');
-    assert.match(await page.$eval('.grd-below .grd-scroll', (frame) => frame.style.minHeight), /^\d+px$/, 'the frame was not given the height');
+    assert.match(await page.$eval('.grd-sheet:not([hidden]) .grd-scroll', (frame) => frame.style.minHeight), /^\d+px$/, 'the frame was not given the height');
     await page.focus('.grd-toolbar input[value="teachers"]');
-    assert.equal(await page.$eval('.grd-below .grd-scroll', (frame) => frame.style.minHeight), '', 'the frame keeps the height after the focus has gone');
+    assert.equal(await page.$eval('.grd-sheet:not([hidden]) .grd-scroll', (frame) => frame.style.minHeight), '', 'the frame keeps the height after the focus has gone');
 
     // the window narrowed with the focus on the last mark of the row, at the
     // frame's right edge: the frame's right edge moves, and the sentence with it
@@ -996,7 +1000,7 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
     // before the scroll had been placed: the sentence read at 6 to 294 in a
     // frame of 106 to 650 (#574's CI). Made to fail so here by a resize
     // dispatched just before the scroll (SV2-32b).
-    const moved = await page.$eval('.grd-below .grd-scroll', (frame, by) => {
+    const moved = await page.$eval('.grd-sheet:not([hidden]) .grd-scroll', (frame, by) => {
       delete frame.dataset.scrolledAt;
       frame.addEventListener('scroll', () => {
         frame.dataset.scrolledAt = frame.dataset.placings + ' at ' + frame.scrollLeft;
@@ -1006,8 +1010,8 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
       return frame.scrollLeft - from;
     }, at.left - start.frame.left + 100);
     assert.ok(moved > start.drawn.left - start.frame.left, 'the table does not scroll far enough sideways at 700 px: ' + moved);
-    await page.waitForFunction(() => document.querySelector('.grd-below .grd-scroll').dataset.scrolledAt !== undefined, { timeout: 5000 });
-    const judged = await page.$eval('.grd-below .grd-scroll', (frame, selector) => ({ placings: frame.dataset.placings, scrolledAt: frame.dataset.scrolledAt, scrollLeft: frame.scrollLeft, focused: document.activeElement === document.querySelector(selector) }), cell);
+    await page.waitForFunction(() => document.querySelector('.grd-sheet:not([hidden]) .grd-scroll').dataset.scrolledAt !== undefined, { timeout: 5000 });
+    const judged = await page.$eval('.grd-sheet:not([hidden]) .grd-scroll', (frame, selector) => ({ placings: frame.dataset.placings, scrolledAt: frame.dataset.scrolledAt, scrollLeft: frame.scrollLeft, focused: document.activeElement === document.querySelector(selector) }), cell);
     assert.ok(judged.focused, 'the mark lost the focus while the frame scrolled: ' + JSON.stringify(judged));
     await inside(cell, 'after the frame scrolled sideways (' + JSON.stringify(judged) + ')');
   } finally {
@@ -1101,7 +1105,7 @@ test('the worst finding of a cell is said first, whatever order its groups\' fin
   }
 });
 
-test('with two dozen marks in five rows of the Rooms table, Down and Up go to the nearest mark in the nearest row that has one', async () => {
+test('with two dozen marks in five rows of the Rooms table, the arrows go slot by slot and each mark draws its sentence when the cursor is on it', async () => {
   const { page } = desk;
   // three rooms that seat one: every group in them is a warning
   for (const roomId of ['rsample101', 'rsample202', 'rsample303']) await change(page, 'setRoomFields', { roomId, capacity: 1 });
@@ -1110,9 +1114,10 @@ test('with two dozen marks in five rows of the Rooms table, Down and Up go to th
     // the marks: a room, and the columns of its marked cells (1 is the first period of A Day)
     const marks = await page.$$eval('.grd-table--read tbody tr', (rows) => rows.map((tr) => [tr.children[0].textContent, Array.from(tr.children).map((cell, i) => (cell.classList.contains('is-marked') ? i : null)).filter((i) => i !== null)]).filter((row) => row[1].length > 0));
     assert.deepEqual(marks, [['101', [2, 3, 10, 15, 16]], ['202', [2, 6, 7, 8, 11, 16]], ['203', [2]], ['303', [1, 6, 7, 8, 9, 10, 11, 14, 15, 16]], ['Cafeteria', [4]]]);
+    const names = await page.$$eval('.grd-table--read tbody tr', (rows) => rows.map((tr) => tr.children[0].textContent));
     const on = () => page.evaluate(() => {
       const cell = document.activeElement;
-      return cell.classList.contains('is-marked') ? cell.parentElement.children[0].textContent + ' ' + Array.from(cell.parentElement.children).indexOf(cell) : null;
+      return cell.parentElement.children[0].textContent + ' ' + Array.from(cell.parentElement.children).indexOf(cell) + (cell.classList.contains('is-marked') ? ' marked' : '');
     });
     const walk = async (keys) => {
       const seen = [];
@@ -1122,19 +1127,20 @@ test('with two dozen marks in five rows of the Rooms table, Down and Up go to th
       }
       return seen;
     };
-    await tabInto(page);
-    await page.keyboard.press('Home');
-    assert.equal(await on(), '101 2');
-    // straight down the second period, then to the nearest column where a row has no mark there
-    assert.deepEqual(await walk(['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown']), ['202 2', '203 2', '303 1', 'Cafeteria 4', 'Cafeteria 4']);
-    // and back up: from column 4, Room 303's nearest mark is column 6, not column 1
-    assert.deepEqual(await walk(['ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowUp']), ['303 6', '203 2', '202 2', '101 2', '101 2']);
-    // from further along a row: the nearest column, and rows without a mark are passed over
-    assert.deepEqual(await walk(['ArrowRight', 'ArrowRight', 'ArrowDown', 'ArrowUp']), ['101 3', '101 10', '202 11', '101 10']);
-    assert.deepEqual(await walk(['ArrowRight', 'ArrowDown', 'ArrowDown', 'ArrowDown']), ['101 15', '202 16', '203 2', '303 1']);
-    assert.deepEqual(await walk(['End', 'ArrowUp', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowUp', 'ArrowUp']), ['Cafeteria 4', '303 6', '303 7', '303 8', '303 9', '203 2', '202 2']);
-    // one Tab stop still, on the mark last visited
-    assert.equal(await page.$$eval('.grd-table--read .is-marked', (all) => all.filter((cell) => cell.tabIndex === 0).length), 1);
+    await page.evaluate(() => document.querySelector('.grd-table--read tbody tr').children[2].focus());
+    assert.equal(await on(), '101 2 marked');
+    // down the second period, one row at a time: only the rooms that have a mark there say so
+    const down = await walk(['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown']);
+    assert.deepEqual(down, [1, 2, 3, 4].map((row) => names[row] + ' 2' + ([ '202', '203' ].includes(names[row]) ? ' marked' : '')));
+    // along a row the marks of 101 are at 2, 3, 10, 15 and 16
+    await page.evaluate(() => document.querySelector('.grd-table--read tbody tr').children[2].focus());
+    assert.deepEqual(await walk(['ArrowRight', 'ArrowRight']), ['101 3 marked', '101 4']);
+    // the sentence goes with the cursor
+    assert.equal(await why(page), 'none');
+    await page.keyboard.press('ArrowLeft');
+    assert.match(await why(page), /Warning: /);
+    // one Tab stop in all
+    assert.equal(await page.$$eval('.grd-sheet:not([hidden]) [tabindex="0"]', (all) => all.length), 1);
   } finally {
     await rowsAre(page, 'groups');
     await undo(page, 3);
@@ -1167,7 +1173,7 @@ test('on a phone a long group name wraps in the frozen column and leaves the per
   }
 });
 
-test('where the page reads right to left, the arrow keys go the way they point: in the grid, and from mark to mark', async () => {
+test('where the page reads right to left, the arrow keys go the way they point: in the Groups rows and in the Rooms rows', async () => {
   const { page } = desk;
   await settled(page);
   await page.evaluate(() => {
@@ -1190,16 +1196,17 @@ test('where the page reads right to left, the arrow keys go the way they point: 
     assert.equal(await activeKey(page), 'grid:' + A6 + ':name');
 
     await rowsAre(page, 'rooms');
-    const on = () => page.evaluate(() => (document.activeElement.classList.contains('is-marked') ? document.activeElement.parentElement.children[0].textContent : null));
-    await tabInto(page);
-    await page.keyboard.press('Home');
-    assert.equal(await on(), '203');
-    await page.keyboard.press('ArrowRight');
-    assert.equal(await on(), '203', 'Right went on to the next mark, which is to the left');
+    // the Rooms rows are a grid too: Left goes to the slot on the left, which
+    // is the next period where the page reads right to left
+    const first = await page.$eval('.grd-table--read tbody tr', (tr) => tr.children[1].dataset.key);
+    await page.focus('[data-key="' + first + '"]');
+    assert.equal(await activeKey(page), first);
     await page.keyboard.press('ArrowLeft');
-    assert.equal(await on(), 'Cafeteria');
+    assert.equal(await activeKey(page), first.replace(/:0$/, ':1'), 'Left did not go to the next period');
     await page.keyboard.press('ArrowRight');
-    assert.equal(await on(), '203');
+    assert.equal(await activeKey(page), first, 'Right did not come back');
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await activeKey(page), first.replace(/:dsample00a:0$/, ':name'), 'Right from the first period is the room');
   } finally {
     await page.evaluate(() => {
       document.documentElement.removeAttribute('dir');
@@ -1220,7 +1227,7 @@ test('SV2-50 item 8: the Teachers and Rooms tables add one window resize listene
       const add = window.addEventListener;
       globalThis.resizeAdds = 0;
       window.addEventListener = function counted(type, fn, options) {
-        if (type === 'resize' && /readonly\.js/.test(new Error().stack)) globalThis.resizeAdds += 1;
+        if (type === 'resize' && /why\.js/.test(new Error().stack)) globalThis.resizeAdds += 1;
         return add.call(this, type, fn, options);
       };
     });
@@ -1235,7 +1242,7 @@ test('SV2-50 item 8: the Teachers and Rooms tables add one window resize listene
         await settled(page);
       }
     }
-    const drawings = await page.evaluate(() => document.querySelectorAll('.grd-below .grd-scroll').length);
+    const drawings = await page.evaluate(() => document.querySelectorAll('.grd-sheet:not([hidden]) .grd-scroll').length);
     assert.equal(drawings, 1, 'the case needs one table on the page');
     assert.equal(await page.evaluate(() => globalThis.resizeAdds), 1, 'a resize listener for each drawing of a table');
     // and the one listener places the sentence of the table on the page
