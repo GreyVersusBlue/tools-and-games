@@ -1883,6 +1883,203 @@ const SV2_136 = [
   { id: 'w7-help-none-sideways', hash: '#building', viewport: { width: 844, height: 390, mobile: true }, open: w7Help('qqqzz', false, 'Help with no results, on its side') },
 ];
 
+// SV2-156: W8's states, each at 1280 and at 390 with touch: Movement's teacher
+// mode, Going to and Rooms of subject, Routes (the answer, the wait, the
+// failure, the usual route beside the other way, the phone's link), the grid's
+// Teachers and Rooms rows with edits waiting, and Help's W8 words. Every wait
+// is on a state the page sets: the view's own answer for the store's project,
+// the section's data-crowd, the grid's data-staged; never a first paint.
+const W8_DAY_A = 'dsample00a';
+
+// The school the screen is about, put in the store: the sample with every
+// second teacher given a second room (teachers who walk), the same with no bell
+// times and 30 s of passing time (a walk that does not fit), the sample with
+// Room 303 emptied, or the two-halls building (jams a crowd-aware route eases).
+async function w8School(page, kind) {
+  if (kind === 'halls') await loadModule(page, 'halls', 'test/fixtures/buildings/two-halls.mjs');
+  await page.evaluate(async (which) => {
+    const { store } = globalThis.sv2;
+    const next = which === 'halls' ? globalThis.sv2modules.halls.twoHalls() : JSON.parse(JSON.stringify(store.project));
+    if (which === 'walkers' || which === 'late') {
+      const rooms = next.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room'));
+      next.teachers.forEach((teacher, i) => {
+        if (i % 2) return;
+        const other = rooms[(i * 7 + 3) % rooms.length];
+        if (!other || teacher.roomIds.includes(other.id)) return;
+        teacher.roomIds.push(other.id);
+        other.teacherIds = [...(other.teacherIds || []), teacher.id];
+      });
+    }
+    if (which === 'late') {
+      for (const dayType of next.dayTypes) if (dayType.own) dayType.bells = dayType.bells.map(() => ({ start: '', end: '' }));
+      next.settings.defaultPassingSeconds = 30;
+    }
+    if (which === 'emptied') {
+      for (const group of next.groups) {
+        for (const day of Object.keys(group.days)) group.days[day] = group.days[day].map((slot) => (slot.room === 'rsample303' ? { ...slot, room: 'rsample302' } : slot));
+      }
+    }
+    // the theme stays the one the project has (a sweep may have chosen it)
+    next.settings.theme = store.project.settings.theme;
+    store.replace(next);
+    await store.derived.results().catch(() => null);
+  }, kind);
+  await movementDrawn(page);
+}
+
+const w8LineSays = (pattern) => (page) => page.waitForFunction((source) => new RegExp(source).test(document.querySelector('#movement-line .mov-line__words')?.textContent || ''), { timeout: 30000 }, pattern.source);
+
+// Movement, on a school, with a choice made and the first line saying what the choice draws.
+const w8Movement = (kind, patch, says) => async (page) => {
+  if (kind) await w8School(page, kind);
+  else await movementDrawn(page);
+  await page.evaluate((next) => document.querySelector('.mov').movement.change(next), patch);
+  await movementDrawn(page);
+  if (says) await w8LineSays(says)(page);
+};
+
+const w8Tab = (tab, wait) => async (page) => {
+  await page.evaluate((id) => document.querySelector('#inspector [role="tab"][data-tab="' + id + '"]').click(), tab);
+  await page.waitForSelector(wait, { timeout: 30000 });
+};
+
+const w8Crowd = (state) => async (page) => {
+  await page.waitForFunction((wanted) => document.querySelector('.mov')?.dataset.crowd === wanted, { timeout: 30000 }, state);
+  await movementDrawn(page);
+};
+
+// The lane held, so the working band is there to read and is never raced.
+const w8Holding = (kind) => async (page) => {
+  await w8School(page, kind);
+  await page.evaluate(() => {
+    const derived = globalThis.sv2.store.derived;
+    const kept = { real: derived.crowd, release: null };
+    globalThis.__crowd = kept;
+    derived.crowd = (options) => new Promise((resolve) => {
+      kept.release = () => kept.real.call(derived, options).then(resolve);
+    });
+    document.querySelector('.mov').movement.change({ routes: 'crowd' });
+  });
+  await w8Crowd('working')(page);
+};
+
+const w8Failing = (kind) => async (page) => {
+  await w8School(page, kind);
+  await page.evaluate(() => {
+    const derived = globalThis.sv2.store.derived;
+    derived.crowd = () => Promise.resolve({ failed: 'The crowd lane did not answer.' });
+    document.querySelector('.mov').movement.change({ routes: 'crowd' });
+  });
+  await w8Crowd('failed')(page);
+};
+
+// A teacher's own walk: the first one the trail has, chosen as the one transition.
+const w8OneWalk = async (page) => {
+  await w8School(page, 'walkers');
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ who: 'teacher', teacherId: 'tsample001' }));
+  await movementDrawn(page);
+  await page.waitForFunction(() => document.querySelector('.mov').movement.picture?.trail?.walks?.length > 0, { timeout: 30000 });
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ transition: document.querySelector('.mov').movement.picture.trail.walks[0].period }));
+  await movementDrawn(page);
+  await w8LineSays(/walk/)(page);
+};
+
+// The other way drawn faint and dashed beside a group's new one: the first row of the legend that has the button.
+const w8SeeUsual = async (page) => {
+  await w8School(page, 'halls');
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ routes: 'crowd' }));
+  await w8Crowd('ready')(page);
+  await w8Tab('summary', '#inspector [data-action="show-usual"]')(page);
+  await page.evaluate(() => document.querySelector('#inspector [data-action="show-usual"]').click());
+  await page.waitForSelector('#inspector [data-action="show-usual"][aria-pressed="true"]', { timeout: 30000 });
+};
+
+// A paste where the focus is, as a spreadsheet's does; the beforeunload question is answered for the next page load.
+async function w8Paste(page, key, text, refusal) {
+  if (!page.sv2LeavesStagedEdits) {
+    page.sv2LeavesStagedEdits = true;
+    page.on('dialog', (dialog) => {
+      if (dialog.type() === 'beforeunload') dialog.accept();
+    });
+  }
+  await page.focus('[data-key="grid:' + key + '"]');
+  await page.evaluate((value) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', value);
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
+  // what the paste came to: the bar of what waits, or (a paste refused whole) the line that says why
+  await page.waitForFunction((refused) => (refused ? /in two rooms/.test(document.querySelector('.grd-status')?.textContent || '') : Boolean(document.querySelector('.grd-bar'))), { timeout: 30000 }, refusal === true);
+  await scheduleDrawn(page);
+}
+
+const w8Grid = (rows, key, text, refusal) => async (page) => {
+  await gridRows(rows)(page);
+  await page.waitForFunction(() => Boolean(document.querySelector('.grd-sheet:not([hidden]) .grd-cell')), { timeout: 30000 });
+  await w8Paste(page, key, text, refusal);
+};
+
+// Help on the Movement part, and its search for the W8 words.
+const w8Help = (query) => async (page) => {
+  await press('?')(page);
+  await page.waitForSelector('#help-dialog[open][data-styled="true"]', { timeout: 30000 });
+  if (!query) return;
+  await page.focus('#help-dialog .help__field');
+  await page.keyboard.type(query);
+  await page.waitForFunction(() => document.getElementById('help-dialog').dataset.mode === 'results' && !document.getElementById('help-dialog').dataset.pending, { timeout: 30000 });
+};
+
+// the same screen at 390 by 844 with touch, beside the one at the sweep's size
+const w8Both = (id, hash, open) => [{ id, hash, open }, { id: id + '-phone', hash, viewport: PHONE, open }];
+
+const SV2_156 = [
+  ...w8Both('w8-teacher-day', '#movement', w8Movement('walkers', { who: 'teacher', teacherId: 'tsample001' }, /day on/)),
+  ...w8Both('w8-teacher-one-walk', '#movement', w8OneWalk),
+  ...w8Both('w8-teacher-nothing-to-walk', '#movement', w8Movement(null, { who: 'teacher', teacherId: 'tsample001' }, /nothing to walk/)),
+  ...w8Both('w8-teacher-travel-time', '#movement', async (page) => {
+    await w8Movement('late', { who: 'teacher', teacherId: 'tsample001' }, /does not fit/)(page);
+    await w8Tab('tables', '#inspector [role="tabpanel"]:not([hidden]) table tbody tr')(page);
+  }),
+  ...w8Both('w8-teacher-playback', '#movement', async (page) => {
+    await w8Movement('walkers', { who: 'teacher', teacherId: 'tsample001' }, /day on/)(page);
+    await page.waitForFunction(() => /Playback is for groups/.test(document.querySelector('[data-bar="playback"]')?.textContent || ''), { timeout: 30000 });
+  }),
+  ...w8Both('w8-going-to', '#movement', w8Movement(null, { toRoomId: 'rsample204' }, /Showing walks into/)),
+  ...w8Both('w8-rooms-of-subject', '#movement', async (page) => {
+    await movementDrawn(page);
+    await page.evaluate(() => document.querySelector('.mov').movement.change({ subjectId: globalThis.sv2.store.project.subjects[0].id }));
+    await movementDrawn(page);
+    await w8LineSays(/Showing walks into/)(page);
+  }),
+  ...w8Both('w8-filter-empty', '#movement', w8Movement('emptied', { toRoomId: 'rsample303' }, /has no class|Nobody walks|No walk goes into/)),
+  ...w8Both('w8-crowd-nothing-found', '#movement', w8Movement(null, { routes: 'crowd' }, /no group finds a quicker way round/)),
+  ...w8Both('w8-crowd-another-way', '#movement', async (page) => {
+    await w8Movement('halls', { routes: 'crowd' }, /take another way/)(page);
+    await w8Crowd('ready')(page);
+  }),
+  ...w8Both('w8-crowd-usual-beside', '#movement', w8SeeUsual),
+  ...w8Both('w8-crowd-working', '#movement', w8Holding('halls')),
+  ...w8Both('w8-crowd-failed', '#movement', w8Failing('halls')),
+  ...w8Both('w8-crowd-travel-time', '#movement', async (page) => {
+    await w8Movement('halls', { routes: 'crowd' }, /take another way/)(page);
+    await w8Tab('tables', '#inspector [role="tabpanel"]:not([hidden]) table tbody tr')(page);
+  }),
+  // where the controls fold, the first line ends with a link that chooses Crowd-aware
+  { id: 'w8-crowd-try-link-phone', hash: '#movement', viewport: PHONE, open: async (page) => {
+    await w8School(page, 'halls');
+    await page.waitForFunction(() => {
+      const link = document.querySelector('.mov [data-action="try-crowd"]');
+      return Boolean(link) && link.getClientRects().length > 0;
+    }, { timeout: 30000 });
+  } },
+  ...w8Both('w8-grid-teachers-edit', '#schedule/grid', w8Grid('teachers', 'tsample011:' + W8_DAY_A + ':0', '6A')),
+  ...w8Both('w8-grid-rooms-edit', '#schedule/grid', w8Grid('rooms', 'rsample101:' + W8_DAY_A + ':3', '7A\t7B')),
+  ...w8Both('w8-grid-rooms-refused', '#schedule/grid', w8Grid('rooms', 'rsample101:' + W8_DAY_A + ':0', '6A\n6A', true)),
+  ...w8Both('w8-help-movement', '#movement', w8Help(null)),
+  ...w8Both('w8-help-crowd-aware', '#movement', w8Help('crowd-aware')),
+  ...w8Both('w8-help-going-to', '#movement', w8Help('going to')),
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -2433,4 +2630,5 @@ export const SCREENS = [
   ...SV2_112,
   ...SV2_124,
   ...SV2_136,
+  ...SV2_156,
 ];
