@@ -113,12 +113,11 @@ export function acrossOptions(model, row, column, typed, limit) {
     return groups.filter((group) => wanted === '' || group.name.toLowerCase().includes(wanted) || group.grade.trim().toLowerCase() === wanted);
   };
   const edge = Math.max(text.lastIndexOf(','), text.lastIndexOf(';')) + 1;
-  let from = edge;
-  let found = narrow(from);
-  if (edge > 0 && found.length === 0 && narrow(0).length > 0) {
-    from = 0;
-    found = narrow(0);
-  }
+  // a group's own name may hold a comma ("Art, 2nd"): when the whole text so
+  // far narrows to a group, that is what is being completed, not the piece
+  const whole = edge > 0 ? narrow(0) : [];
+  const from = whole.length > 0 ? 0 : edge;
+  const found = whole.length > 0 ? whole : narrow(edge);
   return { options: found.slice(0, limit || 60).map((group) => ({ group, label: label(group) })), from };
 }
 

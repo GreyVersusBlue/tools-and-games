@@ -14,7 +14,7 @@ import * as actions from '../../engine/actions.js';
 import { teacherGridRows, groupsHeader, templateRows, csvText } from '../../engine/exports.js';
 import { guessColumns, checkMapping } from '../../engine/import-groups.js';
 import { render } from '../../ui/prints/checks-report.js';
-import { teacherTable } from '../../ui/schedule/grid/readonly.js';
+import { teacherRows } from '../../ui/schedule/grid/readonly.js';
 import { school, ctx, assertValid, clone } from './helpers.mjs';
 
 const A = 'dsample00a';
@@ -39,50 +39,6 @@ function busyHalloran(away) {
   return project;
 }
 
-
-// The read-only table builds real elements. These stand in for just the parts of
-// the DOM its helpers touch, so that its text can be read in plain Node.
-function withFakeDom(build) {
-  class FakeNode {
-    constructor(tag) {
-      this.tag = tag;
-      this.children = [];
-      this.attributes = {};
-      this.dataset = {};
-      this.className = '';
-      this.hidden = false;
-    }
-    append(...nodes) { for (const node of nodes) this.children.push(node); }
-    setAttribute(name, value) { this.attributes[name] = value; }
-    addEventListener() {}
-    get textContent() { return this.own === undefined ? this.children.map((child) => (typeof child === 'string' ? child : child.textContent)).join('') : this.own; }
-    set textContent(value) { this.own = String(value); }
-  }
-  const saved = { document: globalThis.document, Node: globalThis.Node, window: globalThis.window };
-  globalThis.Node = FakeNode;
-  globalThis.window = { innerWidth: 1280, innerHeight: 800, addEventListener() {} };
-  globalThis.document = { createElement: (tag) => new FakeNode(tag), createTextNode: (text) => String(text), activeElement: null };
-  try {
-    return build();
-  } finally {
-    globalThis.document = saved.document;
-    globalThis.Node = saved.Node;
-    globalThis.window = saved.window;
-  }
-}
-
-// The cells of the row whose header says `name`: its text, one string a period.
-function rowTexts(root, name) {
-  const found = [];
-  const walk = (node) => {
-    if (typeof node === 'string' || !node || !node.children) return;
-    if (node.tag === 'tr' && node.children.length > 1 && node.children[0].tag === 'th' && node.children[0].textContent === name) found.push(node);
-    for (const child of node.children) walk(child);
-  };
-  walk(root.root || root.el || root);
-  assert.equal(found.length, 1, 'one row for ' + name);
-  return found[0].children.slice(1).map((cell) => cell.textContent.replace(/\s*\(.*\)$/, '').trim());
-}
 
 // ---------------------------------------------------------------- the check
 
@@ -228,7 +184,7 @@ test('an away period is not free: Coverage and Common planning leave the teacher
 
 // ---------------------------------------------------------------- "Not in school" in every reader of marked
 
-test('every reader of marked says "Not in school": the CSV grid, the checks report grid and the read-only table', () => {
+test('every reader of marked says "Not in school": the CSV grid, the checks report grid and the Teachers rows of the Grid', () => {
   assert.equal(MARK_AS_NAMED.away, 'Not in school');
   const project = withAway([entry({ dayTypeIds: [A], periods: [0] })]);
   const row = teacherGridRows(project, A).find((one) => one[0] === 'Ms. Halloran');
@@ -236,11 +192,13 @@ test('every reader of marked says "Not in school": the CSV grid, the checks repo
   assert.equal(row[5], 'Planning', 'a free period is still Planning');
   const html = render(project, null, {}).html;
   assert.match(html, /<span class="doc-grid__planning">Not in school<\/span>/);
-  const table = withFakeDom(() => teacherTable(project, new Map(), [A]));
-  const cells = rowTexts(table, 'Ms. Halloran');
-  assert.equal(cells[0], 'Not in school', 'the read-only table says it in period 1');
+  // the Teachers rows of the Grid (SV2-155: the table is drawn and edited by the sheet, from these)
+  const table = teacherRows(project, new Map(), [A]).rows.find((each) => each.name === 'Ms. Halloran');
+  const cells = Array.from({ length: project.settings.periods }, (unused, period) => table.cell(A, period).text);
+  assert.equal(cells[0], 'Not in school', 'the Teachers rows say it in period 1');
   assert.equal(cells[1], '8B in 101', 'and still shows what she teaches');
-  assert.equal(cells[3], 'Planning');
+  assert.equal(cells[3], '', 'a free period holds nothing');
+  assert.equal(table.free, 'Planning', 'and the sheet says Planning for it');
 });
 
 test('a duty in an away period does not hide "Not in school": away comes first', () => {
