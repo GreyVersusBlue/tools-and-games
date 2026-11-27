@@ -1825,7 +1825,8 @@ test('SV2-52 item 4: a card that docks with the focus in it gives the focus to S
     await dismissStarted(p);
     assert.equal(await p.$eval('.mov-legend', (el) => el.dataset.docked), 'false');
     await p.focus('.mov-legend input[name="movement-scale"]');
-    await p.setViewport({ width: 1280, height: 900 });
+    // 1100 wide: with the controls W8 added the map at 1280 by 900 leaves the card room, and at 1100 it lies on a floor
+    await p.setViewport({ width: 1100, height: 900 });
     await shows(p, () => document.querySelector('.mov-legend').dataset.docked === 'true');
     assert.equal(await focusedAs(p), 'scale', 'docking the card dropped the focus');
     await p.setViewport({ width: 1440, height: 900 });
@@ -1858,8 +1859,9 @@ test('SV2-52 item 7: a message clears the dock after the controls fold and after
     await clearOfDock(p, 'folded');
     await closeToast(p);
   });
-  // 1280 by 560, folded: the stage is all the section has, so More makes the bar taller and leaves the stage as it is
-  await on('#movement', { width: 1280, height: 560 }, async (p) => {
+  // 1280 by 520, folded: the stage is all the section has, so More makes the bar taller and leaves the stage as it is
+  // (560 was 520 plus the room a short window's close spacing gives back: there the stage is not at what the section has)
+  await on('#movement', { width: 1280, height: 520 }, async (p) => {
     await dismissStarted(p);
     await p.click('[data-action="change"]');
     await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');
