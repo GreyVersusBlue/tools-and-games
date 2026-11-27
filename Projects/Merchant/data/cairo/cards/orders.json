@@ -2418,15 +2418,15 @@
       {
         "id": "sea",
         "label": "Send a ship in winter",
-        "hint": "It costs 226 dinars now. That is 220 for 2 lots of pepper at the winter price and 6 for the risk of the sea. The pepper reaches your warehouse in two seasons, and foreign houses admire your nerve.",
+        "hint": "It costs 240 dinars now. That is 220 for 2 lots of pepper at the winter price and 20 for the risk of the sea. The pepper reaches your warehouse in two seasons, and foreign houses admire your nerve.",
         "requires": {
           "money": {
-            "gte": 226
+            "gte": 240
           }
         },
         "now": [
           {
-            "money": -226
+            "money": -240
           }
         ],
         "later": [
