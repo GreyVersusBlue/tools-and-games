@@ -22,6 +22,7 @@ import { findDayType, ownDayTypes } from '../../engine/day-types.js';
 import { floorOfRoom } from '../../engine/schema.js';
 import { anyHeldBack, anyRiding, heldWords, stepFreeTag } from './tables.js';
 import { failureParts, foldHealth, groupRows, unitWord, walkNamed } from './model.js';
+import { anotherWords } from './crowd-view.js';
 
 function parts(list) {
   return list.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
@@ -99,14 +100,11 @@ export function summaryPanel(env) {
       if (lateWords.length > 0) lateWords.push('; ');
       lateWords.push(h('bdi', null, group ? group.name : '?'), ': ' + periods.map((period) => walkNamed(settings, picture.transitions, period)).join(', '));
     }
-    list.push(figure('late', 'Cannot make a transition in time', late.size === 0 ? 'None' : count(late.size, 'group'), late.size === 0 ? null : [...lateWords, '.']));
+    // on crowd-aware routes this is the lens's count, not Checks': the figure says so (DESIGN 17.1, 17.4)
+    const whatIf = picture.routesMode === 'crowd' ? 'On crowd-aware routes (a what-if): checks use the usual routes.' : null;
+    list.push(figure('late', 'Cannot make a transition in time', late.size === 0 ? 'None' : count(late.size, 'group'), late.size === 0 ? (whatIf ? [whatIf] : null) : [...lateWords, '.', ...(whatIf ? [' ' + whatIf] : [])]));
     list.push(figure('failed', 'Routes that failed', picture.failed.length === 0 ? 'None' : String(picture.failed.length), picture.failed.length === 0 ? null : ['Named under Route health, below.']));
     figures.replaceChildren(...list);
-  }
-
-  // "another way · 7 s saved": the seconds a group's own total fell over the walks that took another way ("7 s more" when it rose)
-  function anotherWords(another) {
-    return 'another way \u00b7 ' + (another.saved > 0 ? formatDuration(another.saved) + ' saved' : another.saved < 0 ? formatDuration(-another.saved) + ' more' : 'no time saved');
   }
 
   function usualButton(group) {

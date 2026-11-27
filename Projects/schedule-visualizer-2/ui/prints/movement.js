@@ -48,6 +48,7 @@ import { LOAD_BANDS, parse, toHex } from '../colour.js';
 import { count, list } from '../components/words.js';
 import { defaultChoice, settleChoice, pictureOf, groupRows, routeHealth, unitWord } from '../movement/model.js';
 import { anyRiding } from '../movement/tables.js';
+import { anotherWords } from '../movement/crowd-view.js';
 import { hotspotRows, placesElsewhere, groupWords } from '../movement/hotspots.js';
 import { bandText } from '../movement/legend.js';
 import { esc, frame, mm, paperOf, printableBox } from './document.js';
@@ -220,9 +221,12 @@ function legendSection(project, results, picture) {
   const one = picture.transition ? new Set(picture.late.map((walk) => walk.groupId)) : null;
   // a column for riding only when some group of the run rides, as the Summary has it
   const rides = anyRiding(results, picture.dayTypeId, picture.bellsId);
+  // with crowd-aware routes a column says which groups took another way and what it saved: the paper's form of the legend's
+  // "another way" (its "Show the usual route" is a button, which paper has no use for)
+  const lens = picture.routesMode === 'crowd';
   const out = ['<section class="doc-section">', '<h2>Groups on the map</h2>',
     '<table class="doc-table doc-table--groups">',
-    '<thead><tr><th scope="col">Group</th><th scope="col" class="is-number">Walking over the day</th>' + (rides ? '<th scope="col" class="is-number">Riding over the day</th>' : '') + '<th scope="col" class="is-number">Lost to crowds</th><th scope="col">Stairs</th><th scope="col">' + (one ? 'Late in this transition' : 'Late') + '</th><th scope="col">Failed routes</th></tr></thead>',
+    '<thead><tr><th scope="col">Group</th><th scope="col" class="is-number">Walking over the day</th>' + (rides ? '<th scope="col" class="is-number">Riding over the day</th>' : '') + '<th scope="col" class="is-number">Lost to crowds</th><th scope="col">Stairs</th><th scope="col">' + (one ? 'Late in this transition' : 'Late') + '</th><th scope="col">Failed routes</th>' + (lens ? '<th scope="col">Crowd-aware routes (a what-if)</th>' : '') + '</tr></thead>',
     '<tbody>'];
   for (const row of rows) {
     out.push('<tr><th scope="row">' + square(colourOf(row.group.colour)) + ' ' + esc(row.group.name) + (row.group.stepFree === true ? ' (step-free)' : '') + '</th>'
@@ -231,7 +235,8 @@ function legendSection(project, results, picture) {
       + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(seconds(row.waiting))) + '</td>'
       + '<td>' + (row.stairs ? 'Yes' : 'No') + '</td>'
       + '<td>' + (one ? (one.has(row.group.id) ? 'Yes' : 'No') : row.late === 0 ? 'Never' : row.late === 1 ? 'Once' : row.late + ' times') + '</td>'
-      + '<td>' + (row.failed === 0 ? 'None' : row.failed) + '</td></tr>');
+      + '<td>' + (row.failed === 0 ? 'None' : row.failed) + '</td>'
+      + (lens ? '<td>' + (row.another ? esc(anotherWords(row.another)) : 'the usual route') + '</td>' : '') + '</tr>');
   }
   out.push('</tbody></table>', '</section>');
   return out.join('\n');

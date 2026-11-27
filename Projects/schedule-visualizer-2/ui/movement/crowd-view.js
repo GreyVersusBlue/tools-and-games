@@ -26,6 +26,7 @@
 //   usualRouteOf(results, groupId, period)   the usual route of one walk, or null
 //   usualWalkOf(results, dayTypeId, bellsId, groupId, period)   its usual walk figures, or null
 //   waitingIn(results, dayTypeId, bellsId, groupIds)   is some walk of these groups kept waiting WAIT_FROM or more?
+//   anotherWords(another)               "another way · 7 s saved", a group's row in the legend and the print (movedBy's answer)
 //   comparisonParts(picture)            the first line's words, in pieces
 //   hasWaiting(picture)                 is the link "Try crowd-aware routes" worth offering?
 
@@ -165,6 +166,11 @@ export function usualWalkOf(results, dayTypeId, bellsId, groupId, period) {
 export function waitingIn(results, dayTypeId, bellsId, groupIds) {
   const shown = groupIds instanceof Set ? groupIds : new Set(groupIds);
   return runResults(usualOf(results), dayTypeId, bellsId).walks.groups.some((walk) => shown.has(walk.groupId) && walk.waiting >= WAIT_FROM);
+}
+
+// "another way · 7 s saved": the seconds a group's own total fell over the walks that took another way ("7 s more" when it rose)
+export function anotherWords(another) {
+  return 'another way \u00b7 ' + (another.saved > 0 ? formatDuration(another.saved) + ' saved' : another.saved < 0 ? formatDuration(-another.saved) + ' more' : 'no time saved');
 }
 
 function plural(n, one, many) {

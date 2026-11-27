@@ -14,8 +14,9 @@ import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
 import { createPipeline, crowdRun, runResults } from '../../engine/worker.js';
 import { defaultChoice, settleChoice, pictureOf, sentenceOf, groupRows, cellCard, runOf, routeHealth } from '../../ui/movement/model.js';
-import { crowdResultsView, lensOf, usualOf, lensFits, lensFigures, comparisonParts, movedBy, usualRouteOf, usualWalkOf, hasWaiting } from '../../ui/movement/crowd-view.js';
+import { crowdResultsView, lensOf, usualOf, lensFits, lensFigures, comparisonParts, anotherWords, movedBy, usualRouteOf, usualWalkOf, hasWaiting } from '../../ui/movement/crowd-view.js';
 import { hotspotRows } from '../../ui/movement/hotspots.js';
+import * as movementPrint from '../../ui/prints/movement.js';
 import { transitionRows, dayRows, travelDay } from '../../ui/movement/tables.js';
 import { twoHalls } from '../fixtures/buildings/two-halls.mjs';
 import { plainSchool } from '../engine/helpers.mjs';
@@ -354,4 +355,19 @@ test('findings never change: the Checks counts are the same before and after cho
   assert.deepEqual(routeHealth(project, view), routeHealth(project, main));
   // a late walk of the lens is not a finding: findings are read from the main result only
   assert.ok(runOf(view, main.routes.days[0].dayTypeId, null).walks.groups.length > 0);
+});
+
+test('the movement print\'s group table marks a group that took another way (the legend\'s "another way" on paper), and has no such column on the usual routes', () => {
+  const { project, view, main, graph, dayTypeId } = halls();
+  const printed = (results, choice) => movementPrint.render(project, null, { movement: { project, results, graph, choice, parts: {} } }).html;
+  const lens = printed(view, { ...defaultChoice(project), routes: 'crowd' });
+  const usual = printed(main, defaultChoice(project));
+  assert.match(lens, /<th scope="col">Crowd-aware routes \(a what-if\)<\/th>/);
+  const moved = groupRows(project, view, picture(project, view, graph)).filter((row) => row.another);
+  assert.ok(moved.length > 0, 'the fixture moves groups');
+  for (const row of moved) assert.ok(lens.includes(anotherWords(row.another).replace(/&/g, '&amp;')), row.group.name + ' is marked');
+  assert.equal((lens.match(/another way/g) || []).length, moved.length, 'only the groups that moved');
+  assert.ok(lens.includes('the usual route'), 'the others say so');
+  assert.ok(!/another way|Crowd-aware routes \(a what-if\)<\/th>/.test(usual), 'the usual routes\' print has none of it');
+  assert.ok(dayTypeId);
 });
