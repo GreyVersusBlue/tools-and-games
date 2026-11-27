@@ -2520,7 +2520,7 @@ try {
         eq(await page.$$eval('#ledger-trips li', es => es.length), book.expeditions.length);
         const traits = whoRec.traits.map(t => (t.startsWith('knows-') ? `knows ${nodeContent.stops.find(x => x.id === t.slice(6)).name}` : t.startsWith('speaks-') ? `speaks ${cap(t.slice(7))}` : t)).join(', ');
         const person = await page.$eval(`[data-agent="${who}"]`, e => e.textContent.replace(/\s+/g, ' ').trim());
-        eq(person, `${whoName} ${traits} ${whoName} ${view.trust[who].words}. On the road to Damascus.`);
+        eq(person, `${whoName} ${traits} ${whoName} ${view.trust[who].words}. On the road to Damascus, on the caravan from Cairo.`);   // MER-160: the People line names the leg, as the road section does
         eq(view.trust[who].words, 'is uneasy with the house', 'setup: the trust the case set reads as uneasy');
         ok(await page.$eval(`[data-agent="${who}"] img.seal`, i => i.complete && i.naturalWidth > 0), 'the seal shows');
         eq(await texts(page, '#ledger-reps li'), ['Partners They will not deal with you −3', 'Agents They speak well of you +1',
