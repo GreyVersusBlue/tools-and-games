@@ -1479,11 +1479,19 @@
   font-weight: var(--w-regular, 400);
 }
 
-@media (min-width: 641px) and (pointer: fine) {
+.mov-line__routes .seg__label {
+  min-height: 24px;
+  padding: 0 6px;
+  font-size: var(--t-xs);
+}
+
+/* a finger's size (the rule for every control of the surface, above) wherever the pointer is coarse or the window a phone's */
+@media (max-width: 640px), (pointer: coarse) {
   .mov-line__routes .seg__label {
-    min-height: 24px;
-    padding: 0 6px;
-    font-size: var(--t-xs);
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 var(--s-3);
+    font-size: var(--t-sm);
   }
 }
 
