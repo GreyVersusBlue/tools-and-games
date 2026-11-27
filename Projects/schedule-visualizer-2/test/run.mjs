@@ -107,6 +107,7 @@ export const GROUPS = {
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/scenarios-kept.test.mjs', // SV2-113
     'engine/kept-lane.test.mjs', // SV2-121
+    'engine/crowd-lane.test.mjs', // SV2-150
     'engine/compare-buildings.test.mjs', // SV2-114
     'engine/project-label.test.mjs', // SV2-113
     'engine/merge-import.test.mjs', // SV2-119
@@ -203,6 +204,7 @@ export const GROUPS = {
     'browser/merge-import.mjs', // SV2-120
     'browser/worker.mjs', // SV2-16
     'browser/lanes-kept.mjs', // SV2-121
+    'browser/crowd-lane.mjs', // SV2-150
     'browser/print.mjs', // SV2-14
     'browser/building-files.mjs', // SV2-32c
     'browser/staff-shell.mjs', // SV2-20
