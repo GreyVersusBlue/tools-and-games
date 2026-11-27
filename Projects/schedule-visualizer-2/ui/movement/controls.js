@@ -86,8 +86,8 @@ export function controls(options) {
   routes.element.setAttribute('aria-describedby', routesHint);
   // the line under Routes (DESIGN 17.4) stands under the choice while it is hovered or has the focus, over the map's top edge
   // rather than pushing it down (movement.css); the choice is described by it either way
-  const routesBox = h('span', { class: 'mov-line__routes', hidden: true, data: { control: 'routes' } }, h('span', { class: 'mov-ctl__label', id: routesId }, 'Routes'), routes.element,
-    h('span', { class: 'mov-ctl__hint mov-ctl__hint--routes', id: routesHint, data: { part: 'routes-line' } }, ROUTES_HINT));
+  const routesBox = h('span', { class: 'mov-line__routes', hidden: true, data: { control: 'routes' } }, h('span', { class: 'mov-routes__label', id: routesId }, 'Routes'), routes.element,
+    h('span', { class: 'mov-routes__hint', id: routesHint, data: { part: 'routes-line' } }, ROUTES_HINT));
 
   const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', routesBox, ' ', changeButton);
 

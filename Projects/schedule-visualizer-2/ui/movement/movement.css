@@ -1490,13 +1490,34 @@
   .mov-line__routes .seg__label {
     min-height: 44px;
     min-width: 44px;
-    padding: 0 var(--s-3);
-    font-size: var(--t-sm);
+    padding: 0 6px;
+    font-size: var(--t-xs);
+  }
+}
+
+/* on a phone the choice keeps the row Change is in (the stage keeps its room): its name is spoken, not drawn */
+@media (max-width: 640px) {
+  .mov-line__routes > .mov-routes__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }
 
 /* what Routes says: under the choice while it is hovered or has the focus, over the map's top edge rather than pushing it down */
-.mov-ctl__hint--routes {
+.mov-routes__label {
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mov-routes__hint {
   position: absolute;
   top: 100%;
   right: 0;
@@ -1516,8 +1537,8 @@
   visibility: hidden;
 }
 
-.mov-line__routes:hover .mov-ctl__hint--routes,
-.mov-line__routes:focus-within .mov-ctl__hint--routes {
+.mov-line__routes:hover .mov-routes__hint,
+.mov-line__routes:focus-within .mov-routes__hint {
   visibility: visible;
 }
 
