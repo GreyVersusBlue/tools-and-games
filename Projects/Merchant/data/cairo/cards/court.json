@@ -867,8 +867,13 @@
         },
         {
           "season": [
-            "spring"
+            "summer"
           ]
+        },
+        {
+          "out": {
+            "gte": 1
+          }
         }
       ]
     },
