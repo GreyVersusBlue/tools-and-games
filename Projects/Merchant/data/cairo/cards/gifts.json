@@ -484,11 +484,6 @@
     },
     "title": "A tomb that feeds travellers",
     "body": "Bahram has come to Cairo from Samarkand, a city far to the east. Outside his town stands a tomb, and visitors leave gifts there. The gifts feed travellers who stay at the hospice beside it, a guest house for people on the road. Bahram asks if your house will give a little too.",
-    "when": {
-      "out": {
-        "gte": 1
-      }
-    },
     "weight": 3,
     "repeat": false,
     "choices": [
@@ -592,9 +587,9 @@
     "title": "A room for a merchant",
     "body": "Kamal has sailed to Aden from Calicut. Great ships come to Aden from India, and merchants of India and of Egypt live there. Kamal asks for a room in your warehouse.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aden"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -666,9 +661,9 @@
     "title": "Water has a price",
     "body": "Tahir lives in Hormuz, on an island with no springs. The water comes in skins from far away, so it has a price. He asks what your people will pay.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "hormuz"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -772,9 +767,9 @@
     "title": "A gift for the customs masters",
     "body": "A trader at Pera says it is the custom to honour the customs masters with a gift. Customs are taxes on goods. The gift goes to the masters, their clerks and their interpreters.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "constantinople"
+      ]
     },
     "weight": 3,
     "repeat": false,

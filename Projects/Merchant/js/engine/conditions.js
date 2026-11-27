@@ -18,7 +18,7 @@ const LEAVES = {
   rep: ['gte', 'lte'],
   agent: ['hired', 'where'],
   leg: [], at: [], trait: [],
-  trip: [],
+  trip: [], road: [],
 };
 
 const routeOf = (content, id) => (content.routes ?? []).find(r => r.id === id);
@@ -34,6 +34,19 @@ export function placeOf(content, x) {
   const agent = (content.agents ?? []).find(a => a.id === x.agent);
   const standing = x.status === 'waiting' || x.left >= legSeasons(agent, leg);
   return { leg: x.leg, by: leg.by, stop: standing ? leg.from : leg.to, standing };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The `road` leaf (MER-157): `{ road: [stop ids] }` holds when an expedition of the house is out on a route that
+// goes to one of those stops, on the way out or on the way back. A stop the route only passes through counts
+// (a stop on the way to a farther one); the home city never does, so a trip is not "on the road home".
+// An expedition that has come home (status `home`) is not on any road.
+
+/** The stop ids a route goes to: every leg's `to` and `from`, except the home city. */
+export function roadStops(content, routeId) {
+  const home = content.city?.home, out = new Set();
+  for (const l of routeOf(content, routeId)?.legs ?? []) for (const s of [l.from, l.to]) if (s !== home) out.add(s);
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -156,6 +169,7 @@ function typed(cond, head) {
     case 'year': if (!Array.isArray(v) || v.length !== 2 || !v.every(isNum)) bad(head, 'a [from, to] pair of numbers', v); break;
     case 'act': if (!Number.isInteger(v)) bad(head, 'a whole number', v); break;
     case 'length': case 'notebook': case 'stock': case 'flag': case 'rep': case 'agent': case 'at': case 'trait': if (!isStr(v)) bad(head, 'a name', v); break;
+    case 'road': if (!Array.isArray(v) || !v.length || !v.every(isStr)) bad(head, 'a list of stop ids', v); break;
     case 'trip': if (!v || typeof v !== 'object' || Array.isArray(v)) bad(head, '{ agent, is }', v); only(v, ['agent', 'is'], 'trip'); if (!isStr(v.agent)) bad('trip agent', 'an agent id', v.agent); if (!TRIP_STATES.includes(v.is)) bad('trip is', `one of ${TRIP_STATES.join(', ')}`, v.is); break;
     case 'leg': if (!v || typeof v !== 'object' || Array.isArray(v)) bad(head, '{ by: vessel }', v); only(v, ['by'], 'leg'); if (!isStr(v.by)) bad('leg by', 'a vessel name', v.by); break;
   }
@@ -205,6 +219,7 @@ export function holds(cond, state, content, x) {
     }
     case 'leg': { const p = placeOf(content, x); return !!p && !p.standing && p.by === v.by; }
     case 'at': { const p = placeOf(content, x); return !!p && p.standing && p.stop === v; }
+    case 'road': return state.expeditions.some(e => e.status !== 'home' && v.some(s => roadStops(content, e.route).has(s)));
     case 'trip': return !!tripOf(state, content, v.agent, v.is);
     case 'trait': return ((content.agents ?? []).find(a => a.id === x.agent)?.traits ?? []).includes(v);
     case 'agent': {

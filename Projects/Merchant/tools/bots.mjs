@@ -70,6 +70,12 @@ LIMITS.topRankShare = 0.01;         // ...the top rank is reached by the best ga
 LIMITS.partShare = 0.5;             // ...and for a sensible bot no one part of the score is more than this share of the median total before the house multiplier, so no single lever wins the game
 LIMITS.ventureOverCards = 5;       // careful's median venture profit is at least this many times the median money of one season's cards (MER-92, DESIGN 2.2 rule 4)
 LIMITS.mediterraneanMax = 0.60;    // ...and the Mediterranean at most this share. An estimate of balance, not a recorded figure: the long roads were risky and paid the most, so a sensible bot uses them sometimes
+/** The stop ids of every `road` leaf in a card's `when`, nested in all and any as deep as they go (empty for a card with none). */
+export function roadLeaves(when) {
+  if (!when || typeof when !== 'object') return [];
+  if (Array.isArray(when)) return when.flatMap(roadLeaves);
+  return Object.entries(when).flatMap(([k, v]) => k === 'road' ? v : roadLeaves(v));
+}
 export const SENSIBLE = ['careful', 'greedy', 'qirad'];
 export const directionOf = dest => Object.keys(DIRECTIONS).find(d => DIRECTIONS[d].includes(dest)) ?? null;
 export const DEFAULTS = { games: 2000, seed0: 1000, length: 'acts' };
@@ -620,8 +626,13 @@ export function check({ content, results, offered, taken, games }) {
   const total = Object.values(results).reduce((n, l) => n + l.length, 0);
   const drawn = {};
   for (const list of Object.values(results)) for (const g of list) for (const c of g.cards) drawn[c] = (drawn[c] ?? 0) + 1;
-  const never = content.cards.filter(c => (drawn[c.id] ?? 0) / total < LIMITS.cardDrawn).map(c => `${c.id} ${pct((drawn[c.id] ?? 0) / total, 2)}`);
-  add(`every card drawn in at least ${pct(LIMITS.cardDrawn, 0)} of games: cards short`, never.length, 0, never.length === 0, never.join(', '), false, 'num');
+  // A card bound to a road (a `road` leaf anywhere in its `when`) is drawn only when a trip is out on that road, and the bots seldom
+  // travel to Samarkand, Tunis, Hormuz or Tabriz; it leaves this row and test/engine.mjs proves each one can be dealt (DECISIONS 2026-11-27 13:06, MER-161).
+  const roadBound = content.cards.filter(c => roadLeaves(c.when).length);
+  const never = content.cards.filter(c => !roadBound.includes(c) && (drawn[c.id] ?? 0) / total < LIMITS.cardDrawn).map(c => `${c.id} ${pct((drawn[c.id] ?? 0) / total, 2)}`);
+  const short = roadBound.filter(c => (drawn[c.id] ?? 0) / total < LIMITS.cardDrawn).length;
+  add(`every card drawn in at least ${pct(LIMITS.cardDrawn, 0)} of games: cards short`, never.length, 0, never.length === 0,
+    `${never.join(', ')}${never.length ? '; ' : ''}${roadBound.length} road-bound cards are not counted (${short} of them under ${pct(LIMITS.cardDrawn, 0)}), test/engine.mjs deals each`, false, 'num');
   // a choice greedy takes nearly always
   if (results.greedy) {
     const over = [], exempt = [];

@@ -368,9 +368,9 @@
     "title": "A share paid on paper",
     "body": "A trading house at Quseir offers you a share of its trade. It will pay you on paper, a written promise to pay later, not in coin. Many houses do this, and it is slow.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "quseir"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -474,9 +474,9 @@
     "title": "A share in a great ship",
     "body": "Jalal is a rich shipowner in Aden. He owns his ship and all its cargo, with no partners. He offers you a small share in his next voyage.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aden"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -582,9 +582,9 @@
     "title": "Horses for south India",
     "body": "Sabir sells horses that go by ship to south India. He offers you a share in a shipment. In the deal he offers, the king in India pays for any horse that is hurt or dies at sea.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "hormuz"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -707,7 +707,7 @@
     "choices": [
       {
         "id": "lend",
-        "label": "Lend a large sum",
+        "label": "Lend 12 dinars",
         "hint": "It costs 12 dinars now and pays back 21 in three seasons. Other lenders say you lend too freely.",
         "requires": {
           "money": {
@@ -736,7 +736,7 @@
       },
       {
         "id": "little",
-        "label": "Lend a little",
+        "label": "Lend 4 dinars",
         "hint": "It costs 4 dinars now and pays back 7 in three seasons. Foreign houses hear that you lend to kings.",
         "requires": {
           "money": {
@@ -812,9 +812,8 @@
     "title": "Pay when the goods sell",
     "body": "An Egyptian dealer wants to buy gold from your house. He promises to pay when his own goods are sold.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "stock": "gold",
+      "gte": 1
     },
     "weight": 3,
     "repeat": false,
@@ -822,8 +821,12 @@
       {
         "id": "late",
         "label": "Let him pay late for a better price",
-        "hint": "He pays 12 dinars in three seasons, not now. You must chase him, and your people tire of it.",
+        "hint": "He takes 1 chest of gold now and pays you 115 dinars in three seasons, 15 more than coin today. You must chase him, and your people tire of it.",
         "now": [
+          {
+            "stock": "gold",
+            "by": -1
+          },
           {
             "flag": "alexandria-late-pay",
             "set": "now"
@@ -834,7 +837,7 @@
             "in": 3,
             "do": [
               {
-                "money": 12
+                "money": 115
               },
               {
                 "rep": "agents",
@@ -842,15 +845,23 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
       },
       {
         "id": "coin",
         "label": "Insist on coin on the day",
-        "hint": "He pays 8 dinars now. He is not pleased, but he pays.",
+        "hint": "He pays 100 dinars now for 1 chest of gold. He is not pleased, but he pays.",
         "now": [
           {
-            "money": 8
+            "money": 100
+          },
+          {
+            "stock": "gold",
+            "by": -1
           }
         ],
         "later": [
@@ -863,15 +874,23 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
       },
       {
         "id": "half",
         "label": "Take half now and a note for the rest",
-        "hint": "He pays 4 dinars now and 6 in three seasons. A note is a risk, and partners know it.",
+        "hint": "He takes 1 chest of gold and pays 55 dinars now and 55 in three seasons. A note is a risk, and partners know it.",
         "now": [
           {
-            "money": 4
+            "money": 55
+          },
+          {
+            "stock": "gold",
+            "by": -1
           }
         ],
         "later": [
@@ -879,7 +898,7 @@
             "in": 3,
             "do": [
               {
-                "money": 6
+                "money": 55
               },
               {
                 "rep": "partners",
@@ -887,7 +906,11 @@
               }
             ]
           }
-        ]
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
       }
     ],
     "note": "Gold and silver sold in Egypt were often paid for late. Treaties in 1238, 1254, 1290, 1302 and 1345 ordered buyers to pay at once.",
@@ -915,9 +938,9 @@
     "title": "Gold coins by weight",
     "body": "A Pera trader pays you in gold perpers, the coins of the city. He says there is no need to weigh them. You can count them fast.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "constantinople"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1029,9 +1052,9 @@
     "title": "A debt on every pack animal",
     "body": "A man of Tabriz has won a claim of 4,000 bezants against the Venetians there. Until it is paid, each Venetian owes him 4 bezants a load.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tabriz"
+      ]
     },
     "weight": 3,
     "repeat": false,

@@ -8,9 +8,9 @@ import * as rng from '../js/engine/rng.js';
 import * as cal from '../js/engine/calendar.js';
 import { freshState, addPaper } from '../js/engine/state.js';
 import { apply } from '../js/engine/effects.js';
-import { holds } from '../js/engine/conditions.js';
+import { holds, roadStops } from '../js/engine/conditions.js';
 import { steps } from '../js/engine/turn.js';
-import { playGame, BOTS } from '../tools/bots.mjs';
+import { playGame, BOTS, roadLeaves } from '../tools/bots.mjs';
 import { newGame, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices, outfit } from '../js/engine/index.js';
 
 const content = await loadContent('testport', { fs });
@@ -235,6 +235,25 @@ test('condition agent: hired and where', () => {
 test('condition out: counts expeditions on the road', () => {
   const s = { ...game(), expeditions: [{}, {}] };
   eq([cond({ out: { gte: 2 } }, s), cond({ out: { gte: 3 } }, s), cond({ out: { gte: 1 } })], [true, false, false]);
+});
+// MER-157: `{ road: [stop ids] }` holds while an expedition of the house is out on a route that goes to one of the stops.
+const onRoad = (...routes) => ({ ...game(), expeditions: routes.map((route, i) => ({ id: `x${i}`, agent: 'mira', route, status: 'riding' })) });
+test('condition road: holds for an expedition out on a route that goes to the stop', () => {
+  eq([cond({ road: ['hilltown'] }, onRoad('harbour-hilltown')), cond({ road: ['saltmarsh', 'hilltown'] }, onRoad('harbour-hilltown'))], [true, true]);
+});
+test('condition road: does not hold for another road, for no trip, or for an expedition already home', () => {
+  eq([cond({ road: ['hilltown'] }, onRoad('harbour-saltmarsh')), cond({ road: ['hilltown'] }),
+    cond({ road: ['hilltown'] }, { ...onRoad('harbour-hilltown'), expeditions: [{ id: 'x0', agent: 'mira', route: 'harbour-hilltown', status: 'home' }] })], [false, false, false]);
+});
+test('condition road: the home city is never a road, and an unknown route is on none', () => {
+  eq([cond({ road: ['harbour'] }, onRoad('harbour-hilltown')), cond({ road: ['hilltown'] }, onRoad('no-such-route'))], [false, false]);
+});
+test('condition road: two trips out, either one is enough', () => {
+  const s = onRoad('harbour-saltmarsh', 'harbour-hilltown');
+  eq([cond({ road: ['hilltown'] }, s), cond({ road: ['saltmarsh'] }, s), cond({ all: [{ road: ['hilltown'] }, { road: ['saltmarsh'] }] }, s)], [true, true, true]);
+});
+test('condition road: a bad value is an error, not a condition that never holds', () => {
+  for (const road of ['hilltown', [], [3], {}]) throws(() => cond({ road }, onRoad('harbour-hilltown')), /road/);
 });
 test('condition length: the chosen length', () => {
   eq([cond({ length: 'acts' }), cond({ length: 'full' })], [true, false]);
@@ -1061,6 +1080,42 @@ test('money: over 200 seeded games that take the first open choice and send the 
   ok(trips >= 400, `the sheet's plan was sent ${trips} times: the games are not scripted trivially`);
   eq(bad, [], 'a step left the house below 0');
   console.log(`  money: ${games} games, ${trips} trips sent, ${shorts} Accounts papers that said a fee went unpaid`);
+});
+
+// ---- MER-161: a card bound to a road leaves the bots' 1% row, so each one must be dealable (DECISIONS 2026-11-27 13:06)
+const cairoContent = await loadContent('cairo', { fs });
+/** Whether `card`, alone in the pool of `c`, is dealt in some season of some length of the calendar with a trip out on one of its roads. */
+function roadDealt(c, card) {
+  const lengths = Object.keys(c.calendar.lengths);   // a card dated outside the three acts (qatya-passports, summer 1326) is dealt in the full-years length only
+  const why = lengths.map(l => roadDealtIn(c, card, l));
+  return why.includes(null) ? null : why[0];
+}
+function roadDealtIn(c, card, length) {
+  const stops = new Set(roadLeaves(card.when));
+  const route = c.routes.find(r => [...stops].some(s => roadStops(c, r.id).has(s)));
+  if (!route) return `no route of the content goes to ${[...stops].join(', ')}`;
+  const only = structuredClone(c); only.cards = [structuredClone(card)];
+  const agent = c.agents[0].id;
+  for (let t = 1; t < cal.playedSeasons(c.calendar, length).length; t++) {
+    const s = freshState(only, { seed: 5, length, house: only.houses[0].id });
+    s.t = t;
+    s.agents[agent].hired = true;
+    s.expeditions.push({ id: 'x1', agent, route: route.id, leg: 0, left: 1, status: 'out', cargo: {}, purse: 0, sent: 0, contract: { kind: 'own' }, staked: { house: 0, partners: 0 }, orders: [] });
+    steps.drawCards(s, only);
+    if (s.desk.some(p => p.ref === card.id)) return null;
+  }
+  return 'no season of any length deals it with a trip out on its road';
+}
+test('road cards: every card with a road leaf in its when can be dealt, in a season inside its years, with a trip out on its road', () => {
+  const bound = cairoContent.cards.filter(c => roadLeaves(c.when).length);
+  ok(bound.length >= 10, `${bound.length} road-bound cards found`);
+  const bad = bound.map(c => [c.id, roadDealt(cairoContent, c)]).filter(([, why]) => why).map(([id, why]) => `${id}: ${why}`);
+  eq(bad, [], 'a road-bound card no state can deal is a fault in its `when`');
+});
+test('road cards: a card whose years never meet a season of the game fails the case', () => {
+  const card = structuredClone(cairoContent.cards.find(c => roadLeaves(c.when).length));
+  card.when = { all: [card.when, { year: [1900, 1901] }] };
+  ok(roadDealt(cairoContent, card), 'a card dated outside the game is reported');
 });
 
 await done();

@@ -213,7 +213,7 @@ test('validate: every condition leaf is accepted, and agrees with the engine\'s 
     season: { season: ['spring'] }, year: { year: [1200, 1202] }, act: { act: 1 }, length: { length: 'acts' },
     notebook: { notebook: 'testport' }, out: { out: { lte: 2 } }, money: { money: { lte: 900 } },
     stock: { stock: 'wool', gte: 1 }, flag: { flag: 'x', not: true }, rep: { rep: 'partners', gte: 1 }, agent: { agent: 'mira', hired: true },
-    trip: { trip: { agent: 'mira', is: 'ready' } },
+    trip: { trip: { agent: 'mira', is: 'ready' } }, road: { road: ['hilltown'] },
   };
   eq(Object.keys(samples).sort(), Object.keys(CONDITION_LEAVES).sort());
   const c2 = variant(c => { c.notebook = entries; });
@@ -228,6 +228,12 @@ test('validate: every condition leaf is accepted, and agrees with the engine\'s 
 test('validate: the { notebook: id } leaf and lte on money and out (MER-02) are accepted', () => {
   for (const when of [{ notebook: 'testport' }, { money: { lte: 50 } }, { out: { lte: 1 } }, { money: { gte: 10, lte: 90 } }]) {
     eq(problemsOf(variant(c => { c.notebook = entries; c.cards[0].when = when; })), [], JSON.stringify(when));
+  }
+});
+test('validate: a road leaf names stops, and a typo is an error (MER-157)', () => {
+  for (const when of [{ road: ['hilltown'] }, { road: ['saltmarsh', 'hilltown'] }]) eq(problemsOf(variant(c => { c.cards[0].when = when; })), [], JSON.stringify(when));
+  for (const when of [{ road: ['hiltown'] }, { road: 'hilltown' }, { road: [] }, { road: [4] }, { road: ['hilltown'], gte: 1 }, { roads: ['hilltown'] }]) {
+    ok(problemsOf(variant(c => { c.cards[0].when = when; })).length > 0, JSON.stringify(when));
   }
 });
 test('validate: a bad condition is an error', () => {

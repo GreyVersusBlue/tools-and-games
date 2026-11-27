@@ -342,9 +342,9 @@
     "title": "Small tolls on the Nile",
     "body": "Nuh takes goods up the Nile from Cairo to Qus. At each town on the way a small toll is paid, a fee to pass. He asks you to pay each toll as the boat goes, so it is never held up.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "qus"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -449,9 +449,9 @@
     "title": "A list of customs",
     "body": "Isaac sends a list from Aydhab. Customs are taxes on goods that enter a port, and the list shows what each good pays. Frankincense pays a third of a dinar. He asks how you want the fees paid.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aydhab"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -567,9 +567,9 @@
     "title": "The water is cut off",
     "body": "Amin lives in Aden. Bedouins, people of the desert, have blocked the way to the town's water tanks. They let people through only for money and cloth. Amin asks you to share the cost.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "aden"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -677,9 +677,9 @@
     "title": "The ruler's men signal",
     "body": "A ship of yours passes a town on the Malabar coast. The ruler's men signal it to anchor and give a present. The pilot asks what to do.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "calicut"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -796,9 +796,9 @@
     "title": "Pepper in public warehouses",
     "body": "Zaid writes from Calicut. The town keeps its pepper in public warehouses and sells it by the bahar, a large weight. The customs are two parts in every ten. He asks if you will ship now.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "calicut"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -904,31 +904,35 @@
     "title": "The king taxes copper",
     "body": "A copper dealer says the king of Mali taxes the raw copper brought in from the mine at Takedda. The tax is heavy. He asks if your house will pay it and take a share of the copper.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "gao"
+      ]
     },
     "weight": 3,
     "repeat": false,
     "choices": [
       {
         "id": "pay",
-        "label": "Pay the tax",
-        "hint": "It costs 8 dinars now. The court of Mali thinks well of your house.",
+        "label": "Pay the tax and take the copper",
+        "hint": "It costs 68 dinars now, 8 for the tax and 60 for 2 lots of copper. The copper reaches your warehouse in two seasons, and the court of Mali thinks well of your house.",
         "requires": {
           "money": {
-            "gte": 8
+            "gte": 68
           }
         },
         "now": [
           {
-            "money": -8
+            "money": -68
           }
         ],
         "later": [
           {
             "in": 2,
             "do": [
+              {
+                "stock": "copper",
+                "by": 2
+              },
               {
                 "rep": "court",
                 "by": 1
@@ -940,13 +944,16 @@
       {
         "id": "hide",
         "label": "Hide the copper from the tax men",
-        "hint": "It costs nothing now and 5 dinars in two seasons, a fine if the tax men find it. Partners dislike a cheat.",
+        "hint": "It costs 60 dinars now for 2 lots of copper. It costs 5 more in two seasons, a fine if the tax men find it. Partners dislike a cheat.",
         "requires": {
           "money": {
-            "gte": 5
+            "gte": 65
           }
         },
         "now": [
+          {
+            "money": -60
+          },
           {
             "flag": "copper-tax-dodged",
             "set": "now"
@@ -958,6 +965,10 @@
             "do": [
               {
                 "money": -5
+              },
+              {
+                "stock": "copper",
+                "by": 2
               },
               {
                 "rep": "partners",
@@ -1017,9 +1028,9 @@
     "title": "Silver bars for the mint",
     "body": "A Venetian buyer pays you in silver bars. The sultan's mint at Alexandria turns bars into coins for a fee. Some merchants the sultan favours pay a lower fee.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "alexandria"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1146,7 +1157,7 @@
     "choices": [
       {
         "id": "large",
-        "label": "Bring in a large load of silver",
+        "label": "Bring in a load of silver",
         "hint": "It costs 10 dinars now. The saving shows later, and foreign houses hear of it.",
         "requires": {
           "money": {
@@ -1249,9 +1260,9 @@
     "title": "Whose name on the goods",
     "body": "Orhan trades at Constantinople. Genoese and Venetians there pay no customs, and others pay 2 in 100. He asks under whose name your goods should go.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "constantinople"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1368,9 +1379,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "famagusta"
+          ]
         }
       ]
     },
@@ -1481,9 +1492,9 @@
     "title": "The duty at Tunis",
     "body": "Piero ships goods to Tunis. He says Christians there pay 10 in every 100 on all they bring in. He asks how you want your goods shipped.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tunis"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1604,9 +1615,9 @@
           ]
         },
         {
-          "out": {
-            "gte": 1
-          }
+          "road": [
+            "damascus"
+          ]
         }
       ]
     },
@@ -1616,7 +1627,7 @@
       {
         "id": "back",
         "label": "Turn back and ask a friend for a pass",
-        "hint": "It costs 3 dinars now. A season is lost, but the goods are safe, and partners hear of it.",
+        "hint": "It costs 3 dinars now. The goods lose time, but they are safe, and partners hear of it.",
         "requires": {
           "money": {
             "gte": 3
@@ -1724,9 +1735,9 @@
     "title": "Guards of the desert road",
     "body": "Bedouins who guard the desert road ask a payment from your caravan. The sultan pays them too. Your guide asks what to do.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "damascus"
+      ]
     },
     "weight": 3,
     "repeat": false,
@@ -1839,9 +1850,9 @@
     "title": "The toll bill from Ayas",
     "body": "A trader at Tabriz sends the toll bill for the road from Ayas. Tolls are fees to pass. There is one at nearly every stage, and Mongol horsemen take more on top.",
     "when": {
-      "out": {
-        "gte": 1
-      }
+      "road": [
+        "tabriz"
+      ]
     },
     "weight": 3,
     "repeat": false,
