@@ -226,6 +226,17 @@ const plain = s => JSON.parse(JSON.stringify(s));
     choices: entry.choices.map(c => ({ ...structuredClone(c), label: fill(c.label), ...(c.hint !== undefined ? { hint: fill(c.hint) } : {}) })) } }] };
   states.lossStorm = structuredClone(states.loss);   // MER-145 (MER-146's data.picture and data.eventWords): the same paper with a storm's picture and the words under it
   states.lossStorm.desk[0].data.picture = 'storm-sea'; states.lossStorm.desk[0].data.eventWords = 'A storm at sea';
+  // MER-163 (M4g play A a106): a return that lost money, with its account unfolded, at the board. The return's own account rows are kept and a loss entry's
+  // question put on it, as the engine's `pickEntry` would for a trip that lost (return-loss-price, as the play met it).
+  {
+    const lossEntry = content.returns.find(e => e.id === 'return-loss-price'), sub = x => x?.replaceAll('{agent}', 'Ali').replaceAll('{to}', 'Alexandria').replaceAll('{seasons}', 'three seasons');
+    states.retLoss = plain(states.ret);
+    const rp = states.retLoss.desk.find(p => p.kind === 'return' && p.state === 'open');
+    rp.data.ask = { title: sub(lossEntry.title), body: sub(lossEntry.body) };
+    rp.data.choices = lossEntry.choices.map(c => ({ ...structuredClone(c), label: sub(c.label), ...(c.hint !== undefined ? { hint: sub(c.hint) } : {}) }));
+    rp.data.entry = lossEntry.id;
+    states.retLoss.desk = [rp, ...states.retLoss.desk.filter(p => p.id !== rp.id)];
+  }
   states.accounts = { ...base, desk: [{ id: 'p80-1', state: 'open', kind: 'accounts', ref: 'accounts', items: [
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ['+60 dinars'], text: 'a' },
     { from: 'lend/yes', card: 'Hasan asks for a loan', choice: 'Lend him 50 dinars', changes: ["Hasan's trust +1"], text: 'b' },
@@ -335,6 +346,16 @@ const SCREENS = [
       await p.click('.account summary');
       await p.waitForSelector('.account[open] .accounts-table');
     } })),
+  // MER-163 (play a106): the return that lost money with its account unfolded; its choices are in view without scrolling, or the account scrolls in its own box
+  { name: 'desk-return-lost-open',
+    go: async (p, f) => {
+      await load(p, '#desk', { state: states.retLoss, large: f.large });
+      await p.waitForSelector('#screen-desk .sheet-title');
+      await p.waitForFunction(i => document.querySelector('.sheet')?.dataset.paper === i, {}, states.retLoss.desk[0].id);
+      await p.$eval('.account summary', e => e.scrollIntoView({ block: 'center' }));
+      await p.click('.account summary');
+      await p.waitForSelector('.account[open] .accounts-table');
+    } },
   { name: 'desk-loss',
     go: async (p, f) => { await load(p, '#desk', { state: states.loss, large: f.large }); await p.waitForSelector('#screen-desk .picture-slot'); } },
   { name: 'desk-loss-storm',
@@ -425,6 +446,20 @@ const SCREENS = [
   { name: 'map-board',
     go: async (p, f) => {
       await load(p, '#map', { state: states.second, large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+    } },
+  // MER-163 (play a015, a036): nobody is free, so Outfit cannot be pressed; the stop list's last visible row is not cut
+  { name: 'map-nobody',
+    go: async (p, f) => {
+      await load(p, '#map', { state: tripsOn([['yusuf', 'cairo-damascus', 0, 1], ['ali', 'cairo-quseir', 1, 1]]), large: f.large });
+      await p.waitForSelector('#screen-map[data-ready]');
+    } },
+  // MER-163 (play a015, a036, a140): a label stands where it stood unless something on the map is now in its way. Two parties home at Damascus are one stack
+  // with a wide caption; every label that is on another side than with nobody out must have had its old place taken by a caption, a piece, a leader, a dot or
+  // another label's new place.
+  { name: 'map-labels-stack',
+    go: async (p, f) => {
+      await load(p, '#map', { state: tripsOn([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-damascus', 1, 1]]), large: f.large });
       await p.waitForSelector('#screen-map[data-ready]');
     } },
   { name: 'price-board-news',
@@ -713,6 +748,13 @@ try {
         if (LAST_CHOICE[screen.name] && LAST_FRAMES.has(frame.name) && !frame.large && !(HEADLINE_WINS.has(screen.name) && frame.name !== 'board')) {
           await test(`${tag}: the last choice is in view above End the season, no scrolling`, async () => {
             const bad = await page.evaluate(wholeInView, LAST_CHOICE[screen.name]);
+            ok(!bad, bad ?? '');
+          });
+        }
+        // MER-163 (play a106): with the account unfolded the paper's choices are in view without scrolling the paper, at the frames that scroll it inside a box
+        if (screen.name === 'desk-return-lost-open' && ['board', 'laptop', 'laptop-small'].includes(frame.name) && !frame.large) {
+          await test(`${tag}: the account is open and the choices are in view, no scrolling`, async () => {
+            const bad = await page.evaluate(wholeInView, '.sheet .choices .choice:last-of-type');
             ok(!bad, bad ?? '');
           });
         }
@@ -1159,6 +1201,61 @@ try {
             });
             ok(got.cairo, "no label says Cairo (on the house's own stop, or on the group that holds it)");
             eq(got.far, [], 'a label stands more than 36 px from its dot');
+          });
+        }
+        if (screen.name === 'map-labels-stack') {
+          await test(`${tag}: a label that moved for the stack had its old place taken`, async () => {
+            const snap = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.stop-label[data-stop]')].map(l => {
+              const d = document.querySelector(`.dot[data-stop="${l.dataset.stop}"]`).getBoundingClientRect(), r = l.getBoundingClientRect();
+              return [l.dataset.stop, l.hidden ? null : { dx: r.left - d.left, dy: r.top - d.top, w: r.width, h: r.height }];
+            })));
+            const now = await snap();
+            await load(page, '#map', { state: states.firstDone, large: frame.large });
+            await page.waitForSelector('#screen-map[data-ready]');
+            await settle(page);
+            const rest = await snap();
+            await load(page, '#map', { state: tripsOn([['yusuf', 'cairo-damascus', 1, 1], ['ali', 'cairo-damascus', 1, 1]]), large: frame.large });
+            await page.waitForSelector('#screen-map[data-ready]');
+            await settle(page);
+            const bad = await page.evaluate((now, rest) => {
+              const out = [], box = e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+              const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1;
+              const things = (skip) => [...document.querySelectorAll('.token-label, .token-piece, .token-leader, .dot, .stop-label')].filter(e => e !== skip && !e.hidden && e.checkVisibility() && e.getBoundingClientRect().width).map(box);
+              for (const id of Object.keys(rest)) {
+                const a = rest[id], b = now[id]; if (!a || !b) continue;
+                if (Math.abs(a.dx - b.dx) < 2 && Math.abs(a.dy - b.dy) < 2) continue;
+                const d = document.querySelector(`.dot[data-stop="${id}"]`).getBoundingClientRect(), l = document.querySelector(`.stop-label[data-stop="${id}"]`);
+                const GAP = 4;   // the map keeps a label this far clear of everything (map.js GAP, 3)
+                const old = { left: d.left + a.dx - GAP, top: d.top + a.dy - GAP, right: d.left + a.dx + a.w + GAP, bottom: d.top + a.dy + a.h + GAP };
+                const own = document.querySelector(`.dot[data-stop="${id}"]`);
+                if (!things(l).filter(q => !(q.left === box(own).left && q.top === box(own).top)).some(q => hit(old, q))) out.push(`${id} moved from (${Math.round(a.dx)},${Math.round(a.dy)}) to (${Math.round(b.dx)},${Math.round(b.dy)}) and nothing stood on its old place`);
+              }
+              return out;
+            }, now, rest);
+            ok(!bad.length, bad.join('; '));
+          });
+        }
+        if (screen.name === 'map-nobody' || screen.name === 'map-board') {
+          // MER-163 (play a015, a036): the stop list ends on a whole row where it scrolls in a box of its own (not the upright phone, where it fills the screen's height)
+          await test(`${tag}: the stop list shows whole rows, none cut at its foot`, async () => {
+            const cut = await page.evaluate(() => {
+              const l = document.getElementById('stoplist'); if (!l || !l.checkVisibility()) return null;
+              const b = l.getBoundingClientRect(), out = [];
+              for (const o of l.querySelectorAll('.option')) { const r = o.getBoundingClientRect(); if (r.top < b.bottom - 1 && r.bottom > b.bottom + 1 && l.scrollHeight > l.clientHeight) out.push(`${o.textContent.trim().slice(0, 20)} spans ${Math.round(r.top)} to ${Math.round(r.bottom)}, the list ends at ${Math.round(b.bottom)}`); }
+              return out;
+            });
+            ok(!cut || !cut.length, cut?.join('; '));
+          });
+        }
+        if (screen.name === 'map-nobody') {
+          await test(`${tag}: Outfit with nobody free does not look like a live button`, async () => {
+            const got = await page.evaluate(() => {
+              const st = id => { const e = document.getElementById(id), c = getComputedStyle(e); return { disabled: e.getAttribute('aria-disabled'), border: c.borderTopStyle, opacity: c.opacity }; };
+              const back = document.querySelector('.board-actions .button:not(#btn-outfit)'), bc = back && getComputedStyle(back);
+              return { outfit: st('btn-outfit'), back: bc ? { border: bc.borderTopStyle, opacity: bc.opacity } : null };
+            });
+            eq(got.outfit.disabled, 'true', 'setup: Outfit is the disabled one');
+            ok(got.back && (got.outfit.border !== got.back.border || got.outfit.opacity !== got.back.opacity), `Outfit (${JSON.stringify(got.outfit)}) looks as Back to the desk does (${JSON.stringify(got.back)})`);
           });
         }
         if (screen.name === 'map-board') {

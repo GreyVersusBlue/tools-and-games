@@ -375,9 +375,9 @@ html.large-text .title-what { display: none; }
   padding: var(--s3) max(var(--s3), env(safe-area-inset-right)) var(--s3) var(--s3); }
 .board h2 { font-size: var(--step-2); margin: 0; }
 .board h2:focus-visible, .prices-head:focus-visible { box-shadow: none; outline: 2px solid var(--brass-dark); outline-offset: 4px; }
-.stoplist { position: relative; max-height: 13rem; overflow-y: auto; border: 1px solid var(--ink-soft); border-radius: var(--radius); background: var(--paper); font-family: var(--font-chrome); flex: none; }
+.stoplist { position: relative; max-height: calc(var(--hit) * 6 + 2px); scroll-snap-type: y mandatory; overflow-y: auto; border: 1px solid var(--ink-soft); border-radius: var(--radius); background: var(--paper); font-family: var(--font-chrome); flex: none; }
 .stoplist .option { display: flex; justify-content: space-between; gap: var(--s2); align-items: center; min-height: var(--hit); padding: var(--s1) var(--s3);
-  border: 0; border-bottom: 1px solid var(--paper-shade); cursor: pointer; }
+  border: 0; border-bottom: 1px solid var(--paper-shade); cursor: pointer; scroll-snap-align: start; }
 .stoplist .option .status { color: var(--madder); font-size: var(--step--1); text-align: right; }
 .stoplist .option[aria-selected="true"] { background: var(--paper-shade); font-weight: 600; box-shadow: inset .3rem 0 0 var(--brass); }
 .stoplist .option.lit { outline: 2px solid var(--brass-dark); outline-offset: -2px; }
@@ -420,7 +420,7 @@ html.large-text .title-what { display: none; }
   .board-body { padding: var(--s2); gap: var(--s2); }
   .board-actions { padding: var(--s2); }
   .board h2 { font-size: var(--step-1); }
-  .stoplist { max-height: 9rem; }
+  .stoplist { max-height: calc(var(--hit) * 4 + 2px); }
   /* MER-124: the picture is 600 px wide here and carries twenty labels; a 130 px caption under each token left no spot clear of them
      (two parties lay on each other and hid eight labels), so the caption goes, as it does on the upright phone. */
   .map-screen .token-label { display: none; }
@@ -659,3 +659,12 @@ dialog.book .panel-actions { flex: none; }
 /* MER-138: with the All games link the continued title is 771 px on a 740 px phone. The paragraph under the menu's first button is the first lines of About
    and of the tagline's promise; on a short upright phone it steps aside as it does for Large text, rather than push a button out of view. */
 @media (max-width: 700px) and (min-height: 501px) and (max-height: 780px) { .title-what { display: none; } }
+
+/* MER-163 (M4g play problem 15): Outfit with nobody free looked like Back to the desk, a live button. A button that cannot be pressed has a dashed edge and is dimmer. */
+.board-actions .button[aria-disabled="true"] { border-style: dashed; opacity: .7; box-shadow: none; }
+
+/* MER-163 (M4g play problem 13): with a return's account unfolded the choices lay below the paper's fold (y 1166 and 1285 at 1920x1080) and had to be scrolled
+   to. They now stay at the foot of the paper's own scroll while the account passes above them. The phones lay the paper in the page's flow and keep their rules. */
+@media (min-width: 701px) and (min-height: 501px) {
+  .sheet:has(.account[open]) .choices { position: sticky; bottom: 0; z-index: 1; background: var(--paper); padding-top: var(--s2); box-shadow: 0 -.4rem .5rem -.3rem rgba(0, 0, 0, .18); }
+}
