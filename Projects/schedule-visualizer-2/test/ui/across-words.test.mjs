@@ -13,9 +13,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setDayTypeKind, setRoomTeachers, editGroup } from '../../engine/actions.js';
-import { acrossModel, cellState, cellText, acrossOptions, namesUnknown, teacherRooms, defaultRoom, cellRequest, cellsOf, runAcross, wordsFor, plain } from '../../ui/schedule/grid/across.js';
+import { setDayTypeKind, setRoomTeachers, editGroup, setSlot } from '../../engine/actions.js';
+import { acrossModel, cellState, cellText, acrossOptions, namesUnknown, teacherRooms, defaultRoom, cellRequest, cellsOf, followersLeft, runAcross, wordsFor, plain } from '../../ui/schedule/grid/across.js';
 import { school, ctx } from '../engine/helpers.mjs';
+import { sampleSchool } from '../../data/sample-school.js';
 
 const A = 'dsample00a';
 const B = 'dsample00b';
@@ -213,4 +214,44 @@ test('a pasted block is laid on the slots from its corner, in reading order, and
   const name = cellsOf(model, 0, 0, [['9', '7A']]);
   assert.equal(name.skipped, 1, 'the name is not a slot');
   assert.deepEqual(name.cells.map((cell) => cell.text), ['7A']);
+});
+
+// ---------------------------------------------------------------- SV2-155b
+
+test('a block laid over the Teachers rows keeps the duty columns by place (a null holds nothing there, a text is skipped and counted) and leaves a follower day type’s slots out, said', () => {
+  // (the full sample: school() has no duties, so no duty columns)
+  const project = setDayTypeKind(sampleSchool({ level: true }), { dayTypeId: B, own: false, sameAs: A }, ctx());
+  const model = teachers(project);
+  const c = model.columns.findIndex((column) => column.id === A + ':6');
+  assert.deepEqual(model.columns.slice(c, c + 7).map((column) => column.id), [A + ':6', A + ':7', A + ':before', A + ':after', B + ':0', B + ':1', B + ':2'], 'the sample has both duty columns after each day type’s periods');
+  // a copy of A Day's last two periods and the two duty columns, as the sheet writes it, and three of B Day
+  const laid = cellsOf(model, 0, c, [['6A', '7C', '', '', '8B', '8B', '8B']]);
+  assert.deepEqual(laid.cells.map((cell) => cell.period), [6, 7], 'the two periods of A Day are taken, each in its own column');
+  assert.equal(laid.skipped, 2, 'what lands on the duty columns is counted as left out');
+  assert.equal(laid.followers.length, 3, 'B Day follows A Day: its three slots are left out, not sent to be refused');
+  assert.equal(followersLeft(project, laid.followers), '3 slots were left as they are: B Day is the same as A Day. Make its own copy in the column header to change them');
+  // a fill passes over the duty columns with nulls, and says nothing about them
+  const fill = cellsOf(model, 0, c, [['6A', '6A', null, null, null]]);
+  assert.deepEqual([fill.cells.length, fill.skipped, fill.followers.length, fill.runOff], [2, 0, 0, 0], 'a null is a place the fill passes over, not a skipped duty');
+  assert.equal(followersLeft(project, [laid.followers[0]]), '1 slot was left as it is: B Day is the same as A Day. Make its own copy in the column header to change it');
+});
+
+test('an edit that moves a group off a slot that named teachers says which teachers were taken off it', () => {
+  // 6A in Period 1 on A Day names Mr. Larkspur, who is based in 302; it goes to 101, which is Ms. Halloran’s
+  const named = setSlot(school(), { groupId: 'gsample06a', dayTypeId: A, period: 0, slot: { teacherIds: ['tsample011'] } }, ctx());
+  const model = rooms(named);
+  const cells = [cellRequest(model, rowOf(model, 'rsample101'), columnOf(model, A + ':0'), '6A')];
+  const block = runAcross(named, cells);
+  assert.equal(block.refused, null);
+  assert.deepEqual(block.moved.map((move) => move.droppedTeacherIds), [['tsample011']], 'the engine says who was dropped');
+  assert.equal(plain(wordsFor(named, block, cells)), '6A moves from 201 to 101 in Period 1 on A Day. Mr. Larkspur is no longer named on 6A there (not based in 101).');
+  // a slot that named nobody says nothing of the kind
+  const bare = said(school(), rooms(school()), 'rsample101', A + ':0', '6A');
+  assert.doesNotMatch(bare, /no longer named/);
+  // a teacher who is gone from the schedule is still spoken of, not skipped
+  const gone = { ...named, teachers: named.teachers.filter((teacher) => teacher.id !== 'tsample011') };
+  const again = rooms(gone);
+  const asked = [cellRequest(again, rowOf(again, 'rsample101'), columnOf(again, A + ':0'), '6A')];
+  const lost = runAcross(gone, asked);
+  if (!lost.refused) assert.match(plain(wordsFor(gone, lost, asked)), /A teacher who is no longer in the schedule is no longer named on 6A there/);
 });

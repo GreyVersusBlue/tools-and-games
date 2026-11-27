@@ -17,6 +17,7 @@
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { availableParallelism } from 'node:os';
 
 import { openPlanner, startServer, launch, loadModule } from './harness.mjs';
 
@@ -25,10 +26,13 @@ const DAY_B = 'dsample00b';
 const HOSTILE = '<img src=x onerror=alert(1)> "quoted" 名前';
 
 // The timing budget of one edit to a table of the fixture drawn: ARCHITECTURE
-// 23.12 says 150 ms, and the case fails at twice that, as every timing file.
+// 23.12 says 150 ms, and the case fails at twice that under two cores, as every
+// timing file; on the machine's full cores it fails at 150 itself.
 const REDRAW_BUDGET = 150;
 const SLACK = 2;
 const EDITS = 5;
+// Cores at which the 150 ms target itself is asserted, not only the 300 ms line.
+const FULL_CORES = 6;
 
 let server;
 let browser;
@@ -89,6 +93,18 @@ async function typeInto(page, selector, words) {
 async function pasteInto(page, selector, tsv) {
   await settled(page);
   await page.focus(selector);
+  await page.evaluate((value) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', value);
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, tsv);
+  await settled(page);
+}
+
+// A paste where the focus is: after Shift+Arrows that is the end of the block, and focusing a slot
+// first would collapse it.
+async function pasteHere(page, tsv) {
+  await settled(page);
   await page.evaluate((value) => {
     const data = new DataTransfer();
     data.setData('text/plain', value);
@@ -503,13 +519,15 @@ test('a day type that follows another has its columns greyed with the line and a
     assert.equal(await page.$eval(slot('rsample101', DAY_A, 1), (el) => el.getAttribute('aria-disabled')), null);
     assert.match(await page.$eval(slot('rsample101', DAY_B, 1), (el) => el.title), /^B Day is the same as A Day\. Make its own copy to change it\./);
     await settled(page);
+    // a slot that could only be refused opens no field: the line says why, once
     await page.focus(slot('rsample101', DAY_B, 1));
     await page.keyboard.type('6A');
     await page.keyboard.press('Enter');
-    await page.waitForSelector('.grd-sheet:not([hidden]) .grd-refusal:not([hidden])');
-    assert.equal(await text(page, '.grd-sheet:not([hidden]) .grd-refusal'), 'B Day is the same as A Day. Make it its own copy to change it.');
-    assert.equal(await exists(page, '.grd-bar'), false);
-    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('.grd-status')?.textContent.startsWith('B Day is the same as A Day.'));
+    assert.equal(await text(page, '.grd-status'), 'B Day is the same as A Day. Make its own copy in the column header to change it.');
+    assert.equal(await exists(page, '.grd-input'), false, 'no field was opened');
+    assert.equal(await exists(page, '.grd-sheet:not([hidden]) .grd-refusal:not([hidden])'), false);
+    assert.equal(await activeKey(page), 'grid:rsample101:' + DAY_B + ':1', 'the focus stays on the slot');
     // the button makes it its own, and the columns are alive
     await reach(page, '.grd-head--day [data-action="make-own"]');
     await page.click('.grd-head--day [data-action="make-own"]');
@@ -747,7 +765,7 @@ test('a large school\u2019s Rooms rows are drawn a window at a time: the keys re
   await page.keyboard.press('Enter');
   await stagedIs(page, true);
   assert.match(await bar(page), /^Not applied yet: 1 group changed/);
-  assert.equal(await page.$eval(table + ' tbody tr.grd-row:nth-last-child(2)', (el) => el.getAttribute('aria-rowindex')), '152', 'the last room is still drawn after the edit');
+  assert.equal(await page.$eval(table + ' tbody tr.grd-row:last-child', (el) => el.getAttribute('aria-rowindex')), '152', 'the last room is still drawn after the edit (and is the last row: no pad stands for rows after it)');
   await discard(page);
 });
 
@@ -794,6 +812,324 @@ test('one edit in the Rooms rows of the big fixture is drawn in under ' + REDRAW
     const sorted = times.slice().sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)];
     process.stdout.write('# one edit to drawn in the Rooms rows of the big fixture: ' + times.map((ms) => ms.toFixed(0)).join(', ') + ' ms, median ' + median.toFixed(0) + ' (budget ' + REDRAW_BUDGET + ', fails at ' + REDRAW_BUDGET * SLACK + ')\n');
-    assert.ok(median < REDRAW_BUDGET * SLACK, 'the median edit took ' + median.toFixed(0) + ' ms: over ' + REDRAW_BUDGET * SLACK);
+    // On the machine's full cores (Huginn has 8) the target is the line; pinned to two cores
+    // (`taskset -c 0,1`, as CI's runner is) the line is twice that. Node reads the cores the
+    // process may use, so a pinned run is told apart from a free one.
+    const full = availableParallelism() >= FULL_CORES;
+    const line = full ? REDRAW_BUDGET : REDRAW_BUDGET * SLACK;
+    process.stdout.write('# cores ' + availableParallelism() + ': the line is ' + line + ' ms\n');
+    assert.ok(median < line, 'the median edit took ' + median.toFixed(0) + ' ms: over ' + line + (full ? ' (the target, on ' + availableParallelism() + ' cores)' : ' (the failing line, on ' + availableParallelism() + ' cores)'));
+  }
+});
+
+// ---------------------------------------------------------------- SV2-155b: the fixes from the review of SV2-155
+
+// The frame of the table shown, scrolled to `top`, and waited for until a row
+// is drawn under the middle of it (the page draws the window the scroll asks
+// for on the scroll event, and sets nothing else to wait on).
+async function scrollTo(page, top) {
+  await page.evaluate((y) => {
+    document.querySelector('.grd-sheet:not([hidden]) .grd-scroll').scrollTop = y;
+  }, top);
+  await page.waitForFunction((y) => {
+    const frame = document.querySelector('.grd-sheet:not([hidden]) .grd-scroll');
+    if (Math.abs(frame.scrollTop - y) > 2 && frame.scrollTop + frame.clientHeight < frame.scrollHeight - 2) return false;
+    const box = frame.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + 140, box.top + box.height / 2);
+    return Boolean(hit) && Boolean(hit.closest('tr.grd-row'));
+  }, { timeout: 5000 }, top);
+}
+
+// Every id a slot's description names, and which of them the page does not have.
+const describedBy = (page) => page.$$eval('.grd-sheet:not([hidden]) [aria-describedby]', (all) => {
+  const missing = [];
+  let named = 0;
+  for (const el of all) {
+    for (const id of el.getAttribute('aria-describedby').split(/\s+/)) {
+      named += 1;
+      if (!document.getElementById(id)) missing.push(id);
+    }
+  }
+  return { cells: all.length, named, missing };
+});
+
+// The rows drawn, and whether the padding makes the table as tall as all its rows.
+const tableShape = (page) => page.$eval('.grd-sheet:not([hidden]) .grd-table', (table) => {
+  const rows = Array.from(table.tBodies[0].rows);
+  const one = rows.find((tr) => tr.classList.contains('grd-row'));
+  return {
+    drawn: rows.filter((tr) => tr.classList.contains('grd-row')).map((tr) => Number(tr.getAttribute('aria-rowindex')) - 2),
+    body: table.tBodies[0].getBoundingClientRect().height,
+    expected: (Number(table.getAttribute('aria-rowcount')) - 2) * one.getBoundingClientRect().height,
+  };
+});
+
+test('the Teachers rows of a large school are drawn a window at a time too, and every mark a drawn slot names has its sentence in the page wherever the scroll has gone', async () => {
+  const page = await bigPage();
+  await rowsAre(page, 'teachers');
+  const table = '.grd-sheet[data-role="teachers"] .grd-table';
+  assert.equal(await page.$eval(table, (el) => el.getAttribute('aria-rowcount')), '152', 'a row for each of the fixture’s 150 teachers, and two of headings');
+  const first = await tableShape(page);
+  assert.ok(first.drawn.length > 20 && first.drawn.length < 60, 'a window, not the table: ' + first.drawn.length);
+  let named = 0;
+  for (const top of [0, 1800, 3600, 5400, 2700]) {
+    await scrollTo(page, top);
+    const found = await describedBy(page);
+    named += found.named;
+    assert.deepEqual(found.missing, [], 'at ' + top + ' px every sentence a slot names is in the page (' + found.cells + ' marked slots drawn)');
+    const shape = await tableShape(page);
+    assert.ok(Math.abs(shape.body - shape.expected) < 3, 'the padding makes the table as tall as all its rows at ' + top + ': ' + shape.body + ' of ' + shape.expected);
+  }
+  assert.ok(named > 0, 'the fixture has marks on the slots drawn, or this case checks nothing');
+  await scrollTo(page, 0);
+  await rowsAre(page, 'groups');
+});
+
+test('a scroll or a resize while a slot is being edited never takes the field away: the typed words and the focus stay, and Enter stages them', async () => {
+  const page = await bigPage();
+  await rowsAre(page, 'teachers');
+  const table = '.grd-sheet[data-role="teachers"] .grd-table';
+  await scrollTo(page, 0);
+  const target = await page.$eval(table + ' tbody tr.grd-row:nth-child(3) td.grd-cell--across:not(.is-follower)', (el) => el.dataset.key);
+  const [, teacherId, dayType, period] = target.split(':');
+  const name = await page.evaluate(() => globalThis.sv2.store.project.groups[0].name);
+  await page.focus('[data-key="' + target + '"]');
+  await page.keyboard.type(name);
+  await page.waitForSelector('.grd-input');
+  const row = await page.$eval(table + ' .grd-input', (el) => el.closest('tr').getAttribute('aria-rowindex'));
+  // far away, and the other way, and a window made short: the field is still in its row
+  for (const top of [4800, 0, 2400]) {
+    await scrollTo(page, top);
+    const found = await page.evaluate((rowindex) => {
+      const input = document.querySelector('.grd-sheet:not([hidden]) .grd-input');
+      return { there: Boolean(input), row: input && input.closest('tr').getAttribute('aria-rowindex'), focused: document.activeElement === input, value: input && input.value, body: document.activeElement === document.body };
+    }, row);
+    assert.deepEqual(found, { there: true, row, focused: true, value: name, body: false }, 'at ' + top + ' px the field is where it was, focused, with what was typed');
+    assert.deepEqual((await describedBy(page)).missing, []);
+  }
+  await page.setViewport({ ...page.viewport(), height: 420 });
+  await page.waitForFunction(() => document.querySelector('.grd-sheet:not([hidden]) .grd-scroll').clientHeight < 330);
+  assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.grd-sheet:not([hidden]) .grd-input')), true, 'a resize keeps the field and its focus');
+  await page.setViewport({ ...page.viewport(), height: 900 });
+  await page.waitForFunction(() => document.querySelector('.grd-sheet:not([hidden]) .grd-scroll').clientHeight > 400);
+  await page.keyboard.press('Enter');
+  await stagedIs(page, true);
+  assert.match(await bar(page), /^Not applied yet: \d+ groups? changed/);
+  assert.ok(await exists(page, '[data-key="grid:' + teacherId + ':' + dayType + ':' + period + '"]'), 'the slot edited is still drawn');
+  // a second Enter, or the blur the drawing causes, stages nothing more
+  await discard(page);
+  await scrollTo(page, 0);
+  await rowsAre(page, 'groups');
+});
+
+test('a scroll or a resize with the focus on the cursor’s slot leaves the cursor drawn and focused, however far the window goes', async () => {
+  const page = await bigPage();
+  await rowsAre(page, 'teachers');
+  const table = '.grd-sheet[data-role="teachers"] .grd-table';
+  await scrollTo(page, 0);
+  const target = await page.$eval(table + ' tbody tr.grd-row:nth-child(4) td.grd-cell--across:not(.is-follower)', (el) => el.dataset.key);
+  await page.focus('[data-key="' + target + '"]');
+  for (const top of [5200, 1500, 0]) {
+    await scrollTo(page, top);
+    assert.equal(await activeKey(page), target, 'at ' + top + ' px the focus is still on the cursor’s slot');
+    assert.equal(await page.evaluate(() => document.activeElement === document.body), false);
+    assert.equal(await page.$$eval('.grd-sheet:not([hidden]) [tabindex="0"]', (all) => all.length), 1, 'one Tab stop, and it is the slot');
+    assert.deepEqual((await describedBy(page)).missing, []);
+    const shape = await tableShape(page);
+    assert.ok(Math.abs(shape.body - shape.expected) < 3, 'the padding keeps the table’s height with the cursor’s row apart from the window: ' + shape.body + ' of ' + shape.expected);
+  }
+  await scrollTo(page, 5200);
+  await page.setViewport({ ...page.viewport(), height: 420 });
+  await page.waitForFunction(() => document.querySelector('.grd-sheet:not([hidden]) .grd-scroll').clientHeight < 330);
+  assert.equal(await activeKey(page), target, 'a resize leaves it');
+  await page.setViewport({ ...page.viewport(), height: 900 });
+  await page.waitForFunction(() => document.querySelector('.grd-sheet:not([hidden]) .grd-scroll').clientHeight > 400);
+  // the keys still go from where the cursor is: ArrowDown brings the next row to it
+  await page.keyboard.press('ArrowDown');
+  await page.waitForFunction((key) => document.activeElement?.dataset.key && document.activeElement.dataset.key !== key, {}, target);
+  await scrollTo(page, 0);
+  await rowsAre(page, 'groups');
+});
+
+test('copy and paste agree on the Teachers rows’ Before and After columns: a copied block keeps a column for each, and a paste leaves them out and says so', async () => {
+  const { page } = desk;
+  // the browser's sample has no duties: Coach Dunmore gets one before school and one after, so there are columns for them
+  await change(page, 'addDuty', { kind: 'duty', label: 'Bus duty', when: 'before', teacherIds: ['tsample004'] });
+  await change(page, 'addDuty', { kind: 'duty', label: 'Car line', when: 'after', teacherIds: ['tsample004'] });
+  try {
+    await rowsAre(page, 'teachers');
+    const from = slot('tsample004', DAY_A, 6);
+    await page.focus(from);
+    await page.keyboard.down('Shift');
+    // Period 7, Period 8, Before, After
+    for (let n = 0; n < 4; n += 1) await page.keyboard.press('ArrowRight');
+    await page.keyboard.up('Shift');
+    const keys = await page.$$eval('.grd-sheet:not([hidden]) [aria-selected="true"]', (all) => all.map((el) => el.dataset.key.replace(/^grid:tsample004:/, '')));
+    assert.deepEqual(keys, [DAY_A + ':6', DAY_A + ':7', DAY_A + ':before', DAY_A + ':after', DAY_B + ':0'], 'five columns: two periods, the two duties, the next day type’s first');
+    const tsv = await copied(page);
+    const cols = tsv.replace(/\r?\n$/, '').split('\t');
+    assert.equal(cols.length, 5, 'the copy has a field for each column selected, the duties too: ' + JSON.stringify(tsv));
+    assert.ok(cols[2] !== '' && cols[3] !== '', 'the Before and After fields are the duties the columns show (Coach Dunmore has a bus duty and a car line): ' + JSON.stringify(cols));
+    assert.match(await status(page), /^Copied 3 slots\.$/, 'three of the five are slots');
+    // the same block pasted two rows down lands period by period: the duties are left out by place
+    await pasteInto(page, slot('tsample005', DAY_A, 6), tsv);
+    const said = await status(page);
+    assert.match(said, /2 slots of the block fell on the name or the duties and were left out\./, said);
+    // one copied slot over a selection with duty columns in it fills the slots and nothing else
+    await discard(page);
+    // (the page puts the focus back on the cursor after a discard: wait for that, then move it)
+    await page.waitForFunction(() => document.activeElement?.dataset?.key?.startsWith('grid:'));
+    await page.focus(slot('tsample005', DAY_A, 6));
+    await page.keyboard.down('Shift');
+    for (let n = 0; n < 4; n += 1) await page.keyboard.press('ArrowRight');
+    await page.keyboard.up('Shift');
+    await pasteHere(page, '6A');
+    const filled = await status(page);
+    assert.doesNotMatch(filled, /fell on the name or the duties/, 'a fill passes over the duty columns without a word: ' + filled);
+    assert.match(filled, /^Pasted 3 slots\./, filled);
+    await discard(page);
+  } finally {
+    await undo(page, 2);
+    await rowsAre(page, 'groups');
+  }
+});
+
+test('Delete and a paste over a block that touches a follower day type take the slots that can be changed and say the others were left; Enter on one says why and opens no field', async () => {
+  const { page } = desk;
+  await change(page, 'setDayTypeKind', { dayTypeId: DAY_B, own: false, sameAs: DAY_A });
+  try {
+    await rowsAre(page, 'rooms');
+    // Delete from A Day's Period 2 across to B Day’s Period 3: the room’s own slots are emptied
+    await page.focus(slot('rsample101', DAY_A, 1));
+    await page.keyboard.down('Shift');
+    for (let n = 0; n < 9; n += 1) await page.keyboard.press('ArrowRight');
+    await page.keyboard.up('Shift');
+    await page.keyboard.press('Delete');
+    await stagedIs(page, true);
+    const gone = await status(page);
+    assert.match(gone, /^Emptied \d+ slots?\. /, gone);
+    assert.match(gone, /\d+ slots? (was|were) left as (it is|they are): B Day is the same as A Day\. Make its own copy in the column header to change (it|them)\./, gone);
+    assert.equal(await held(page, slot('rsample101', DAY_A, 1)), '', 'A Day’s slot was emptied');
+    await ctrlZ(page);
+    await stagedIs(page, false);
+    // a paste from A Day's last period into B Day's: the first is taken, the rest left
+    await pasteInto(page, slot('rsample101', DAY_A, 7), '7A\t7B\t7C');
+    await stagedIs(page, true);
+    const pasted = await status(page);
+    assert.match(pasted, /^Pasted 1 slot\. /, pasted);
+    assert.match(pasted, /2 slots were left as they are: B Day is the same as A Day\./, pasted);
+    assert.equal(await held(page, slot('rsample101', DAY_A, 7)), '7A');
+    await discard(page);
+    // a block that is only follower slots changes nothing and says why
+    await pasteInto(page, slot('rsample101', DAY_B, 1), '7A');
+    assert.match(await status(page), /^Nothing was pasted: 1 slot was left as it is: B Day is the same as A Day\./);
+    assert.equal(await exists(page, '.grd-bar'), false);
+    // Enter and F2 on a follower slot: a line, no field
+    await page.focus(slot('rsample101', DAY_B, 2));
+    await page.keyboard.press('F2');
+    await page.waitForFunction(() => document.querySelector('.grd-status')?.textContent.includes('B Day is the same as A Day.'));
+    assert.equal(await exists(page, '.grd-input'), false);
+  } finally {
+    await undo(page, 1);
+    await rowsAre(page, 'groups');
+  }
+});
+
+test('Ctrl+Shift+Z in the grid brings nothing back: staged steps have no redo, and the schedule is not touched by it', async () => {
+  const { page } = desk;
+  await rowsAre(page, 'rooms');
+  const before = await schedule(page);
+  await typeInto(page, slot('rsample101', DAY_A, 3), '7A');
+  await stagedIs(page, true);
+  await typeInto(page, slot('rsample102', DAY_A, 3), '7B');
+  assert.equal(await bar(page), 'Not applied yet: 2 groups changed');
+  await ctrlZ(page);
+  await ctrlZ(page);
+  await stagedIs(page, false);
+  await page.focus(slot('rsample101', DAY_A, 3));
+  await page.keyboard.down('Control');
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('z');
+  await page.keyboard.up('Shift');
+  await page.keyboard.up('Control');
+  await settled(page);
+  assert.equal(await exists(page, '.grd-bar'), false, 'neither step came back');
+  assert.equal(await held(page, slot('rsample101', DAY_A, 3)), '');
+  assert.equal(await schedule(page), before, 'and the schedule is as it was');
+  // the steps can be made again, and each is one step again
+  await typeInto(page, slot('rsample101', DAY_A, 3), '7A');
+  await stagedIs(page, true);
+  await ctrlZ(page);
+  await stagedIs(page, false);
+  await rowsAre(page, 'groups');
+});
+
+test('a second Enter, or the blur after a commit, stages the edit once; and a paste goes through when the frame has the focus', async () => {
+  const { page } = desk;
+  await rowsAre(page, 'rooms');
+  await settled(page);
+  await page.focus(slot('rsample101', DAY_A, 3));
+  await page.keyboard.type('7A');
+  await page.waitForSelector('.grd-input');
+  // two Enters in one task: the second arrives before the drawing the first brings
+  await page.evaluate(() => {
+    const input = document.querySelector('.grd-sheet:not([hidden]) .grd-input');
+    for (let n = 0; n < 2; n += 1) input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+  });
+  await stagedIs(page, true);
+  assert.equal(await bar(page), 'Not applied yet: 1 group changed');
+  await ctrlZ(page);
+  await stagedIs(page, false);
+  assert.equal(await held(page, slot('rsample101', DAY_A, 3)), '', 'one Ctrl+Z took back the one step: it was not staged twice');
+  // paste with the focus on the frame (it has the focus when the cursor's row is not drawn)
+  await page.evaluate(() => {
+    const frame = document.querySelector('.grd-sheet:not([hidden]) .grd-scroll');
+    frame.tabIndex = 0;
+    frame.focus();
+  });
+  assert.equal(await page.evaluate(() => document.activeElement.classList.contains('grd-scroll')), true);
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData('text/plain', '7A');
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await settled(page);
+  assert.match(await status(page), /^Pasted 1 slot\./);
+  await discard(page);
+  await rowsAre(page, 'groups');
+});
+
+test('a teacher’s In field open under a slot leaves the row its height, and a free slot shows its word to the eye', async () => {
+  const { page } = desk;
+  await rowsAre(page, 'teachers');
+  // the free slot says "Planning" in a size a person can read
+  const free = await page.$eval('.grd-sheet:not([hidden]) .grd-cell--across.is-free[aria-label]', (el) => ({ text: el.textContent, size: parseFloat(getComputedStyle(el).fontSize), word: el.getAttribute('aria-label').split(': ').pop() }));
+  assert.equal(free.text, 'Planning');
+  assert.equal(free.word, 'Planning');
+  assert.ok(free.size >= 11, 'the word is drawn, at ' + free.size + ' px');
+  // Mme. Dufrêne has a second room now, so the In field opens; the row is as tall with it open as closed
+  // (her Period 1 now shows more than it did, so the row is compared with itself)
+  await change(page, 'setRoomTeachers', { roomId: 'rsample201', teacherIds: ['tsample005', 'tsample008'] });
+  try {
+    await rowsAre(page, 'teachers');
+    const cell = slot('tsample008', DAY_A, 1);
+    const closed = await page.$eval(cell, (el) => el.closest('tr').getBoundingClientRect().height);
+    await page.focus(cell);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.grd-in');
+    const open = await page.$eval('.grd-input', (el) => {
+      const td = el.closest('td');
+      const field = td.querySelector('.grd-in__field');
+      return { row: el.closest('tr').getBoundingClientRect().height, under: Math.round(field.getBoundingClientRect().top - td.getBoundingClientRect().bottom), position: getComputedStyle(field).position };
+    });
+    assert.equal(open.position, 'absolute');
+    assert.ok(Math.abs(open.row - closed) <= 1, 'the row is as tall with the In field open (' + open.row + ') as closed (' + closed + ')');
+    assert.ok(open.under >= -1 && open.under < 4, 'the In field is under the slot, not in the row: ' + open.under);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.grd-input'));
+  } finally {
+    await undo(page, 1);
+    await rowsAre(page, 'groups');
   }
 });

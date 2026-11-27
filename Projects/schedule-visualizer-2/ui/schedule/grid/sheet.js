@@ -334,6 +334,9 @@ export function sheet(options) {
       cell.focus({ preventScroll: true });
       cell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
+    // the row the cursor has left is not kept any more: the rows drawn are the
+    // window and the cursor's (the focus is on the new one by now)
+    if (windowed) setWindow(from, to);
   }
 
   // ---------------------------------------------------------------- drawing
@@ -961,6 +964,8 @@ export function sheet(options) {
   }
 
   function editorKey(event) {
+    // (an Enter that comes after the drawing took the field away has nothing to read)
+    if (!editor || (editor.input !== event.currentTarget && editor.into !== event.currentTarget)) return;
     const slot = editor.column.kind === 'slot';
     // the In field of a teacher's slot is a select: its arrow keys are its own
     const inField = event.target.tagName === 'SELECT';
