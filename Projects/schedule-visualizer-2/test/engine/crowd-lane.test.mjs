@@ -58,6 +58,15 @@ function holdOpen() {
   return () => clearInterval(timer);
 }
 
+// a promise that must settle within `ms` (a test holding the process open would otherwise wait for ever)
+function within(promise, ms, what) {
+  let timer;
+  const late = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(what + ' did not settle within ' + ms + ' ms')), ms);
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
 let scopes = 0;
 async function workerScope() {
   class WorkerGlobalScope extends EventTarget {
@@ -226,6 +235,8 @@ test('the worker keeps its last two crowd answers and nothing else', async () =>
   const store = storeOf(halls({ pattern: 'hhha' }));
   const scope = await workerScope();
   const at = (n) => ({ geometry: n, building: n, schedule: n });
+  // the main lane holds other counters, so none of these is the main pipeline's held result
+  assert.equal(scope.handle({ ...mainMessage(store), versions: at(9) })[0].ok, true);
   // three runs, one for each of three counters; the third pushes the first out
   for (const n of [1, 2, 3]) {
     const [answered] = scope.handle(crowdMessage(store, { generation: n, versions: at(n) }));
@@ -506,6 +517,132 @@ test('store.derived.crowd refuses until an engine is attached', async () => {
   assert.ok((await store.derived.crowd({ dayTypeId: store.project.dayTypes[0].id })).run);
   client.close();
   await assert.rejects(store.derived.crowd({ dayTypeId: store.project.dayTypes[0].id }), /engineFor\(store\)/);
+});
+
+// ------------------------------------------- the lane is never left wedged
+
+test('a replacing asking while one is with the worker: the first is null, the second is sent and settles with its own answer', async () => {
+  const store = storeOf(sampleSchool());
+  const worker = await standInWorker();
+  const client = createEngineClient(store, { worker: () => worker });
+  worker.load();
+  const a = client.crowd({ dayTypeId: 'dsample00a' });
+  worker.work(); // the main answer
+  await tick();
+  assert.equal(worker.count(CROWD_REQUEST), 1, 'day A is out');
+  const b = client.crowd({ dayTypeId: 'dsample00a', bellsId: 'bsample0er' });
+  await tick();
+  assert.equal(worker.count(CROWD_REQUEST), 1, 'the second waits while the first is with the worker');
+  worker.work(); // the answer for day A, which nobody is showing now
+  assert.equal(await a, null);
+  await tick();
+  assert.equal(worker.count(CROWD_REQUEST), 2, 'and once it is answered, the second goes');
+  assert.equal(worker.inbox[0].bellsId, 'bsample0er');
+  worker.work();
+  const answer = await b;
+  assert.equal(answer.where, 'worker');
+  assert.equal(answer.run.dayTypeId, 'dsample00a');
+  assert.equal(answer.run.bellsId, 'bsample0er');
+});
+
+test('a failed answer for a replaced asking also lets the lane go', async () => {
+  const store = storeOf(sampleSchool());
+  const worker = await standInWorker();
+  const client = createEngineClient(store, { worker: () => worker });
+  worker.load();
+  const a = client.crowd({ dayTypeId: 'dsample00a' });
+  worker.work();
+  await tick();
+  const b = client.crowd({ dayTypeId: 'dsample00b' });
+  await tick();
+  worker.work((answer) => {
+    if (answer.type === CROWD_ANSWER) Object.assign(answer, { ok: false, answer: undefined, error: 'It broke.' });
+  });
+  assert.equal(await a, null);
+  await tick();
+  assert.equal(worker.count(CROWD_REQUEST), 2);
+  worker.work();
+  assert.equal((await b).run.dayTypeId, 'dsample00b');
+});
+
+test('the counters move while one is with the worker, then a new asking: it is sent once the main answer comes, and settles', async () => {
+  // in either order: a worker answers in turn, but the lane must not count on it
+  for (const mainFirst of [false, true]) {
+    const store = storeOf(halls({ pattern: 'hhha' }));
+    const dayTypeId = store.project.dayTypes[0].id;
+    const worker = await standInWorker();
+    const client = createEngineClient(store, { worker: () => worker });
+    worker.load();
+    const a = client.crowd({ dayTypeId });
+    worker.work(); // the main answer
+    await tick();
+    assert.equal(worker.count(CROWD_REQUEST), 1);
+    store.apply(actions.renameFloor, { id: store.project.building.floors[0].id, name: 'Ground' });
+    const b = client.crowd({ dayTypeId });
+    await tick();
+    assert.deepEqual(worker.inbox.map((one) => one.type), [CROWD_REQUEST, REQUEST], 'the old crowd request, then the main one for the new counters');
+    if (mainFirst) worker.inbox.reverse();
+    worker.work(); // one of the two
+    await tick();
+    worker.work(); // and the other
+    await tick();
+    assert.equal(worker.count(CROWD_REQUEST), 2, 'the new asking goes (' + (mainFirst ? 'main answer first' : 'crowd answer first') + ')');
+    worker.work();
+    const answer = await b;
+    assert.deepEqual(answer.versions, versionsOf(store));
+    assert.ok(answer.run.changed.length > 0);
+    assert.deepEqual(await a, answer, 'the first asking, for the same day, is given the new answer');
+  }
+});
+
+test('a timeout for a replaced asking: the lane is the main thread\'s from then on, and the new day type settles there', async () => {
+  const release = holdOpen();
+  const store = storeOf(sampleSchool());
+  const worker = await standInWorker([CROWD_REQUEST]);
+  const client = createEngineClient(store, { worker: () => worker, readyWait: 40 });
+  worker.load();
+  const a = client.crowd({ dayTypeId: 'dsample00a' });
+  worker.work(); // the main answer
+  await tick();
+  assert.equal(worker.count(CROWD_REQUEST), 1);
+  worker.work(); // taken and ignored
+  const b = client.crowd({ dayTypeId: 'dsample00b' });
+  assert.equal(await a, null);
+  let answer;
+  try {
+    answer = await within(b, 5000, 'day B');
+  } finally {
+    release();
+  }
+  assert.equal(answer.where, 'main');
+  assert.equal(answer.run.dayTypeId, 'dsample00b');
+  assert.equal(worker.count(CROWD_REQUEST), 1, 'the worker was not asked again');
+  assert.equal(client.where, 'worker');
+});
+
+test('a crowd request for other versions leaves the main lane\'s held answer as it was', async () => {
+  const store = storeOf(halls({ pattern: 'hhha' }));
+  const scope = await workerScope();
+  const [main] = scope.handle(mainMessage(store));
+  assert.equal(main.answer.work.run, 1);
+  // a crowd request for counters the main lane does not hold
+  const later = storeOf(halls({ pattern: 'hhha' }));
+  later.apply(actions.renameFloor, { id: later.project.building.floors[0].id, name: 'Ground' });
+  const [other] = scope.handle(crowdMessage(later, { generation: 2 }));
+  assert.equal(other.ok, true);
+  assert.equal(other.answer.whole, true);
+  const fresh = crowdRun(createPipeline(), later.project, versionsOf(later), { dayTypeId: later.project.dayTypes[0].id });
+  assert.deepEqual(plain(other.answer.run), plain(fresh), 'worked out for its own versions');
+  // the main lane asked again for its counters: the held result, not a new run
+  const [again] = scope.handle(mainMessage(store, 3));
+  assert.equal(again.answer.work.run, 1, 'the main pipeline did not run again');
+  assert.ok(['places', 'buildingFindings', 'walks', 'findings'].every((part) => again.answer.kept.includes(part)), 'and every part is the one sent before');
+  assert.ok(again.answer.kept.includes('routes') && again.answer.kept.includes('crowd'));
+  // and a crowd request for its own counters is still packed against it, an unchanged transition the very object
+  const mirror = unpack(main.answer, null);
+  const [own] = scope.handle(crowdMessage(store, { generation: 4 }));
+  assert.equal(own.answer.whole, false);
+  assert.equal(unpackCrowd(own.answer, mirror).crowd.transitions[0], mirror.crowd.days[0].transitions[0]);
 });
 
 test('the main lane and the other lanes answer exactly as they did: pack and unpack are untouched', async () => {
