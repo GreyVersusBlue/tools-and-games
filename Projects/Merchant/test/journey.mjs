@@ -3933,7 +3933,9 @@ try {
           // the engine's own proposals are sent every season, so trips come home with goods bought on the road
           for (const p of st.desk) if (p.state === 'open') { const c = firstOpen(st, p.id); st = eng.choose(st, content80, p.id, c.id); if (c.ui === 'outfit-first') { const first = sheetPlan(st, content80, 'damascus'); if (first) st = eng.outfit(st, content80, first); } }
           const plan = st.log.some(e => e.kind === 'outfit') ? sheetPlan(st, content80, 'damascus') : null;
-          if (plan) { try { st = eng.outfit(st, content80, plan); } catch { /* a plan the house cannot afford this season */ } }
+          // MER-159: since MER-148 the engine's own proposal sells every good it carries, so no trip of its own came home with goods; this one is told to sell the
+          // first two goods only, and the rest come home unsold, which is the paper the case reads
+          if (plan) { try { st = eng.outfit(st, content80, { ...plan, sell: plan.sell.slice(0, 2) }); } catch { /* a plan the house cannot afford this season */ } }
           st = eng.endSeason(st, content80);
         }
         for (const p of st.desk) if (p.kind === 'return' && /\((worth|.+? would pay) /.test(p.data.account.find(x => x.label === 'Back home')?.text ?? '')   /* MER-159: the engine's row says "Cairo would pay N for them now" since MER-148 */) {
