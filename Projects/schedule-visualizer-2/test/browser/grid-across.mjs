@@ -863,6 +863,9 @@ test('a second Enter, or the blur after a commit, stages the edit once; and a pa
   });
   await stagedIs(page, true);
   assert.equal(await bar(page), 'Not applied yet: 1 group changed');
+  // (a second commit would work the same edit out again against what the first left, find it already so,
+  // and replace the line that says what the edit did with "Nothing changed")
+  assert.match(await status(page), /^7A moves from 102 to 101 in Period 4 on A Day\./, 'the line still says what the edit did');
   await ctrlZ(page);
   await stagedIs(page, false);
   assert.equal(await held(page, slot('rsample101', DAY_A, 3)), '', 'one Ctrl+Z took back the one step: it was not staged twice');
