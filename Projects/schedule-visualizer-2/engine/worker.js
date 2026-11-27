@@ -123,6 +123,9 @@
 //         for these very versions (and `whole` is not true), whole otherwise.
 //         The worker keeps its last two answers, by the three counters, the
 //         day type and the bells id, and nothing else.
+//         When the main pipeline holds a result for other versions, the run
+//         is worked out on a pipeline of its own that is then let go: the
+//         main lane's held result is never replaced by this lane.
 //
 // Five lanes have a pipeline each. The scenario, suggestion and kept
 // pipelines share the main one's route cache; the other-building pipeline
@@ -410,6 +413,11 @@ export function createPipeline(options) {
     // first run), for a lane that has to read the result's routes by it
     graph() {
       return held ? held.graph : null;
+    },
+    // the versions of the held result (null before the first run), for a
+    // lane that must not replace it
+    heldVersions() {
+      return held ? held.result.versions : null;
     },
     // Forget everything: the next run works it all out. A cache handed in
     // is the pipeline's that made it, and stays as it is.
@@ -799,7 +807,13 @@ if (scope) {
         const stamp = stampOfVersions(message.versions);
         const key = stamp === null ? null : stamp + '|' + message.dayTypeId + '|' + (bellsId === null ? '' : bellsId);
         const found = key === null ? undefined : crowdKept.find((one) => one.key === key);
-        const run = found ? found.run : crowdRun(pipeline, message.project, message.versions, { dayTypeId: message.dayTypeId, bellsId });
+        // the main lane holds a result for other versions: these are worked
+        // out on a pipeline of their own, with a route cache of its own, and
+        // let go, so the main lane's held result and its cache are never
+        // replaced by this lane (the answer goes whole: `sent` is not for them)
+        const held = pipeline.heldVersions();
+        const source = held !== null && stampOfVersions(held) !== stamp ? createPipeline() : pipeline;
+        const run = found ? found.run : crowdRun(source, message.project, message.versions, { dayTypeId: message.dayTypeId, bellsId });
         if (!found && key !== null) crowdKept = crowdKept.concat([{ key, run }]).slice(-2);
         const answer = packCrowd(run, message.versions, sent, message.whole === true);
         scope.postMessage({ type: CROWD_ANSWER, generation: message.generation, ok: true, answer });

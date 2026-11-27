@@ -396,13 +396,19 @@ export function createEngineClient(store, options) {
 
   // The crowd lane's job has been with the worker for READY_WAIT_MS and not
   // answered: this worker does not know the message. Work it out here, and
-  // ask nothing of the worker's crowd lane again.
+  // ask nothing of the worker's crowd lane again. A job a newer asking has
+  // replaced is not worked out, but the lane is let go all the same and the
+  // newer one goes, here.
   function crowdTimedOut(job) {
     const lane = lanes.crowd;
     job.timer = null;
-    if (closed || job.settled || lane.flying !== job.generation) return;
+    if (closed || lane.flying !== job.generation) return;
     lane.flying = null;
     lane.noWorker = true;
+    if (job.settled) {
+      pumpLane(lane);
+      return;
+    }
     if (dropStale(lane, job)) return;
     runLaneHere(lane, job);
   }
@@ -594,15 +600,19 @@ export function createEngineClient(store, options) {
 
   // The worker's crowd answer, put together with the main answer held for the
   // same counters. An answer that cannot be (the worker packed it against a
-  // result this side does not hold) is asked for again whole, once.
+  // result this side does not hold) is asked for again whole, once. Every
+  // answer, for a job still waiting or not, failed or not, lets the lane go
+  // and sends what waits behind it.
   function onCrowdMessage(job, message) {
     const lane = lanes.crowd;
     if (!job) {
       lane.stats.dropped += 1;
+      pumpLane(lane);
       return;
     }
     if (message.ok !== true) {
       laneFail(lane, job, new Error(message.error));
+      pumpLane(lane);
       return;
     }
     const run = unpackCrowd(message.answer, job.main);
