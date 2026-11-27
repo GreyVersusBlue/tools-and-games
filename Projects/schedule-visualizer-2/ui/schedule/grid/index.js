@@ -2,6 +2,11 @@
 // under a heading for each grade; columns are the periods of each day type.
 // What a tab of the schedule is, is said at the top of ui/schedule/index.js.
 //
+// The rows are the groups, the teachers or the rooms (SV2-155). All three are
+// edited: a slot of the Teachers or Rooms rows is turned into the groups' own
+// slots by engine/grid-across.js, so one bar, one Apply and one undo step
+// cover the three together.
+//
 // Edits here are staged: nothing reaches the schedule until Apply, which is
 // one step for undo (engine/actions.js applyGridEdits). The bar across the
 // top says what is waiting. Staged edits are kept while the page is open
@@ -19,14 +24,14 @@ import { choice } from '../../components/choice.js';
 import { openMenu } from '../../components/menu.js';
 import { isEditing, IS_MAC } from '../../components/shortcuts.js';
 import { periodWords, list } from '../../components/words.js';
-import { applyGridEdits } from '../../../engine/actions.js';
+import { applyGridEdits, makeOwnCopy } from '../../../engine/actions.js';
 import { ownDayTypes, isOwnCopy, effectiveDayType } from '../../../engine/day-types.js';
 import { allRooms } from '../../../engine/schema.js';
 import { fill, apply, button, keyed, emptyState, roomLabel } from '../common.js';
 import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, touch, discard, remember, takeBack, forgetSteps, stageSlot, stageField, stageAdd, stageRemove, stageKeep } from './staged.js';
 import { sheetModel, namesOf, newGroup } from './model.js';
 import { sheet as makeSheet, cellKey } from './sheet.js';
-import { teacherTable, roomTable } from './readonly.js';
+import { acrossModel, runAcross, wordsFor, plain } from './across.js';
 import { printButtons, buttonLabel } from '../../prints/index.js';
 import { readGridDay, writeGridDay } from '../../../storage/device.js';
 import { printButton } from '../../components/print-preview.js';
@@ -43,7 +48,7 @@ export const GRID_KEYS = [
   { id: 'grid-escape', does: 'Leave the slot as it was', shown: 'Esc' },
   { id: 'grid-copy', does: 'Copy the selected slots, for the grid or a spreadsheet', shown: MOD + 'C' },
   { id: 'grid-paste', does: 'Paste slots from the grid or a spreadsheet', shown: MOD + 'V' },
-  { id: 'grid-fill', does: 'Fill down from the top row of the selection', shown: MOD + 'D' },
+  { id: 'grid-fill', does: 'Fill down from the top row of the selection, in the Groups rows (the Teachers and Rooms rows say it is not for them)', shown: MOD + 'D' },
   { id: 'grid-clear', does: 'Empty the selected slots', shown: 'Delete' },
 ];
 
@@ -72,27 +77,27 @@ function loadSheet() {
 // on screen.
 let live = null;
 function current() {
-  return live && live.element.isConnected && live.rows() === 'groups' ? live : null;
+  return live && live.element.isConnected ? live : null;
 }
 function watchPage() {
   if (watchPage.done) return;
   watchPage.done = true;
   document.addEventListener('copy', (event) => {
     const grid = current();
-    if (!grid || !grid.sheet.has(document.activeElement)) return;
-    const text = grid.sheet.copy();
+    if (!grid || !grid.sheet().has(document.activeElement)) return;
+    const text = grid.sheet().copy();
     if (text === null) return;
     event.clipboardData.setData('text/plain', text);
     event.preventDefault();
   });
   document.addEventListener('cut', (event) => {
     const grid = current();
-    if (!grid || !grid.sheet.has(document.activeElement)) return;
-    const text = grid.sheet.copy();
+    if (!grid || !grid.sheet().has(document.activeElement)) return;
+    const text = grid.sheet().copy();
     if (text === null) return;
     event.clipboardData.setData('text/plain', text);
     event.preventDefault();
-    grid.sheet.clear();
+    grid.sheet().clear();
   });
   document.addEventListener('paste', (event) => {
     const grid = current();
@@ -100,9 +105,9 @@ function watchPage() {
     const active = document.activeElement;
     // on a cell; or anywhere in an empty grid that is not a field, since
     // there is no cell there yet to be on
-    if (!grid.sheet.has(active) && !(grid.empty() && !isEditing(active) && !document.querySelector('dialog[open]'))) return;
+    if (!grid.sheet().has(active) && !(grid.empty() && !isEditing(active) && !document.querySelector('dialog[open]'))) return;
     event.preventDefault();
-    grid.sheet.paste(event.clipboardData.getData('text/plain'));
+    grid.sheet().paste(event.clipboardData.getData('text/plain'));
   });
   // (A phone turned on its side crosses the width at which columns hide. The
   // section draws its tab again then, ../index.js, and the sheet puts the
@@ -122,6 +127,8 @@ export function mount(env) {
   // while the page is open, like the cursor.
   if (!view.grid) view.grid = { rows: 'groups', at: null, anchor: null, fields: false, day: null, dayName: null, gone: null };
   const state = view.grid;
+  // the cursor of each of the other two sets of rows, kept like the Groups one
+  if (!state.across) state.across = { teachers: { at: null, anchor: null, fields: false }, rooms: { at: null, anchor: null, fields: false } };
   // this device's Day type, read once a visit; the page's when it keeps none
   try {
     const kept = readGridDay();
@@ -133,6 +140,12 @@ export function mount(env) {
   const shownIds = (project) => {
     const day = gridDayOf(project, state.day);
     return day === 'all' ? ownDayTypes(project).map((dayType) => dayType.id) : [day];
+  };
+  // The day types the Teachers and Rooms rows show: every one under All, a
+  // day type that follows another greyed, since its slots are the other's.
+  const shownAcross = (project) => {
+    const day = gridDayOf(project, state.day);
+    return day === 'all' ? project.dayTypes.map((dayType) => dayType.id) : [day];
   };
   // The Day type this device chose can stop being one: deleted, or made the
   // same as another day type. The choice is then cleared (here and on the
@@ -177,7 +190,14 @@ export function mount(env) {
 
   const projectId = () => ctx.store.project.id;
 
+  // A sentence is text, or a list of text and { name } (across.js): what a
+  // user typed is drawn as it was typed, never as markup.
   function say(text) {
+    if (Array.isArray(text)) {
+      status.replaceChildren(...text.map((part) => (typeof part === 'string' ? part : h('bdi', null, part.name))));
+      ctx.announce(plain(text));
+      return;
+    }
     status.textContent = text;
     ctx.announce(text);
   }
@@ -197,8 +217,47 @@ export function mount(env) {
     env.render();
   }
 
-  const sheet = makeSheet({
-    view: state,
+  // The sentence for an edit the schedule would not take while the draft
+  // stands refused: the bar's own (an edit is worked out against what the
+  // draft leaves, which a refused draft leaves unknown).
+  function whileRefused(staged) {
+    return 'Not applied yet: ' + staged.text + '. ' + staged.refusal + ' Fix that, or Discard, before changing the schedule here.';
+  }
+
+  // One edit of the Teachers or Rooms rows: `cells` (across.js) worked out by
+  // engine/grid-across.js against the schedule as the staged edits leave it,
+  // each after the ones before it, and staged as ONE step (`stage` remembers
+  // once), so one Ctrl+Z takes back all of it and one Apply is one undo step
+  // with the Groups rows' edits. `how`: 'edit' (typed, the field is still
+  // open to be fixed when it is refused), 'paste' or 'delete'. Returns
+  // { ok, why }.
+  function across(cells, how, extra) {
+    const project = ctx.store.project;
+    const staged = preview(project, project.id, ctx);
+    const refused = (why) => {
+      // a field open under the slot says it there; the rest say it on the line
+      if (how !== 'edit') say(why);
+      return { ok: false, why };
+    };
+    if (staged.refusal) return refused(whileRefused(staged));
+    const block = runAcross(staged.project, cells);
+    if (block.refused) return refused(block.refused);
+    const n = block.slots.length;
+    const count = (k) => k + (k === 1 ? ' slot' : ' slots');
+    const lead = how === 'paste' ? 'Pasted ' + count(cells.length) + '. ' : how === 'delete' ? 'Emptied ' + count(cells.length) + '. ' : '';
+    const notes = extra && extra.skipped > 0 ? ' ' + count(extra.skipped) + ' of the block fell on the name or the duties and ' + (extra.skipped === 1 ? 'was' : 'were') + ' left out.' : '';
+    const run = extra && extra.runOff > 0 ? ' ' + count(extra.runOff) + ' ran past the table’s end and ' + (extra.runOff === 1 ? 'was' : 'were') + ' left out.' : '';
+    if (n === 0) {
+      say(lead + 'Nothing changed: it is already so.' + notes + run);
+      return { ok: true, why: null, staged: false };
+    }
+    const words = wordsFor(staged.project, block, cells, how === 'edit' ? 3 : 4);
+    const said = [lead].concat(words || ['Changed ' + count(n) + '.'], [notes + run, ' It is not applied yet.']);
+    stage(block.slots.map(({ groupId, dayTypeId, period, fields }) => ({ op: 'slot', groupId, dayTypeId, period, fields })), said);
+    return { ok: true, why: null, staged: true };
+  }
+
+  const shared = {
     ids: ctx.ids,
     stage,
     say,
@@ -210,6 +269,17 @@ export function mount(env) {
       env.render();
       return true;
     },
+    makeOwn(dayType) {
+      if (apply(env, makeOwnCopy, { dayTypeId: dayType.id })) say(dayType.name + ' now has classes of its own.');
+    },
+  };
+  const sheets = {
+    teachers: makeSheet({ ...shared, role: 'teachers', view: state.across.teachers, edit: across }),
+    rooms: makeSheet({ ...shared, role: 'rooms', view: state.across.rooms, edit: across }),
+  };
+  const sheet = makeSheet({
+    ...shared,
+    view: state,
     remove(row) {
       const id = projectId();
       remember(id);
@@ -227,6 +297,8 @@ export function mount(env) {
       env.render();
     },
   });
+  sheets.groups = sheet;
+  const activeSheet = () => sheets[state.rows];
 
   function add() {
     const colours = model.rows.filter((row) => !row.removed).map((row) => row.group);
@@ -246,7 +318,7 @@ export function mount(env) {
     forgetSteps(project.id);
     say('Applied to the schedule: ' + staged.text + '.');
     ctx.toast({ text: 'Applied to the schedule: ' + staged.text + '.', action: { label: 'Undo', run: ctx.undo } });
-    env.render(sheet.keyOfCursor());
+    env.render(activeSheet().keyOfCursor());
   }
 
   async function discardAll(opener) {
@@ -264,7 +336,7 @@ export function mount(env) {
     discard(project.id);
     forgetSteps(project.id);
     say('Discarded the changes in the grid.');
-    env.render(sheet.keyOfCursor());
+    env.render(activeSheet().keyOfCursor());
   }
 
   // ---------------------------------------------------------------- bulk actions
@@ -372,7 +444,7 @@ export function mount(env) {
       },
     });
     for (const input of rows.element.querySelectorAll('input')) keyed(input, 'grid-rows:' + input.value);
-    const tools = [daySelect(), h('span', { class: 'grd-toolbar__label', id: labelId }, 'Rows'), rows.element];
+    const tools = [daySelect(), h('span', { class: 'grd-toolbar__label', id: labelId }, 'Rows:'), rows.element];
     if (state.rows === 'groups' && model.rows.length > 0) {
       const bulk = button('Bulk actions', (opener) => openMenu({ items: bulkItems(opener), anchor: opener, label: 'Bulk actions' }), { key: 'grid-bulk', action: 'bulk' });
       bulk.setAttribute('aria-haspopup', 'menu');
@@ -449,13 +521,13 @@ export function mount(env) {
       if (staged.project.teachers.length === 0) {
         return emptyState('No teachers yet. With the rows set to Teachers, the grid shows each teacher’s day. Add teachers in the Teachers tab first.', button('Go to Teachers', () => ctx.navigate('#schedule/teachers'), { primary: true, key: 'grid-go' }), 'grid-teachers');
       }
-      return [h('p', { class: 'sch-hint' }, 'Each teacher’s day, for reading: the groups they have each ' + words.one + ', and where. To change a room, set the rows to Groups.'), teacherTable(staged.project, model.findings, shownIds(staged.project))];
+      return null;
     }
     if (state.rows === 'rooms') {
       if (allRooms(staged.project).length === 0) {
         return emptyState('No rooms yet. With the rows set to Rooms, the grid shows who is in each room every ' + words.one + '. Draw rooms in the building first.', button('Go to the building', () => ctx.navigate('#building'), { primary: true, key: 'grid-go' }), 'grid-rooms');
       }
-      return [h('p', { class: 'sch-hint' }, 'Each room’s day, for reading: the groups in it each ' + words.one + '. To change a room, set the rows to Groups.'), roomTable(staged.project, model.findings, shownIds(staged.project))];
+      return null;
     }
     if (model.rows.length === 0) {
       return [
@@ -469,6 +541,14 @@ export function mount(env) {
   // Above the table: under it is where every toast lands.
   function keyHint() {
     // the keys are left out on a narrow screen (grid.css); Help has them
+    if (state.rows !== 'groups') {
+      const room = state.rows === 'rooms';
+      return h('p', { class: 'sch-hint grd-hint' },
+        h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace who is ' + (room ? 'in the room' : 'with the teacher') + '; Enter or F2 edits the slot; Escape leaves it as it was. Shift with the arrows selects a block. '
+          + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; Delete takes ' + (room ? 'the class out of the room' : 'the class away from the teacher') + '. '
+          + 'Typing replaces who is ' + (room ? 'in the room' : 'there') + '; to add a class, type both: 7-3, 7-1. Fill down is for Groups rows. '),
+        'Group names are typed as they are in the Groups rows. A dotted line under a name is a group the schedule does not have.');
+    }
     return h('p', { class: 'sch-hint grd-hint' },
       h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace a slot; Enter or F2 edits it; Escape leaves it as it was. Shift with the arrows selects a block. '
         + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; ' + MOD + 'D fills down; Delete empties. '),
@@ -480,20 +560,29 @@ export function mount(env) {
   // it is drawn again.
   const above = h('div', { class: 'grd-above' });
   const below = h('div', { class: 'grd-below' });
-  element.append(above, sheet.element, below, status);
+  element.append(above, sheet.element, sheets.teachers.element, sheets.rooms.element, below, status);
 
   function draw(project) {
     settleDay(project);
     const staged = preview(project, project.id, ctx);
     const pending = gridEditsPending(project.id);
     model = sheetModel(project, staged.project, draftFor(project.id), shownIds(staged.project));
-    const sheetShown = state.rows === 'groups' && model.rows.length > 0;
-    sheet.element.hidden = !sheetShown;
-    element.dataset.rows = state.rows;
+    const rows = state.rows;
+    const hasAcross = rows === 'teachers' ? staged.project.teachers.length > 0 : rows === 'rooms' ? allRooms(staged.project).length > 0 : false;
+    const sheetShown = rows === 'groups' ? model.rows.length > 0 : hasAcross;
+    for (const [name, each] of Object.entries(sheets)) {
+      each.element.hidden = !(sheetShown && name === rows);
+      // (the Groups sheet is drawn even with no group in it: a block pasted
+      // there is what makes the first ones)
+      if (name !== rows) each.release();
+    }
+    element.dataset.rows = rows;
     element.dataset.staged = String(pending);
     element.dataset.fields = state.fields === true ? 'shown' : 'hidden';
-    sheet.draw(model);
-    const same = sheetShown && gridDayOf(project, state.day) === 'all' ? project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id)) : [];
+    if (sheetShown || rows === 'groups') {
+      sheets[rows].draw(rows === 'groups' ? model : acrossModel(rows, project, staged.project, model.findings, shownAcross(staged.project), pending));
+    }
+    const same = rows === 'groups' && sheetShown && gridDayOf(project, state.day) === 'all' ? project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id)) : [];
     fill(above,
       toolbar(),
       state.gone ? h('p', { class: 'sch-hint grd-gone' }, state.gone) : null,
@@ -501,11 +590,11 @@ export function mount(env) {
       pending ? bar(staged) : null,
       same.length === 0 ? null : h('p', { class: 'sch-hint grd-same' }, list(same.map((dayType) => dayType.name + ' is the same as ' + effectiveDayType(project, dayType.id).name)) + ', so ' + (same.length === 1 ? 'it has' : 'they have') + ' no columns of ' + (same.length === 1 ? 'its' : 'their') + ' own here. Change that on the Day tab.'));
     fill(below, body(project, staged));
-    if (editNext && sheetShown) sheet.startEditing(editNext, 'name');
+    if (editNext && sheetShown && rows === 'groups') sheet.startEditing(editNext, 'name');
     editNext = null;
   }
 
-  live = { element, sheet, rows: () => state.rows, empty: () => Boolean(model) && model.rows.length === 0 };
+  live = { element, sheet: activeSheet, rows: () => state.rows, empty: () => state.rows === 'groups' && Boolean(model) && model.rows.length === 0 };
   draw(ctx.store.project);
 
   // Edits staged before the tab was left are still here: say so. (After the

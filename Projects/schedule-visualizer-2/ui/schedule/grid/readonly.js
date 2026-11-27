@@ -1,38 +1,28 @@
-// The same schedule read from the other two sides: one row per teacher, or
-// one row per room, a column per period. These are for reading. A cell says
-// which groups are there (and, for a teacher, in which room).
+// The schedule read from the other two sides: one row per teacher, or one row
+// per room, a slot per period. This file only works out what each slot says,
+// as plain data; the sheet (sheet.js) draws it and, since SV2-155, edits it
+// (across.js says how). A slot says which groups are there (and, for a
+// teacher, in which room).
 //
-// A cell carries the findings of the groups in it, for that period of that
-// day type: the same findings, by the same key, that the Groups grid marks
-// its cells from (model.js `findings`), so the three tables mark the same
-// places. A marked cell has the finding's shape, its sentence as a title for
-// a pointer that rests on it, and can be reached without one: with the focus
-// on it the sentence is drawn beside the cell (grid.css) and is the cell's
-// description, from a line under the table that `aria-describedby` names.
-// The focus is the keyboard's, or a click's, or a tap's: a finger has no
-// title to rest on, so a tap on a mark is how a phone reads why it is there
-// (DECISIONS 2026-10-12 10:58).
+// A slot carries the findings of the groups in it, for that period of that
+// day type: the same findings, by the same key, that the Groups rows mark
+// their slots from (model.js `findings`), so the three orientations mark the
+// same places.
 //
-// The marks of a table are one Tab stop between them, however many there are:
-// Tab goes to the mark last visited (the first, to begin with), and from
-// there Right and Left go to the next and the last mark in reading order
-// (the other way about where the page reads right to left, so the arrow
-// still goes the way it points), Down and Up to the nearest mark in a row
-// below or above, Home and End to the first and the last. A mark has a `data-key`, so the focus is put back
-// on it when the tab is drawn again (ui/schedule/index.js).
+// A day type that follows another has no classes of its own: its slots are
+// the ones of the day type it copies (the effective day type), and the sheet
+// greys them.
 
-import { h, uid } from '../../components/dom.js';
-import { ownDayTypes } from '../../../engine/day-types.js';
-import { periodName } from '../../../engine/bells.js';
+import { ownDayTypes, effectiveDayType } from '../../../engine/day-types.js';
 import { teacherDays, isFree } from '../../../engine/teacher-day.js';
 import { dutiesByTeacher, schoolMarkFor } from '../../../engine/marks.js';
 import { meetingSlots } from '../../../engine/runs.js';
 import { dutyNamed, sometimesWords, MARK_AS_NAMED } from '../../../engine/checks.js';
 import { allRooms, findRoom, resolveSlotRoom } from '../../../engine/schema.js';
 import { roomName } from '../../../engine/findings.js';
-import { collator, SEVERITY_WORDS } from '../common.js';
+import { collator } from '../common.js';
 import { slotKeyOf } from './staged.js';
-import { findingWords, worstFirst } from './words.js';
+import { worstFirst } from './words.js';
 
 // The findings on the slots of these groups, each once, worst first.
 function findingsOf(findings, groupIds, dayTypeId, period) {
@@ -43,269 +33,91 @@ function findingsOf(findings, groupIds, dayTypeId, period) {
   return worstFirst(Array.from(found.values()));
 }
 
-// Which mark a key goes to from mark `from`: an index into `marks`, each
-// { cell, r, c } in reading order; `from` itself when there is none that way;
-// null for a key that is not one of these.
-function markFor(marks, from, key, rtl) {
-  const at = marks[from];
-  const next = rtl ? 'ArrowLeft' : 'ArrowRight';
-  const last = rtl ? 'ArrowRight' : 'ArrowLeft';
-  if (key === next) return Math.min(from + 1, marks.length - 1);
-  if (key === last) return Math.max(from - 1, 0);
-  if (key === 'Home') return 0;
-  if (key === 'End') return marks.length - 1;
-  if (key !== 'ArrowDown' && key !== 'ArrowUp') return null;
-  const down = key === 'ArrowDown';
-  let best = from;
-  marks.forEach((mark, index) => {
-    if (down ? mark.r <= at.r : mark.r >= at.r) return;
-    const near = [Math.abs(mark.r - at.r), Math.abs(mark.c - at.c)];
-    const held = best === from ? null : [Math.abs(marks[best].r - at.r), Math.abs(marks[best].c - at.c)];
-    if (!held || near[0] < held[0] || (near[0] === held[0] && near[1] < held[1])) best = index;
-  });
-  return best;
-}
-
-// Put the sentence of the mark in focus where it can be read, inside the
-// frame the table scrolls in: under the cell from its left edge, moved along
-// when that would run past the frame's right; over the cell when there is no
-// room under it; and when there is room neither way (a table of a row or
-// two), against the frame's bottom, over part of the cell. A sentence taller
-// than the frame (two findings with long names, in a table of one row) is
-// made as wide as the frame lets it be, which makes it shorter; and if it is
-// still the taller, the frame is given the height to hold it for as long as
-// the mark has the focus. grid.css draws it (a ::after) and reads `--why-x`,
-// `--why-y` and `--why-w`, from the cell's own corner.
-function placeWhy(cell, frame) {
-  cell.style.removeProperty('--why-x');
-  cell.style.removeProperty('--why-y');
-  cell.style.removeProperty('--why-w');
-  frame.style.removeProperty('min-height');
-  const drawn = getComputedStyle(cell, '::after');
-  if (drawn.content === 'none') return;
-  let height = parseFloat(drawn.height);
-  if (height > frame.clientHeight) {
-    cell.style.setProperty('--why-w', Math.max(0, frame.clientWidth - 2) + 'px');
-    height = parseFloat(drawn.height);
-    if (height > frame.clientHeight) frame.style.minHeight = Math.ceil(height + frame.offsetHeight - frame.clientHeight) + 'px';
-  }
-  const width = parseFloat(drawn.width);
-  const at = cell.getBoundingClientRect();
-  const around = frame.getBoundingClientRect();
-  const left = around.left + frame.clientLeft;
-  const top = around.top + frame.clientTop;
-  const bottom = top + frame.clientHeight;
-  const x = Math.max(left, Math.min(at.left + cell.clientLeft, left + frame.clientWidth - width));
-  let y = at.bottom;
-  if (y + height > bottom) y = at.top - height >= top ? at.top - height : Math.max(top, bottom - height);
-  // a cell that is itself past the frame's foot or head (the window lost
-  // height under it, the frame was scrolled away) keeps its sentence at the
-  // nearest edge inside
-  y = Math.max(top, Math.min(y, bottom - height));
-  cell.style.setProperty('--why-x', Math.round(x - at.left - cell.clientLeft) + 'px');
-  cell.style.setProperty('--why-y', Math.round(y - at.top - cell.clientTop) + 'px');
-}
-
-// rows: [{ id, name, free, cell(dayTypeId, period) → { text, findings, duty },
-// extra(dayTypeId, which) → text }]
-// `dayTypeIds`: the day types shown (the grid's Day type choice); left out,
-// every day type that is its own copy. `extras`: columns after a day type's
-// periods ('before', 'after': a teacher's duties before and after school,
-// DESIGN 11.5), each { id, label }. `duty` on a cell is a duty or a mark that
-// takes the period: its words are drawn in italic.
-function shell(project, caption, first, rows, dayTypeIds, extras) {
-  const after = extras || [];
-  const days = ownDayTypes(project).filter((dayType) => !Array.isArray(dayTypeIds) || dayTypeIds.includes(dayType.id));
-  const periods = project.settings.periods;
-  // one line for each finding, however many cells it is on
-  const lines = new Map();
-  const lineFor = (finding) => {
-    if (!lines.has(finding.id)) lines.set(finding.id, h('p', { id: uid('grid-why') }, findingWords([finding])));
-    return lines.get(finding.id).id;
-  };
-  const marks = [];
-  const cellOf = (row, r, dayTypeId, c, period) => {
-    const { text, findings, duty } = row.cell(dayTypeId, period);
-    const cell = h('td', { class: 'grd-cell grd-cell--read' + (text === '' ? ' is-free' : '') + (duty ? ' is-duty' : '') }, text === '' ? h('span', { class: 'vh' }, row.free) : text);
-    if (findings.length === 0) return cell;
-    const worst = findings[0].severity;
-    const words = findingWords(findings);
-    cell.classList.add('is-marked');
-    cell.dataset.severity = worst;
-    cell.dataset.why = words;
-    cell.title = words;
-    // the first mark is the table's Tab stop until another is visited
-    cell.tabIndex = marks.length === 0 ? 0 : -1;
-    cell.dataset.key = 'grid-read:' + row.id + ':' + dayTypeId + ':' + period;
-    marks.push({ cell, r, c });
-    cell.setAttribute('aria-describedby', findings.map(lineFor).join(' '));
-    cell.append(
-      h('span', { class: 'grd-cell__mark sch-mark--' + worst, 'aria-hidden': 'true' }, SEVERITY_WORDS[worst].glyph),
-      h('span', { class: 'vh' }, ' (' + SEVERITY_WORDS[worst].one + ')'));
-    return cell;
-  };
-  const table = h('table', { class: 'grd-table grd-table--read' },
-    h('caption', { class: 'vh' }, caption),
-    h('thead', null,
-      h('tr', null,
-        h('th', { scope: 'col', rowspan: '2', class: 'grd-head grd-head--name' }, first),
-        days.map((dayType) => h('th', { scope: 'colgroup', colspan: String(periods + after.length), class: 'grd-head grd-head--day' }, dayType.name))),
-      h('tr', null, days.map(() => [Array.from({ length: periods }, (unused, period) => h('th', {
-        scope: 'col',
-        class: 'grd-head grd-head--period' + (period === 0 ? ' grd-head--first' : ''),
-      }, periodName(project.settings, period))), after.map((extra) => h('th', { scope: 'col', class: 'grd-head grd-head--period grd-head--extra' }, extra.label))]))),
-    h('tbody', null, rows.map((row, r) => h('tr', { class: 'grd-row' },
-      h('th', { scope: 'row', class: 'grd-cell grd-cell--name' }, h('span', { class: 'grd-cell__text' }, row.name)),
-      days.map((dayType, d) => [
-        Array.from({ length: periods }, (unused, period) => cellOf(row, r, dayType.id, d * (periods + after.length) + period, period)),
-        after.map((extra) => {
-          const words = row.extra(dayType.id, extra.id);
-          return h('td', { class: 'grd-cell grd-cell--read is-duty' + (words === '' ? ' is-free' : '') }, words === '' ? h('span', { class: 'vh' }, 'No duty') : words);
-        }),
-      ])))));
-  const markOf = (node) => marks.findIndex((mark) => mark.cell === node);
-  // a region that scrolls sideways has to be reachable by keyboard
-  const frame = h('div', { class: 'grd-scroll', tabindex: '0', role: 'region', 'aria-label': caption }, table, h('div', { class: 'vh grd-why' }, Array.from(lines.values())));
-  // the mark that has the focus, or null
-  const inFocus = () => {
-    const at = markOf(document.activeElement);
-    return at === -1 ? null : marks[at].cell;
-  };
-  // the Tab stop goes with the focus, however the focus got there
-  table.addEventListener('focusin', (event) => {
-    if (markOf(event.target) === -1) return;
-    for (const mark of marks) mark.cell.tabIndex = mark.cell === event.target ? 0 : -1;
-    placeWhy(event.target, frame);
-  });
-  table.addEventListener('focusout', () => frame.style.removeProperty('min-height'));
-  // A click or a tap on a mark gives it the focus, and with it the sentence.
-  // (A browser does that itself for most pointers; not every one does for a
-  // finger on a cell that is not a control.)
-  table.addEventListener('click', (event) => {
-    const cell = event.target.closest ? event.target.closest('.is-marked') : null;
-    if (cell && markOf(cell) !== -1 && document.activeElement !== cell) cell.focus();
-  });
-  // The sentence is placed by measurement, so it is placed again when what
-  // was measured moves: the frame scrolled, the frame changed width (the
-  // inspector folded), or the window changed size. A window that changes
-  // height alone moves it too: the frame is 70vh at its tallest, and a
-  // sentence under the last row was placed against the frame's old foot.
-  // `data-placed` is the window the last placing was for; a test waits on it.
-  // and `data-placings` counts them.
-  let placings = 0;
-  const again = () => {
-    const cell = inFocus();
-    if (cell) placeWhy(cell, frame);
-    placings += 1;
-    frame.dataset.placings = String(placings);
-    frame.dataset.placed = window.innerWidth + 'x' + window.innerHeight;
-  };
-  frame.dataset.placings = '0';
-  frame.dataset.placed = window.innerWidth + 'x' + window.innerHeight;
-  frame.addEventListener('scroll', again, { passive: true });
-  let observer = null;
-  if (typeof ResizeObserver === 'function') {
-    let width = null;
-    observer = new ResizeObserver(() => {
-      // its own change of height (made to hold a tall sentence) is not news
-      if (frame.clientWidth === width) return;
-      width = frame.clientWidth;
-      again();
-    });
-    observer.observe(frame);
-  }
-  // the window's own change of size: one listener for every frame (below)
-  placeOnResize(frame, again, observer);
-  table.addEventListener('keydown', (event) => {
-    const from = markOf(event.target);
-    if (from === -1 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-    const to = markFor(marks, from, event.key, getComputedStyle(table).direction === 'rtl');
-    if (to === null) return;
-    event.preventDefault();
-    marks[to].cell.focus();
-  });
-  return frame;
-}
-
-// The frames on the page that place a sentence when the window changes
-// size, and the one window listener that tells them. A table is drawn again
-// at every change to the project, so a listener of its own each time would
-// be one more at every drawing; a frame that has left the page is let go
-// here, at the next drawing or the next resize, whichever comes first.
-const placers = new Map();
-let listening = false;
-function letGo() {
-  for (const [frame, placer] of placers) {
-    if (frame.isConnected) continue;
-    if (placer.observer) placer.observer.disconnect();
-    placers.delete(frame);
-  }
-}
-function placeOnResize(frame, again, observer) {
-  letGo();
-  placers.set(frame, { again, observer });
-  if (listening) return;
-  listening = true;
-  window.addEventListener('resize', () => {
-    letGo();
-    for (const placer of placers.values()) placer.again();
-  });
-}
-
 function groupNames(project, ids) {
   return ids.map((id) => (project.groups.find((group) => group.id === id) || { name: '' }).name);
 }
 
+// What the Teachers rows call a room: its number, or its own words.
+export function roomNumber(project, roomId) {
+  const room = roomId ? findRoom(project, roomId) : null;
+  return room ? (room.number.trim() === '' ? roomName(room) : room.number) : 'a room not in the building';
+}
+
+// The rows of the day types asked for (ids; a follower's included) come back
+// as { first, free, rows, extras }:
+//   rows    [{ id, kind, name, free, cell(dayTypeId, period), extra(dayTypeId, which) }]
+//           cell → { text, findings, duty, groupIds, groupNames, taught }
+//           `taught` is a teacher's groups there as { groupId, roomId }; the
+//           groups of a room's slot are in `groupIds`
+//   extras  [{ id, label }] the columns after a day type's periods ('Before',
+//           'After': a teacher's duties before and after school, DESIGN 11.5)
+function effectiveIds(project, dayTypeIds) {
+  const wanted = Array.isArray(dayTypeIds) ? dayTypeIds : ownDayTypes(project).map((dayType) => dayType.id);
+  return new Set(wanted.map((id) => effectiveDayType(project, id).id));
+}
+
 // One row per teacher: "7-1 in 204". `findings` is the grid model's: slot key
-// to the findings on that slot. `dayTypeIds` as shell's.
-export function teacherTable(project, findings, dayTypeIds) {
-  const own = ownDayTypes(project);
-  const days = new Map(own.map((dayType) => [dayType.id, teacherDays(project, dayType.id)]));
-  const duties = new Map(own.map((dayType) => [dayType.id, dutiesByTeacher(project, dayType.id)]));
-  const shown = own.filter((dayType) => !Array.isArray(dayTypeIds) || dayTypeIds.includes(dayType.id));
+// to the findings on that slot.
+export function teacherRows(project, findings, dayTypeIds) {
+  const need = effectiveIds(project, dayTypeIds);
+  const days = new Map();
+  const duties = new Map();
+  for (const id of need) {
+    days.set(id, teacherDays(project, id));
+    duties.set(id, dutiesByTeacher(project, id));
+  }
   // "Before" and "After" are columns when any teacher has such a duty
-  const some = (when) => shown.some((dayType) => Array.from(duties.get(dayType.id).values()).some((mine) => mine[when].length > 0));
+  const some = (when) => Array.from(need).some((id) => Array.from(duties.get(id).values()).some((mine) => mine[when].length > 0));
   const extras = [].concat(some('before') ? [{ id: 'before', label: 'Before' }] : [], some('after') ? [{ id: 'after', label: 'After' }] : []);
-  const numberOf = (roomId) => {
-    const room = roomId ? findRoom(project, roomId) : null;
-    return room ? (room.number.trim() === '' ? roomName(room) : room.number) : 'a room not in the building';
-  };
   // "Lunch duty", or "Bus duty (on Wednesdays)" for one that holds some days
   const dutyWords = (duty) => dutyNamed(duty) + (sometimesWords(duty) === '' ? '' : ' (' + sometimesWords(duty) + ')');
-  return shell(project, 'Every teacher, one row each. For reading.', 'Teacher', project.teachers.map((teacher) => ({
-    id: teacher.id,
-    name: teacher.name,
+  const own = (dayTypeId) => effectiveDayType(project, dayTypeId).id;
+  return {
+    first: 'Teacher',
     free: 'Planning',
-    cell: (dayTypeId, period) => {
-      const entry = days.get(dayTypeId).get(teacher.id)[period];
-      const taught = entry.groups;
-      const extra = entry.duties.map(dutyWords);
-      if (entry.kind === 'teaching') {
-        return {
-          text: taught.map((each) => groupNames(project, [each.groupId])[0] + ' in ' + numberOf(each.roomId)).concat(extra).join(', '),
-          findings: findingsOf(findings, taught.map((each) => each.groupId), dayTypeId, period),
-          duty: false,
-        };
-      }
-      if (isFree(entry)) return { text: extra.join(', '), findings: [], duty: extra.length > 0 };
-      // an always duty takes the period, or else the school's mark does
-      const always = entry.duties.filter((duty) => sometimesWords(duty) === '').map(dutyWords);
-      const mark = schoolMarkFor(project, dayTypeId, period);
-      const taken = entry.marked === 'away' ? [MARK_AS_NAMED.away] : always.length > 0 ? always : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
-      return { text: taken.concat(entry.duties.filter((duty) => sometimesWords(duty) !== '').map(dutyWords)).join(', '), findings: [], duty: true };
-    },
-    extra: (dayTypeId, which) => {
-      const mine = duties.get(dayTypeId).get(teacher.id);
-      return mine ? mine[which].map(dutyWords).join(', ') : '';
-    },
-  })), dayTypeIds, extras);
+    extras,
+    rows: project.teachers.map((teacher) => ({
+      id: teacher.id,
+      kind: 'teacher',
+      name: teacher.name,
+      free: 'Planning',
+      cell: (dayTypeId, period) => {
+        const id = own(dayTypeId);
+        const entry = days.get(id).get(teacher.id)[period];
+        const taught = entry.groups;
+        const extra = entry.duties.map(dutyWords);
+        const ids = taught.map((each) => each.groupId);
+        const base = { groupIds: ids, groupNames: groupNames(project, ids), taught: taught.map((each) => ({ groupId: each.groupId, roomId: each.roomId })) };
+        if (entry.kind === 'teaching') {
+          return {
+            ...base,
+            text: taught.map((each) => groupNames(project, [each.groupId])[0] + ' in ' + roomNumber(project, each.roomId)).concat(extra).join(', '),
+            findings: findingsOf(findings, ids, id, period),
+            duty: false,
+          };
+        }
+        if (isFree(entry)) return { ...base, text: extra.join(', '), findings: [], duty: extra.length > 0 };
+        // an always duty takes the period, or else the school's mark does
+        const always = entry.duties.filter((duty) => sometimesWords(duty) === '').map(dutyWords);
+        const mark = schoolMarkFor(project, id, period);
+        const taken = entry.marked === 'away' ? [MARK_AS_NAMED.away] : always.length > 0 ? always : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
+        return { ...base, text: taken.concat(entry.duties.filter((duty) => sometimesWords(duty) !== '').map(dutyWords)).join(', '), findings: [], duty: true };
+      },
+      extra: (dayTypeId, which) => {
+        const mine = duties.get(own(dayTypeId)).get(teacher.id);
+        return mine ? mine[which].map(dutyWords).join(', ') : '';
+      },
+    })),
+  };
 }
 
 // One row per room: the groups in it.
-export function roomTable(project, findings, dayTypeIds) {
+export function roomRows(project, findings, dayTypeIds) {
+  const need = effectiveIds(project, dayTypeIds);
   const rooms = allRooms(project).slice().sort((a, b) => collator.compare(a.number, b.number));
   const inRoom = new Map();
   for (const dayType of ownDayTypes(project)) {
+    if (!need.has(dayType.id)) continue;
     for (const group of project.groups) {
       // a period marked No class does not meet: its room is not in use then
       meetingSlots(project, group.id, dayType.id).forEach((slot, period) => {
@@ -317,16 +129,28 @@ export function roomTable(project, findings, dayTypeIds) {
       });
     }
   }
-  return shell(project, 'Every room, one row each. For reading.', 'Room', rooms.map((room) => ({
-    id: room.id,
-    name: room.number.trim() === '' ? roomName(room, true) : room.number,
+  return {
+    first: 'Room',
     free: 'Empty',
-    cell: (dayTypeId, period) => {
-      const groups = inRoom.get(room.id + '|' + dayTypeId + '|' + period) || [];
-      return {
-        text: groups.map((group) => group.name).join(', '),
-        findings: findingsOf(findings, groups.map((group) => group.id), dayTypeId, period),
-      };
-    },
-  })), dayTypeIds);
+    extras: [],
+    rows: rooms.map((room) => ({
+      id: room.id,
+      kind: 'room',
+      name: room.number.trim() === '' ? roomName(room, true) : room.number,
+      free: 'Empty',
+      cell: (dayTypeId, period) => {
+        const id = effectiveDayType(project, dayTypeId).id;
+        const groups = inRoom.get(room.id + '|' + id + '|' + period) || [];
+        return {
+          text: groups.map((group) => group.name).join(', '),
+          findings: findingsOf(findings, groups.map((group) => group.id), id, period),
+          duty: false,
+          groupIds: groups.map((group) => group.id),
+          groupNames: groups.map((group) => group.name),
+          taught: [],
+        };
+      },
+      extra: () => '',
+    })),
+  };
 }

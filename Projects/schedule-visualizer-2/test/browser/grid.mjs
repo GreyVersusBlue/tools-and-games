@@ -470,17 +470,18 @@ test('the bulk actions are staged too: clear a day, Copy classes from… A Day t
   assert.equal(await shown(slot(A6, DAY_B, 7)), '303');
 });
 
-test('the same schedule is read by teacher and by room, and those tables are not for editing', async () => {
+test('the same schedule is read, and edited, by teacher and by room: the tables are grids on the sheet\u2019s cursor, one Tab stop each (SV2-155)', async () => {
   await click('.grd-toolbar input[value="teachers"]');
   await shows(() => document.querySelector('.grd').dataset.rows === 'teachers' && document.querySelector('.sch').dataset.pending !== 'true');
-  assert.equal(await exists('.grd-table[role="grid"]:not([hidden])') && await page.$eval('.grd-sheet', (el) => el.hidden), true, 'the sheet is put away');
+  assert.equal(await page.$eval('.grd-sheet[data-role="groups"]', (el) => el.hidden), true, 'the Groups sheet is put away');
+  assert.equal(await page.$eval('.grd-sheet[data-role="teachers"]', (el) => el.hidden), false);
   assert.equal(await count('.grd-table--read tbody tr'), 12);
-  assert.equal(await count('.grd-table--read input, .grd-table--read [tabindex]:not(.is-marked), .grd-table--read button'), 0);
+  assert.equal(await page.$eval('.grd-sheet[data-role="teachers"] .grd-table', (el) => el.getAttribute('role') + '|' + el.getAttribute('aria-label')), 'grid|Every teacher, one row each');
+  assert.equal(await count('.grd-sheet[data-role="teachers"] [tabindex="0"]'), 1, 'one Tab stop');
   const row = await page.$$eval('.grd-table--read tbody tr', (rows) => rows.map((tr) => Array.from(tr.children, (cell) => cell.textContent)).find((cells) => cells[0] === 'Mme. Dufrêne'));
   assert.equal(row.length, 17);
   assert.equal(row[7], '6A in 204', 'Period 7 on A Day');
   assert.ok(row.includes('Planning'), 'a free period says so to a screen reader');
-  assert.equal(await page.$eval('.grd-below .grd-scroll', (el) => el.tabIndex + '|' + el.getAttribute('role')), '0|region');
   assert.equal(await exists('.grd-toolbar [data-action="add-group"]'), false);
 
   await page.keyboard.press('ArrowRight');
@@ -493,7 +494,7 @@ test('the same schedule is read by teacher and by room, and those tables are not
   assert.equal(cafeteria[4], '6A, 6B, 6C◆ (note)', 'Period 4 on A Day');
   assert.equal(rooms.find((cells) => cells[0] === '203')[2], '6C, 7C● (problem)', 'the double-booking, read from the room');
   await click('.grd-toolbar input[value="groups"]');
-  await shows(() => document.querySelector('.grd').dataset.rows === 'groups' && !document.querySelector('.grd-sheet').hidden);
+  await shows(() => document.querySelector('.grd').dataset.rows === 'groups' && !document.querySelector('.grd-sheet[data-role="groups"]').hidden);
 });
 
 test('a click puts the cursor on a cell, Shift and a click selects to it, and a double click edits', async () => {
