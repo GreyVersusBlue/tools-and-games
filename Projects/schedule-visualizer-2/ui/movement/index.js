@@ -50,6 +50,18 @@
 //          buildGraph's graph, model.js's picture, routeHealth's list, and
 //          whether all of it is from before a change whose answer failed
 //
+// Crowd-aware routes (ARCHITECTURE 23.5, 23.12; DESIGN 17.4, 17.7). While the
+// choice's `routes` is 'crowd' (and who is not a teacher) the view asks the
+// crowd lane (store.derived.crowd) for the day type and bells on screen, once
+// per project, day type and bells, and asks again on a null (a stale asking
+// never re-asks by itself). Until the answer comes the usual picture stands
+// under a quiet band; a failure says so with Try again and the radio stays on
+// Crowd-aware. With the answer, `state.results` is ./crowd-view.js's
+// crowdResultsView for every panel, the bar and the card, and nothing else
+// learns of the lens; route health and the findings are read from the usual
+// results. The section's `data-crowd` is 'off', 'working', 'ready' or 'failed'
+// (a test waits on it), and `data-pending` is not touched by it.
+//
 // The view on screen is at document.querySelector('.mov').movement, for the
 // tests and for the console.
 
@@ -68,10 +80,11 @@ import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash, openAddress } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
 import { findBellSchedule } from '../../engine/bells.js';
-import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, roomCard, standingOf, failedSentence, createAsker, teacherColourOf } from './model.js';
+import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, roomCard, standingOf, failedSentence, createAsker, teacherColourOf, NO_ENGINE } from './model.js';
 import { readMovementAddress } from './address.js';
+import { crowdResultsView, lensOf, usualRouteOf, anotherWay } from './crowd-view.js';
 import { slotAt, placeOf, FIT_MARGIN } from '../surface/plan-layout.js';
-import { controls } from './controls.js';
+import { controls, CROWD_FAILED } from './controls.js';
 import { legend } from './legend.js';
 import { cellCardView } from './card.js';
 import { summaryPanel } from './summary.js';
@@ -159,7 +172,8 @@ export const section = {
     if (memory.projectId !== store.project.id) memory.parked = null;
     // an address that names a choice (a teacher's day, walks into a room: ./address.js) lays it over the choice the view had
     const named = readMovementAddress(store.project, rest);
-    const had = memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project);
+    // Routes is Usual on every visit: a lens opened on purpose each time (ARCHITECTURE 23.2)
+    const had = memory.projectId === store.project.id && memory.choice ? { ...memory.choice, routes: 'usual' } : defaultChoice(store.project);
     const remembered = withAddress(had, named);
     let choice = settleChoice(store.project, remembered);
     noticeBells(remembered.bellsId);
@@ -171,6 +185,8 @@ export const section = {
     let gone = false;
     // the cell whose card shows: { floorId, cell, source }
     let point = null;
+    // the group whose usual route is drawn faint beside its crowd-aware one (Summary's row), or null
+    let usualFor = null;
     let bandColours = null;
     let bandKey = null;
     const lineColours = new Map();
@@ -199,6 +215,10 @@ export const section = {
     });
     const { view, canvas, layer, stage } = plan;
     const card = cellCardView({ showInto: (roomId) => showWalksInto(roomId) });
+    // with crowd-aware routes the card adds how many groups cross here on each routes (DESIGN 17.4); card.js draws the rest
+    const crowdLine = h('p', { class: 'mov-card__crowd', hidden: true, data: { card: 'crowd' } });
+    card.element.insertBefore(crowdLine, card.extra);
+    const crowdWords = (info) => (info && info.crowd ? 'Crowd-aware: ' + count(info.crowd.aware, 'group') + ' here, usual: ' + info.crowd.usual : '');
 
     const env = {
       ctx,
@@ -212,6 +232,14 @@ export const section = {
       paintMarks: () => plan.paintMarks(),
       layer,
       card,
+      // a group's row chosen in Summary: its usual route is drawn faint beside the crowd-aware one (DESIGN 17.7 item 6)
+      usual: () => usualFor,
+      showUsual(groupId) {
+        usualFor = usualFor === groupId ? null : groupId;
+        // the legend names it, Summary's button says it, the map draws it
+        refresh();
+        return usualFor;
+      },
       // who holds an elevator at the second playback shows: { now: [{ groupId,
       // car, label, at }], listeners }; playback writes it, the hotspot table reads it
       rides: { now: [], listeners: new Set() },
@@ -251,6 +279,10 @@ export const section = {
         ctx.announce(folded ? 'The controls are folded away.' : 'The controls are shown.');
       },
       change,
+      tryAgain() {
+        askCrowd(true);
+        refresh();
+      },
       add(groupId) {
         const answer = addGroup(choice, groupId);
         // the reason is on screen under the chips already: it is said, not put up again
@@ -385,6 +417,7 @@ export const section = {
       choice = settleChoice(store.project, { ...choice, ...patch });
       const held = options && options.keepCard === true && !(patch && 'floors' in patch) ? tapped() : null;
       clearPoint();
+      askCrowd();
       refresh();
       reopen(held);
     }
@@ -427,6 +460,71 @@ export const section = {
     });
     const ask = () => asker.ask();
 
+    // ---- the crowd lane: asked while the choice wants it, once for a project, day type and bells
+    const lens = { key: null, project: null, state: 'off', run: null, message: '', retries: 0 };
+    const tokens = new WeakMap();
+    let tokenCount = 0;
+    const keyFor = (project) => {
+      if (!tokens.has(project)) tokens.set(project, (tokenCount += 1));
+      return tokens.get(project) + '|' + choice.dayTypeId + '|' + (choice.bellsId === null ? '' : choice.bellsId);
+    };
+    const wantsCrowd = () => choice.routes === 'crowd' && choice.who !== 'teacher';
+    function askCrowd(again) {
+      if (gone) return;
+      if (!wantsCrowd()) {
+        // put away: the next time it is asked for is a new asking, and what was said of the last is not kept
+        lens.key = null;
+        lens.state = 'off';
+        lens.run = null;
+        lens.project = null;
+        lens.retries = 0;
+        return;
+      }
+      const project = store.project;
+      const key = keyFor(project);
+      if (again !== true && lens.key === key) return;
+      lens.key = key;
+      lens.project = project;
+      lens.state = 'working';
+      lens.run = null;
+      lens.message = '';
+      if (again === true) lens.retries = 0;
+      const wanted = { dayTypeId: choice.dayTypeId, bellsId: choice.bellsId };
+      let asked;
+      try {
+        asked = store.derived && typeof store.derived.crowd === 'function' ? store.derived.crowd(wanted) : Promise.reject(new Error(NO_ENGINE));
+      } catch (error) {
+        asked = Promise.reject(error);
+      }
+      asked.then((answer) => landed(key, answer), (error) => landed(key, { failed: error && error.message ? String(error.message) : String(error) }));
+    }
+    // An answer: an asking that has been replaced is dropped; a null (the counters moved before it ran) is asked again for the store as it is.
+    function landed(key, answer) {
+      if (gone || lens.key !== key) return;
+      if (answer === null) {
+        lens.key = null;
+        if (lens.retries < 3) {
+          lens.retries += 1;
+          askCrowd();
+          return;
+        }
+        answer = { failed: 'The answer kept going out of date. Try again.' };
+      }
+      if (answer.failed !== undefined) {
+        lens.state = 'failed';
+        lens.message = String(answer.failed);
+        refresh();
+        ctx.announce(CROWD_FAILED + '.');
+        return;
+      }
+      lens.state = 'ready';
+      lens.run = answer.run;
+      lens.retries = 0;
+      refresh();
+      // said once, as the answer lands: the first line is the comparison
+      if (state && state.picture.routesMode === 'crowd') ctx.announce(sentenceOf(state.project, state.picture, state.health).parts.map((part) => part.text).join(''));
+    }
+
     // ---- everything but the canvas
     function refresh() {
       const project = store.project;
@@ -468,19 +566,30 @@ export const section = {
       const standing = standingOf(project, derived);
       const shown = standing.project;
       const graph = standing.results && derived.graph ? derived.graph : graphNow();
-      picture = pictureOf(shown, standing.results, graph, choice);
+      // crowd-aware routes: with the answer for the project the results are on screen, one view for every panel (./crowd-view.js);
+      // route health and the findings are the usual routes' own
+      const crowdOn = wantsCrowd() && standing.results !== null && !standing.failed;
+      const usable = crowdOn && lens.state === 'ready' && lens.run !== null && lens.project === shown && lens.key === keyFor(shown);
+      const results = usable ? crowdResultsView(standing.results, lens.run) : standing.results;
+      const crowd = { state: !crowdOn ? 'off' : usable ? 'ready' : lens.state === 'failed' ? 'failed' : 'working', message: lens.message };
+      picture = pictureOf(shown, results, graph, choice);
       const health = routeHealth(shown, standing.results);
       const sentence = standing.failed ? failedSentence(standing) : sentenceOf(shown, picture, health);
-      state = { project: shown, results: standing.results, graph, picture, health, stale: standing.stale };
+      if (usualFor !== null && !picture.changed.some((row) => row.groupId === usualFor)) usualFor = null;
+      element.dataset.crowd = crowd.state;
+      state = { project: shown, results, graph, picture, health, stale: standing.stale };
       if (standing.stale) element.dataset.stale = 'true';
       else delete element.dataset.stale;
       staleBand.hidden = !standing.stale;
       lineColours.clear();
       element.dataset.mode = picture.mode;
       element.dataset.groups = String(picture.groups.length);
-      top.update(project, picture, sentence);
+      top.update(project, picture, sentence, crowd);
       // the scale's toggle shows the setting as it is now, not as the picture on screen had it
-      key.update(shown, picture, { mode: project.settings.colourScale && project.settings.colourScale.mode === 'absolute' ? 'absolute' : 'relative' });
+      key.update(shown, picture, {
+        mode: project.settings.colourScale && project.settings.colourScale.mode === 'absolute' ? 'absolute' : 'relative',
+        usual: usualFor === null ? '' : (shown.groups.find((group) => group.id === usualFor) || { name: '' }).name,
+      });
       bar.update(state);
       drawPanel();
       // the floors laid out, the row of floors drawn, the map painted (plan-map.js)
@@ -591,6 +700,43 @@ export const section = {
       }
     });
 
+    // ---- a group's usual route, faint and dashed beside the crowd-aware one it left (DESIGN 17.7 item 6): drawn for the
+    // walks on screen that took another way, from the usual routes' own result
+    plan.across.push((g, given) => {
+      if (usualFor === null || !picture || !state || picture.routesMode !== 'crowd') return;
+      const periods = anotherWay(lensOf(state.results), new Set([usualFor]), choice.transition).map((row) => row.period);
+      if (periods.length === 0) return;
+      const theme = given.theme;
+      themeColours(theme);
+      g.save();
+      g.setLineDash([3, 5]);
+      g.globalAlpha = 0.55;
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      g.lineWidth = Math.max(2, Math.min(4, view.size * 0.14));
+      g.strokeStyle = lineColour(usualFor, theme);
+      for (const period of periods) {
+        const found = usualRouteOf(state.results, usualFor, period);
+        if (!found || found.ok !== true || !Array.isArray(found.cells)) continue;
+        let last = null;
+        g.beginPath();
+        for (const step of found.cells) {
+          const at = given.point(step.floorId, step.cell);
+          // a step onto a floor that is not on the map, or onto another floor, starts the line again
+          if (!at || (last && last.floorId !== step.floorId)) {
+            last = at ? { floorId: step.floorId } : null;
+            if (at) g.moveTo(at.x, at.y);
+            continue;
+          }
+          if (last) g.lineTo(at.x, at.y);
+          else g.moveTo(at.x, at.y);
+          last = { floorId: step.floorId };
+        }
+        g.stroke();
+      }
+      g.restore();
+    });
+
     // ---- the cell card
     function clearPoint() {
       if (!point && card.element.hidden) return;
@@ -613,6 +759,7 @@ export const section = {
           plan.hover(point.floorId, point.cell);
           const at = view.toScreen(x, y);
           card.showRoom(room, { x: at.x, y: at.y, size: view.size });
+          crowdLine.hidden = true;
           card.element.dataset.floor = point.floorId;
           card.element.dataset.cell = String(point.cell);
           plan.paint();
@@ -626,6 +773,10 @@ export const section = {
       plan.hover(source === 'keyboard' ? null : point.floorId, point.cell);
       const at = view.toScreen(x, y);
       card.show(info, { x: at.x, y: at.y, size: view.size }, picture, state.project.settings);
+      crowdLine.textContent = crowdWords(info);
+      crowdLine.hidden = !info.crowd;
+      // the card is as tall as the line made it: beside its cell again
+      if (info.crowd) card.place();
       card.element.dataset.floor = point.floorId;
       card.element.dataset.cell = String(point.cell);
       plan.paint();
@@ -652,7 +803,7 @@ export const section = {
         pointAt(ev.x, ev.y, 'hover');
       } else if (ev.kind === 'keyboard') {
         const { found, info } = pointAt(ev.x, ev.y, 'keyboard');
-        if (info) ctx.announce(card.text(info, picture, state.project.settings));
+        if (info) ctx.announce(card.text(info, picture, state.project.settings) + (info.crowd ? ' ' + crowdWords(info) + '.' : ''));
         else ctx.announce(found ? found.slot.floor.name + ': not a corridor.' : 'Between floors.');
       } else if (ev.kind === 'escape') {
         if (!point) return false;
@@ -691,6 +842,7 @@ export const section = {
     tick();
 
     ask();
+    askCrowd();
     refresh();
 
     element.movement = {
@@ -735,6 +887,7 @@ export const section = {
       },
       update() {
         ask();
+        askCrowd();
         refresh();
         tick();
       },

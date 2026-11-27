@@ -58,6 +58,7 @@ import { layoutFloors, placeOf } from './layout.js';
 import { bandText } from './legend.js';
 import { hotspotRows, hotspotsCsv } from './hotspots.js';
 import { transitionsCsv, dayCsv } from './tables.js';
+import { usualOf } from './crowd-view.js';
 
 // Pixels of the image for one pixel of the map at 100%.
 export const RESOLUTIONS = [
@@ -517,7 +518,7 @@ export function exportPanel(env) {
     const drawn = picture({ resolution: resolution.value });
     const blob = isBlank(drawn) ? null : await new Promise((resolve) => drawn.canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('The browser could not make an image this large. Choose a lower resolution.');
-    deliver({ fileName: exportFileName(last.project, 'movement picture', 'png', now()), mime: 'image/png', blob, width: drawn.pixels.width, height: drawn.pixels.height });
+    deliver({ fileName: exportFileName(last.project, 'movement picture' + (last.picture.routesMode === 'crowd' ? ' crowd-aware' : ''), 'png', now()), mime: 'image/png', blob, width: drawn.pixels.width, height: drawn.pixels.height });
     if (drawn.fell > 0) {
       const wanted = RESOLUTIONS.find((each) => each.id === resolution.value);
       status.textContent += ' This browser could not hold the picture at ' + wanted.label.toLowerCase() + ' resolution (' + Math.round(drawn.width * drawn.asked) + ' by ' + Math.round(drawn.height * drawn.asked) + ' pixels), so it was saved '
@@ -543,22 +544,31 @@ export function exportPanel(env) {
 
   function csv(action, label, what, rows) {
     return button(action, label, () => {
-      deliver({ fileName: exportFileName(last.project, what, 'csv', now()), mime: 'text/csv', text: csvText(rows(last)) });
+      // with crowd-aware routes the file's name says so, and its rows (a what-if, ./tables.js and below)
+      deliver({ fileName: exportFileName(last.project, what + (last.picture.routesMode === 'crowd' ? ' crowd-aware' : ''), 'csv', now()), mime: 'text/csv', text: csvText(rows(last)) });
     });
   }
-  const hotspotsFile = csv('csv-hotspots', 'Hotspots', 'hotspots', (state) => hotspotsCsv(state.project, hotspotRows(state.project, state.results, state.graph, state.picture), state.picture));
+  const hotspotsFile = csv('csv-hotspots', 'Hotspots', 'hotspots', (state) => {
+    const table = hotspotsCsv(state.project, hotspotRows(state.project, state.results, state.graph, state.picture), state.picture);
+    // a column that says which routes the load and delay are of, only when they are not the usual ones
+    return state.picture.routesMode === 'crowd' ? table.map((row, index) => row.concat([index === 0 ? 'Routes' : 'Crowd-aware routes (a what-if)'])) : table;
+  });
   const transitionsFile = csv('csv-transitions', 'Travel time, by transition', 'travel time by transition', (state) => transitionsCsv(state.project, state.results, state.picture.choice.dayTypeId, state.picture.choice.bellsId));
   const dayFile = csv('csv-day', 'Travel time, by group', 'travel time by group', (state) => dayCsv(state.project, state.results, state.picture.choice.dayTypeId, state.picture.choice.bellsId));
 
   const report = button('print-congestion', 'Print the congestion report', (opener) => {
     status.textContent = '';
-    openPrintPreview(ctx, 'congestion', { opener, bellsId: last.picture.choice.bellsId, movement: { project: last.project, results: last.results, graph: last.graph } });
+    // the report turns a picture into a proposal on the figures Checks read: the usual routes, whatever lens is on
+    openPrintPreview(ctx, 'congestion', { opener, bellsId: last.picture.choice.bellsId, movement: { project: last.project, results: usualOf(last.results), graph: last.graph } });
   });
 
   const sizeNote = h('p', { class: 'mov-panel__note', data: { export: 'size' } });
+  // what the exports carry while crowd-aware routes are on (DESIGN 17.4, 17.7 item 7)
+  const crowdNote = h('p', { class: 'mov-panel__note', hidden: true, data: { export: 'crowd' } }, 'Crowd-aware routes (a what-if) are on: the picture, its print and the CSV files carry that in their headings, and the congestion report is of the usual routes.');
   const element = h('div', { class: 'mov-panel mov-export', data: { panel: 'export' } },
     h('h2', { class: 'mov-panel__title' }, 'Export'),
     behind,
+    crowdNote,
     h('h3', { class: 'mov-panel__sub' }, 'The picture'),
     h('p', null, 'The whole map as it is chosen now, drawn again on light paper under the school\'s name and what is shown.'),
     h('fieldset', { class: 'mov-export__parts' }, h('legend', { class: 'mov-ctl__label' }, 'With it'), legendTick.element, scaleTick.element, tableTick.element),
@@ -620,6 +630,7 @@ export function exportPanel(env) {
       const asking = Boolean(section) && section.dataset.pending === 'true';
       const stale = ready && !asking && Boolean(section) && section.dataset.stale === 'true';
       const pending = ready && !stale && (asking || state.project !== ctx.store.project);
+      crowdNote.hidden = state.picture.routesMode !== 'crowd';
       element.dataset.behind = stale ? 'stale' : pending ? 'pending' : 'no';
       behind.hidden = !stale && !pending;
       behind.textContent = stale ? 'The routes could not be worked out after your last change. The map, and everything exported here, is from before that change.'

@@ -181,7 +181,7 @@ export function shownSentence(project, picture) {
   const when = t
     ? t.name + (t.times ? ', ' + t.times : '') + ', ' + seconds(t.seconds) + ' of passing time'
     : 'all ' + count(picture.transitions.length, 'transition') + ' of the day';
-  return 'Showing ' + whoWords(project, picture) + ' on ' + picture.dayTypeName + ': ' + when + '.';
+  return 'Showing ' + whoWords(project, picture) + ' on ' + picture.dayTypeName + ': ' + when + '.' + (picture.routesMode === 'crowd' ? ' Crowd-aware routes (a what-if).' : '');
 }
 
 export function colourSentence(picture) {
@@ -283,6 +283,8 @@ export function render(given, derived, options) {
   const picture = pictureOf(project, results, graph, choice);
 
   const lines = [shownSentence(project, picture), colourSentence(picture)];
+  // the header says it in full: a what-if, and what Checks use
+  if (picture.routesMode === 'crowd') lines.push('Crowd-aware routes are a what-if: groups that wait in a jam try a slightly longer way. Checks use the usual routes.');
   if (picture.failed.length > 0) lines.push(count(picture.failed.length, 'route') + ' failed and ' + (picture.failed.length === 1 ? 'is' : 'are') + ' not drawn.');
   else if (routeHealth(project, results).length > 0 && picture.groups.length > 0) lines.push('No route failed here.');
   const body = ['<p class="doc-lead">' + esc(lines.filter((line) => line !== '').join(' ')) + '</p>'];

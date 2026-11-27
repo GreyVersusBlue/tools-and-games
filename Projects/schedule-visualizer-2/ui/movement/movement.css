@@ -1454,3 +1454,86 @@
   overflow: hidden;
   visibility: hidden;
 }
+
+/* ---------- Crowd-aware routes (DESIGN 17.4, 17.7) ----------
+
+   Routes under Day type: two choices and one line. Under the first line, a
+   quiet band while the answer is awaited (never over the map), the failure
+   with Try again, and, with the answer, the one line that says what the lens
+   is for. The card's count, the legend's rows and the Usual column read in
+   the panels' own type. */
+.mov-ctl--routes {
+  max-width: 18rem;
+}
+
+.mov-ctl--routes[hidden] {
+  display: none;
+}
+
+.mov-ctl--routes .mov-ctl__hint {
+  max-width: 18rem;
+  margin-top: var(--s-1);
+}
+
+.mov-line__try[hidden] {
+  display: none;
+}
+
+.mov-crowd {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  color: var(--ink-2);
+}
+
+.mov-crowd[hidden] {
+  display: none;
+}
+
+.mov-crowd p {
+  margin: 0;
+  max-width: none;
+}
+
+.mov-crowd__note {
+  margin-top: var(--s-1);
+}
+
+.mov-crowd__note[hidden] {
+  display: none;
+}
+
+.mov-crowd[data-state="failed"] .mov-crowd__words {
+  color: var(--warning);
+  font-weight: var(--w-medium);
+}
+
+.mov-card__crowd {
+  margin: var(--s-1) 0 0;
+}
+
+.mov-card__crowd[hidden] {
+  display: none;
+}
+
+.mov-groups__another {
+  display: block;
+  font-weight: var(--w-medium);
+  white-space: normal;
+  color: var(--ink-2);
+}
+
+.mov-groups__usual {
+  display: inline-block;
+  margin-top: var(--s-1);
+  white-space: normal;
+}
+
+.mov-travel__table--usual .mov-travel__group td[data-cell="usual"][data-late="true"] {
+  color: var(--warning);
+  font-weight: var(--w-medium);
+}
+
+.mov-travel__table td[data-cell="usual"] {
+  white-space: normal;
+}

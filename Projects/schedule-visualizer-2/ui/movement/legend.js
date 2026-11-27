@@ -24,6 +24,11 @@
 // So with a teacher: the line is the teacher's subject colour, ink with none,
 // and a dashed one is a walk with a free period between (DESIGN 17.2).
 //
+// With crowd-aware routes the card says so in the words DESIGN 17.1 gives ("a
+// what-if: checks use the usual routes"), and, while a group's row in Summary
+// has its usual route drawn, what the faint dashed line is. `chosen.usual` is
+// that group's name ('' with none). The docked line ends "· crowd-aware".
+//
 // With Going to or Rooms of subject set the card says whose walks it counts
 // ("Load of walks into Room 204") and that the relative scale is of those
 // walks only, with a link to the absolute scale (DESIGN 17.7 item 13).
@@ -47,6 +52,11 @@ const BAND_NAMES = ['quiet', '', '', '', 'busy'];
 // The scale in one line, for the legend docked under the map: "Load · 1 to
 // 177 · Relative". With one group there is no load colouring to give.
 export function lineText(picture) {
+  const text = scaleLine(picture);
+  return text !== '' && picture.routesMode === 'crowd' ? text + ' \u00b7 crowd-aware' : text;
+}
+
+function scaleLine(picture) {
   if (!picture || picture.mode === 'empty') return '';
   if (picture.mode === 'teacher') return 'One teacher \u00b7 dashed: with a free period between';
   if (picture.mode === 'single') return 'One group · its own colour';
@@ -98,6 +108,9 @@ export function legend(options) {
   const zones = h('p', { class: 'mov-legend__note', data: { legend: 'zones' } });
   const body = h('div', { class: 'mov-legend__body' }, what, bands, measureBox, scaleBox, scaleNote, scaleLink, zones);
   const single = h('p', { class: 'mov-legend__what', hidden: true, data: { legend: 'single' } });
+  // crowd-aware routes: what the picture is of, and what the faint dashed line is (DESIGN 17.1, 17.7 items 6 and 7)
+  const routesNote = h('p', { class: 'mov-legend__note', hidden: true, data: { legend: 'routes' } });
+  const usualNote = h('p', { class: 'mov-legend__note', hidden: true, data: { legend: 'usual' } });
   // the card can be folded to its title, to see the map under it; docked, the
   // same button puts the card away and leaves the line
   let folded = options.folded === true;
@@ -114,7 +127,7 @@ export function legend(options) {
     draw();
     if (options.fold) options.fold(folded);
   });
-  const element = h('aside', { class: 'mov-legend', 'aria-labelledby': titleId, hidden: true, data: { folded: String(folded), docked: 'false', open: 'false' } }, h('div', { class: 'mov-legend__head' }, title, toggle), body, single);
+  const element = h('aside', { class: 'mov-legend', 'aria-labelledby': titleId, hidden: true, data: { folded: String(folded), docked: 'false', open: 'false' } }, h('div', { class: 'mov-legend__head' }, title, toggle), body, single, routesNote, usualNote);
 
   // ---- docked: one line under the map
   const lineWords = h('span', { class: 'mov-legend-line__words', data: { legend: 'line' } });
@@ -176,6 +189,12 @@ export function legend(options) {
     },
     update(project, picture, chosen) {
       element.hidden = picture.mode === 'empty';
+      const lens = picture.routesMode === 'crowd' && picture.mode !== 'empty';
+      routesNote.hidden = !lens;
+      routesNote.textContent = lens ? 'Crowd-aware routes (a what-if): the lines and the load are the crowd-aware ones; checks use the usual routes. A group on another way is marked in Summary.' : '';
+      const usual = lens && chosen && typeof chosen.usual === 'string' && chosen.usual !== '' ? chosen.usual : '';
+      usualNote.hidden = usual === '';
+      usualNote.replaceChildren(...(usual === '' ? [] : ['Faint and dashed: the usual route of ', h('bdi', null, usual), '.']));
       lineWords.textContent = lineText(picture);
       lineAbsolute.hidden = true;
       draw();

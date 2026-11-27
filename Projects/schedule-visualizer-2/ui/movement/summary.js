@@ -9,6 +9,10 @@
 // which is as soon as it opens.
 //
 // `env` and `state` are described at the top of ./index.js.
+//
+// With crowd-aware routes the groups' rows mark a group that took another way
+// ("another way · 7 s saved") and its row's button draws the group's usual
+// route faint and dashed beside the new one (env.showUsual, DESIGN 17.7 item 6).
 
 import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
@@ -100,6 +104,23 @@ export function summaryPanel(env) {
     figures.replaceChildren(...list);
   }
 
+  // "another way · 7 s saved": the seconds a group's own total fell over the walks that took another way ("7 s more" when it rose)
+  function anotherWords(another) {
+    return 'another way \u00b7 ' + (another.saved > 0 ? formatDuration(another.saved) + ' saved' : another.saved < 0 ? formatDuration(-another.saved) + ' more' : 'no time saved');
+  }
+
+  function usualButton(group) {
+    const on = env.usual && env.usual() === group.id;
+    const button = h('button', { type: 'button', class: 'mov-link mov-groups__usual', 'aria-pressed': String(on), data: { action: 'show-usual', group: group.id }, 'aria-label': (on ? 'Hide the usual route of ' : 'Show the usual route of ') + group.name }, on ? 'Hide the usual route' : 'Show the usual route');
+    button.addEventListener('click', () => {
+      env.showUsual(group.id);
+      // the view drew everything again, this table with it: the button that was pressed is the one to find
+      const again = groups.querySelector('[data-action="show-usual"][data-group="' + group.id + '"]');
+      if (again) again.focus();
+    });
+    return button;
+  }
+
   function drawGroups(project, results, picture) {
     const rows = groupRows(project, results, picture);
     groupsTitle.hidden = rows.length === 0;
@@ -128,9 +149,11 @@ export function summaryPanel(env) {
         h('th', { scope: 'col', class: 'table__num' }, 'Lost to crowds'),
         held ? h('th', { scope: 'col', class: 'table__num' }, 'Left after the bell') : null,
         h('th', { scope: 'col' }, 'Stairs'))),
-      h('tbody', null, rows.map((row) => h('tr', { data: { group: row.group.id, failed: String(row.failed), late: String(row.late) } },
+      h('tbody', null, rows.map((row) => h('tr', { data: { group: row.group.id, failed: String(row.failed), late: String(row.late), ...(row.another ? { another: 'true' } : {}) } },
         h('th', { scope: 'row' },
           h('span', { class: 'mov-swatch', style: 'background:' + row.group.colour }), h('bdi', null, row.group.name), stepFreeTag(row.group),
+          row.another ? h('span', { class: 'mov-groups__another', data: { part: 'another-way' } }, anotherWords(row.another)) : null,
+          row.another ? usualButton(row.group) : null,
           row.late > 0 ? h('span', { class: 'mov-groups__late' }, 'late ' + (row.late === 1 ? 'once' : row.late + ' times') + heldWords(row.lateHeld)) : null,
           row.failed > 0 ? h('span', { class: 'mov-groups__failed' }, count(row.failed, 'failed route')) : null),
         h('td', { class: 'table__num' }, formatDuration(row.walking)),

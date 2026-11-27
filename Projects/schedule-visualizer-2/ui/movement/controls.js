@@ -3,8 +3,13 @@
 // transition, the two drawing options and Clear. Every change applies at
 // once; nothing here is staged.
 //
-//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe(tab), folded, fold(folded) })
-//     -> { element, update(project, picture, sentence), folded, setFolded(folded) }
+//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe(tab), tryAgain(), folded, fold(folded) })
+//     -> { element, update(project, picture, sentence, crowd), folded, setFolded(folded) }
+//
+// `crowd` is where the crowd-aware answer stands: { state: 'off' | 'working' | 'ready' | 'failed', message }
+// (DESIGN 17.4, 17.7 items 6, 8, 9). Under the first line a band says it is being worked out, or that it
+// could not be, with Try again; and when Routes is folded behind Change and some place has waiting, the
+// first line ends "· Try crowd-aware routes", a link that chooses it.
 //
 // The pieces are built once and filled in on update, so a control keeps the
 // focus while the picture behind it changes.
@@ -23,6 +28,13 @@ import { formatDuration } from '../../engine/findings.js';
 import { describeDayType } from '../../engine/day-types.js';
 import { bellSchedulesOf, findById, findRoom, nameOfRoom } from '../../engine/schema.js';
 import { COMPARE_LIMIT, COMPARE_REASON, compareFull, gradesOf, teacherColourOf } from './model.js';
+import { hasWaiting } from './crowd-view.js';
+
+// What Routes says under its two choices, and the words of the band under the first line.
+export const ROUTES_HINT = 'Crowd-aware: groups that wait in a jam try a slightly longer way (at most 30 s or a quarter more walking). A what-if: checks use the usual routes.';
+export const CROWD_WORKING = 'Working out crowd-aware routes\u2026';
+export const CROWD_FAILED = 'Crowd-aware routes could not be worked out. The map shows the usual routes';
+export const CROWD_NOTE = 'Groups are not routed from here: this shows where the building has spare corridor room. Hotspots shows the jams it eases.';
 
 // "Room 204" in the order the building's numbers sort ("2" before "10", "1A" with the ones)
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
@@ -45,6 +57,13 @@ export function controls(options) {
   const showMe = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'show-me' }, on: { click: () => options.showMe(showTab) } }, 'Show me');
   // a filter that matches nothing: the one way out, beside the sentence that says so
   const clearFilter = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'clear-filter' }, on: { click: () => options.change({ toRoomId: null, subjectId: null }) } }, 'Clear the filter');
+  // the way to Crowd-aware where Routes is folded away and some place has waiting (DESIGN 17.7 item 9)
+  const tryCrowd = h('button', { type: 'button', class: 'mov-link', data: { action: 'try-crowd' }, on: { click: () => {
+    // the link goes with the choice: the focus stays on the line, at Change
+    options.change({ routes: 'crowd' });
+    changeButton.focus();
+  } } }, 'Try crowd-aware routes');
+  const tryBox = h('span', { class: 'mov-line__try', hidden: true }, '\u00b7 ', tryCrowd);
   const boxId = uid('mov-controls');
   let folded = options.folded === true;
   const changeButton = h('button', { type: 'button', class: 'mov-link mov-change', 'aria-expanded': String(!folded), 'aria-controls': boxId, data: { action: 'change' } }, 'Change');
@@ -52,7 +71,18 @@ export function controls(options) {
     setFolded(!folded);
     if (options.fold) options.fold(folded);
   });
-  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', changeButton);
+  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', clearFilter, ' ', tryBox, ' ', changeButton);
+
+  // ---- under the first line: crowd-aware routes being worked out, or not worked out, and what they are for
+  const crowdStatus = h('span', { class: 'mov-crowd__words', role: 'status', data: { part: 'crowd-status' } });
+  const tryAgain = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'try-again' }, on: { click: () => {
+    // the button goes with the failure: the focus goes to the choice it answers, or to Change where that is folded away
+    options.tryAgain();
+    const checked = routesBox.hidden || box.hidden ? null : box.querySelector('input[name="movement-routes"]:checked');
+    (checked || changeButton).focus();
+  } } }, 'Try again');
+  const crowdNote = h('p', { class: 'mov-crowd__note', hidden: true, data: { part: 'crowd-note' } }, CROWD_NOTE);
+  const crowdBand = h('div', { class: 'mov-crowd', hidden: true, data: { part: 'crowd', state: 'off' } }, h('p', { class: 'mov-crowd__line' }, crowdStatus, ' ', tryAgain), crowdNote);
 
   // ---- who
   const whoId = uid('mov-who');
@@ -135,6 +165,19 @@ export function controls(options) {
   const daySelect = h('select', { class: 'field__input mov-ctl__select', id: dayId, data: { control: 'day' }, on: { change: () => options.change({ dayTypeId: daySelect.value }) } });
   const dayBox = h('div', { class: 'mov-ctl' }, h('label', { class: 'mov-ctl__label', for: dayId }, 'Day type'), daySelect);
 
+  // ---- which routes (DESIGN 17.4): the usual, quickest ones on every visit, or crowd-aware, a what-if
+  const routesId = uid('mov-routes');
+  const routesHint = uid('mov-routes-hint');
+  const routes = segmented({
+    name: 'movement-routes',
+    labelledBy: routesId,
+    value: 'usual',
+    onChange: (value) => options.change({ routes: value }),
+    options: [{ value: 'usual', label: 'Usual (quickest)' }, { value: 'crowd', label: 'Crowd-aware' }],
+  });
+  routes.element.setAttribute('aria-describedby', routesHint);
+  const routesBox = h('div', { class: 'mov-ctl mov-ctl--routes', data: { control: 'routes' } }, label('Routes', routesId), routes.element, h('p', { class: 'mov-ctl__hint', id: routesHint }, ROUTES_HINT));
+
   // ---- which bells: shown only when there is a bell schedule besides the regular ones
   const bellsId = uid('mov-bells');
   const bellsSelect = h('select', { class: 'field__input mov-ctl__select', id: bellsId, data: { control: 'bells' }, on: { change: () => options.change({ bellsId: bellsSelect.value === '' ? null : bellsSelect.value }) } });
@@ -175,8 +218,23 @@ export function controls(options) {
   const clear = h('button', { type: 'button', class: 'btn mov-clear', data: { action: 'clear' }, on: { click: () => options.clear() } }, 'Clear');
   const optionsBox = h('div', { class: 'mov-ctl mov-ctl--options' }, label('Show', null), h('div', { class: 'mov-ctl__checks' }, labels.element, constant.element), clear);
 
-  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, filtersBox, dayBox, bellsBox, stripBox, optionsBox);
-  const element = h('div', { class: 'mov-top', data: { folded: String(folded) } }, line, box);
+  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, filtersBox, dayBox, routesBox, bellsBox, stripBox, optionsBox);
+  const element = h('div', { class: 'mov-top', data: { folded: String(folded) } }, line, crowdBand, box);
+
+  // the offer is made only with Routes out of sight, and only where the usual routes have a place with waiting
+  function drawTry() {
+    tryBox.hidden = !(folded && picture && hasWaiting(picture) && picture.choice.who !== 'teacher');
+  }
+
+  function drawCrowd(crowd) {
+    const state = crowd && picture.choice.who !== 'teacher' ? crowd.state : 'off';
+    const lens = state === 'ready' && picture.routesMode === 'crowd';
+    crowdBand.dataset.state = state;
+    crowdBand.hidden = state === 'off' || (state === 'ready' && !lens);
+    crowdStatus.textContent = state === 'working' ? CROWD_WORKING : state === 'failed' ? CROWD_FAILED + ' \u00b7' : '';
+    tryAgain.hidden = state !== 'failed';
+    crowdNote.hidden = !lens;
+  }
 
   function setFolded(next) {
     if (next === folded) return;
@@ -186,6 +244,7 @@ export function controls(options) {
     box.hidden = folded;
     element.dataset.folded = String(folded);
     changeButton.setAttribute('aria-expanded', String(!folded));
+    drawTry();
     if (held) changeButton.focus();
   }
 
@@ -290,10 +349,14 @@ export function controls(options) {
       return folded;
     },
     setFolded,
-    update(nextProject, nextPicture, sentence) {
+    update(nextProject, nextPicture, sentence, crowd) {
       project = nextProject;
       picture = nextPicture;
       const choice = picture.choice;
+      routes.set(choice.routes);
+      routesBox.hidden = choice.who === 'teacher';
+      drawTry();
+      drawCrowd(crowd);
       words.replaceChildren(...sentence.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
       showMe.hidden = !sentence.showMe;
       showTab = sentence.showTab || 'summary';

@@ -311,7 +311,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
 
     // the caption: the day type, the transition and its times
     const transition = picture.transition;
-    captionWhat.replaceChildren(h('bdi', null, picture.dayTypeName), ' · ', transition ? transition.name : 'All transitions of the day', transition && transition.times ? ' · ' + transition.times : '');
+    captionWhat.replaceChildren(h('bdi', null, picture.dayTypeName), ' · ', transition ? transition.name : 'All transitions of the day', transition && transition.times ? ' · ' + transition.times : '', picture.routesMode === 'crowd' ? ' \u00b7 crowd-aware routes (a what-if)' : '');
 
     // the groups on the map
     groupsList.replaceChildren(...picture.groups.map((group) => h('li', { class: 'mov-pres__group', data: { group: group.id } },

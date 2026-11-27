@@ -79,6 +79,7 @@ import { parse } from '../colour.js';
 import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts, fitsOf } from './model.js';
 import { ELEVATOR_KIND, elevatorSettings, findRoom, nameOfRoom } from '../../engine/schema.js';
 import { headCountOf } from '../../engine/crowd.js';
+import { lensFits, usualOf, usualWalkOf } from './crowd-view.js';
 import { printButtons } from '../prints/index.js';
 import { printButton, openPrintPreview } from '../components/print-preview.js';
 
@@ -148,10 +149,12 @@ function routeOf(results, dayTypeId, bellsId, groupId, period) {
   return entry ? entry.routes[period] : null;
 }
 
-function rowOf(project, walk, group, numbers, ride) {
+// With crowd-aware routes on, `usual` is the same walk on the usual routes (what Checks read): { total, late }.
+function rowOf(project, walk, group, numbers, ride, usual) {
   const margin = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
   return {
     group,
+    ...(usual ? { usual: { total: usual.total, late: usual.late === true } } : {}),
     period: walk.period,
     ...(Number.isInteger(walk.toPeriod) ? { toPeriod: walk.toPeriod } : {}),
     from: numbers.get(walk.fromRoomId) || '',
@@ -179,7 +182,7 @@ export function transitionRows(project, results, dayTypeId, period, bellsId) {
   const order = new Map(project.groups.map((group, index) => [group.id, index]));
   const rows = walksOf(results, dayTypeId, bellsId)
     .filter((walk) => walk.period === period && groups.has(walk.groupId))
-    .map((walk) => rowOf(project, walk, groups.get(walk.groupId), numbers, walk.riding > 0 ? rideOf(project, routeOf(results, dayTypeId, bellsId, walk.groupId, walk.period), groups.get(walk.groupId)) : null))
+    .map((walk) => rowOf(project, walk, groups.get(walk.groupId), numbers, walk.riding > 0 ? rideOf(project, routeOf(results, dayTypeId, bellsId, walk.groupId, walk.period), groups.get(walk.groupId)) : null, usualWalkOf(results, dayTypeId, bellsId, walk.groupId, walk.period)))
     .sort(slowestFirst(order));
   const still = [];
   const failed = [];
@@ -200,10 +203,15 @@ export function dayRows(project, results, dayTypeId, bellsId) {
   const walks = walksOf(results, dayTypeId, bellsId);
   const rows = [];
   for (const group of project.groups) {
-    const mine = walks.filter((walk) => walk.groupId === group.id).map((walk) => rowOf(project, walk, group, numbers, walk.riding > 0 ? rideOf(project, routeOf(results, dayTypeId, bellsId, walk.groupId, walk.period), group) : null));
+    const mine = walks.filter((walk) => walk.groupId === group.id).map((walk) => rowOf(project, walk, group, numbers, walk.riding > 0 ? rideOf(project, routeOf(results, dayTypeId, bellsId, walk.groupId, walk.period), group) : null, usualWalkOf(results, dayTypeId, bellsId, walk.groupId, walk.period)));
     if (mine.length === 0) continue;
     const row = { group, walks: mine.length, walking: 0, waiting: 0, total: 0, late: 0, lost: 0, slowest: null };
+    if (mine.some((walk) => walk.usual)) row.usual = { total: 0, late: 0 };
     for (const walk of mine) {
+      if (walk.usual) {
+        row.usual.total += walk.usual.total;
+        if (walk.usual.late) row.usual.late += 1;
+      }
       row.walking += walk.walking;
       if (walk.riding > 0) row.riding = (row.riding || 0) + walk.riding;
       row.waiting += walk.waiting;
@@ -239,6 +247,16 @@ export function rideWords(ride) {
   const wait = ride.wait === 0 ? 'no wait' : formatDuration(ride.wait) + ' wait';
   return ' · ' + (ride.trips > 1 ? ride.trips + ' trips of ' + ride.perTrip + ' in ' : '') + (ride.cars || [ride.car]).map((car) => 'Elevator ' + car).join(', then ') + ', ' + wait;
 }
+
+// The Usual column's cell: the usual route's total, and where that route is late in Checks, "late in Checks (usual route)"
+// (DESIGN 17.7 item 5). `usual` is { total, late } of a walk (late a flag) or of a day (late a count).
+export function usualWords(usual) {
+  if (!usual) return '';
+  return formatDuration(usual.total) + (usual.late === true || usual.late > 0 ? ' \u00b7 late in Checks (usual route)' : '');
+}
+
+// The line that says what the Usual column is.
+export const USUAL_NOTE = 'Crowd-aware routes (a what-if): the Usual column is the total on the quickest route, which is what Checks use. The other columns are the crowd-aware routes\u2019.';
 
 // Whether any walk of the run rode an elevator.
 export function anyRiding(results, dayTypeId, bellsId) {
@@ -279,14 +297,18 @@ function transitionName(settings, period, toPeriod) {
 }
 
 // Every walk of the day, transition by transition, slowest first in each.
+// With crowd-aware routes the file says so in every row's day type, and carries each walk's usual total beside its own.
+const CROWD_DAY = ' (crowd-aware routes, a what-if)';
+
 export function transitionsCsv(project, results, dayTypeId, bellsId) {
   const day = travelDay(project, dayTypeId, bellsId);
   const held = anyHeldBack(results, day.id, day.bellsId);
   const rides = anyRiding(results, day.id, day.bellsId);
-  const table = [['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)'].concat(rides ? ['Riding (seconds)'] : [], ['Waiting (seconds)']).concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late', 'Late by (seconds)'])];
+  const lens = lensFits(results, day.id, day.bellsId);
+  const table = [['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)'].concat(rides ? ['Riding (seconds)'] : [], ['Waiting (seconds)']).concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late', 'Late by (seconds)'], lens ? ['Usual total (seconds)', 'Late on the usual route'] : [])];
   for (const { period, toPeriod } of transitionsOf(project, day.id, day.bellsId)) {
     for (const row of transitionRows(project, results, day.id, period, day.bellsId).rows) {
-      table.push([day.heading, transitionName(project.settings, period, toPeriod), row.passingSeconds, row.group.name, row.from, row.to, row.walking].concat(rides ? [row.riding || 0] : [], [row.waiting]).concat(held ? [row.released || 0] : [], [row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : '']));
+      table.push([day.heading + (lens ? CROWD_DAY : ''), transitionName(project.settings, period, toPeriod), row.passingSeconds, row.group.name, row.from, row.to, row.walking].concat(rides ? [row.riding || 0] : [], [row.waiting]).concat(held ? [row.released || 0] : [], [row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : ''], lens ? [row.usual ? row.usual.total : '', row.usual ? (row.usual.late ? 'late' : 'in time') : ''] : []));
     }
   }
   return table;
@@ -296,9 +318,10 @@ export function dayCsv(project, results, dayTypeId, bellsId) {
   const day = travelDay(project, dayTypeId, bellsId);
   const held = anyHeldBack(results, day.id, day.bellsId);
   const rides = anyRiding(results, day.id, day.bellsId);
-  const table = [['Day type', 'Group', 'Walks', 'Walking (seconds)'].concat(rides ? ['Riding (seconds)'] : [], ['Waiting (seconds)']).concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)'])];
+  const lens = lensFits(results, day.id, day.bellsId);
+  const table = [['Day type', 'Group', 'Walks', 'Walking (seconds)'].concat(rides ? ['Riding (seconds)'] : [], ['Waiting (seconds)']).concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)'], lens ? ['Usual total (seconds)', 'Late walks on the usual routes'] : [])];
   for (const row of dayRows(project, results, day.id, day.bellsId)) {
-    table.push([day.heading, row.group.name, row.walks, row.walking].concat(rides ? [row.riding || 0] : [], [row.waiting]).concat(held ? [row.released || 0] : [], [row.total, row.late, transitionName(project.settings, row.slowest.period, row.slowest.toPeriod), row.slowest.total]));
+    table.push([day.heading + (lens ? CROWD_DAY : ''), row.group.name, row.walks, row.walking].concat(rides ? [row.riding || 0] : [], [row.waiting]).concat(held ? [row.released || 0] : [], [row.total, row.late, transitionName(project.settings, row.slowest.period, row.slowest.toPeriod), row.slowest.total], lens ? [row.usual ? row.usual.total : '', row.usual ? row.usual.late : ''] : []));
   }
   return table;
 }
@@ -316,11 +339,12 @@ function names(groups) {
 // group is a row group of its own, and each time names both its headings.
 //   entries   [{ row: { group, walking, waiting, released, total, late }, who: [nodes after the name] }]
 //   held      whether a column "Left after the bell" stands between Waiting and Total
-function travelTable(caption, entries, held, rides, sheetFor) {
+function travelTable(caption, entries, held, rides, sheetFor, usual) {
   const base = uid('travel');
-  const labels = ['Walking'].concat(rides ? ['Riding'] : [], ['Waiting'], held ? ['Left after the bell'] : [], ['Total']);
+  // with crowd-aware routes a column after Total: what the usual route takes (DESIGN 17.4, 17.7 item 5)
+  const labels = ['Walking'].concat(rides ? ['Riding'] : [], ['Waiting'], held ? ['Left after the bell'] : [], ['Total'], usual ? ['Usual'] : []);
   const heads = labels.map((label, index) => h('th', { scope: 'col', class: 'table__num', id: base + '-c' + index }, label));
-  return h('table', { class: 'table mov-travel__table' + (held ? ' mov-travel__table--held' : '') },
+  return h('table', { class: 'table mov-travel__table' + (held ? ' mov-travel__table--held' : '') + (usual ? ' mov-travel__table--usual' : '') },
     h('caption', { class: 'vh' }, caption),
     h('thead', null, h('tr', null, heads)),
     entries.map((entry, index) => {
@@ -334,6 +358,7 @@ function travelTable(caption, entries, held, rides, sheetFor) {
           if (label === 'Riding') return cell(column, row.riding > 0 ? formatDuration(row.riding) : 'none');
           if (label === 'Waiting') return cell(column, row.waiting === 0 ? 'none' : formatDuration(row.waiting));
           if (label === 'Left after the bell') return cell(column, row.released > 0 ? formatDuration(row.released) : 'none');
+          if (label === 'Usual') return h('td', { class: 'table__num', headers: id + ' ' + base + '-c' + column, data: { cell: 'usual', late: String(Boolean(row.usual) && row.usual.late !== 0 && row.usual.late !== false) } }, row.usual ? usualWords(row.usual) : '');
           return cell(column, formatDuration(row.total));
         })),
         // a row of its own under the group's figures, across the table: a column would
@@ -397,16 +422,18 @@ export function tablesPanel(env) {
   const print = printButton(env.ctx, printButtons.find((entry) => entry.id === 'print-travel-time'), () => ({
     dayTypeId: last.picture.choice.dayTypeId,
     bellsId: last.picture.choice.bellsId,
-    movement: { project: last.project, results: last.results, graph: last.graph },
+    movement: { project: last.project, results: usualOf(last.results), graph: last.graph },
   }));
   // the sheet of one group on the day type and bells shown, from what the tables are drawn from
   const sheetOptions = (group) => ({
     groupId: group.id,
     dayTypeId: last.picture.choice.dayTypeId,
     bellsId: last.picture.choice.bellsId,
-    movement: { project: last.project, results: last.results, graph: last.graph },
+    movement: { project: last.project, results: usualOf(last.results), graph: last.graph },
   });
-  const printBox = h('div', { class: 'mov-export__buttons' }, print);
+  // the print and the route sheets are of the usual routes, the ones Checks read; with crowd-aware routes on, this says so
+  const printNote = h('p', { class: 'mov-panel__note', hidden: true, data: { travel: 'print-note' } }, 'Printed from the usual routes: crowd-aware routes are a what-if.');
+  const printBox = h('div', { class: 'mov-export__buttons' }, print, printNote);
   // a teacher's walks: one table and the notes under it (hidden except for a teacher)
   const teacherNotes = h('p', { class: 'mov-panel__note', hidden: true, data: { travel: 'teacher-notes' } });
   const tables = h('div', { class: 'mov-travel__tables' }, printBox, oneTitle, picker, oneLine, one, oneRest, dayTitle, whole, teacherNotes);
@@ -468,6 +495,7 @@ export function tablesPanel(env) {
     }
     // back from a teacher's day: what that took away is put back, and the whole-day title is the table's own again
     printBox.hidden = false;
+    printNote.hidden = true;
     teacherNotes.hidden = true;
     dayTitle.textContent = 'The whole day';
     // the bells, the walks and the name all from the one day type that answers for the one chosen
@@ -498,7 +526,10 @@ export function tablesPanel(env) {
     }
     const held = anyHeldBack(results, day.id, day.bellsId);
     const rides = anyRiding(results, day.id, day.bellsId);
-    lead.replaceChildren('How long every group takes on ', h('bdi', null, day.heading), ', slowest first. Walking is the time in an empty corridor; waiting is the time lost to the crowd.' + (rides ? ' Riding is the time held in an elevator: its wait, the ride, and the further trips a large group needs. It counts in the total.' : '') + (held ? ' Left after the bell is the time a group was held back by a staggered dismissal; it counts in the total, so the group has less of the passing time to walk in.' : '') + ' The figures do not depend on which groups the map shows.');
+    // crowd-aware routes: the tables are the lens's, with a Usual column beside the total
+    const usual = picture.routesMode === 'crowd' && lensFits(results, day.id, day.bellsId);
+    printNote.hidden = !usual;
+    lead.replaceChildren('How long every group takes on ', h('bdi', null, day.heading), ', slowest first. Walking is the time in an empty corridor; waiting is the time lost to the crowd.' + (rides ? ' Riding is the time held in an elevator: its wait, the ride, and the further trips a large group needs. It counts in the total.' : '') + (held ? ' Left after the bell is the time a group was held back by a staggered dismissal; it counts in the total, so the group has less of the passing time to walk in.' : '') + ' The figures do not depend on which groups the map shows.' + (usual ? ' ' + USUAL_NOTE : ''));
 
     // the map's transition leads; with the whole day on the map, the one picked here, else the slowest
     if (picture.choice.transition !== mapTransition) {
@@ -533,7 +564,7 @@ export function tablesPanel(env) {
           h('span', { class: 'mov-travel__rooms' }, h('bdi', null, row.from === '' ? 'no number' : row.from), ' to ', h('bdi', null, row.to === '' ? 'no number' : row.to)),
           h('span', { class: row.late ? 'mov-groups__late' : 'mov-travel__fits', data: { fits: String(!row.late) } }, lateWords(row)),
         ],
-      })), held, rides));
+      })), held, rides, null, usual));
     const rest = [];
     if (found.still.length > 0) rest.push(...names(found.still), found.still.length === 1 ? ' stays in its room.' : ' stay in their rooms.');
     if (found.failed.length > 0) rest.push(rest.length > 0 ? ' ' : null, ...names(found.failed), found.failed.length === 1 ? ' has no route: see Summary.' : ' have no route: see Summary.');
@@ -547,7 +578,7 @@ export function tablesPanel(env) {
         h('span', { class: 'mov-travel__rooms' }, count(row.walks, 'walk') + ', the slowest ' + formatDuration(row.slowest.total)),
         row.late > 0 ? h('span', { class: 'mov-groups__late' }, 'late ' + (row.late === 1 ? 'once' : row.late + ' times')) : null,
       ],
-    })), held, rides, (group) => sheetButton(env, group, sheetOptions)));
+    })), held, rides, (group) => sheetButton(env, group, sheetOptions), usual));
   }
 
   pick.addEventListener('change', () => {
