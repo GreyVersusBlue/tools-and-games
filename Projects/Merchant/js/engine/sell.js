@@ -14,7 +14,7 @@ import { cityOf, addPaper } from './state.js';
 import * as M from './market.js';
 import { refitReturns } from './letters.js';
 
-export const BROKER_CUT = 0.15;
+export { BROKER_CUT } from './market.js';
 
 const MINUS = '−';
 const commas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -43,17 +43,8 @@ export function sellHomeQuote(state, content, good, loads) {
   if (held < 1) return no(`The house has no ${nameOf(content, good)} in the warehouse.`);
   if (!state.market?.[home]?.[good]) return no(`${home[0].toUpperCase()}${home.slice(1)} does not buy ${nameOf(content, good)}.`);
   if (loads > held) return no(`The house has only ${loadsOf(content, good, held)} in the warehouse.`);
-  const m = structuredClone(state);   // priced on a copy, load by load: the price falls as the house sells
-  let gross = 0, got = 0, first = null, last = null;
-  for (let i = 0; i < loads; i++) {
-    const price = M.sellPrice(m, content, home, good);
-    const net = Math.max(1, Math.round(price * (1 - BROKER_CUT)));
-    gross += price; got += net;
-    if (first === null) first = net;
-    last = net;
-    M.noteSale(m, content, home, good, 1);
-  }
-  return { ok: true, reason: null, good, loads, gross, cut: gross - got, got, average: Math.round((got / loads) * 10) / 10, first, last, after: M.sellPrice(m, content, home, good) };
+  const r = M.houseSale(state, content, home, good, loads);   // priced load by load on a copy of the one market entry: the price falls as the house sells
+  return { ok: true, reason: null, good, loads, gross: r.gross, cut: r.gross - r.got, got: r.got, average: Math.round((r.got / loads) * 10) / 10, first: r.first, last: r.last, after: r.after };
 }
 
 /** The house sells `loads` of `good` from the warehouse at home. Returns a new state, as every engine action does; throws the

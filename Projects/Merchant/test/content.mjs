@@ -213,7 +213,7 @@ test('validate: every condition leaf is accepted, and agrees with the engine\'s 
     season: { season: ['spring'] }, year: { year: [1200, 1202] }, act: { act: 1 }, length: { length: 'acts' },
     notebook: { notebook: 'testport' }, out: { out: { lte: 2 } }, money: { money: { lte: 900 } },
     stock: { stock: 'wool', gte: 1 }, flag: { flag: 'x', not: true }, rep: { rep: 'partners', gte: 1 }, agent: { agent: 'mira', hired: true },
-    trip: { trip: { agent: 'mira', is: 'ready' } },
+    trip: { trip: { agent: 'mira', is: 'ready' } }, road: { road: ['hilltown'] },
   };
   eq(Object.keys(samples).sort(), Object.keys(CONDITION_LEAVES).sort());
   const c2 = variant(c => { c.notebook = entries; });
@@ -228,6 +228,12 @@ test('validate: every condition leaf is accepted, and agrees with the engine\'s 
 test('validate: the { notebook: id } leaf and lte on money and out (MER-02) are accepted', () => {
   for (const when of [{ notebook: 'testport' }, { money: { lte: 50 } }, { out: { lte: 1 } }, { money: { gte: 10, lte: 90 } }]) {
     eq(problemsOf(variant(c => { c.notebook = entries; c.cards[0].when = when; })), [], JSON.stringify(when));
+  }
+});
+test('validate: a road leaf names stops, and a typo is an error (MER-157)', () => {
+  for (const when of [{ road: ['hilltown'] }, { road: ['saltmarsh', 'hilltown'] }]) eq(problemsOf(variant(c => { c.cards[0].when = when; })), [], JSON.stringify(when));
+  for (const when of [{ road: ['hiltown'] }, { road: 'hilltown' }, { road: [] }, { road: [4] }, { road: ['hilltown'], gte: 1 }, { roads: ['hilltown'] }]) {
+    ok(problemsOf(variant(c => { c.cards[0].when = when; })).length > 0, JSON.stringify(when));
   }
 });
 test('validate: a bad condition is an error', () => {
@@ -319,6 +325,16 @@ test('rule 4: only the opening letters named in the lint\'s head are exempt', ()
   });
   eq(lintContent(content, { banned }), []);
   eq(lintContent(dominated('some-other-card'), { banned }).map(f => f.rule), [4], 'welcome-note\'s choices are dominated; under another id the lint says so');
+});
+test('rule 20: a card or letter choice with an id the engine reserves fails (MER-155: tabriz-envoys-cairo had \'leave\')', () => {
+  const hit = c => lintContent(c, { banned }).filter(f => f.rule === 20);
+  eq(hit(content), [], 'testport as it stands');
+  const card = hit(variant(c => { c.cards.find(x => x.id === 'wool-offer').choices[1].id = 'leave'; }));
+  eq(card.length, 1, JSON.stringify(card));
+  ok(/cards\[wool-offer\]/.test(card[0].path) && /reserved/.test(card[0].message), JSON.stringify(card));
+  const letter = hit(variant(c => { c.letters[0].choices[0].id = 'leave'; }));
+  eq(letter.length, 1, JSON.stringify(letter));
+  ok(/letters\[/.test(letter[0].path), JSON.stringify(letter));
 });
 test('rule 3: a choice with no effect at all fails', () => {
   const f = lintContent(variant(c => { c.cards[0].choices[0].now = []; c.cards[0].choices[0].later = []; }), { banned });
@@ -567,6 +583,16 @@ test('rule 17: a choice that takes money now and could be the only open one requ
   // a card with a way out that costs nothing and needs nothing is not held to it: aydhab-toll's "quseir" needs money, so give it a free third choice
   eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; })).filter(r => r === 17), [17], 'pay with no requires and a sibling that needs money');
   eq(rulesOf(cairoEdit(c => { const k = cardOf(c, 'aydhab-toll'); delete k.choices.find(x => x.id === 'pay').requires; k.choices.push({ id: 'wait', label: 'Wait', now: [] }); })).filter(r => r === 17), [], 'a choice that is always open lets the cost stand');
+});
+test('rule 19: a sum that lands later is named on the paper that chose it; take the figure out of a hint or a letter and the lint names it (MER-148)', () => {
+  eq(rulesOf(cairo).filter(r => r === 19), []);
+  // the three cases the M4f play found: a letter's own cost, a later cost behind 'You win nothing back', a later gain behind 'It costs nothing'
+  eq(rulesOf(cairoEdit(c => { const l = letterOf(c, 'qus-camels'); l.body = l.body.replace(' It cost 25 of your money.', ''); })).filter(r => r === 19), [19], 'the camel letter without its 25');
+  eq(rulesOf(cairoEdit(c => { cardOf(c, 'ali-beyond-the-paper').choices.find(x => x.id === 'forgive').hint = 'You win nothing back. Ali is grateful.'; })).filter(r => r === 19), [19], 'forgive without its 2');
+  eq(rulesOf(cairoEdit(c => { cardOf(c, 'abu-bakr-again').choices.find(x => x.id === 'no-favour').hint = 'It costs nothing. Abu Bakr is not pleased.'; })).filter(r => r === 19), [19], 'a later gain left out');
+  const counted = [];
+  for (const c of cairo.cards) for (const ch of c.choices ?? []) if ((ch.later ?? []).some(l => (l.do ?? []).some(e => typeof e.money === 'number'))) counted.push(`${c.id}/${ch.id}`);
+  ok(counted.length >= 50, `${counted.length} choices have a later sum, each named in its hint`);
 });
 test('rule 13: a bonus costs no more than the letter brings, a card bonus about a trip home needs that agent\'s profit, and a return bonus is for a profit', () => {
   eq(rulesOf(cairo).filter(r => r === 13), []);

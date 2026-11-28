@@ -16,7 +16,7 @@
       {
         "id": "lend",
         "label": "Lend him the money",
-        "hint": "Ships are often late. Some never come.",
+        "hint": "It costs 5 now and pays 4 in two seasons. Ships are often late. Some never come.",
         "requires": {
           "money": {
             "gte": 5
@@ -95,7 +95,7 @@
       {
         "id": "lend",
         "label": "Lend him 7 dinars",
-        "hint": "He may not repay it all. He will remember.",
+        "hint": "It costs 7 dinars now and 4 come back in three seasons. He may not repay it all. He will remember.",
         "requires": {
           "money": {
             "gte": 7
@@ -274,7 +274,7 @@
       {
         "id": "partner",
         "label": "Put in 5 dinars as her partner",
-        "hint": "It costs now. You would take a share of the profit, and the whole market would see the partnership.",
+        "hint": "It costs 5 dinars now and brings 4 in four seasons. You would take a share of the profit, and the whole market would see the partnership.",
         "requires": {
           "money": {
             "gte": 5
@@ -303,7 +303,7 @@
       {
         "id": "small",
         "label": "Lend her 3 dinars as a kindness",
-        "hint": "A small help. She will repay it, and the street will hear of the kindness.",
+        "hint": "A small help of 3 dinars now, and 3 come back in three seasons. She will repay it, and the street will hear of the kindness.",
         "now": [
           {
             "money": -3
@@ -327,7 +327,7 @@
       {
         "id": "keep",
         "label": "Keep your money for your own trade",
-        "hint": "It stays free to work, and the court likes a careful house. Dalal may be hurt.",
+        "hint": "It stays free to work and gains 2 dinars in two seasons, and the court likes a careful house. Dalal may be hurt.",
         "now": [],
         "later": [
           {
@@ -353,6 +353,805 @@
       {
         "src": "goitein-1964",
         "at": "p. 317; partnership in the place of loans on interest"
+      }
+    ]
+  },
+  {
+    "id": "quseir-paper-credit",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "A Quseir trading house",
+      "role": "Quseir",
+      "seal": null
+    },
+    "title": "A share paid on paper",
+    "body": "A trading house at Quseir offers you a share of its trade. It will pay you on paper, a written promise to pay later, not in coin. Many houses do this, and it is slow.",
+    "when": {
+      "road": [
+        "quseir"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "paper",
+        "label": "Take the share and the paper",
+        "hint": "It costs 6 dinars now. The house pays in two seasons, and partners think you trust well.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coin",
+        "label": "Ask to be paid in coin",
+        "hint": "It costs 8 dinars now. The house is glad of coin, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline the offer",
+        "hint": "It costs nothing. The house offers its trade to someone else.",
+        "now": [
+          {
+            "flag": "quseir-paper-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Papers found at Quseir from 1215 to 1235 show that trade there ran mostly on credit, written on paper. That is about 100 years before 1324.",
+    "unlocks": [
+      "term-dinar",
+      "place-quseir"
+    ],
+    "sources": [
+      {
+        "src": "bauden-2009b",
+        "at": "p. 168"
+      }
+    ]
+  },
+  {
+    "id": "aden-shipowner-share",
+    "group": "loans",
+    "kind": "favour",
+    "from": {
+      "name": "Jalal, a shipowner",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "A share in a great ship",
+    "body": "Jalal is a rich shipowner in Aden. He owns his ship and all its cargo, with no partners. He offers you a small share in his next voyage.",
+    "when": {
+      "road": [
+        "aden"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Take a small share",
+        "hint": "It costs 10 dinars now. The voyage takes seasons, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "qirad",
+        "label": "Offer a qirad instead",
+        "hint": "It costs 14 dinars now. A qirad is a partnership: you give money and he does the trading. Partners think well of you.",
+        "requires": {
+          "money": {
+            "gte": 14
+          }
+        },
+        "now": [
+          {
+            "money": -14
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline, to be safe",
+        "hint": "It costs nothing. Jalal offers the share to someone else.",
+        "now": [
+          {
+            "flag": "jalal-share-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that one merchant at Aden might own a great ship and its whole cargo. He had no partner, because of the huge capital he held.",
+    "unlocks": [
+      "term-qirad",
+      "term-dinar",
+      "place-aden",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 372 (one merchant owning a great ship)"
+      }
+    ]
+  },
+  {
+    "id": "hormuz-horse-guarantee",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "Sabir, a horse dealer",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Horses for south India",
+    "body": "Sabir sells horses that go by ship to south India. He offers you a share in a shipment. In the deal he offers, the king in India pays for any horse that is hurt or dies at sea.",
+    "when": {
+      "road": [
+        "hormuz"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "guarantee",
+        "label": "Take the share with the guarantee",
+        "hint": "It costs 12 dinars now. The price is higher, but a horse lost at sea is paid for.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "without",
+        "label": "Take the share without it",
+        "hint": "It costs 8 dinars now. If a horse is lost, so is the money, but partners see your nerve.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. Sabir finds another partner.",
+        "now": [
+          {
+            "flag": "sabir-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One Persian writer said that about 1300 each horse shipped from the Gulf islands to India cost 220 dinars of red gold. If a horse was hurt or died at sea, the Indian king paid.",
+    "unlocks": [
+      "term-dinar",
+      "place-hormuz"
+    ],
+    "sources": [
+      {
+        "src": "sastri-1939",
+        "at": "p. 168 (Wassaf, in Elliot and Dowson, The History of India as Told by Its Own Historians, vol. 3, p. 33)"
+      }
+    ]
+  },
+  {
+    "id": "cairo-musa-borrows",
+    "group": "loans",
+    "kind": "favour",
+    "from": {
+      "name": "Nasr, a merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The king of Mali asks for a loan",
+    "body": "Mansa Musa, the king of Mali, has run out of gold on his pilgrimage. Back in Cairo he wants to borrow from merchants on his word. Nasr asks if you will lend.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1325
+          ]
+        },
+        {
+          "season": [
+            "winter"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "lend",
+        "label": "Lend 12 dinars",
+        "hint": "It costs 12 dinars now and pays back 21 in three seasons. Other lenders say you lend too freely.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 21
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "little",
+        "label": "Lend 4 dinars",
+        "hint": "It costs 4 dinars now and pays back 7 in three seasons. Foreign houses hear that you lend to kings.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 7
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "It costs nothing. Partners think you careful.",
+        "now": [
+          {
+            "flag": "musa-loan-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1324 Mansa Musa ran out of gold and borrowed from Cairo merchants on his word. They told al-Umari that they made 700 dinars of profit for every 300 lent, and that Musa paid them.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar",
+      "person-mansa-musa",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 75"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-late-payment",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "An Egyptian dealer",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "Pay when the goods sell",
+    "body": "An Egyptian dealer wants to buy gold from your house. He promises to pay when his own goods are sold.",
+    "when": {
+      "stock": "gold",
+      "gte": 1
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "late",
+        "label": "Let him pay late for a better price",
+        "hint": "He takes 1 chest of gold now and pays you 115 dinars in three seasons, 15 more than coin today. You must chase him, and your people tire of it.",
+        "now": [
+          {
+            "stock": "gold",
+            "by": -1
+          },
+          {
+            "flag": "alexandria-late-pay",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 115
+              },
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
+      },
+      {
+        "id": "coin",
+        "label": "Insist on coin on the day",
+        "hint": "He pays 100 dinars now for 1 chest of gold. He is not pleased, but he pays.",
+        "now": [
+          {
+            "money": 100
+          },
+          {
+            "stock": "gold",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "flag": "alexandria-coin-paid",
+                "set": "now"
+              }
+            ]
+          }
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
+      },
+      {
+        "id": "half",
+        "label": "Take half now and a note for the rest",
+        "hint": "He takes 1 chest of gold and pays 55 dinars now and 55 in three seasons. A note is a risk, and partners know it.",
+        "now": [
+          {
+            "money": 55
+          },
+          {
+            "stock": "gold",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 55
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ],
+        "requires": {
+          "stock": "gold",
+          "gte": 1
+        }
+      }
+    ],
+    "note": "Gold and silver sold in Egypt were often paid for late. Treaties in 1238, 1254, 1290, 1302 and 1345 ordered buyers to pay at once.",
+    "unlocks": [
+      "term-dinar",
+      "good-gold",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "p. 129"
+      }
+    ]
+  },
+  {
+    "id": "pera-gold-perpers",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "A Pera trader",
+      "role": "Constantinople",
+      "seal": null
+    },
+    "title": "Gold coins by weight",
+    "body": "A Pera trader pays you in gold perpers, the coins of the city. He says there is no need to weigh them. You can count them fast.",
+    "when": {
+      "road": [
+        "constantinople"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "weigh",
+        "label": "Weigh them on scales",
+        "hint": "It costs 1 dinar now, for the slow count. The coins are fair, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 1
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "count",
+        "label": "Count them",
+        "hint": "It costs nothing now and 4 dinars in two seasons, for short coins. Your people like the speed.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "flag": "perpers-counted",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -4
+              },
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "silver",
+        "label": "Take silver grossi instead",
+        "hint": "It costs 2 dinars now, a worse rate. Foreign houses trust silver.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti says gold coins at Constantinople were paid by weight, not counted. One gold perper was worth 12 and a half to 13 Venetian silver grossi.",
+    "unlocks": [
+      "term-dinar",
+      "place-constantinople"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 23"
+      }
+    ]
+  },
+  {
+    "id": "tabriz-pack-animal-tax",
+    "group": "loans",
+    "kind": "trade",
+    "from": {
+      "name": "A man of Tabriz",
+      "role": "Tabriz",
+      "seal": null
+    },
+    "title": "A debt on every pack animal",
+    "body": "A man of Tabriz has won a claim of 4,000 bezants against the Venetians there. Until it is paid, each Venetian owes him 4 bezants a load.",
+    "when": {
+      "road": [
+        "tabriz"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Pay your share of the debt",
+        "hint": "It costs 8 dinars now. You are known as honest, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "It costs nothing now and 4 dinars in two seasons, the animal tax. Partners think you stubborn.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "flag": "tabriz-debt-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -4
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "court",
+        "label": "Seek a ruling from the court",
+        "hint": "It costs 4 dinars now. The court hears your case, and thinks well of you.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "About 1328 to 1336 a man of Tabriz won 4,000 bezants from the Venetians there. Until it was paid, each Venetian owed him 4 bezants on every pack animal.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "heyd-1886",
+        "at": "vol. 2, p. 128"
       }
     ]
   }

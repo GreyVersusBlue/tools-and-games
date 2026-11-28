@@ -103,6 +103,16 @@ export function createDesk(app) {
     root.style.setProperty('--end-h', `${Math.ceil(endRow.checkVisibility?.() === false ? 0 : endRow.getBoundingClientRect().height)}px`);
   };
   const sizeWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(sizes) : null;
+  // LAND-4g: the watch above runs a frame late, and a focus that comes first scrolls by the bar's old height (PR #622's CI: Large text made End
+  // the season taller, and the focused last answer stopped 53 px behind it). So a focus measures the bars at once, and where End is the bar stuck
+  // to the foot of the page and the focused control lies behind it, the page is scrolled until the control's foot is clear
+  el.addEventListener('focusin', e => {
+    sizes();
+    const t = e.target;
+    if (!t?.closest?.('.sheet') || getComputedStyle(endRow).position !== 'sticky' || !endRow.checkVisibility()) return;
+    const behind = t.getBoundingClientRect().bottom + 6 - (window.innerHeight - endRow.offsetHeight);
+    if (behind > 0) window.scrollBy({ top: behind, behavior: 'instant' });
+  });
 
   // ---- the top bar
   function barNote(text) { note.textContent = text; app.say(text); }
@@ -254,7 +264,9 @@ export function createDesk(app) {
       const y = window.scrollY, endTop = window.innerHeight - endRow.offsetHeight;
       const clear = last.getBoundingClientRect().bottom + y + 6 - endTop;
       const lead = qs('.sheet-head', sheet) ?? title;   // MER-145: the seal, not the heading, is what stays under the bar's edge
-      const most = lead ? lead.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 8) : clear;
+      // MER-159: flush with the bar's foot (1 px of ground), not a hand's breadth under it: at 360 x 740 the 8 px kept the second choice of a
+      // return 4 px behind End the season, and the seal is never behind the bar either way (journey's MER-145 case measures that)
+      const most = lead ? lead.getBoundingClientRect().top + y - (bar.getBoundingClientRect().bottom + 1) : clear;
       window.scrollTo({ top: Math.max(0, Math.min(clear, most)), behavior: 'instant' });
     });
   }

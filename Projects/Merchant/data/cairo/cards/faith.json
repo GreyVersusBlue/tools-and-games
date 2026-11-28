@@ -133,7 +133,7 @@
       {
         "id": "wait",
         "label": "Ask for a letter from someone you know",
-        "hint": "It costs nothing. He starts with a small order.",
+        "hint": "It costs nothing now and brings 4 dinars in three seasons. He starts with a small order.",
         "now": [],
         "later": [
           {
@@ -234,6 +234,704 @@
       {
         "src": "peacock-2008",
         "at": "p. 34; Saladin repealed the tax on pilgrims at Aydhab, from Ibn Jubayr"
+      }
+    ]
+  },
+  {
+    "id": "jeddah-dry-year",
+    "group": "faith",
+    "kind": "favour",
+    "from": {
+      "name": "Qasim, a pilgrim guide",
+      "role": "Jeddah",
+      "seal": null
+    },
+    "title": "Pilgrims beg for water",
+    "body": "Qasim helps pilgrims at Jeddah. It is a dry year, and the town's water must come from a day's journey away. Pilgrims are begging for it at the doors of householders.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1328,
+            1330
+          ]
+        },
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "road": [
+            "jeddah"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "carriers",
+        "label": "Pay for water carriers",
+        "hint": "It costs 6 dinars now. The pilgrims remember your house.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Give a gift to the town rulers' men",
+        "hint": "It costs 4 dinars now. The men are pleased, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Send nothing",
+        "hint": "It costs nothing. Qasim says the pilgrims will not forget it.",
+        "now": [
+          {
+            "flag": "jeddah-water-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a dry year of Ibn Battuta's visit, water was brought to Jeddah from a day's journey away. The pilgrims begged for it from the owners of the houses.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar",
+      "place-jeddah",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 360 (the year is 1328 or 1330; both in the window)"
+      }
+    ]
+  },
+  {
+    "id": "cairo-emirs-wives-hajj",
+    "group": "faith",
+    "kind": "trade",
+    "from": {
+      "name": "Salih, a litter maker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Litters for the emirs' wives",
+    "body": "Salih makes litters, the covered seats that camels carry. The wives of some emirs, the sultan's high officers, plan to go on the Hajj, the pilgrimage to Mecca. They want litters from your house, and they also want to give robes to the drivers. Salih asks which litters you will rent them.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1346,
+            1346
+          ]
+        },
+        {
+          "season": [
+            "spring"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "plain",
+        "label": "Rent plain litters",
+        "hint": "The wives pay your house 3 dinars now. It is a low fee, and partners think well of your house.",
+        "now": [
+          {
+            "money": 3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "showy",
+        "label": "Rent showy litters",
+        "hint": "The wives pay your house 8 dinars now. People complain of the show, and the court hears of it.",
+        "now": [
+          {
+            "money": 8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The court sees that you stayed clear.",
+        "now": [
+          {
+            "flag": "emirs-wives-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1346 the wives of some emirs went on the Hajj with litters so grand that people complained. They gave robes to camel riders and water carriers, and the chief judge spoke against them in his sermon.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "stephan-2021",
+        "at": "pp. 201 to 202"
+      }
+    ]
+  },
+  {
+    "id": "galata-the-franks",
+    "group": "faith",
+    "kind": "world",
+    "from": {
+      "name": "A neighbour at Galata",
+      "role": "Constantinople",
+      "seal": null
+    },
+    "title": "A city of two halves",
+    "body": "A neighbour at Galata says the city is divided. Galata is the quarter kept for the Franks: Genoese, Venetians, men of Rome and French. He asks which side you will buy from.",
+    "when": {
+      "road": [
+        "constantinople"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "italian",
+        "label": "Deal with the Italian quarter",
+        "hint": "It costs 6 dinars now. Prices are steady, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "greek",
+        "label": "Deal with the Greeks of the old city",
+        "hint": "It costs 4 dinars now. It is cheaper, and partners like it.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "both",
+        "label": "Deal with both",
+        "hint": "It costs 9 dinars now. The risk is spread, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Galata was set aside for Franks, who paid the king a yearly tax but often rebelled. Ibn Battuta wrote this about 1332, and his editor says it was really a Genoese colony.",
+    "unlocks": [
+      "term-dinar",
+      "place-constantinople",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, pp. 508 to 509 and note 332"
+      }
+    ]
+  },
+  {
+    "id": "famagusta-greek-go-between",
+    "group": "faith",
+    "kind": "favour",
+    "from": {
+      "name": "A Venetian friend",
+      "role": "Famagusta",
+      "seal": null
+    },
+    "title": "A go-between for pepper",
+    "body": "A Venetian friend may not trade with Egypt, because the pope has forbidden it. He asks you to find a Greek merchant of Cyprus to carry his pepper.",
+    "when": {
+      "road": [
+        "famagusta"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "find",
+        "label": "Find the go-between",
+        "hint": "It costs 3 dinars now, a fee for the go-between. The Venetians remember.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "It costs nothing. The Venetian buys through a rival.",
+        "now": [
+          {
+            "flag": "greek-go-between-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "carry",
+        "label": "Carry it yourself",
+        "hint": "It costs 6 dinars now. You carry his pepper to Cyprus, and he pays you 12 dinars in two seasons, more than the Greek would earn. The court may frown on it, and partners like the profit.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 12
+              },
+              {
+                "rep": "court",
+                "by": -1
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Greeks in Cyprus felt the pope's ban on trade with Egypt did not bind them, so they acted as agents for Venetians. This is told of the years after 1291.",
+    "unlocks": [
+      "term-dinar",
+      "place-famagusta",
+      "good-pepper"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "p. 133"
+      }
+    ]
+  },
+  {
+    "id": "tunis-oil-barrels",
+    "group": "faith",
+    "kind": "trade",
+    "from": {
+      "name": "A buyer of olive oil",
+      "role": "Tunis",
+      "seal": null
+    },
+    "title": "Oil in new barrels",
+    "body": "A buyer at Tunis wants olive oil, but only in new barrels. Old barrels may have held wine or fat, and then the court could refuse the oil.",
+    "when": {
+      "road": [
+        "tunis"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "new",
+        "label": "Pay for new barrels",
+        "hint": "It costs 3 dinars now. The oil is accepted, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "old",
+        "label": "Ship it in old barrels",
+        "hint": "It costs nothing now and 6 dinars in two seasons, a fine if the court refuses it. Your people save the cost of barrels.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "flag": "tunis-old-barrels",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -6
+              },
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cairo",
+        "label": "Sell the oil in Cairo instead",
+        "hint": "It costs 2 dinars now. The price is lower, and partners think it careful.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti says oil sent to Tunis should come in new barrels. Old ones might have held wine, fat or pork, and then the court could refuse the oil and fine the merchant.",
+    "unlocks": [
+      "term-dinar",
+      "place-tunis"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 122"
+      }
+    ]
+  },
+  {
+    "id": "damascus-pilgrim-caravan",
+    "group": "faith",
+    "kind": "trade",
+    "from": {
+      "name": "A neighbour",
+      "role": "Damascus",
+      "seal": null
+    },
+    "title": "Goods with the pilgrims",
+    "body": "A pilgrim caravan is leaving Damascus for the Hijaz. A neighbour suggests sending a few loads of your goods with it. Pilgrim caravans often pay fewer tolls.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1326,
+            1326
+          ]
+        },
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "road": [
+            "damascus"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "with",
+        "label": "Send the goods with the pilgrims",
+        "hint": "It costs 2 dinars now. There are few tolls, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "trade",
+        "label": "Keep them for a trade caravan",
+        "hint": "It costs 6 dinars now, the full tolls. The court notes that you pay.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pilgrim",
+        "label": "Send a pilgrim with money for the road",
+        "hint": "It costs 4 dinars now. Foreign houses hear of your gift.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that the pilgrim caravan left Damascus at the new moon of Shawwal, on 1 September 1326 by Gibb's count. Gibb notes that such caravans were often free of the usual road and customs duties.",
+    "unlocks": [
+      "term-caravan",
+      "term-load",
+      "term-toll",
+      "term-dinar",
+      "term-pilgrimage",
+      "place-damascus",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 158 and 159 (note 10)"
       }
     ]
   }

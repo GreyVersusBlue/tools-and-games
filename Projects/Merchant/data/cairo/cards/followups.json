@@ -16,7 +16,7 @@
       {
         "id": "favour",
         "label": "Take the place and do the favour",
-        "hint": "It costs 5 dinars. Abu Bakr is pleased.",
+        "hint": "It costs 5 dinars now and pays back 7 in two seasons. Abu Bakr is pleased.",
         "requires": {
           "money": {
             "gte": 5
@@ -45,7 +45,7 @@
       {
         "id": "no-favour",
         "label": "Take the place and skip the favour",
-        "hint": "It costs nothing. Abu Bakr is not pleased.",
+        "hint": "It costs nothing now, and 7 dinars come in two seasons. Abu Bakr is not pleased.",
         "now": [
           {
             "rep": "partners",
@@ -166,7 +166,7 @@
       {
         "id": "pick",
         "label": "Buy the best dyes at her price",
-        "hint": "It costs money now. Dyers pay well.",
+        "hint": "It costs 5 now and pays 4 in two seasons. Dyers pay well.",
         "requires": {
           "money": {
             "gte": 5
@@ -195,7 +195,7 @@
       {
         "id": "wait",
         "label": "Wait for the price to fall",
-        "hint": "You keep your money, and buyers abroad hear that you wait for a fair price.",
+        "hint": "You keep your money and gain 3 in two seasons, and buyers abroad hear that you wait for a fair price.",
         "now": [],
         "later": [
           {
@@ -238,7 +238,7 @@
       {
         "id": "forgive",
         "label": "Forgive the rest",
-        "hint": "Farid will not forget it.",
+        "hint": "You get 1 back in four seasons. Farid will not forget it.",
         "now": [
           {
             "rep": "partners",
@@ -259,7 +259,7 @@
       {
         "id": "hold",
         "label": "Ask for the rest over a year",
-        "hint": "You may get it. Farid will be hurt, and the court likes a clear book.",
+        "hint": "You may get 2 in four seasons. Farid will be hurt, and the court likes a clear book.",
         "now": [],
         "later": [
           {
@@ -400,7 +400,7 @@
       {
         "id": "argue",
         "label": "Say the sacks were not yours",
-        "hint": "It saves face for now.",
+        "hint": "It saves face for now, and 4 come in two seasons.",
         "now": [
           {
             "rep": "court",
@@ -447,7 +447,7 @@
       {
         "id": "take",
         "label": "Take the buyer",
-        "hint": "It costs money to fill the order. It may pay, and Alexandria hears of it.",
+        "hint": "It costs 4 now to fill the order and may pay 7 in two seasons. Alexandria hears of it.",
         "requires": {
           "money": {
             "gte": 4
@@ -543,7 +543,7 @@
       {
         "id": "thanks",
         "label": "Thank her with a gift",
-        "hint": "It costs 3 dinars now. She will remember it.",
+        "hint": "It costs 3 dinars now and 1 comes back in two seasons. She will remember it.",
         "now": [
           {
             "money": -3
@@ -601,7 +601,7 @@
       {
         "id": "again",
         "label": "Agree to ship with him next year",
-        "hint": "He will keep a place for you.",
+        "hint": "In four seasons you get 4. He will keep a place for you.",
         "now": [
           {
             "rep": "partners",
@@ -622,7 +622,7 @@
       {
         "id": "open",
         "label": "Keep your choice open",
-        "hint": "You can pick the best boat each year.",
+        "hint": "In four seasons you get 5. You can pick the best boat each year.",
         "now": [],
         "later": [
           {
@@ -665,7 +665,7 @@
       {
         "id": "pay",
         "label": "Pay the cousin too",
-        "hint": "It costs you. Your name grows.",
+        "hint": "It costs 4 dinars now and 3 come back in two seasons. Your name grows.",
         "requires": {
           "money": {
             "gte": 4
@@ -740,7 +740,7 @@
       {
         "id": "share",
         "label": "Take a share of his trip",
-        "hint": "It costs money now. It may pay.",
+        "hint": "It costs 5 now and may pay 8 in three seasons.",
         "requires": {
           "money": {
             "gte": 5
@@ -957,7 +957,7 @@
       {
         "id": "share",
         "label": "Take a share in his shipment",
-        "hint": "It costs money now. It may pay.",
+        "hint": "It costs 5 now and may pay 8 in three seasons.",
         "requires": {
           "money": {
             "gte": 5
@@ -1284,7 +1284,7 @@
       {
         "id": "seal",
         "label": "Give him the house's seal",
-        "hint": "He carries your name, and his debts may fall on you. It costs nothing now.",
+        "hint": "It costs nothing now and 5 dinars in three seasons, if his debts fall on you. He carries your name.",
         "now": [
           {
             "trust": "matteo",
@@ -1314,7 +1314,7 @@
       {
         "id": "fee",
         "label": "Pay him a fee for one more job",
-        "hint": "It costs 4 dinars. He stays free to go.",
+        "hint": "It costs 4 dinars now and brings 6 in two seasons. He stays free to go.",
         "requires": {
           "money": {
             "gte": 4
@@ -1361,6 +1361,847 @@
       {
         "src": "goitein-1964",
         "at": "p. 316; the commission paid for a special service"
+      }
+    ]
+  },
+  {
+    "id": "qus-raiders",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A carter",
+      "role": "Qus",
+      "seal": null
+    },
+    "title": "Raiders on the Aydhab road",
+    "body": "A carter writes from Qus. Raiders of the desert, the Bedouin, have been troubling the caravans that go to Aydhab. A caravan is a group of travellers and animals that go together. Merchants are asking about safer ways.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "escort",
+        "label": "Hire an escort for your goods",
+        "hint": "It costs 8 dinars now. The escort keeps the goods safe, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "quseir",
+        "label": "Send the goods by Quseir",
+        "hint": "It costs 4 dinars now and 3 more in two seasons. The sea road is longer but safer.",
+        "requires": {
+          "money": {
+            "gte": 7
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -3
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait and see",
+        "hint": "It costs nothing. If the raiders come, your goods may be late.",
+        "now": [
+          {
+            "flag": "qus-raiders-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One historian thinks that raiders troubled the caravans from Qus to Aydhab all through the early 1300s. So merchants and pilgrims began to seek safer routes.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar",
+      "place-quseir"
+    ],
+    "sources": [
+      {
+        "src": "bauden-2025",
+        "at": "p. 458 (reporting Jean-Claude Garcin, 1976)"
+      }
+    ]
+  },
+  {
+    "id": "aydhab-costs",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "Isaac, a merchant",
+      "role": "Aydhab",
+      "seal": null
+    },
+    "title": "Costs on the far side",
+    "body": "Isaac's accounts have come, and they show costs you did not expect. Goods sent over the sea pay for repacking, freight and customs. Some of the fees went to officials as small gifts. Isaac asks if you accept the accounts.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "accept",
+        "label": "Accept the accounts",
+        "hint": "It costs 6 dinars now. There is no quarrel, and your partners trust you.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "detail",
+        "label": "Ask for every cost, one by one",
+        "hint": "It costs 1 dinar now, for the letters. Isaac is hurt, and he trusts you less.",
+        "requires": {
+          "money": {
+            "gte": 1
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Offer to settle half",
+        "hint": "It costs 3 dinars now. Isaac takes it, and foreign houses think you fair.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a lawsuit of 1097, a merchant listed the costs of sending goods over the sea. Repacking at Aydhab cost a quarter dinar, freight to Dahlak six and a quarter, and customs six.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-aydhab"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "pp. 189 to 190 and note 25"
+      }
+    ]
+  },
+  {
+    "id": "calicut-wreck",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A pilot",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "The wreck on the coast",
+    "body": "A pilot brings bad news. A ship carrying goods of yours was wrecked on the Malabar coast, away from Calicut. The ruler's men are taking the cargo, as the law there allows.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "claim",
+        "label": "Claim the goods through a friend in Calicut",
+        "hint": "It costs 6 dinars now. A friend in Calicut argues your claim, and foreign houses hear that your house fights for its goods.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "accept",
+        "label": "Accept the loss",
+        "hint": "It costs 3 dinars now, the part of the cargo you cannot save. Nothing more.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          },
+          {
+            "flag": "calicut-wreck-accepted",
+            "set": "now"
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Give a gift to the ruler's men",
+        "hint": "It costs 9 dinars now. The ruler's men give back part of the cargo. In two seasons 1 lot of pepper reaches your warehouse, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "pepper",
+                "by": 1
+              },
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In every Malabar land except Calicut, goods from a wrecked ship belonged to the king. At Calicut the owners kept them, and Ibn Battuta wrote that this is why the town grew rich.",
+    "unlocks": [
+      "term-dinar",
+      "place-calicut",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, pp. 815 to 816"
+      }
+    ]
+  },
+  {
+    "id": "tuat-berber-chief",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A caravan master",
+      "role": "Tuat",
+      "seal": null
+    },
+    "title": "A chief stops the caravan",
+    "body": "A chief of the Hoggar Berbers has stopped a caravan of yours on the road to Tuat. He will not let it pass until he gets cloth. It is the month of Ramadan, when many Muslims fast. The caravan master asks what to do.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "cloth",
+        "label": "Give him the cloth",
+        "hint": "It costs 8 dinars now. The caravan goes on, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "argue",
+        "label": "Argue until he lets it pass",
+        "hint": "It costs 2 dinars now, for food while you wait. The chief is not pleased.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              },
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "round",
+        "label": "Go round by another road",
+        "hint": "It costs 6 dinars now. The way is longer, but partners like a safe caravan.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1353, in Ramadan, a Berber chief stopped Ibn Battuta's caravan until it gave him cloth. Ibn Battuta wrote that in Ramadan these Berbers do not raid; this is later evidence, after the game's years.",
+    "unlocks": [
+      "term-caravan",
+      "term-ramadan",
+      "term-dinar",
+      "place-tuat",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 976"
+      }
+    ]
+  },
+  {
+    "id": "venice-sultan-present",
+    "group": "followups",
+    "kind": "favour",
+    "from": {
+      "name": "A Venetian envoy",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A present for the sultan",
+    "body": "A Venetian envoy leaves a present with you for the sultan's household. He asks if you will see that it arrives.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "carry",
+        "label": "Carry it yourself",
+        "hint": "It costs 3 dinars now, for the road. A court friend remembers it.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "broker",
+        "label": "Pass it to a broker",
+        "hint": "It costs 1 dinar now. The broker keeps a part, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 1
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse the errand",
+        "hint": "It costs nothing. The envoy finds someone else.",
+        "now": [
+          {
+            "flag": "venice-present-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1345 Venice set aside 800 gold ducats as a present for the sultan. It set aside 200 more for gifts to his lords.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "term-ships",
+      "place-venice"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "p. 137 and note 117"
+      }
+    ]
+  },
+  {
+    "id": "famagusta-grace-renewed",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A Florentine trader",
+      "role": "Famagusta",
+      "seal": null
+    },
+    "title": "The lower rate runs out",
+    "body": "The lower rate for Florentines is running out. The king's officer will take the word of the Bardi company's man as proof of who is Florentine.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "vouch",
+        "label": "Ask the Bardi company's man to vouch",
+        "hint": "It costs 2 dinars now. He owes you a favour in return.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "genoese",
+        "label": "Ship under a Genoese partner",
+        "hint": "It costs 6 dinars now, a larger fee. Foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "full",
+        "label": "Pay the full rate",
+        "hint": "It costs 4 dinars now. The king's officer thanks you.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The lower rate was renewed in 1325 and 1326, and made lasting in 1327. After that, the Bardi company's man could vouch that a trader was Florentine.",
+    "unlocks": [
+      "term-dinar",
+      "place-famagusta"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 71 (the renewals of 1325 to 1327)"
+      }
+    ]
+  },
+  {
+    "id": "ayas-bardi-privileges",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "An Italian writer",
+      "role": "Aleppo",
+      "seal": null
+    },
+    "title": "The king of Armenia grants a favour",
+    "body": "An Italian writes from Ayas. The king of Armenia has freed his company from customs, the taxes on goods. He offers to carry your goods too.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "send",
+        "label": "Send goods through him",
+        "hint": "It costs 6 dinars now, a share for him. The sale is quick, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ignore",
+        "label": "Ignore the offer",
+        "hint": "It costs nothing. He finds another partner.",
+        "now": [
+          {
+            "flag": "ayas-offer-ignored",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold your goods in his warehouse",
+        "hint": "It costs 3 dinars now. The goods are safe, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1335 the king of Lesser Armenia let Pegolotti's firm trade free of customs. Most other foreigners paid 4 in 100 each way.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-aleppo"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 45"
+      },
+      {
+        "src": "yule-1914",
+        "at": "p. 139"
+      }
+    ]
+  },
+  {
+    "id": "tabriz-friendly-letter",
+    "group": "followups",
+    "kind": "trade",
+    "from": {
+      "name": "A lord of Tabriz",
+      "role": "Tabriz",
+      "seal": null
+    },
+    "title": "A friendly letter",
+    "body": "A new lord of Tabriz sends you a friendly letter. He promises peace and the return of stolen goods. He invites you to send a load.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "load",
+        "label": "Send a load",
+        "hint": "It costs 12 dinars now. If the letter is true, foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "test",
+        "label": "Send a small test load",
+        "hint": "It costs 4 dinars now. It is a careful start, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "It costs nothing. The lord is offended.",
+        "now": [
+          {
+            "flag": "tabriz-letter-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1344 a Genoese chronicler tells that the ruler of Tabriz wrote to Genoa promising peace and stolen goods back. Genoese merchants trusted him, and he took goods worth 200,000 pounds.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "heyd-1886",
+        "at": "vol. 2, p. 131 (reporting Stella)"
       }
     ]
   }

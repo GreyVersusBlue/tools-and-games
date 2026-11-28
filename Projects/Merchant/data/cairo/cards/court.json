@@ -42,7 +42,7 @@
       {
         "id": "hide",
         "label": "Hide the sacks and hope",
-        "hint": "Bad food is easy to smell, but your street hears nothing yet.",
+        "hint": "It costs 4 in two seasons. Bad food is easy to smell, but your street hears nothing yet.",
         "now": [],
         "later": [
           {
@@ -176,7 +176,7 @@
       {
         "id": "judge",
         "label": "Press Daud's claim before a judge",
-        "hint": "It costs now. Daud will thank you in coin. Isaac will not forgive it.",
+        "hint": "It costs 4 dinars now and pays back 9 in two seasons. Daud will thank you in coin. Isaac will not forgive it.",
         "requires": {
           "money": {
             "gte": 4
@@ -322,7 +322,7 @@
       {
         "id": "ask",
         "label": "Ask him for the accounts",
-        "hint": "It costs nothing. Hamid may be offended, and Nur will thank you.",
+        "hint": "It costs nothing now and brings 5 in two seasons. Hamid may be offended, and Nur will thank you.",
         "now": [],
         "later": [
           {
@@ -338,7 +338,7 @@
       {
         "id": "judge",
         "label": "Take him to a judge",
-        "hint": "It costs now. The court backs you, but Hamid will be your enemy and partners dislike a house that sues. Nur pays you well.",
+        "hint": "It costs 5 now and pays back 11 in two seasons. The court backs you, but Hamid will be your enemy and partners dislike a house that sues. Nur pays you well.",
         "requires": {
           "money": {
             "gte": 5
@@ -374,6 +374,958 @@
       {
         "src": "goitein-1964",
         "at": "pp. 326 to 327; the ten years in court, and the yearly accounts"
+      }
+    ]
+  },
+  {
+    "id": "aydhab-debtor",
+    "group": "court",
+    "kind": "people",
+    "from": {
+      "name": "Rashid, a cloth seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A debtor runs to Aydhab",
+    "body": "A man in Cairo owes your house 12 dinars. He has run off to Aydhab, hoping to escape the debt. Rashid knows where he went.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "find",
+        "label": "Send a man to find him",
+        "hint": "It costs 4 dinars now and pays back 6 in three seasons. The quarrel is in a foreign port, so foreign houses notice.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": 6
+              },
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "write",
+        "label": "Write to the Beja chief with a gift",
+        "hint": "It costs 6 dinars now. The chief is pleased, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "give",
+        "label": "Give up the debt",
+        "hint": "It costs nothing. Others hear that your house lets debts go.",
+        "now": [
+          {
+            "flag": "aydhab-debt-forgiven",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Aydhab was ruled by the Beja and Egypt together, and Ibn Battuta saw the town split between them in 1326. In older records, a man who owed money might flee there.",
+    "unlocks": [
+      "term-dinar",
+      "place-aydhab",
+      "person-beja"
+    ],
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 34"
+      },
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 69"
+      }
+    ]
+  },
+  {
+    "id": "jeddah-musa-posts",
+    "group": "court",
+    "kind": "favour",
+    "from": {
+      "name": "Zayn, a court friend",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Posts for the king of Mali",
+    "body": "The sultan has sent camels and food to help the king of Mali on his pilgrimage. A pilgrimage is a holy journey to Mecca. Zayn, a friend at court, asks you to help feed the animals at the posts on the road.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "season": [
+            "autumn"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "grain",
+        "label": "Supply grain for the posts",
+        "hint": "It costs 8 dinars now. The court is glad of your help.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cost",
+        "label": "Supply it at what it cost you",
+        "hint": "It costs 3 dinars now. Zayn thanks you, and the court thinks you careful.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. Zayn says the court will remember.",
+        "now": [
+          {
+            "flag": "musa-posts-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1324 the sultan of Egypt helped Mansa Musa's pilgrimage with silver, camels, food and posts on the road. He wrote to his officers to treat the king with care.",
+    "unlocks": [
+      "term-pilgrimage",
+      "term-dinar",
+      "person-mansa-musa",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 78 (al-Umari, Masalik el absar; levtzion-hopkins-1981 pages not reached)"
+      }
+    ]
+  },
+  {
+    "id": "venice-pope-allows",
+    "group": "court",
+    "kind": "favour",
+    "from": {
+      "name": "A Venetian trader",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "Venice may sail again",
+    "body": "Word comes that the pope has allowed Venice to send some ships to Alexandria again, but only with goods that are allowed. A Venetian trader asks for your help with the sultan's officials.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1344,
+            1344
+          ]
+        },
+        {
+          "season": [
+            "spring"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "welcome",
+        "label": "Give a letter of welcome and a warehouse",
+        "hint": "It costs 3 dinars now. The Venetians favour you for seasons to come.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "fee",
+        "label": "Charge a fee for both",
+        "hint": "He pays you 4 dinars now. He goes to a rival next time.",
+        "now": [
+          {
+            "money": 4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "silent",
+        "label": "Say nothing",
+        "hint": "It costs nothing. The trader remembers your silence.",
+        "now": [
+          {
+            "flag": "venice-allowed-silent",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On 27 April 1344 the pope let Venice send six galleys and six cargo ships to Alexandria for five years. They could carry only allowed goods, and no ship sailed that year.",
+    "unlocks": [
+      "term-dinar",
+      "term-ships",
+      "place-venice",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "heyd-1886",
+        "at": "vol. 2, p. 45 and note 2"
+      },
+      {
+        "src": "jacoby-2018",
+        "at": "note 116 (no ship sailed in 1344)"
+      }
+    ]
+  },
+  {
+    "id": "venice-envoy-zeno",
+    "group": "court",
+    "kind": "favour",
+    "from": {
+      "name": "A Venetian friend",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "An envoy comes for a treaty",
+    "body": "A Venetian friend says Venice will send an envoy to the sultan to ask for a new treaty. He asks if you will vouch for his house when the envoy comes.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1344,
+            1344
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "vouch",
+        "label": "Vouch for his house",
+        "hint": "It costs 2 dinars now, for letters. The court thinks well of you, and the envoy may send a thank-you.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 2,
+            "card": "venice-sultan-present"
+          }
+        ]
+      },
+      {
+        "id": "loan",
+        "label": "Give money to his house",
+        "hint": "It costs 10 dinars now, a gift to help the Venetians. Foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The friend is disappointed.",
+        "now": [
+          {
+            "flag": "venice-envoy-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In August 1344 Venice decided to send Niccolo Zeno to Egypt as its envoy. He was to ask for a new treaty like the one of 1302.",
+    "unlocks": [
+      "term-dinar",
+      "place-venice"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 136 to 137"
+      }
+    ]
+  },
+  {
+    "id": "famagusta-florentine-petition",
+    "group": "court",
+    "kind": "favour",
+    "from": {
+      "name": "A Florentine trader",
+      "role": "Famagusta",
+      "seal": null
+    },
+    "title": "A petition to the king",
+    "body": "A Florentine trader at Famagusta asks you to join his petition to the king of Cyprus for a lower duty. Florentines pay more than most.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "road": [
+            "famagusta"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "join",
+        "label": "Join and pay a share of the gifts",
+        "hint": "It costs 8 dinars now. The rate may fall, and the court thinks well of you.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 2,
+            "card": "famagusta-grace-renewed"
+          }
+        ]
+      },
+      {
+        "id": "aside",
+        "label": "Stand aside",
+        "hint": "It costs nothing. The Florentines remember who stayed out.",
+        "now": [
+          {
+            "flag": "florentine-petition-aside",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rival",
+        "label": "Join a rival petition",
+        "hint": "It costs 4 dinars now. The rival is glad, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On 21 May 1324 Pegolotti, a Florentine, won a favour from the King of Cyprus. Florentines who paid 4 in 100 would now pay 2, at first for two years.",
+    "unlocks": [
+      "term-dinar",
+      "place-famagusta"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 71 (21 May 1324)"
+      }
+    ]
+  },
+  {
+    "id": "tunis-governor-seizes-gold",
+    "group": "court",
+    "kind": "world",
+    "from": {
+      "name": "A friend of the heirs",
+      "role": "Tunis",
+      "seal": null
+    },
+    "title": "The governor takes the gold",
+    "body": "A merchant of Tunis died on the road in the west. He left 3,000 gold dinars with a man to take to his heirs. The governor of Bougie has seized the money.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1325,
+            1325
+          ]
+        },
+        {
+          "road": [
+            "tunis"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "letter",
+        "label": "Write to the governor's court",
+        "hint": "It costs 3 dinars now, a scribe's fee. The court may answer, and it notes your manners.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "friends",
+        "label": "Ask the heirs' friends to press him",
+        "hint": "It costs 5 dinars now, a gift to the friends. Foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "accept",
+        "label": "Accept the loss",
+        "hint": "It costs nothing. The heirs remember that you did not help.",
+        "now": [
+          {
+            "flag": "tunis-gold-let-go",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1325 a merchant of Tunis died on the road in the west, leaving 3,000 gold dinars for his heirs. The governor of Bougie seized the money, which Ibn Battuta called his first sight of harsh rule.",
+    "unlocks": [
+      "term-dinar",
+      "good-gold",
+      "place-tunis",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 11"
+      }
+    ]
+  },
+  {
+    "id": "damascus-forced-purchases",
+    "group": "court",
+    "kind": "world",
+    "from": {
+      "name": "A court official",
+      "role": "Damascus",
+      "seal": null
+    },
+    "title": "Cloth and tar at his price",
+    "body": "A court official says he knows you can pay. He offers you cloth, oil and tar at a high price set by the sultan's officials.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1333,
+            1338
+          ]
+        },
+        {
+          "road": [
+            "damascus"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy the cloth at his price",
+        "hint": "It costs 120 dinars now for 2 lots of linen, which sell for about 90 in the market. You leave the oil and tar. The official is your friend for seasons to come.",
+        "requires": {
+          "money": {
+            "gte": 120
+          }
+        },
+        "now": [
+          {
+            "money": -120
+          },
+          {
+            "stock": "linen",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Buy one lot",
+        "hint": "It costs 60 dinars now for 1 lot of linen, which sells for about 45 in the market. He is a little cold, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 60
+          }
+        },
+        "now": [
+          {
+            "money": -60
+          },
+          {
+            "stock": "linen",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse politely",
+        "hint": "It costs nothing. Your goods may face a slow inspection.",
+        "now": [
+          {
+            "flag": "damascus-forced-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "From 1333 to 1338 the sultan's officials made merchants buy cloth, wood, furs, iron, cotton, oil and tar at high prices. The practice was stopped in 1341.",
+    "unlocks": [
+      "term-dinar",
+      "place-damascus"
+    ],
+    "sources": [
+      {
+        "src": "lapidus-1967",
+        "at": "p. 55"
+      }
+    ]
+  },
+  {
+    "id": "tabriz-envoys-cairo",
+    "group": "court",
+    "kind": "favour",
+    "from": {
+      "name": "A court friend",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Envoys from the east",
+    "body": "Envoys from the broken kingdom of the Mongols have come to Cairo to ask the sultan for friendship. A court friend asks you to help house them.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1336,
+            1336
+          ]
+        },
+        {
+          "season": [
+            "spring"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "rooms",
+        "label": "Offer rooms and food",
+        "hint": "It costs 6 dinars now. The court is glad of your help.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ],
+            "card": "tabriz-friendly-letter"
+          }
+        ]
+      },
+      {
+        "id": "sultans-men",
+        "label": "Leave it to the sultan's men",
+        "hint": "It costs nothing. The friend is a little cold.",
+        "now": [
+          {
+            "flag": "envoys-left-to-court",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Send a private gift",
+        "hint": "It costs 3 dinars now. Foreign houses hear of it, but the sultan's men may frown.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              },
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1336 envoys of the amir Ali Padshah and his khan, Musa, came to the sultan in Cairo. They were well received and given great wealth.",
+    "unlocks": [
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "wing-2007",
+        "at": "pp. 82 to 83"
       }
     ]
   }

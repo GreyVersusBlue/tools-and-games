@@ -116,11 +116,7 @@
       {
         "id": "keep",
         "label": "Keep them for the next trip",
-        "requires": {
-          "stock": "linen",
-          "gte": 10
-        },
-        "hint": "Nothing now. The linen stays in your warehouse for your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
+        "hint": "Nothing now. The linen stays yours, in the warehouse or on your own trips. In three seasons Abu Bakr thinks the better of a merchant who plans ahead.",
         "now": [],
         "later": [
           {
@@ -1385,6 +1381,1361 @@
       {
         "src": "jacoby-2018",
         "at": "pp. 135 to 136; Famagusta as the market and go-between for Venice and Egypt, a role older than the ban of 1323"
+      }
+    ]
+  },
+  {
+    "id": "samarkand-silver",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Farrukh, a silversmith",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Silver from the eastern mountains",
+    "body": "Farrukh makes silver cups in Cairo. He hears that a mountain near Samarkand has a silver mine that is easy to work. He wants to pay for a first lot of silver and asks you to put in some money too.",
+    "when": {
+      "road": [
+        "samarkand"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "lot",
+        "label": "Pay for a lot at the mine",
+        "hint": "It costs 10 dinars now. In three seasons the silversmiths of Cairo speak well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "label": "Pay for a small lot",
+        "hint": "It costs 4 dinars now. Merchants from the east hear that you trade far away.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Wish Farrukh luck and decline",
+        "hint": "It costs nothing. Farrukh will find another partner.",
+        "now": [
+          {
+            "flag": "samarkand-silver-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A Persian writer said in 1340 that a mountain near Samarkand has an easy silver mine that pays well. He copied from older books, so this may be older news.",
+    "unlocks": [
+      "term-dinar",
+      "place-samarkand"
+    ],
+    "sources": [
+      {
+        "src": "le-strange-1919",
+        "at": "p. 193"
+      }
+    ]
+  },
+  {
+    "id": "quseir-or-aydhab",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Ghazi, a shipper",
+      "role": "Qus",
+      "seal": null
+    },
+    "title": "Quseir or Aydhab",
+    "body": "Ghazi ships goods to the Red Sea. He asks if you want them sent by Quseir or by Aydhab. Quseir is the port nearest Qus. But the sea voyage from it is hard, because fierce north winds blow against the ships.",
+    "when": {
+      "road": [
+        "quseir",
+        "aydhab"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "quseir",
+        "label": "Ship by Quseir",
+        "hint": "It costs 4 dinars now and 1 more in two seasons, for the slow sail. The desert road is short.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "aydhab",
+        "label": "Ship by Aydhab",
+        "hint": "It costs 6 dinars now. The desert road is longer, but the sea is quicker, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "split",
+        "label": "Split the goods between the two",
+        "hint": "It costs 6 dinars now. If one road fails, the other still brings goods, and foreign houses notice.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Quseir was the port nearest Qus, but ships sailing from it fought fierce north winds. Al-Qalqashandi, who wrote this about 1400, says some merchants chose it anyway.",
+    "unlocks": [
+      "term-dinar",
+      "place-quseir",
+      "place-aydhab",
+      "place-red-sea"
+    ],
+    "sources": [
+      {
+        "src": "peacock-2008",
+        "at": "p. 32 (the preference for Quseir is al-Qalqashandi, about 1400)"
+      }
+    ]
+  },
+  {
+    "id": "aden-pepper-week",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Salim, a pepper dealer",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "Pepper waits for the ships",
+    "body": "Salim is a pepper dealer in Aden. He writes that news from Egypt is poor, so pepper will hardly sell until a week before the ships sail. He asks if he should hold your pepper until then.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "stock": "pepper",
+          "gte": 1
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "hold",
+        "label": "Hold it to the last week",
+        "hint": "It costs 3 dinars now, for storage. Buyers come from far away at the end, and partners hear of the good price.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "early",
+        "label": "Sell early",
+        "hint": "Salim sells 1 lot of pepper for 60 dinars now. The price is low, and partners hear of that too.",
+        "now": [
+          {
+            "money": 60
+          },
+          {
+            "stock": "pepper",
+            "by": -1
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "requires": {
+          "stock": "pepper",
+          "gte": 1
+        }
+      }
+    ],
+    "note": "A merchant's letter from Aden of about 1135 says pepper would not sell until the week before the ships sailed. Then buyers came from afar, and the price was set at 23 dinars a bahar.",
+    "unlocks": [
+      "term-dinar",
+      "good-pepper",
+      "place-aden"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "pp. 342 to 343 (letter II,23, about 1135)"
+      }
+    ]
+  },
+  {
+    "id": "calicut-pepper-mats",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Rahim, a broker",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "Pepper dried in the sun",
+    "body": "Rahim is a broker in Calicut. It is autumn, and the new pepper lies on mats in the sun until it dries and turns black. He offers you a lot at the harvest price.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "autumn"
+          ]
+        },
+        {
+          "road": [
+            "calicut"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "large",
+        "label": "Buy two lots at harvest",
+        "hint": "It costs 200 dinars now for 2 lots of pepper, the harvest price with the cost of shipping. The pepper reaches your warehouse in three seasons, and partners think well of you.",
+        "requires": {
+          "money": {
+            "gte": 200
+          }
+        },
+        "now": [
+          {
+            "money": -200
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "stock": "pepper",
+                "by": 2
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "label": "Buy one lot",
+        "hint": "It costs 100 dinars now for 1 lot of pepper, with the cost of shipping. It reaches your warehouse in two seasons, and foreign houses see that you buy at the source.",
+        "requires": {
+          "money": {
+            "gte": 100
+          }
+        },
+        "now": [
+          {
+            "money": -100
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "pepper",
+                "by": 1
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Wait for later prices",
+        "hint": "It costs nothing. Rahim sells to another house.",
+        "now": [
+          {
+            "flag": "calicut-pepper-passed",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that in autumn pepper was gathered and spread on mats in the sun until it dried and turned black. At Calicut he saw it poured out and measured by the bushel, like millet.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "good-pepper",
+      "place-calicut",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 807"
+      }
+    ]
+  },
+  {
+    "id": "hormuz-island-port",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Bilal, a broker",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Where India meets Persia",
+    "body": "Bilal is a broker in Hormuz, a port on an island. He writes that goods from India are sent on from there to buyers in Persia. He asks if you will send a buyer of your own.",
+    "when": {
+      "road": [
+        "hormuz"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buyer",
+        "label": "Send a buyer to Hormuz",
+        "hint": "It costs 10 dinars now. The road is long, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "aden",
+        "label": "Buy from Aden instead",
+        "hint": "It costs 6 dinars now. The road is shorter, and partners like it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait",
+        "hint": "It costs nothing. Bilal tells his other friends.",
+        "now": [
+          {
+            "flag": "hormuz-broker-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "New Hormuz, on an island, was founded shortly after 1300. Ibn Battuta wrote that it was the port of India and Sind, whose goods went on to Iraq, Fars and Khurasan.",
+    "unlocks": [
+      "term-broker",
+      "term-dinar",
+      "place-hormuz",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 400 and note 118"
+      }
+    ]
+  },
+  {
+    "id": "walata-salt-price",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Hamdan, a salt dealer",
+      "role": "Walata",
+      "seal": null
+    },
+    "title": "Salt is dearer in Mali",
+    "body": "Hamdan is a salt dealer in Walata. He says a load of salt sells for far more in Mali than here. He offers to buy some for you at the mine town of Taghaza.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "winter"
+          ]
+        },
+        {
+          "road": [
+            "walata"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "all",
+        "label": "Buy two lots of salt",
+        "hint": "It costs 20 dinars now for 2 lots of salt at Taghaza. The salt reaches your warehouse in three seasons, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "stock": "salt",
+                "by": 2
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "half",
+        "label": "Buy one lot",
+        "hint": "It costs 10 dinars now for 1 lot of salt. It reaches your warehouse in three seasons, and partners think it a careful trade.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "stock": "salt",
+                "by": 1
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait for another year",
+        "hint": "It costs nothing. Hamdan sells to another house.",
+        "now": [
+          {
+            "flag": "walata-salt-passed",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1352 Ibn Battuta wrote that salt cost eight to ten mithqals a load at Walata, and twenty to thirty in Mali. This is later evidence, after the game's years.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "good-salt",
+      "place-walata",
+      "place-sahara",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 947"
+      }
+    ]
+  },
+  {
+    "id": "walata-sijilmasa-goods",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Bakr, a merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "What goes south for gold",
+    "body": "Bakr asks what goods go south across the Sahara, and what comes back. He wants to send a load of goods from your house. He asks what to choose.",
+    "when": {
+      "road": [
+        "tuat"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "saltcopper",
+        "label": "Send salt and copper",
+        "hint": "It costs 9 dinars now. The goods cross the Sahara, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cowries",
+        "label": "Send cowries",
+        "hint": "It costs 5 dinars now. Cowries are small shells used as money, and partners like a light load.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. Bakr sends his own goods.",
+        "now": [
+          {
+            "flag": "bakr-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Umari wrote, from older accounts, that merchants left Sijilmasa for the lands south of the Sahara with salt, copper and cowries. They came back with gold.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "good-salt",
+      "good-copper",
+      "good-gold",
+      "place-sahara",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "p. 202 (the Sijilmasa entry)"
+      }
+    ]
+  },
+  {
+    "id": "gao-copper-rods",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "A copper dealer",
+      "role": "Gao",
+      "seal": null
+    },
+    "title": "Copper in rods",
+    "body": "A dealer at Takadda offers copper rods for your goods. The rods are a span and a half long, and a thick rod is worth more than a thin one. He asks if you will take rods or gold.",
+    "when": {
+      "road": [
+        "gao"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "rods",
+        "label": "Take rods",
+        "hint": "It costs 60 dinars now for 2 lots of copper in rods. The rods travel well and reach your warehouse in three seasons, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 60
+          }
+        },
+        "now": [
+          {
+            "money": -60
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "stock": "copper",
+                "by": 2
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gold",
+        "label": "Take gold instead",
+        "hint": "It costs 100 dinars now for 1 chest of gold. Gold is light and reaches your warehouse in two seasons, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 100
+          }
+        },
+        "now": [
+          {
+            "money": -100
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "gold",
+                "by": 1
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The dealer trades with another house.",
+        "now": [
+          {
+            "flag": "copper-rods-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1353, after the game's years, Ibn Battuta wrote that Takadda's copper was made into rods a span and a half long. Four hundred thick or six or seven hundred thin rods were worth one gold mithqal, and thin ones bought meat and firewood.",
+    "unlocks": [
+      "term-dinar",
+      "good-copper",
+      "good-gold",
+      "place-gao",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 974"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-sporta-pepper",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "A Genoese buyer",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "Room for pepper",
+    "body": "A Genoese buyer asks you to book space for pepper at Alexandria. Pepper is packed for the ships in a sporta, a big load. He asks how many you will book.",
+    "when": {
+      "stock": "pepper",
+      "gte": 1
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "ten",
+        "label": "Book ten sporte",
+        "hint": "It costs 12 dinars now. The pepper sells when the ships return, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "five",
+        "label": "Book five",
+        "hint": "It costs 6 dinars now. It is a smaller venture, and partners think it careful.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Refuse",
+        "hint": "It costs nothing. The buyer books with another house.",
+        "now": [
+          {
+            "flag": "sporta-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Alexandria pepper was packed in a big load called a sporta, five cantars in all. Pegolotti reckoned it cost seven gold bezants to ship one to Venice in the armed galleys.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "good-pepper",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, pp. 58 and 61"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-winter-bargains",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "Rafiq, a partner",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "Cheap goods in winter",
+    "body": "Rafiq says there are cheap goods in Alexandria now, because the foreign ships have gone home. Prices will rise when the buyers return in spring.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "winter"
+          ]
+        },
+        {
+          "road": [
+            "alexandria"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "sea",
+        "label": "Send a ship in winter",
+        "hint": "It costs 240 dinars now. That is 220 for 2 lots of pepper at the winter price and 20 for the risk of the sea. The pepper reaches your warehouse in two seasons, and foreign houses admire your nerve.",
+        "requires": {
+          "money": {
+            "gte": 240
+          }
+        },
+        "now": [
+          {
+            "money": -240
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "pepper",
+                "by": 2
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nile",
+        "label": "Send a Nile boat to the warehouses",
+        "hint": "It costs 113 dinars now, 110 for 1 lot of pepper and 3 for the boat. The choice of goods is small, and the pepper reaches your warehouse in two seasons. Partners like the care.",
+        "requires": {
+          "money": {
+            "gte": 113
+          }
+        },
+        "now": [
+          {
+            "money": -113
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "pepper",
+                "by": 1
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait for the spring crowd",
+        "hint": "It costs nothing. You pay the dear price later.",
+        "now": [
+          {
+            "flag": "alexandria-winter-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In the 1200s a merchant who sailed to Egypt in winter could buy unsold goods cheaply. The foreign merchants had gone home, and the buyers came back in spring.",
+    "unlocks": [
+      "term-dinar",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "p. 119"
+      }
+    ]
+  },
+  {
+    "id": "aleppo-clear-glass",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "A Persian buyer",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The clearest glass",
+    "body": "A Persian buyer asks you to find glass bottles of the very clearest kind. He will pay well for them in the east.",
+    "when": {
+      "road": [
+        "aleppo"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "aleppo",
+        "label": "Order from the glass houses of Aleppo",
+        "hint": "It costs 100 dinars now for 2 lots of the clearest glass. The glass reaches your warehouse in two seasons, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 100
+          }
+        },
+        "now": [
+          {
+            "money": -100
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "glass",
+                "by": 2
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "alexandria",
+        "label": "Order from Alexandria",
+        "hint": "It costs 70 dinars now for 2 lots of plainer glass. It is cheaper and less clear, and partners like the price. It reaches your warehouse in two seasons.",
+        "requires": {
+          "money": {
+            "gte": 70
+          }
+        },
+        "now": [
+          {
+            "money": -70
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "glass",
+                "by": 2
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The buyer asks another house.",
+        "now": [
+          {
+            "flag": "glass-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1340 the Persian writer Mustawfi wrote that the best glass makers were those of Aleppo.",
+    "unlocks": [
+      "term-dinar",
+      "place-aleppo"
+    ],
+    "sources": [
+      {
+        "src": "le-strange-1919",
+        "at": "p. 197"
+      }
+    ]
+  },
+  {
+    "id": "marand-red-dye",
+    "group": "orders",
+    "kind": "trade",
+    "from": {
+      "name": "A dyer",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Red dye from an insect",
+    "body": "A dyer asks you for a crimson dye that comes from an insect gathered on the plains near Tabriz. He will pay well for it.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "road": [
+            "tabriz"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "large",
+        "label": "Order a lot",
+        "hint": "It costs 10 dinars now, your share of the order. The dye sells dear, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "label": "Order a small lot",
+        "hint": "It costs 4 dinars now. It is a small venture, and partners like it.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline",
+        "hint": "It costs nothing. The dyer asks another house.",
+        "now": [
+          {
+            "flag": "red-dye-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1340 Mustawfi wrote that the crimson dye kermes could be gathered south of Marand in one week of summer. After that the insect flew away.",
+    "unlocks": [
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "le-strange-1919",
+        "at": "p. 89"
       }
     ]
   }

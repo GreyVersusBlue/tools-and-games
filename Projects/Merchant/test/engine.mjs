@@ -8,9 +8,9 @@ import * as rng from '../js/engine/rng.js';
 import * as cal from '../js/engine/calendar.js';
 import { freshState, addPaper } from '../js/engine/state.js';
 import { apply } from '../js/engine/effects.js';
-import { holds } from '../js/engine/conditions.js';
+import { holds, roadStops } from '../js/engine/conditions.js';
 import { steps } from '../js/engine/turn.js';
-import { playGame, BOTS } from '../tools/bots.mjs';
+import { playGame, BOTS, roadLeaves, namedCards, inYears, yearsOf } from '../tools/bots.mjs';
 import { newGame, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices, outfit } from '../js/engine/index.js';
 
 const content = await loadContent('testport', { fs });
@@ -235,6 +235,25 @@ test('condition agent: hired and where', () => {
 test('condition out: counts expeditions on the road', () => {
   const s = { ...game(), expeditions: [{}, {}] };
   eq([cond({ out: { gte: 2 } }, s), cond({ out: { gte: 3 } }, s), cond({ out: { gte: 1 } })], [true, false, false]);
+});
+// MER-157: `{ road: [stop ids] }` holds while an expedition of the house is out on a route that goes to one of the stops.
+const onRoad = (...routes) => ({ ...game(), expeditions: routes.map((route, i) => ({ id: `x${i}`, agent: 'mira', route, status: 'riding' })) });
+test('condition road: holds for an expedition out on a route that goes to the stop', () => {
+  eq([cond({ road: ['hilltown'] }, onRoad('harbour-hilltown')), cond({ road: ['saltmarsh', 'hilltown'] }, onRoad('harbour-hilltown'))], [true, true]);
+});
+test('condition road: does not hold for another road, for no trip, or for an expedition already home', () => {
+  eq([cond({ road: ['hilltown'] }, onRoad('harbour-saltmarsh')), cond({ road: ['hilltown'] }),
+    cond({ road: ['hilltown'] }, { ...onRoad('harbour-hilltown'), expeditions: [{ id: 'x0', agent: 'mira', route: 'harbour-hilltown', status: 'home' }] })], [false, false, false]);
+});
+test('condition road: the home city is never a road, and an unknown route is on none', () => {
+  eq([cond({ road: ['harbour'] }, onRoad('harbour-hilltown')), cond({ road: ['hilltown'] }, onRoad('no-such-route'))], [false, false]);
+});
+test('condition road: two trips out, either one is enough', () => {
+  const s = onRoad('harbour-saltmarsh', 'harbour-hilltown');
+  eq([cond({ road: ['hilltown'] }, s), cond({ road: ['saltmarsh'] }, s), cond({ all: [{ road: ['hilltown'] }, { road: ['saltmarsh'] }] }, s)], [true, true, true]);
+});
+test('condition road: a bad value is an error, not a condition that never holds', () => {
+  for (const road of ['hilltown', [], [3], {}]) throws(() => cond({ road }, onRoad('harbour-hilltown')), /road/);
 });
 test('condition length: the chosen length', () => {
   eq([cond({ length: 'acts' }), cond({ length: 'full' })], [true, false]);
@@ -476,7 +495,8 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
   eq(s.money, 403, 'final money');
   // MER-60: 24 became 30. The closing step writes one `season` entry for each of the six seasons played.
   // MER-61: 30 became 31. The opening keeps one `trust` entry, replaced each season, not one a season.
-  eq(s.log.length, 31, 'log length');
+  // MER-148: 31 became 44. The log gains the worth lines (a trip home, an answer, a price moved by a closing), 13 of them; money and papers are what they were.
+  eq(s.log.length, 44, 'log length');
   eq(JSON.stringify(s), JSON.stringify((() => {
     let t = game();
     while (t.phase !== 'recall') { t = t.phase === 'interlude' ? openSeason(t, content) : endSeason(answer(t, content), content); }
@@ -667,7 +687,7 @@ test('pinned game: the papers of each season of seed 7 (full) are pinned, and a 
     'lamp-quarrel+bridge-toll', 'wool-offer+harvest-gift', 'lamp-order', 'wool-due+salt-order', 'quay-toll+salt-dispute+court-summons', 'fair-closes+rope-dispute',
   ]);   // MER-78: seasons 4 to 7, 10 and 11 changed (one favour a season, no two of one kind; testport has few cards, so season 5 is one card); seasons 1 to 3, 8 and 9 deal what they dealt
   eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, true, true, true], 'the seasons that open with an Accounts paper');
-  eq([s.money, s.log.length], [404, 52]);   // MER-78: 396 and 51 became 404 and 52 (other cards, so another delayed line and one more Accounts paper)   // MER-61: 50 became 51, the one `trust` entry
+  eq([s.money, s.log.length], [404, 77]);   // MER-148: 52 became 77, the worth lines the closings and the answers write (25); the money and the papers above are unchanged   // MER-78: 396 and 51 became 404 and 52 (other cards, so another delayed line and one more Accounts paper)   // MER-61: 50 became 51, the one `trust` entry
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
 });
@@ -964,7 +984,7 @@ test('turn: over 120 seeded bot games no return paper and no Accounts paper is d
   // paper the game put or tried to put, and a drop is a log entry (routes.js `put`)
   const saved = steps.end;
   let dropped = [];
-  steps.end = (st, ...a) => { dropped = st.log.filter(e => e.kind === 'dropped' && e.reason === 'the desk was full' && (e.ref === 'return' || e.ref === 'accounts' || e.ref === 'lost')); return saved(st, ...a); };
+  steps.end = (st, ...a) => { dropped = st.log.filter(e => e.kind === 'dropped' && e.reason === 'the desk was full' && !e.atJump && (e.ref === 'return' || e.ref === 'accounts' || e.ref === 'lost')); return saved(st, ...a); };
   const bad = [];
   let games = 0;
   try {
@@ -1060,6 +1080,65 @@ test('money: over 200 seeded games that take the first open choice and send the 
   ok(trips >= 400, `the sheet's plan was sent ${trips} times: the games are not scripted trivially`);
   eq(bad, [], 'a step left the house below 0');
   console.log(`  money: ${games} games, ${trips} trips sent, ${shorts} Accounts papers that said a fee went unpaid`);
+});
+
+// ---- MER-161: a card bound to a road leaves the bots' 1% row, so each one must be dealable (DECISIONS 2026-11-27 13:06)
+const cairoContent = await loadContent('cairo', { fs });
+/** Whether `card`, alone in the pool of `c`, is dealt in some season of some length of the calendar with a trip out on one of its roads. */
+function roadDealt(c, card) {
+  const lengths = Object.keys(c.calendar.lengths);   // a card dated outside the three acts (qatya-passports, summer 1326) is dealt in the full-years length only
+  const why = lengths.map(l => roadDealtIn(c, card, l));
+  return why.includes(null) ? null : why[0];
+}
+function roadDealtIn(c, card, length) {
+  const stops = new Set(roadLeaves(card.when));
+  const route = c.routes.find(r => [...stops].some(s => roadStops(c, r.id).has(s)));
+  if (!route) return `no route of the content goes to ${[...stops].join(', ')}`;
+  const only = structuredClone(c); only.cards = [structuredClone(card)];
+  const agent = c.agents[0].id;
+  for (let t = 1; t < cal.playedSeasons(c.calendar, length).length; t++) {
+    const s = freshState(only, { seed: 5, length, house: only.houses[0].id });
+    s.t = t;
+    s.agents[agent].hired = true;
+    s.expeditions.push({ id: 'x1', agent, route: route.id, leg: 0, left: 1, status: 'out', cargo: {}, purse: 0, sent: 0, contract: { kind: 'own' }, staked: { house: 0, partners: 0 }, orders: [] });
+    steps.drawCards(s, only);
+    if (s.desk.some(p => p.ref === card.id)) return null;
+  }
+  return 'no season of any length deals it with a trip out on its road';
+}
+test('road cards: every card with a road leaf in its when can be dealt, in a season inside its years, with a trip out on its road', () => {
+  const bound = cairoContent.cards.filter(c => roadLeaves(c.when).length);
+  ok(bound.length >= 10, `${bound.length} road-bound cards found`);
+  const bad = bound.map(c => [c.id, roadDealt(cairoContent, c)]).filter(([, why]) => why).map(([id, why]) => `${id}: ${why}`);
+  eq(bad, [], 'a road-bound card no state can deal is a fault in its `when`');
+});
+test('road cards: a card whose years never meet a season of the game fails the case', () => {
+  const card = structuredClone(cairoContent.cards.find(c => roadLeaves(c.when).length));
+  card.when = { all: [card.when, { year: [1900, 1901] }] };
+  ok(roadDealt(cairoContent, card), 'a card dated outside the game is reported');
+});
+
+// ---- MER-162: the bots' 1% row leaves out a weight-0 card a parent deals and a card dated outside the length, so each must be real
+test('orphans: every weight-0 card is named by some card, letter, event, return or opening (an orphan can never reach a desk)', () => {
+  const named = namedCards(cairoContent, { opening: true });
+  const orphans = cairoContent.cards.filter(c => c.weight === 0 && !named.has(c.id)).map(c => c.id);
+  eq(orphans, [], 'a weight-0 card no card or letter names is dealt by nothing: wire it to its parent or remove it');
+});
+test('orphans: a weight-0 card nothing names fails the case', () => {
+  const c = structuredClone(cairoContent);
+  c.cards.push({ ...structuredClone(c.cards[0]), id: 'orphan-probe', weight: 0 });
+  ok(!namedCards(c).has('orphan-probe'), 'the orphan is not named');
+  ok(namedCards(c).has('tabriz-friendly-letter'), 'a parent\'s `card` effect names its child');
+});
+test('years: inYears reads a card\'s year leaves through all and any, and holds other leaves possible', () => {
+  const acts = yearsOf(cairoContent, 'acts');
+  ok(acts.has(1324) && !acts.has(1344), 'the three acts play 1324 but not 1344');
+  ok(inYears({ all: [{ year: [1324, 1324] }, { season: ['summer'] }] }, acts));
+  ok(!inYears({ all: [{ year: [1344, 1344] }, { season: ['summer'] }] }, acts));
+  ok(inYears({ any: [{ year: [1344, 1344] }, { year: [1335, 1336] }] }, acts));
+  ok(!inYears({ any: [{ year: [1344, 1344] }, { year: [1350, 1351] }] }, acts));
+  ok(inYears(undefined, acts));
+  ok(cairoContent.cards.some(c => !inYears(c.when, acts)), 'some card is dated outside the three acts');
 });
 
 await done();

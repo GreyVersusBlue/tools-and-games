@@ -188,7 +188,7 @@
       {
         "id": "vouch",
         "label": "Vouch for Giorgio",
-        "hint": "He will not forget it. His debt could become yours.",
+        "hint": "It costs 5 in two seasons. He will not forget it. His debt could become yours.",
         "now": [
           {
             "rep": "foreign",
@@ -327,6 +327,1626 @@
       {
         "src": "sato-2006",
         "at": "pp. 150 and 152; a loose confederation; the office's papers and 2.5 percent are al-Ashqar's reading, as Sato reports it, and Sato takes the office for a state one"
+      }
+    ]
+  },
+  {
+    "id": "qus-nile-tolls",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Nuh, a boatman",
+      "role": "Qus",
+      "seal": null
+    },
+    "title": "Small tolls on the Nile",
+    "body": "Nuh takes goods up the Nile from Cairo to Qus. At each town on the way a small toll is paid, a fee to pass. He asks you to pay each toll as the boat goes, so it is never held up.",
+    "when": {
+      "road": [
+        "qus"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "each",
+        "label": "Pay each toll as the boat goes",
+        "hint": "It costs 4 dinars now. Nuh says your house is easy to work with.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "end",
+        "label": "Pay all the tolls at the end",
+        "hint": "It costs 1 dinar now and 2 more in two seasons, for paying late. Nuh does not mind.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rival",
+        "label": "Use a rival's boat",
+        "hint": "It costs nothing now. Nuh is hurt, and he remembers it.",
+        "now": [
+          {
+            "flag": "nuh-passed-over",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a lawsuit of 1097, a merchant said he paid small dues in the towns on the Nile. At Akhmim and Qus each was one eighth of a dinar, 227 years before 1324.",
+    "unlocks": [
+      "term-toll",
+      "term-dinar",
+      "place-qus",
+      "place-nile"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "p. 189"
+      }
+    ]
+  },
+  {
+    "id": "aydhab-customs-list",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Isaac, a merchant",
+      "role": "Aydhab",
+      "seal": null
+    },
+    "title": "A list of customs",
+    "body": "Isaac sends a list from Aydhab. Customs are taxes on goods that enter a port, and the list shows what each good pays. Frankincense pays a third of a dinar. He asks how you want the fees paid.",
+    "when": {
+      "road": [
+        "aydhab"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay as the list says",
+        "hint": "It costs 5 dinars now. Isaac sends his accounts in two seasons, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 2,
+            "card": "aydhab-costs"
+          }
+        ]
+      },
+      {
+        "id": "ask",
+        "label": "Ask the officials for a lower rate",
+        "hint": "It costs 2 dinars now, for gifts to the officials. They do not forget it.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "part",
+        "label": "Pay part now and the rest later",
+        "hint": "It costs 1 dinar now and 4 more in three seasons. Your partners like a house that pays in the end.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "money": -4
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In a list written about 1152, a merchant noted the fees on five goods carried from Aden to Aydhab. Frankincense paid a third of a dinar in customs there.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-aydhab"
+    ],
+    "sources": [
+      {
+        "src": "goitein-friedman-2008",
+        "at": "p. 722 (III,40a, probably 1152)"
+      }
+    ]
+  },
+  {
+    "id": "aden-water-cut",
+    "group": "tolls",
+    "kind": "world",
+    "from": {
+      "name": "Amin, a cloth seller",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "The water is cut off",
+    "body": "Amin lives in Aden. Bedouins, people of the desert, have blocked the way to the town's water tanks. They let people through only for money and cloth. Amin asks you to share the cost.",
+    "when": {
+      "road": [
+        "aden"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "both",
+        "label": "Share the cost in cloth and coin",
+        "hint": "It costs 5 dinars now. The town has water, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coin",
+        "label": "Pay in coin only",
+        "hint": "It costs 8 dinars now. Amin thanks you, and your partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sea",
+        "label": "Bring water by sea",
+        "hint": "It costs 12 dinars now. The court at Aden is grateful.",
+        "requires": {
+          "money": {
+            "gte": 12
+          }
+        },
+        "now": [
+          {
+            "money": -12
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Aden the bedouins often cut off the way to the water tanks. They kept the townspeople from the water until they bought the bedouins' consent with money and cloth.",
+    "unlocks": [
+      "term-dinar",
+      "place-aden"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, pp. 371 to 372"
+      }
+    ]
+  },
+  {
+    "id": "calicut-dandar",
+    "group": "tolls",
+    "kind": "world",
+    "from": {
+      "name": "A ship's pilot",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "The ruler's men signal",
+    "body": "A ship of yours passes a town on the Malabar coast. The ruler's men signal it to anchor and give a present. The pilot asks what to do.",
+    "when": {
+      "road": [
+        "calicut"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "anchor",
+        "label": "Anchor and give the present",
+        "hint": "It costs 5 dinars now. The ship sails on safe, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sail",
+        "label": "Sail on",
+        "hint": "It costs nothing now and 10 dinars in two seasons, when the ruler's men chase the ship and tax it double. The ship does reach market early, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "flag": "dandar-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -10
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 2,
+            "card": "calicut-wreck"
+          }
+        ]
+      },
+      {
+        "id": "course",
+        "label": "Change course to keep clear",
+        "hint": "It costs 7 dinars now, for the longer way. The court hears that you avoid trouble.",
+        "requires": {
+          "money": {
+            "gte": 7
+          }
+        },
+        "now": [
+          {
+            "money": -7
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On the Malabar coast every ship passing a town had to anchor and give the ruler a present, the right of dandar. A ship that did not was chased, brought in by force, and taxed double.",
+    "unlocks": [
+      "term-toll",
+      "term-dinar",
+      "place-calicut"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 4, p. 808 and note 30"
+      }
+    ]
+  },
+  {
+    "id": "calicut-warehouses",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Zaid, a merchant",
+      "role": "Calicut",
+      "seal": null
+    },
+    "title": "Pepper in public warehouses",
+    "body": "Zaid writes from Calicut. The town keeps its pepper in public warehouses and sells it by the bahar, a large weight. The customs are two parts in every ten. He asks if you will ship now.",
+    "when": {
+      "road": [
+        "calicut"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay the customs and ship",
+        "hint": "It costs 8 dinars now. The goods go safe, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "quilon",
+        "label": "Ship from Quilon by a longer road",
+        "hint": "It costs 5 dinars now. The road is long, but foreign houses like it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait",
+        "hint": "It costs nothing. Zaid sells to another house.",
+        "now": [
+          {
+            "flag": "calicut-customs-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A Chinese traveller, Wang Ta-yuan, wrote in 1330 that Calicut stored pepper in public warehouses and sold it by the bahar. He said the customs were two parts in every ten.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "good-pepper",
+      "place-calicut"
+    ],
+    "sources": [
+      {
+        "src": "sastri-1939",
+        "at": "pp. 294 to 295 (Wang Ta-yuan, Tao i chih lio, in Rockhill's translation)"
+      }
+    ]
+  },
+  {
+    "id": "gao-copper-tax",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "A copper dealer",
+      "role": "Gao",
+      "seal": null
+    },
+    "title": "The king taxes copper",
+    "body": "A copper dealer says the king of Mali taxes the raw copper brought in from the mine at Takedda. The tax is heavy. He asks if your house will pay it and take a share of the copper.",
+    "when": {
+      "road": [
+        "gao"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay the tax and take the copper",
+        "hint": "It costs 68 dinars now, 8 for the tax and 60 for 2 lots of copper. The copper reaches your warehouse in two seasons, and the court of Mali thinks well of your house.",
+        "requires": {
+          "money": {
+            "gte": 68
+          }
+        },
+        "now": [
+          {
+            "money": -68
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "stock": "copper",
+                "by": 2
+              },
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hide",
+        "label": "Hide the copper from the tax men",
+        "hint": "It costs 60 dinars now for 2 lots of copper. It costs 5 more in two seasons, a fine if the tax men find it. Partners dislike a cheat.",
+        "requires": {
+          "money": {
+            "gte": 65
+          }
+        },
+        "now": [
+          {
+            "money": -60
+          },
+          {
+            "flag": "copper-tax-dodged",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -5
+              },
+              {
+                "stock": "copper",
+                "by": 2
+              },
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Decline the share",
+        "hint": "It costs nothing. The dealer sells to another house.",
+        "now": [
+          {
+            "flag": "copper-tax-declined",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1324 Mansa Musa reportedly told a scholar in Cairo that raw copper from Takedda earned him more tax than anything else. Al-Umari wrote it down.",
+    "unlocks": [
+      "term-dinar",
+      "good-copper",
+      "place-gao",
+      "person-mansa-musa",
+      "person-al-umari"
+    ],
+    "sources": [
+      {
+        "src": "gaudefroy-1927",
+        "at": "pp. 80 to 81"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-mint-fees",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "A Venetian buyer",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "Silver bars for the mint",
+    "body": "A Venetian buyer pays you in silver bars. The sultan's mint at Alexandria turns bars into coins for a fee. Some merchants the sultan favours pay a lower fee.",
+    "when": {
+      "road": [
+        "alexandria"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "mint",
+        "label": "Take the silver to the mint",
+        "hint": "It costs 5 dinars now, the mint fee. Foreign merchants see that you pay what is owed.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "favour",
+        "label": "Ask a court friend for the lower fee",
+        "hint": "It costs 2 dinars now, a gift to the friend. The court thinks well of you.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "goldsmith",
+        "label": "Sell the bars to a goldsmith",
+        "hint": "It costs 8 dinars now, a low price. It is quick, and partners like quick money.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "About 1310 a Venetian wrote that the sultan's mint charged 6 and two thirds in 100 to coin gold. It charged 4 and a half for silver, and 3 and a half for favoured merchants.",
+    "unlocks": [
+      "term-dinar",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 129 and 131"
+      }
+    ]
+  },
+  {
+    "id": "venice-treaty-duty",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "A clerk of the sultan",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "A lower duty on silver",
+    "body": "The sultan's clerk says the tax on gold and silver, coming in or going out, is now 2 in 100. It was higher before. He asks if you will bring in silver.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1345,
+            1345
+          ]
+        },
+        {
+          "season": [
+            "winter"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "large",
+        "label": "Bring in a load of silver",
+        "hint": "It costs 10 dinars now. The saving shows later, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "small",
+        "label": "Bring in a small trial load",
+        "hint": "It costs 3 dinars now. It is a small risk, and partners like it.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait to see if the rate holds",
+        "hint": "It costs nothing. If the clerk goes back on it, you lost nothing.",
+        "now": [
+          {
+            "flag": "silver-duty-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The treaty of 1345 set the tax on gold and silver, coming in or going out, at 2 in 100. Before that, gold coming in paid 4 in 100, and silver 3 and a half.",
+    "unlocks": [
+      "term-load",
+      "term-dinar",
+      "good-gold",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 136 to 137 (the treaty of 1345)"
+      },
+      {
+        "src": "heyd-1886",
+        "at": "vol. 2, p. 45 (February 1345)"
+      }
+    ]
+  },
+  {
+    "id": "constantinople-customs-names",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Orhan, a Pera trader",
+      "role": "Constantinople",
+      "seal": null
+    },
+    "title": "Whose name on the goods",
+    "body": "Orhan trades at Constantinople. Genoese and Venetians there pay no customs, and others pay 2 in 100. He asks under whose name your goods should go.",
+    "when": {
+      "road": [
+        "constantinople"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "genoese",
+        "label": "Ship as a Genoese partner's goods",
+        "hint": "It costs 10 dinars now, a share for the Genoese. You pay no customs, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "money": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "own",
+        "label": "Ship under your own name",
+        "hint": "It costs 4 dinars now, the customs. The court of the city notes that you pay.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pera",
+        "label": "Sell in Pera instead",
+        "hint": "It costs 2 dinars now. The buyer is near, and partners like a quick sale.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Constantinople the Genoese and Venetians paid no customs, and Pisans paid 2 in 100 each way. Florentines and others paid 2 in 100 once, on a paper good for one year.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-constantinople"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 24"
+      }
+    ]
+  },
+  {
+    "id": "famagusta-customs-names",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "A customs man",
+      "role": "Famagusta",
+      "seal": null
+    },
+    "title": "Which people own the ship",
+    "body": "A customs man at Famagusta asks which people your ship belongs to. The king of Cyprus charges each people a different rate.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "road": [
+            "famagusta"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "genoese",
+        "label": "Declare Genoese partners",
+        "hint": "It costs 8 dinars now, a share for the partners. You pay no customs.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pisan",
+        "label": "Declare Pisan",
+        "hint": "It costs 4 dinars now, 2 in 100 each way. Partners think it fair.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "florentine",
+        "label": "Declare Florentine",
+        "hint": "It costs 6 dinars now, the dearest rate. The court notes your honesty.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In Cyprus the Genoese and Venetians paid no customs. Pisans and some others paid 2 in 100 each way, and Florentines usually paid 4.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-famagusta"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 70"
+      }
+    ]
+  },
+  {
+    "id": "tunis-christian-duty",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "Piero, a shipper",
+      "role": "Tunis",
+      "seal": null
+    },
+    "title": "The duty at Tunis",
+    "body": "Piero ships goods to Tunis. He says Christians there pay 10 in every 100 on all they bring in. He asks how you want your goods shipped.",
+    "when": {
+      "road": [
+        "tunis"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "standard",
+        "label": "Pay the standard duty",
+        "hint": "It costs 8 dinars now. The goods are accepted, and the court thinks well of you.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "venetian",
+        "label": "Ship under a Venetian partner",
+        "hint": "It costs 8 dinars now, the same duty. You owe the partner a favour, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "later",
+        "label": "Ship by a later boat",
+        "hint": "It costs 4 dinars now. Your profit comes slowly, and partners wait.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "At Tunis Christians paid 10 in 100 on everything they brought in. Venetians paid 10, and Florentines 10 and a half, with about 1 more for clerks.",
+    "unlocks": [
+      "term-dinar",
+      "place-tunis"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, p. 123 (the duty on goods)"
+      }
+    ]
+  },
+  {
+    "id": "qatya-passports",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "A courier",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The post at Qatya",
+    "body": "A caravan of yours has reached Qatya, a frontier post on the road to Syria. Goods are searched there and the alms tax is collected. No one may pass without a passport from the other country.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1326,
+            1326
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "road": [
+            "damascus"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "back",
+        "label": "Turn back and ask a friend for a pass",
+        "hint": "It costs 3 dinars now. The goods lose time, but they are safe, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pay",
+        "label": "Pay the officials extra",
+        "hint": "It costs 8 dinars now. The goods pass, foreign houses hear of it, and the court notes your name.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": -1
+              },
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait at an inn for a courier",
+        "hint": "It costs 2 dinars now. The wait is long, and your people grow tired.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On the road from Cairo to Syria, Qatya was a frontier post where goods were examined and the alms tax collected. No one could pass without a passport from the other country.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 72 and note 9"
+      },
+      {
+        "src": "lapidus-1967",
+        "at": "p. 17 (a tax of 5 to 10 in 100)"
+      }
+    ]
+  },
+  {
+    "id": "damascus-bedouin-guards",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "A guide",
+      "role": "Damascus",
+      "seal": null
+    },
+    "title": "Guards of the desert road",
+    "body": "Bedouins who guard the desert road ask a payment from your caravan. The sultan pays them too. Your guide asks what to do.",
+    "when": {
+      "road": [
+        "damascus"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "tribute",
+        "label": "Pay them",
+        "hint": "It costs 5 dinars now. Your goods pass safe, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "guards",
+        "label": "Hire your own guards",
+        "hint": "It costs 9 dinars now. You owe nobody, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "without",
+        "label": "Go without a guard",
+        "hint": "It costs nothing now and 8 dinars in two seasons, if raiders find the caravan. Your people admire your nerve.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "flag": "damascus-no-guard",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -8
+              },
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The sultan paid Bedouin tribes to guard the post and trade roads, and the tribes also took payments from merchants. In 1340 the sultan ruled that merchants must ask his permission to use state relay stations.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar",
+      "place-damascus"
+    ],
+    "sources": [
+      {
+        "src": "lapidus-1967",
+        "at": "p. 123"
+      }
+    ]
+  },
+  {
+    "id": "ayas-tabriz-tolls",
+    "group": "tolls",
+    "kind": "trade",
+    "from": {
+      "name": "A Tabriz trader",
+      "role": "Tabriz",
+      "seal": null
+    },
+    "title": "The toll bill from Ayas",
+    "body": "A trader at Tabriz sends the toll bill for the road from Ayas. Tolls are fees to pass. There is one at nearly every stage, and Mongol horsemen take more on top.",
+    "when": {
+      "road": [
+        "tabriz"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay as asked",
+        "hint": "It costs 9 dinars now. There is no delay, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 9
+          }
+        },
+        "now": [
+          {
+            "money": -9
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "haggle",
+        "label": "Haggle at each stage",
+        "hint": "It costs 4 dinars now. Each stage takes time, and your people tire of it.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "route",
+        "label": "Choose another route",
+        "hint": "It costs 7 dinars now. The way is new, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 7
+          }
+        },
+        "now": [
+          {
+            "money": -7
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On the road from Ayas to Tabriz a merchant paid a small toll at nearly every stage. Mongol horsemen took about 50 aspers a load on top.",
+    "unlocks": [
+      "term-toll",
+      "term-load",
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "yule-1914",
+        "at": "pp. 159 to 164"
       }
     ]
   }

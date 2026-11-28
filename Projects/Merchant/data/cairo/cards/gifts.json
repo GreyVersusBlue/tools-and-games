@@ -272,7 +272,7 @@
       {
         "id": "return",
         "label": "Send the gift back with thanks",
-        "hint": "You owe nothing. Ilyas will think it odd.",
+        "hint": "You owe nothing, and you gain 2 dinars in two seasons. Ilyas will think it odd.",
         "now": [
           {
             "flag": "ilyas-gift-returned",
@@ -410,7 +410,7 @@
       {
         "id": "keep",
         "label": "Keep him on and write well of him",
-        "hint": "It costs a clerk's time. Ilyas will be glad.",
+        "hint": "It costs a clerk's time, 2 in two seasons. Ilyas will be glad.",
         "now": [
           {
             "trust": "tadros",
@@ -472,5 +472,398 @@
         "is": "home"
       }
     }
+  },
+  {
+    "id": "samarkand-tomb-gifts",
+    "group": "gifts",
+    "kind": "people",
+    "from": {
+      "name": "Bahram, a traveller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A tomb that feeds travellers",
+    "body": "Bahram has come to Cairo from Samarkand, a city far to the east. Outside his town stands a tomb, and visitors leave gifts there. The gifts feed travellers who stay at the hospice beside it, a guest house for people on the road. Bahram asks if your house will give a little too.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "gift",
+        "label": "Send a small gift to the hospice",
+        "hint": "It costs 4 dinars now. Travellers from the east will speak well of your house.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "letter",
+        "label": "Ask Bahram to carry a letter east",
+        "hint": "It costs 1 dinar now. Your partners hear from you, and Bahram asks for nothing more.",
+        "requires": {
+          "money": {
+            "gte": 1
+          }
+        },
+        "now": [
+          {
+            "money": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Give nothing",
+        "hint": "It costs nothing. Bahram tells people your house is careful with money, not kind.",
+        "now": [
+          {
+            "flag": "samarkand-gift-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1333 the traveller Ibn Battuta saw people bring animals and money to the tomb of Qutham, outside Samarkand. The gifts fed travellers and paid the staff of the hospice.",
+    "unlocks": [
+      "term-dinar",
+      "place-samarkand",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 3, p. 568"
+      }
+    ]
+  },
+  {
+    "id": "aden-room-for-kamal",
+    "group": "gifts",
+    "kind": "people",
+    "from": {
+      "name": "Kamal, a merchant",
+      "role": "Aden",
+      "seal": null
+    },
+    "title": "A room for a merchant",
+    "body": "Kamal has sailed to Aden from Calicut. Great ships come to Aden from India, and merchants of India and of Egypt live there. Kamal asks for a room in your warehouse.",
+    "when": {
+      "road": [
+        "aden"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "room",
+        "label": "Give him a room",
+        "hint": "It costs 2 dinars now. Kamal remembers a kind house when he trades again.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rent",
+        "label": "Charge him rent",
+        "hint": "He pays you 3 dinars now. He finds the rent high, and word gets round.",
+        "now": [
+          {
+            "money": 3
+          },
+          {
+            "rep": "foreign",
+            "by": -1
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that Aden was the port of the merchants of India. Great ships came there from Cambay, Quilon, Calicut and other places, and merchants from India and Egypt lived there.",
+    "unlocks": [
+      "term-dinar",
+      "place-aden",
+      "place-calicut",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 372 (the port of the merchants of India)"
+      }
+    ]
+  },
+  {
+    "id": "hormuz-water-price",
+    "group": "gifts",
+    "kind": "world",
+    "from": {
+      "name": "Tahir, a householder",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Water has a price",
+    "body": "Tahir lives in Hormuz, on an island with no springs. The water comes in skins from far away, so it has a price. He asks what your people will pay.",
+    "when": {
+      "road": [
+        "hormuz"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pay",
+        "label": "Pay his price",
+        "hint": "It costs 2 dinars now. Tahir is glad of your custom.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "own",
+        "label": "Bring your own water",
+        "hint": "It costs 6 dinars now. It is dearer, but partners see you are ready.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "move",
+        "label": "Move on",
+        "hint": "It costs nothing. Tahir shrugs, and word gets round.",
+        "now": [
+          {
+            "flag": "hormuz-water-refused",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "On the island of Hormuz, water had a price. It came from springs and cisterns some way from the city, carried in waterskins on people's backs and then by boat.",
+    "unlocks": [
+      "term-dinar",
+      "place-hormuz"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 2, p. 400"
+      }
+    ]
+  },
+  {
+    "id": "constantinople-gift-masters",
+    "group": "gifts",
+    "kind": "trade",
+    "from": {
+      "name": "A Pera trader",
+      "role": "Constantinople",
+      "seal": null
+    },
+    "title": "A gift for the customs masters",
+    "body": "A trader at Pera says it is the custom to honour the customs masters with a gift. Customs are taxes on goods. The gift goes to the masters, their clerks and their interpreters.",
+    "when": {
+      "road": [
+        "constantinople"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "all",
+        "label": "Send gifts to the masters and their clerks",
+        "hint": "It costs 6 dinars now. Your goods are counted at less than their worth, and the court hears of your manners.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cloth",
+        "label": "Send a gift of cloth only",
+        "hint": "It costs 3 dinars now. The clerks are pleased, and partners hear of it.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "none",
+        "label": "Send nothing",
+        "hint": "It costs nothing now and 2 dinars in two seasons, because your goods are counted at full worth.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "flag": "masters-no-gift",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Pegolotti advised merchants to give the customs masters a gift, and their clerks something too. Then, he said, they pass you politely and count your goods at less than they are worth.",
+    "unlocks": [
+      "term-customs",
+      "term-dinar",
+      "place-constantinople"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Pagnini 1766 printing, pp. 24 to 25"
+      }
+    ]
   }
 ]

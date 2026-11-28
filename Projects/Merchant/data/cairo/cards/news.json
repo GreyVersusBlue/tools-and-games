@@ -31,7 +31,7 @@
       {
         "id": "share",
         "label": "Put money into Jamil's cloth",
-        "hint": "He sells to the Malians. You share the profit.",
+        "hint": "It costs 9 now and pays 16 in a season. He sells to the Malians. You share the profit.",
         "requires": {
           "money": {
             "gte": 9
@@ -214,7 +214,7 @@
       {
         "id": "move",
         "label": "Sell in her market",
-        "hint": "Her fee is high. Your neighbours will see you go.",
+        "hint": "It costs 4 now and pays 9 in two seasons. Her fee is high. Your neighbours will see you go.",
         "requires": {
           "all": [
             {
@@ -252,7 +252,7 @@
       {
         "id": "stay",
         "label": "Stay in your own market",
-        "hint": "No fee, and your neighbours are glad.",
+        "hint": "No fee, and you gain 3 in two seasons. Your neighbours are glad.",
         "now": [
           {
             "rep": "partners",
@@ -503,6 +503,1244 @@
       {
         "src": "edwards-ogilvie-2008",
         "at": "p. 17; the whole army of agents, from Stillman, as they report it"
+      }
+    ]
+  },
+  {
+    "id": "samarkand-boats",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "Dilshad, a buyer",
+      "role": "Samarkand",
+      "seal": null
+    },
+    "title": "Boats on the river",
+    "body": "A letter comes from Dilshad, who buys goods for houses in Samarkand. He writes that the river is full of boats in spring. He can book a place on one for your next goods.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "spring"
+          ]
+        },
+        {
+          "road": [
+            "samarkand"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "book",
+        "label": "Book a place now",
+        "hint": "It costs 6 dinars now. Dilshad tells others that your house pays fast.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cheaper",
+        "label": "Ask him to find a cheaper boat",
+        "hint": "It costs 2 dinars now. The boat is slow, and your buyers wait.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "road",
+        "label": "Send the goods by road",
+        "hint": "It costs 8 dinars now. The road is safe, and your partners like that.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A Persian writer said in 1340 that the river at Samarkand carries many boats in spring. He also praised its grapes, apples and melons, but he copied from older books, so this may be older news.",
+    "unlocks": [
+      "term-dinar",
+      "place-samarkand"
+    ],
+    "sources": [
+      {
+        "src": "le-strange-1919",
+        "at": "p. 238"
+      }
+    ]
+  },
+  {
+    "id": "aydhab-ships-sunk",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A courier",
+      "role": "Aydhab",
+      "seal": null
+    },
+    "title": "No ship will sail",
+    "body": "A courier comes from Aydhab. The king of the Beja is at war with the sultan's soldiers, and he has sunk the ships. No ship will cross the sea now.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1326,
+            1326
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "road": [
+            "aydhab"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "turn",
+        "label": "Turn back and sell what you brought",
+        "hint": "It costs 3 dinars now, a loss on the sale. Your goods come home safe, and partners like that.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait at Aydhab for a ship",
+        "hint": "It costs 6 dinars now, for an inn. A ship may come, and foreign houses see that you stayed.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "quseir",
+        "label": "Send the goods by Quseir",
+        "hint": "It costs 8 dinars now. The goods reach another port, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1326 Ibn Battuta found Aydhab's ships sunk by the Beja king, who was at war with the sultan's soldiers. He sold his food and went back to Qus.",
+    "unlocks": [
+      "term-dinar",
+      "place-aydhab",
+      "person-beja",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 68 to 69"
+      }
+    ]
+  },
+  {
+    "id": "hormuz-summer-heat",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A letter-writer",
+      "role": "Hormuz",
+      "seal": null
+    },
+    "title": "Sleeping in the gardens",
+    "body": "A letter comes from near Hormuz. The summer heat there is so great that people sleep in gardens in the country. The writer asks if your people should be sent somewhere cooler.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "road": [
+            "hormuz"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "cool",
+        "label": "Pay for a cooler lodging",
+        "hint": "It costs 5 dinars now. Your people are glad, and they speak well of you.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "home",
+        "label": "Bring your people home",
+        "hint": "It costs 3 dinars now, for the road home. The work there stops for now, and partners are not pleased.",
+        "requires": {
+          "money": {
+            "gte": 3
+          }
+        },
+        "now": [
+          {
+            "money": -3
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nothing",
+        "label": "Do nothing",
+        "hint": "It costs nothing. Your people feel forgotten.",
+        "now": [
+          {
+            "flag": "hormuz-heat-ignored",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Marco Polo wrote that people at Hormuz slept in gardens in the summer heat. He meant the old town, before it moved to its island, so this is older evidence.",
+    "unlocks": [
+      "term-dinar",
+      "place-hormuz"
+    ],
+    "sources": [
+      {
+        "src": "yule-polo-1903",
+        "at": "vol. 1, pp. 108 to 109"
+      }
+    ]
+  },
+  {
+    "id": "alexandria-gate-shut",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A broker",
+      "role": "Alexandria",
+      "seal": null
+    },
+    "title": "The gate is shut",
+    "body": "A broker writes from Alexandria. A quarrel has broken out between Muslims and Christian traders. The chief of police sided with the traders and shut the Muslims out of the city gate. Goods of yours wait inside.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1327,
+            1327
+          ]
+        },
+        {
+          "road": [
+            "alexandria"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "guard",
+        "label": "Pay a second broker to stand guard",
+        "hint": "It costs 4 dinars now. Foreign merchants remember who kept their goods safe.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold the goods in Cairo",
+        "hint": "It costs nothing. Your buyers go elsewhere.",
+        "now": [
+          {
+            "flag": "alexandria-gate-held",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sell",
+        "label": "Sell to a local dealer at a low price",
+        "hint": "It costs 6 dinars now, a loss on the sale. The dealer tells others you sell fast.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1327 a quarrel broke out in Alexandria between Muslims and Christian traders. The chief of police sided with the traders and shut the Muslims out of the city gate. Ibn Battuta heard of it at Mecca, so he did not see it.",
+    "unlocks": [
+      "term-dinar",
+      "place-alexandria",
+      "term-broker",
+      "person-ibn-battuta"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 27 and note 70"
+      }
+    ]
+  },
+  {
+    "id": "egypt-gold-to-mint",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A clerk of the sultan",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Hand your gold to the mint",
+    "body": "Coin has run short in Egypt. The sultan's finance chief, al-Nashw, commands every merchant and goldsmith to hand their gold to the mint. A clerk brings the order to your house.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1335,
+            1335
+          ]
+        },
+        {
+          "stock": "gold",
+          "gte": 1
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "hand",
+        "label": "Hand it over for coin",
+        "hint": "It costs 2 dinars now. The court notes that you obey.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cloth",
+        "label": "Turn the gold into cloth first",
+        "hint": "It costs 5 dinars now. A chest of gold becomes 2 lots of linen, worth about 90. You hold goods while coin is scarce, and foreign houses hear of it.",
+        "requires": {
+          "all": [
+            {
+              "money": {
+                "gte": 5
+              }
+            },
+            {
+              "stock": "gold",
+              "gte": 1
+            }
+          ]
+        },
+        "now": [
+          {
+            "money": -5
+          },
+          {
+            "stock": "gold",
+            "by": -1
+          },
+          {
+            "stock": "linen",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hide",
+        "label": "Hide some of it",
+        "hint": "It costs nothing now and 10 dinars in two seasons, a fine if it is found. The court trusts you less.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
+        "now": [
+          {
+            "flag": "gold-hidden-1335",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -10
+              },
+              {
+                "rep": "court",
+                "by": -1
+              },
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1335 coin ran short in Egypt. The sultan's finance supervisor, al-Nashw, ordered merchants and goldsmiths to hand their gold to the mint.",
+    "unlocks": [
+      "term-dinar",
+      "good-gold"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "p. 135 and note 105"
+      }
+    ]
+  },
+  {
+    "id": "venice-pope-ban",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A correspondent",
+      "role": "Venice",
+      "seal": null
+    },
+    "title": "No galleys this year",
+    "body": "A letter from Venice says the pope has told Venetians not to trade with the sultan's lands. No Venetian galley will sail for Alexandria this year or the next.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1323,
+            1344
+          ]
+        },
+        {
+          "stock": "pepper",
+          "gte": 1
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "cyprus",
+        "label": "Buy pepper to send round the ban",
+        "hint": "It costs 240 dinars now for 2 lots of pepper. Greek merchants of Cyprus will carry it where Venetians may not go, and foreign houses think well of you.",
+        "requires": {
+          "money": {
+            "gte": 240
+          }
+        },
+        "now": [
+          {
+            "money": -240
+          },
+          {
+            "stock": "pepper",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sell",
+        "label": "Sell a lot of pepper in Cairo",
+        "hint": "You sell 1 lot of pepper for 105 dinars, less than the usual 120 while no galleys come. Partners see you sell fast.",
+        "requires": {
+          "stock": "pepper",
+          "gte": 1
+        },
+        "now": [
+          {
+            "money": 105
+          },
+          {
+            "stock": "pepper",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hold",
+        "label": "Hold the pepper and wait",
+        "hint": "It costs 2 dinars now, for storage. If the ban lifts, you are ready.",
+        "requires": {
+          "all": [
+            {
+              "money": {
+                "gte": 2
+              }
+            },
+            {
+              "stock": "pepper",
+              "gte": 1
+            }
+          ]
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1323 Venice, pressed by the pope, forbade its people to trade with the sultan's lands. Venetian ships stopped sailing straight to Egypt for about twenty years, though goods still reached Venetians by other hands.",
+    "unlocks": [
+      "term-ships",
+      "term-dinar",
+      "good-pepper",
+      "place-venice",
+      "place-alexandria"
+    ],
+    "sources": [
+      {
+        "src": "jacoby-2018",
+        "at": "pp. 135 to 137"
+      }
+    ]
+  },
+  {
+    "id": "aleppo-army-carts",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A carter",
+      "role": "Aleppo",
+      "seal": null
+    },
+    "title": "The army is on the road",
+    "body": "A carter from Aleppo says the road to the coast is full of the army's supply carts. The army is gathering for a raid.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1334,
+            1347
+          ]
+        },
+        {
+          "road": [
+            "aleppo"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "wait",
+        "label": "Wait for the road to clear",
+        "hint": "It costs nothing. Your goods sit at Aleppo while the army passes, and partners grow restless.",
+        "now": [
+          {
+            "flag": "aleppo-road-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coast",
+        "label": "Go round by the coast",
+        "hint": "It costs 5 dinars now. The way is longer but safer, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 5
+          }
+        },
+        "now": [
+          {
+            "money": -5
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sell",
+        "label": "Sell the goods at Aleppo",
+        "hint": "It costs 6 dinars now, a lower price. Partners like a quick sale.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "After 1322 Aleppo was the army's base for raids on Armenia. Eight campaigns set out from there between 1334 and 1348, so roads were likely busy.",
+    "unlocks": [
+      "term-dinar",
+      "place-aleppo"
+    ],
+    "sources": [
+      {
+        "src": "lapidus-1967",
+        "at": "p. 19"
+      }
+    ]
+  },
+  {
+    "id": "aleppo-spice-goes-north",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A spice dealer",
+      "role": "Aleppo",
+      "seal": null
+    },
+    "title": "Spice goes by another road",
+    "body": "A spice dealer tells you that the Indian spice caravans no longer pass Aleppo. They go north, to the port of Ayas.",
+    "when": {
+      "road": [
+        "aleppo"
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "ayas",
+        "label": "Send a man to Ayas",
+        "hint": "It costs 8 dinars now. The road is long, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          },
+          {
+            "in": 2,
+            "card": "ayas-bardi-privileges"
+          }
+        ]
+      },
+      {
+        "id": "stay",
+        "label": "Stay with the old route",
+        "hint": "It costs nothing. Your stock runs low, and partners notice.",
+        "now": [
+          {
+            "flag": "aleppo-old-route",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cyprus",
+        "label": "Buy pepper from the dealers of Cyprus",
+        "hint": "It costs 125 dinars now for 1 lot of pepper, 5 of it a middleman's cut. Partners like the ease.",
+        "requires": {
+          "money": {
+            "gte": 125
+          }
+        },
+        "now": [
+          {
+            "money": -125
+          },
+          {
+            "stock": "pepper",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "One historian writes that after the Mongols took Baghdad, much Indian spice went north from Tabriz to Little Armenia. It passed by Aleppo and Antioch, from the 1260s on.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar",
+      "place-aleppo",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "abu-lughod-1989",
+        "at": "p. 196 (a passage she quotes from Ashtor)"
+      }
+    ]
+  },
+  {
+    "id": "tabriz-khan-dies",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A letter-writer",
+      "role": "Tabriz",
+      "seal": null
+    },
+    "title": "The ruler has died",
+    "body": "A letter says the ruler of Tabriz has died, and he left no son. Rival lords may fight for the throne. Your people there ask what to do.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1335,
+            1336
+          ]
+        },
+        {
+          "season": [
+            "winter"
+          ]
+        },
+        {
+          "road": [
+            "tabriz"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "recall",
+        "label": "Call your people home",
+        "hint": "It costs 2 dinars now. Your goods are safe, and your people are glad.",
+        "requires": {
+          "money": {
+            "gte": 2
+          }
+        },
+        "now": [
+          {
+            "money": -2
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gifts",
+        "label": "Keep them there and send gifts to the new lords",
+        "hint": "It costs 6 dinars now. The new lords are pleased, and the court hears of it.",
+        "requires": {
+          "money": {
+            "gte": 6
+          }
+        },
+        "now": [
+          {
+            "money": -6
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sell",
+        "label": "Sell the Tabriz stock fast",
+        "hint": "It costs 4 dinars now, a lower price. Partners like a quick sale.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Abu Said, the last strong Mongol ruler of Iran, died on 30 November 1335 with no living son. His wife was expecting a child, and it was a girl.",
+    "unlocks": [
+      "term-dinar",
+      "place-tabriz"
+    ],
+    "sources": [
+      {
+        "src": "wing-2007",
+        "at": "pp. 81 to 82"
+      }
+    ]
+  },
+  {
+    "id": "almaliq-khan-killed",
+    "group": "news",
+    "kind": "world",
+    "from": {
+      "name": "A letter-writer",
+      "role": "Samarkand",
+      "seal": null
+    },
+    "title": "The ruler has been killed",
+    "body": "A letter from the east says the ruler of the Tartars has been killed by his own brother. A caravan there is held up for fear of war and plunder.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1338,
+            1338
+          ]
+        },
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "road": [
+            "samarkand"
+          ]
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "pull",
+        "label": "Pull your goods out",
+        "hint": "It costs 4 dinars now. Your goods are out of danger, and partners are glad.",
+        "requires": {
+          "money": {
+            "gte": 4
+          }
+        },
+        "now": [
+          {
+            "money": -4
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gift",
+        "label": "Send a gift to the new ruler",
+        "hint": "It costs 8 dinars now. The ruler is pleased, and foreign houses hear of it.",
+        "requires": {
+          "money": {
+            "gte": 8
+          }
+        },
+        "now": [
+          {
+            "money": -8
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Wait",
+        "hint": "It costs nothing. If war comes, your goods are in danger.",
+        "now": [
+          {
+            "flag": "almaliq-waited",
+            "set": "now"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In August 1338 a Spanish friar, Pascal, wrote from Almaliq that the Tartar ruler had been killed by his brother. Yule thinks he was the khan of Chagatai.",
+    "unlocks": [
+      "term-caravan",
+      "term-dinar",
+      "place-samarkand"
+    ],
+    "sources": [
+      {
+        "src": "yule-1914",
+        "at": "p. 86 (the letter) and p. 35 (Yule's reading)"
       }
     ]
   }

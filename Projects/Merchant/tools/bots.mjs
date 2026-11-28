@@ -28,8 +28,9 @@ import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { loadContent } from '../js/data.js';
-import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score, proposePlan, estimate, readEntry } from '../js/engine/index.js';
+import { newGame, openSeason, choose, paperChoices, canEndSeason, endSeason, recall, outfit, destinations, score, proposePlan, estimate, readEntry, sellHome, sellHomeQuote } from '../js/engine/index.js';
 import { holds } from '../js/engine/conditions.js';
+import { playedSeasons, year } from '../js/engine/calendar.js';
 import { outEnd, jumpChances } from '../js/engine/routes.js';
 import { truePrice, baseOf } from '../js/engine/market.js';
 import { cityOf, REP_GROUPS } from '../js/engine/state.js';
@@ -70,6 +71,34 @@ LIMITS.topRankShare = 0.01;         // ...the top rank is reached by the best ga
 LIMITS.partShare = 0.5;             // ...and for a sensible bot no one part of the score is more than this share of the median total before the house multiplier, so no single lever wins the game
 LIMITS.ventureOverCards = 5;       // careful's median venture profit is at least this many times the median money of one season's cards (MER-92, DESIGN 2.2 rule 4)
 LIMITS.mediterraneanMax = 0.60;    // ...and the Mediterranean at most this share. An estimate of balance, not a recorded figure: the long roads were risky and paid the most, so a sensible bot uses them sometimes
+/** The stop ids of every `road` leaf in a card's `when`, nested in all and any as deep as they go (empty for a card with none). */
+export function roadLeaves(when) {
+  if (!when || typeof when !== 'object') return [];
+  if (Array.isArray(when)) return when.flatMap(roadLeaves);
+  return Object.entries(when).flatMap(([k, v]) => k === 'road' ? v : roadLeaves(v));
+}
+/** Every card id the content hands out on purpose rather than by a draw: the `card` of any effect or queued item anywhere in the content (cards, letters,
+    events, returns), and with `opening` the city's scripted openings too (MER-162). The bots' row uses the effects alone: an opening card is on every desk from the first season. A weight-0 card nothing names is an orphan: nothing can ever put it on a desk. */
+export function namedCards(content, { opening = false } = {}) {
+  const out = new Set();
+  const walk = (v, key) => {
+    if (typeof v === 'string') { if (key === 'card') out.add(v); return; }
+    if (Array.isArray(v)) { for (const x of v) walk(x, key); return; }
+    if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k);
+  };
+  walk({ cards: content.cards, letters: content.letters, events: content.events, returns: content.returns });
+  if (opening) for (const list of Object.values(content.city?.opening ?? {})) for (const id of list) out.add(id);
+  return out;
+}
+/** The calendar years the length plays (every year with at least one played season). */
+export const yearsOf = (content, length) => new Set(playedSeasons(content.calendar, length).map(i => year(content.calendar, i)));
+/** Whether a card's `when` can hold in some played year: a `year` leaf must meet one of `years`, every other leaf is taken as possible, `all` needs
+    each part possible and `any` one. A card dated wholly outside the length (venice-pope-allows, 1344, in a three-act game) never can. */
+export function inYears(when, years) {
+  if (!when || typeof when !== 'object') return true;
+  if (Array.isArray(when)) return when.every(w => inYears(w, years));
+  return Object.entries(when).every(([k, v]) => k === 'year' ? [...years].some(y => y >= v[0] && y <= v[1]) : k === 'all' ? v.every(w => inYears(w, years)) : k === 'any' ? v.some(w => inYears(w, years)) : true);
+}
 export const SENSIBLE = ['careful', 'greedy', 'qirad'];
 export const directionOf = dest => Object.keys(DIRECTIONS).find(d => DIRECTIONS[d].includes(dest)) ?? null;
 export const DEFAULTS = { games: 2000, seed0: 1000, length: 'acts' };
@@ -248,6 +277,38 @@ function plan(bot, state, content, agent, roll) {
   return null;
 }
 
+/** The warehouse after the season's plans are sent (MER-153): what is left of a good no plan carried is sold at home, as a player
+    sells after a big return. careful, greedy and qirad sell the most loads of each good that the stop's market takes without the
+    price of the last load falling under SELL_FLOOR of the home price, and no more than LIMITS.depthShare of the market's depth at
+    once (the rest waits for another season's price), and only loads that a whole season's plans left alone (`idle`: the loads left at the last check); a sale that brings in under SELL_MIN dinars is not worth the broker's cut and
+    is left. random sells a random part of each good at random; `first` sells nothing. Written in the strategy: not in LIMITS,
+    RISK_WEIGHT or STAKE_SHARE. */
+const SELL_FLOOR = 0.7;
+const SELL_MIN = 20;
+const SELL_PAR = 0.9;   // a load must also fetch this share of its base price after the cut: selling under it gave away more than the freed money earned (qirad's wealth part fell with a sale at any price)
+export function sellSurplus(bot, state, content, roll = () => 0.5, idle = null) {
+  if (bot === 'first') return state;
+  const home = cityOf(content, 'bots').home;
+  let s = state;
+  for (const good of Object.keys(s.stock).sort()) {
+    const held = s.stock[good] ?? 0;
+    const depth = stopOf(content, home).sells[good]?.depth;
+    if (held < 1 || !depth) continue;
+    if (bot === 'random') {
+      if (roll() < 0.3) { const n = 1 + Math.floor(roll() * held); if (sellHomeQuote(s, content, good, n).ok) s = sellHome(s, content, good, n); }
+      continue;
+    }
+    const homeP = truePrice(s, content, home, good);
+    let n = Math.min((idle ? Math.min(held, idle[good] ?? 0) : held), Math.ceil(depth * LIMITS.depthShare));
+    for (; n >= 1; n--) {
+      const q = sellHomeQuote(s, content, good, n);
+      if (q.ok && q.last >= SELL_FLOOR * homeP && q.average >= SELL_PAR * baseOf(s, content, home, good)) break;
+    }
+    if (n >= 1 && sellHomeQuote(s, content, good, n).got >= SELL_MIN) s = sellHome(s, content, good, n);
+  }
+  return s;
+}
+
 // ---- CARD POLICY (MER-68). What a choice is worth is read off its own effects, in money:
 //   net      money now and later, plus stock at the home price (a later effect counts whole, no discounting)
 //   outlay   the money and stock value it pays out, now and later, counted from the negative effects only
@@ -349,6 +410,7 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
   const temper = Object.fromEntries([...REP_GROUPS, 'trust'].map(g => [g, priceDraw(tdice())]).concat([['follow', tdice()]]));   // greedy's regard for standing this game; the others do not read it
   let s = newGame(content, { seed, length, house });
   const out = { bot, seed, house, startMoney: s.money, trips: [], profits: [], cardMoney: [], tripRoute: [], gross: [], capital: [], routes: {}, brokeBy: null, lost: 0, settled: 0, offers: {}, multi: {}, takes: {} };
+  const idle = {};   // loads of each good the last season's plans did not take (MER-153)
   const routeOfX = {};   // expedition id to its route, so a return or a settlement can be told by where it went
   for (let guard = 0; guard < 500; guard++) {
     if (s.phase === 'interlude') { s = openSeason(s, content); continue; }
@@ -383,6 +445,9 @@ export function playGame(content, { bot, seed, house, length = DEFAULTS.length }
       s = outfit(s, content, p);
       out.routes[p.route] = (out.routes[p.route] ?? 0) + 1;
     }
+    s = sellSurplus(bot, s, content, roll, idle);
+    for (const k of Object.keys(idle)) delete idle[k];
+    for (const [g, n] of Object.entries(s.stock)) idle[g] = n;   // what a whole season's plans left alone: the next season may sell it
     const broke = s.money < 0 && !Object.values(s.stock).some(n => n > 0) && !s.expeditions.length;
     if (broke && out.brokeBy === null) out.brokeBy = s.t + 1;
     const can = canEndSeason(s);
@@ -495,7 +560,7 @@ export function directionMedians(content, results) {
 }
 
 /** Every threshold against a run. Returns { rows: [{ name, value, limit, ok, note }], ok }. */
-export function check({ content, results, offered, taken, games }) {
+export function check({ content, results, offered, taken, games, length = DEFAULTS.length }) {
   const rows = [];
   const add = (name, value, limit, ok, note = '', pending = false, fmt = 'pct') => rows.push({ name, value, limit, ok: ok || pending, pending: pending && !ok, note, fmt });
   const mode = list => { const m = {}; for (const r of list) m[r] = (m[r] ?? 0) + 1; return Object.entries(m).sort((a, b) => b[1] - a[1])[0] ?? [null, 0]; };
@@ -584,8 +649,19 @@ export function check({ content, results, offered, taken, games }) {
   const total = Object.values(results).reduce((n, l) => n + l.length, 0);
   const drawn = {};
   for (const list of Object.values(results)) for (const g of list) for (const c of g.cards) drawn[c] = (drawn[c] ?? 0) + 1;
-  const never = content.cards.filter(c => (drawn[c.id] ?? 0) / total < LIMITS.cardDrawn).map(c => `${c.id} ${pct((drawn[c.id] ?? 0) / total, 2)}`);
-  add(`every card drawn in at least ${pct(LIMITS.cardDrawn, 0)} of games: cards short`, never.length, 0, never.length === 0, never.join(', '), false, 'num');
+  // A card bound to a road (a `road` leaf anywhere in its `when`) is drawn only when a trip is out on that road, and the bots seldom
+  // travel to Samarkand, Tunis, Hormuz or Tabriz; it leaves this row and test/engine.mjs proves each one can be dealt (DECISIONS 2026-11-27 13:06, MER-161).
+  // Two more leave it (DECISIONS 2026-11-27 14:57, MER-162): a weight-0 card that another card's `card` effect names is dealt only by its parent
+  // (test/engine.mjs fails a weight-0 card nothing names), and a card whose years fall wholly outside the length run is not dealt in that length.
+  const named = namedCards(content), years = yearsOf(content, length);
+  const viaParent = content.cards.filter(c => c.weight === 0 && named.has(c.id));
+  const outOfYears = content.cards.filter(c => !inYears(c.when, years));
+  const roadBound = content.cards.filter(c => roadLeaves(c.when).length);
+  const left = new Set([...roadBound, ...viaParent, ...outOfYears]);
+  const never = content.cards.filter(c => !left.has(c) && (drawn[c.id] ?? 0) / total < LIMITS.cardDrawn).map(c => `${c.id} ${pct((drawn[c.id] ?? 0) / total, 2)}`);
+  const short = roadBound.filter(c => (drawn[c.id] ?? 0) / total < LIMITS.cardDrawn).length;
+  add(`every card drawn in at least ${pct(LIMITS.cardDrawn, 0)} of games: cards short`, never.length, 0, never.length === 0,
+    `${never.join(', ')}${never.length ? '; ' : ''}${roadBound.length} road-bound cards are not counted (${short} of them under ${pct(LIMITS.cardDrawn, 0)}), test/engine.mjs deals each; nor are ${viaParent.length} cards a parent deals and ${outOfYears.length} dated outside the ${length} length`, false, 'num');
   // a choice greedy takes nearly always
   if (results.greedy) {
     const over = [], exempt = [];

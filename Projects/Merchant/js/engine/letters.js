@@ -35,8 +35,9 @@ import { addPaper, deskFull, cityOf } from './state.js';
 import { chance, weighted } from './rng.js';
 import { lagOf, writeSeason, truePrice } from './market.js';
 import { sellHomeQuote } from './sell.js';
+import { loadsWorth } from './score.js';
 import { wary, legSeasons } from './agents.js';
-import { accountItem, foldAccounts, pickEntry, askOf } from './routes.js';   // a cycle (routes.js reads decide and close from here); both are only called after the modules have loaded
+import { accountItem, foldAccounts, pickEntry, askOf, hopeSmall } from './routes.js';   // a cycle (routes.js reads decide and close from here); both are only called after the modules have loaded
 
 /** The chance a letter is written, for an expedition with a letter to write, in a season. */
 export const LETTER_CHANCE = 0.5;
@@ -154,7 +155,7 @@ export function letters(s, content) {
 // A card's `when` can read a flag but not a return paper, so the facts a card's words rely on are written to flags
 // here, after the return step and before the cards are drawn, and cleared at each opening. For an agent `a`:
 //   `a-profit`        the house's net on the trip that came home (a number, negative for a loss)
-//   `a-undersold`     set when the trip sold goods and made less than the sheet hoped
+//   `a-undersold`     set when the trip sold goods and made less than the sheet hoped by more than the paper's own "about as hoped" (routes.js hopeSmall)
 //   `a-widened-trip`  set when the answer "let him go further" was given while this trip was out
 export const FACT_FLAGS = ['profit', 'undersold', 'widened-trip', 'bonused'];
 const FACT_FLAG = new RegExp(`^(.+)-(${FACT_FLAGS.join('|')})$`);
@@ -181,7 +182,7 @@ function tripFacts(s, content) {
     s.flags[`${p.agent}-profit`] = net;
     // a trip the road robbed already has its blame paper (the lost paper): the clerk does not blame the agent's selling for what the robbers took (MER-139, play problem 10)
     const robbed = (p.data.account ?? []).some(r => r.label === 'Lost');
-    if (sold && !robbed && Number.isFinite(p.data.hoped) && net < p.data.hoped) s.flags[`${p.agent}-undersold`] = 1;
+    if (sold && !robbed && Number.isFinite(p.data.hoped) && p.data.hoped - net > hopeSmall(p.data.hoped)) s.flags[`${p.agent}-undersold`] = 1;   // short of the hope by more than "about as hoped" allows (MER-148)
     const sent = sentSeason(s, p.expedition), given = s.flags[`${p.agent}-widened`];
     if (sent !== null && Number.isFinite(given) && given >= sent) s.flags[`${p.agent}-widened-trip`] = 1;
   }
@@ -240,7 +241,7 @@ export function refitReturns(s, content) {
     }
     if (cut) {
       d.goodsBack = mine;
-      d.cargoValue = Math.round(Object.entries(mine).reduce((v, [g, n]) => v + n * (truePrice(s, content, home, g) ?? 0), 0));
+      d.cargoValue = Math.round(Object.entries(mine).reduce((v, [g, n]) => v + (loadsWorth(s, content, g, n, Math.max(0, (s.stock[g] ?? 0) - n)) ?? 0), 0));   // what Sell would pay for them now, behind the rest of the good in the warehouse (MER-148)
       const trip = d.trip, homeGood = mainGoodOf(mine);
       if (d.facts && trip) {
         const was = d.entry;
@@ -258,18 +259,21 @@ export function refitReturns(s, content) {
   }
 }
 
-/** A bonus is never offered above the trip's profit (MER-123): the return paper's bonus choice is cut to half the profit,
-    rounded down, when the entry's fixed sum is more than the profit, and left out when half the profit is under one dinar.
-    The label, the effect and the `requires` carry the new sum. */
+/** A return paper's bonus scales with the trip's profit (MER-148, M4f play problem 13: the paper offered 30 dinars after a profit of 30 and again after 45):
+    one fifth of the profit, rounded, at least 1 and at most BONUS_MOST, whatever sum returns.json prints. That is never more than a fifth of what the
+    trip made, so the bonus is a thank-you out of the gain, not the gain; with no profit to a fifth of one dinar the choice is left out. (MER-123 had cut it
+    to half the profit only when the fixed 30 was more than the profit.) The label, the effect and the `requires` carry the new sum. */
+export const BONUS_SHARE = 0.2, BONUS_MOST = 60;
+export const bonusFor = profit => Math.min(BONUS_MOST, Math.round(Math.max(profit, 0) * BONUS_SHARE));
 function fitOffers(p) {
   p.data.fitted = true;
   const net = p.data.houseNet, choices = p.data.choices ?? [];
   const i = choices.findIndex(c => c.id === 'bonus' && (c.now ?? []).some(e => e && typeof e === 'object' && e.money < 0));
   if (i < 0) return;
   const c = choices[i], was = -c.now.find(e => e && typeof e === 'object' && e.money < 0).money;
-  if (net < was) {
-    const sum = Math.floor(Math.max(net, 0) / 2);
-    if (sum < 1) { choices.splice(i, 1); return; }
+  const sum = bonusFor(net);
+  if (sum < 1) { choices.splice(i, 1); return; }
+  if (sum !== was) {
     c.label = c.label.replace(String(was), String(sum));
     for (const e of c.now) if (e && typeof e === 'object' && e.money < 0) e.money = -sum;
     if (c.requires?.money) c.requires.money.gte = sum;

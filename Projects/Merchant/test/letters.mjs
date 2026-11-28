@@ -866,7 +866,13 @@ test('(MER-123) the facts a card\'s words rely on are written when a trip comes 
   eq(flagsOf({ net: 24, hoped: 6 }), { profit: 24, undersold: false }, 'beat its estimate: not undersold (the play\'s case)');
   eq(flagsOf({ net: -12, hoped: 6, sold: false }), { profit: -12, undersold: false }, 'sold nothing, only bought: not undersold (the play\'s other case)');
   eq(flagsOf({ net: -12, hoped: null }), { profit: -12, undersold: false }, 'no estimate to fall short of');
-  const cleared = reopen(facts(base, k, { net: 5, hoped: 9 }), CAIRO);
+  // MER-148 (M4f play problem 7): the return paper called Ali's +30 against a hoped 34 "about as hoped", and the next paper said he sold too cheaply
+  eq(flagsOf({ net: 30, hoped: 34 }), { profit: 30, undersold: false }, 'four short of 34 is "about as hoped" on the return paper, so no clerk blames the selling');
+  eq(flagsOf({ net: 24, hoped: 34 }), { profit: 24, undersold: false }, 'ten short is still within what the paper calls about as hoped');
+  eq(flagsOf({ net: 23, hoped: 34 }), { profit: 23, undersold: true }, 'eleven short is not');
+  eq(flagsOf({ net: 100, hoped: 200 }), { profit: 100, undersold: true }, 'and a tenth of a big hope is wider than 10: 180 of 200 is about as hoped, 100 is not');
+  eq(flagsOf({ net: 181, hoped: 200 }), { profit: 181, undersold: false }, 'nineteen short of 200 is within a tenth');
+  const cleared = reopen(facts(base, k, { net: 5, hoped: 30 }), CAIRO);
   cleared.desk.splice(k, 1);
   eq([cleared.flags['ali-undersold'], cleared.flags['ali-profit']].map(Boolean), [true, true], 'set until the next opening');
   reopen(cleared, CAIRO);
@@ -914,7 +920,7 @@ test('(MER-123) the loss paper blames bad luck only when goods were lost on the 
   ok(k >= 0);
 });
 
-test('(MER-123) a return paper\'s bonus is never above the profit: cut to half of it, and left out under two dinars', () => {
+test('(MER-148) a return paper\'s bonus scales with the profit: a fifth of it, at least 1 and at most 60, so it is never 30 after a profit of 30', () => {
   const { s: base, p: k } = homeState();
   const entry = CAIRO.returns.find(e => e.id === 'return-bonus');
   const offer = net => {
@@ -924,14 +930,21 @@ test('(MER-123) a return paper\'s bonus is never above the profit: cut to half o
     const b = p.data.choices.find(c => c.id === 'bonus');
     return b && { label: b.label, cost: -b.now.find(e => e.money).money, requires: (b.requires.all ?? [b.requires]).find(r => r.money).money.gte };
   };
-  eq(offer(13)?.cost, 6, 'the play\'s case: 13 dinars of profit, a bonus of 30 offered; now 6');
-  eq(offer(13)?.label, 'Pay {agent} a bonus of 6 dinars');
-  eq(offer(13)?.requires, 6, 'the requirement moves with it');
-  eq(offer(100)?.cost, 30, 'a profit of 100 pays the bonus as written');
-  eq(offer(30)?.cost, 30, 'a profit of 30 is the edge: as written');
-  eq(offer(29)?.cost, 14);
-  eq(offer(1), undefined, 'a profit of 1 offers none');
-  ok(offer(13).cost <= 13);
+  eq(offer(13)?.cost, 3, 'a profit of 13: 3');
+  eq(offer(13)?.label, 'Pay {agent} a bonus of 3 dinars');
+  eq(offer(13)?.requires, 3, 'the requirement moves with it');
+  eq(offer(30)?.cost, 6, 'a profit of 30: 6, not 30 (the M4f play)');
+  eq(offer(45)?.cost, 9, 'a profit of 45: 9, not the same as after 30');
+  eq(offer(100)?.cost, 20);
+  eq(offer(250)?.cost, 50);
+  eq(offer(1000)?.cost, 60, 'a big profit stops at 60');
+  eq(offer(2), undefined, 'a profit of 2 offers none: a fifth of it rounds to nothing');
+  eq(offer(3)?.cost, 1, 'a profit of 3: one dinar');
+  eq(offer(-5), undefined, 'no profit, no bonus');
+  const costs = [30, 45, 60, 90, 150].map(n => offer(n).cost);
+  eq(costs, [...costs].sort((a, b) => a - b), 'a bigger profit never pays a smaller bonus');
+  eq(new Set(costs).size, costs.length, 'and each of these profits pays its own');
+  for (const n of [13, 30, 45, 100, 250]) ok(offer(n).cost <= n / 4, `${offer(n).cost} is at most a quarter of ${n}`);
 });
 
 test('(MER-123) the go-further fee is taken at the choosing and the choice needs the money, so the house never goes below 0', () => {
@@ -1195,6 +1208,10 @@ test('(MER-140) a letter that arrived in an earlier season and waited is never p
 // `deliver` puts a letter ahead of its own trip's return paper (MER-118), and mix.mjs looked for new letters at the end of the desk,
 // where the return paper had taken their place. So the papers are compared, not the length of the desk, and this case plays enough
 // seeded bot games (36: careful, greedy and qirad in turn, every house) to tell 25 percent from 50: about 110 trips of three seasons or more.
+// MER-148 lowered the floor to 0.3: over these 36 games 91 long trips came home with 67 letters (73.6 percent) before it, and 152 with 55 (36.2) after, because the bots sent 118 of the 152
+// to Damascus, a road with one writing opening that wrote on 24 of them (14 of 31 before). MER-149 put the floor back to 0.4 and fixed the two causes: Damascus's prices ran a quarter over
+// Cairo's on nearly every good (data/cairo/stops.json), which is why the bots crowded it, and the road had three letters to write, so after two games' worth of them it had none; it has
+// five now (damascus-spice-dealers and damascus-money-changer are new), against Qus's five and Alexandria's six. 111 long trips came home with 104 letters (93.7 percent).
 const SHARE_GAMES = 36, SHARE_FLOOR = 0.4;
 function letterShare(games) {
   const { letters: orig, returns: ret } = steps;

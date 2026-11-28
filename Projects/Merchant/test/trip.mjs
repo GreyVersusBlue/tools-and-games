@@ -9,8 +9,10 @@ import { holds, tripOf, tripLeaf } from '../js/engine/conditions.js';
 import { apply } from '../js/engine/effects.js';
 import { lintContent, tripFailures } from '../tools/lint-content.mjs';
 import { destinations, risk, accountItem, repSentence, estimate } from '../js/engine/routes.js';
-import { moneyTrail, jumpWords } from '../js/ui/screens/ledger.js';
-import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view } from '../js/engine/index.js';
+import { moneyTrail, jumpWords, trailJumpWords, seasonLines, whereIsExpedition, whereIsAgent, wherePlace } from '../js/ui/screens/ledger.js';
+import { whyLine } from '../js/engine/routes.js';
+import { trail } from '../js/engine/turn.js';
+import { newGame, openSeason, endSeason, choose, paperChoices, outfit, view, sellHomeQuote, suggestPlan, canEndSeason, recall } from '../js/engine/index.js';
 import { seasonIndex } from '../js/engine/calendar.js';
 import { cityOf } from '../js/engine/state.js';
 import * as M from '../js/engine/market.js';
@@ -365,6 +367,8 @@ function jumpedTrip(want, { seeds = [7, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12], hop
     // cause of its own and its why never names one; the sentences below are about the cases where the hope was off.
     if (hopedHigh) for (const x of s.expeditions) {
       x.hope.home.salt = Math.round(x.hope.home.salt * 1.4);
+      const was = x.hope.homeValue.salt; x.hope.homeValue.salt = Math.round(was * 1.4);   // the dinars the sheet hoped the loads would count for (MER-148), which the gap is read from
+      x.hope.net += x.hope.homeValue.salt - was; x.hoped = x.hope.net;   // and the net it hoped is that much higher
     }
     let before = s;
     for (let i = 0; i < 20 && s.phase !== 'interlude' && s.phase !== 'recall'; i++) { before = s; s = step(s, c); }
@@ -400,7 +404,7 @@ test('MER-119 (2) a party home before the years passed: its why names the price 
   ok(new RegExp(`^Salt fetched ${then} at home in ${writeSeason(j.c, from)}, when Mira was back, `).test(d.why), `${d.why} (it was ${then} then and ${after} after the jump)`);
   ok(!/by the time/.test(d.why), d.why);
 });
-test('MER-121b a return the jump settles is worth home\'s price after the jump\'s market reset, the price the ledger shows that season, quoted or not', () => {
+test('MER-121b a return the jump settles is worth what Sell pays for it on the market the jump\'s reset leaves, the one the ledger shows that season, quoted or not', () => {
   // `jump` settles a party before it resets the markets (step 4), so a return valued at the market as it stood read the price of the
   // closing before: 33 of 33 jump returns were off from the ledger, 29 of 29 ordinary ones right (MER-121b). The paper's "worth" and
   // its cargo value are the goods at the price the new act opens with, which is the price the ledger writes for that season.
@@ -409,16 +413,17 @@ test('MER-121b a return the jump settles is worth home\'s price after the jump\'
     const j = jumpedTrip(l => l.quoted === quoted, { seeds: [seed] });
     if (!j || !Object.keys(j.paper.data.goodsBack).length) continue;
     const home = cityOf(j.c, 'market').home, to = j.s.log.findLast(e => e.kind === 'jump').to;
-    // the season the act opens in: play it to its close and read the price the ledger wrote for it
     const worth = j.paper.data.cargoValue;
-    const after = step(openSeason(j.s, j.c), j.c);
+    // the season the act opens in: the house opened on the desk the reset market gives, and Sell in the warehouse quotes the loads there. What the paper counts them at
+    // is what Sell would pay for them (MER-148, M4f play problem 1): the run, each load behind the one before and the broker's cut off, behind what the warehouse held of the good.
+    const opened = openSeason(j.s, j.c);
     let ledger = 0;
     for (const [g, n] of Object.entries(j.paper.data.goodsBack)) {
-      const p = M.priceAt(after, home, g, to);
-      ok(Number.isFinite(p), `${g} has no ledger price for season ${to}`);
-      ledger += n * p;
+      const held = opened.stock[g] ?? 0;
+      ok(held >= n, `${g}: the warehouse holds the ${n} loads that came home (${held})`);
+      ledger += sellHomeQuote(opened, j.c, g, held).got - (held > n ? sellHomeQuote(opened, j.c, g, held - n).got : 0);
     }
-    eq(worth, ledger, `seed ${seed}, calendar ending ${j.end}, quoted ${quoted}: the paper says worth ${worth}, the ledger's price that season makes ${ledger}`);
+    eq(worth, ledger, `seed ${seed}, calendar ending ${j.end}, quoted ${quoted}: the paper says worth ${worth}, what Sell pays for them that season is ${ledger}`);
     compared++;
   }
   ok(compared >= 3, `${compared} jump returns with goods were compared`);
@@ -427,7 +432,7 @@ test('MER-119 (2) a trip settled by quotes says so, and does not say the party w
   const j = jumpedTrip((l, s, c) => l.quoted && / at home, /.test(l.why ?? ''), { hopedHigh: true });
   ok(j, 'no calendar had a quoted trip whose why names a home price');
   const d = j.paper.data;
-  ok(/^The years passed before Mira was home, so salt was counted at \d+ at home, (not|more than|less than) the \d+ we hoped for\.$/.test(d.why), d.why);
+  ok(/^The years passed before Mira was home, so salt was counted at \d+( a load)? at home, (not|more than|less than) the \d+( a load)? we hoped for\.$/.test(d.why), d.why);
   ok(!/by the time|was back/.test(d.why), d.why);
   eq(j.line.why, d.why);
 });
@@ -519,8 +524,8 @@ test('MER-125 (4) the ledger shows the jump as one line after the season it foll
   eq([last.at, last.after.years, last.after.net, last.after.trips, last.after.change], [jump.from, jump.years, jump.net, jump.trips, jump.change], 'right after the jump the last row carries it');
   eq(jump.net, jump.settled.reduce((n, l) => n + l.houseNet, 0), 'the figure is what the page between the acts adds up');
   eq(last.change + last.after.change, at.change, 'the season and the jump add up to what the book wrote');
-  ok(jump.net > 0 && last.change === at.change - jump.change, 'the trips made money for the house and the jump\'s change is out of the season');
-  ok(jumpWords(last.after).startsWith(`${jump.years === 1 ? 'A year' : `${jump.years} years`} passed. The trips made ${jump.net} dinars for the house.`), jumpWords(last.after));
+  ok(jump.net !== 0 && last.change === at.change - jump.change, 'the trips made or cost the house something and the jump\'s change is out of the season');   // goods count at what Sell would pay (MER-148), which can leave this small trip a loss
+  ok(jumpWords(last.after).startsWith(`${jump.years === 1 ? 'A year' : `${jump.years} years`} passed. ${jump.net > 0 ? `The trips made ${jump.net} dinars for the house.` : `The trips cost the house ${-jump.net} dinars.`}`), jumpWords(last.after));
   // the new act's seasons arrive as they close, and the jump line stays between the old season and the new
   const next = step(step(j.s, j.c), j.c);
   const t2 = moneyTrail(j.c, next.log);
@@ -569,6 +574,96 @@ test('MER-125 (6) good name is said as a sentence a child reads, one per group w
   eq(repSentence('court', 0), null);
   const item = accountItem(game(), calm, { do: [{ money: 40 }, { rep: 'court', by: 1 }], from: 'x/y' });
   eq(item.text, 'From x/y: +40 coins. The court thinks better of the house.', 'the money runs on, the sentence follows whole');
+});
+
+/** A whole three-act game of a plain player: answers each paper with the first choice the house can take, sends every free agent on the first stop that has a plan, and lets
+    the seasons pass. Returns the final state, which holds the log the ledger reads. */
+function playOut(c, { seed, house }) {
+  let s = newGame(c, { seed, length: 'acts', house });
+  const stops = c.stops.filter(q => q.id !== cityOf(c, 'trip').home).map(q => q.id);
+  for (let i = 0; i < 400 && s.phase !== 'ended'; i++) {
+    if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
+    if (s.phase === 'recall') { s = recall(s, c, {}); continue; }
+    s = answer(s, c);
+    for (const stop of stops) { const p = suggestPlan(s, c, stop); if (!p) continue; try { s = outfit(s, c, p); } catch { /* the house cannot fit this one out */ } }
+    s = canEndSeason(s).ok ? endSeason(s, c) : s;
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------------------------
+// MER-160 (M4g play problems 8, 10 and 16): the ledger and the house's worth tell the truth, season by season
+
+test('MER-160 (1) every closed season\'s listed lines add up to its shown change, card money and tolls included', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  let seasons = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    // the log of a finished game, read back one closed season at a time: the trail at each season's entry is what the ledger showed then
+    const kept = playOut(cairo, { seed, house: cairo.houses[seed % cairo.houses.length].id }), bot = 'player';
+    const entries = kept.log.map((e, i) => [e, i]).filter(([e]) => e.kind === 'season');
+    for (const [e, i] of entries) {
+      const row = trail({ ...kept, log: kept.log.slice(0, i + 1) }, cairo).at(-1);
+      eq(row.at, e.at);
+      const lines = seasonLines(row, kept.log);
+      eq(lines.reduce((n, l) => n + l.change, 0), row.change, `${bot}/${seed} ${row.season}: the lines ${JSON.stringify(lines.map(l => l.change))} against the change`);
+      seasons++;
+    }
+  }
+  ok(seasons >= 100, `${seasons} seasons were checked`);
+});
+
+test('MER-160 (3) the ledger\'s road section and People say the same place for an agent out on a road, going and coming back', () => {
+  let s = outfit(game(), calm, WOOL);
+  const app = () => ({ content: calm, state: s });
+  const seen = new Set();
+  for (let i = 0; i < 14 && s.expeditions.length; i++) {
+    const x = s.expeditions[0], p = wherePlace(calm, x);
+    const road = whereIsExpedition(app(), x), agent = whereIsAgent(app(), calm.agents.find(a => a.id === 'mira'), s.agents.mira);
+    const route = calm.routes.find(r => r.id === x.route), leg = route.legs[x.leg];
+    if (p.at === 'road') {
+      const from = calm.stops.find(q => q.id === leg.from).name, to = calm.stops.find(q => q.id === leg.to).name;
+      ok(road.includes(`from ${from} to ${to}`), road);
+      ok(agent.includes(from) && agent.includes(to), `People says "${agent}" while the road section says "${road}"`);
+      // going out the agent is on the road to the far end; coming back she is on the way home, never "on the road to" the far end she has left
+      if (x.leg > 0) ok(agent.startsWith('On the way home') && !agent.includes(`On the road to ${calm.stops.find(q => q.id === route.to).name}`), agent);
+      else ok(agent.startsWith(`On the road to ${to}`), agent);
+      seen.add(x.leg);
+    }
+    s = step(s, calm);
+  }
+  ok(seen.has(0) && seen.has(1), `both directions were met: ${[...seen]}`);
+});
+
+test('MER-160 (4) a return that counted loads below the price hoped says the loads\' average a load, and never "less than" a figure equal to its own', () => {
+  const x = { id: 'x1', agent: 'mira', route: 'harbour-hilltown', hope: { net: 200, home: { salt: 90 }, homeValue: { salt: 450 }, homeLoads: { salt: 5 }, ageWords: 'a season old', tolls: 0 },
+    book: { tolls: 0, sold: [], bought: [], seen: [], lost: {}, orders: [] }, cargo: { salt: 5 }, contract: { kind: 'own' } };
+  const r = { houseNet: 55, goodsBack: { salt: 5 }, homePrice: { salt: 90 }, cargoParts: { salt: 305 } };
+  const s = { market: {}, known: {}, stock: {}, t: 0, log: [] };
+  const quoted = whyLine(s, calm, x, { ...r, jump: { quoted: true, at: 3 } });
+  eq(quoted, 'The years passed before Mira was home, so salt was counted at 61 a load at home, not the 90 a load we hoped for.');
+  const home = whyLine(s, calm, x, r);
+  ok(/counted at 61 a load/.test(home) || /61/.test(home), home);
+  for (const w of [quoted, home]) { const m = w.match(/(\d+)[^\d]+(?:less than|not|more than) the (\d+)/); ok(!m || m[1] !== m[2], `a sentence that compares ${m?.[1]} with ${m?.[2]}: ${w}`); }
+});
+
+test('MER-160 (4) the years line does not call the gap between the money and the trips\' net goods in the warehouse', () => {
+  for (const after of [{ years: 10, change: 120, trips: 100, net: 235 }, { years: 10, change: 0, trips: 0, net: 235 }]) {
+    ok(!/warehouse|the rest being/.test(trailJumpWords(after)), trailJumpWords(after));
+    ok(!/warehouse|the rest being/.test(jumpWords(after)), jumpWords(after));
+  }
+  eq(trailJumpWords({ years: 10, change: 120, trips: 100, net: 235 }), '10 years passed. The trips made 235 dinars for the house.');
+});
+
+test('MER-160 (2) the line a far-end sale writes says the trip is not home, and every move of 10 dinars or more in a season has a line in that season', async () => {
+  const cairo = await loadContent('cairo', { fs });
+  let traded = 0;
+  const kept = playOut(cairo, { seed: 3, house: 'cloth' });
+  for (const e of kept.log.filter(x => x.kind === 'worth' && x.cause === 'trade' && / traded at /.test(x.text))) {
+    ok(/is not home yet|came home/.test(e.text) || e.text.includes('and is home'), e.text);
+    traded++;
+  }
+  ok(traded > 0, 'the game had a far-end sale to read');
+  for (const e of kept.log.filter(x => x.kind === 'worth')) ok(Number.isInteger(e.at) && Math.abs(e.change) >= 10 && e.text, JSON.stringify(e));
 });
 
 await done();
