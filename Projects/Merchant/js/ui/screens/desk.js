@@ -103,6 +103,16 @@ export function createDesk(app) {
     root.style.setProperty('--end-h', `${Math.ceil(endRow.checkVisibility?.() === false ? 0 : endRow.getBoundingClientRect().height)}px`);
   };
   const sizeWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(sizes) : null;
+  // LAND-4g: the watch above runs a frame late, and a focus that comes first scrolls by the bar's old height (PR #622's CI: Large text made End
+  // the season taller, and the focused last answer stopped 53 px behind it). So a focus measures the bars at once, and where End is the bar stuck
+  // to the foot of the page and the focused control lies behind it, the page is scrolled until the control's foot is clear
+  el.addEventListener('focusin', e => {
+    sizes();
+    const t = e.target;
+    if (!t?.closest?.('.sheet') || getComputedStyle(endRow).position !== 'sticky' || !endRow.checkVisibility()) return;
+    const behind = t.getBoundingClientRect().bottom + 6 - (window.innerHeight - endRow.offsetHeight);
+    if (behind > 0) window.scrollBy({ top: behind, behavior: 'instant' });
+  });
 
   // ---- the top bar
   function barNote(text) { note.textContent = text; app.say(text); }
