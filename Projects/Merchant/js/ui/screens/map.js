@@ -730,8 +730,11 @@ export function createMap(app, nav) {
   addEventListener('resize', onResize);
   draw();
   // the stops are placed and the map marked ready only once the page's own fonts are in: labels measured on the fallback font were placed
-  // again when the font arrived and moved a token 6 px after the map said it was ready (CI, PR #617)
-  Promise.all([loadGeo(), document.fonts?.ready]).then(([g]) => {
+  // again when the font arrived and moved a token 6 px after the map said it was ready (CI, PR #617). LAND-4g: `ready` waits only for faces
+  // already asked for, and a face is asked for when text first uses it (a stack's caption, PR #622: placed on the fallback font, it shrank 5 to
+  // 21 px when its face came, and stood 95 and 111 px from its piece), so every face of the page is loaded before the first placement
+  const allFaces = document.fonts ? Promise.all([...document.fonts].map(f => f.load().catch(() => null))) : null;
+  Promise.all([loadGeo(), document.fonts?.ready, allFaces]).then(([g]) => {
     if (gone) return;
     geo = g;
     for (const s of g.stops) pos[s.id] = { x: s.x / g.w * 100, y: s.y / g.h * 100 };
@@ -754,6 +757,9 @@ export function createMap(app, nav) {
   });
   // label widths change when the page's own font arrives, and the placement was measured before it
   document.fonts?.ready.then(() => { if (!gone && geo) { drawMap(); snapList(); } });
+  // and any face that still arrives later places labels and captions again, measured on the font they are drawn in
+  const onFontsLoaded = () => { if (!gone && geo) { drawMap(); snapList(); } };
+  document.fonts?.addEventListener('loadingdone', onFontsLoaded);
 
   return {
     el, key, draw,
@@ -761,6 +767,6 @@ export function createMap(app, nav) {
     prepareOutfit: stopId => { pendingStop = stopId; },
     showOutfit, hideOutfit,
     focusFirst: () => boardTitle.focus(),
-    destroy() { gone = true; clearTimeout(toastTimer); removeEventListener('resize', onResize); hideOutfit(); },
+    destroy() { gone = true; clearTimeout(toastTimer); removeEventListener('resize', onResize); document.fonts?.removeEventListener('loadingdone', onFontsLoaded); hideOutfit(); },
   };
 }
