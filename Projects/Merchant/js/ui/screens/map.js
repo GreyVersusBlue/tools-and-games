@@ -393,6 +393,19 @@ export function createMap(app, nav) {
       t.dataset.side = won.name;
       // the token is drawn at 1/k of the layer's scale, so a screen distance is k times as many of its own px
       cap.style.left = `${(won.r.left - cx) * k}px`; cap.style.top = `${(won.r.top - cy) * k}px`; cap.style.transform = 'none';
+      // LAND-4g: the place was chosen from the caption's size measured before it moved; drawn, it can come out a few px narrower or shorter (CI's
+      // runner drew a stack's caption 95 and 111 px from its piece where this machine drew 90). Measure the drawn box and, if it lies further than
+      // CAPTION_AWAY, slide it straight toward the piece by the excess, so the rule holds whatever the fonts measure
+      {
+        const d = cap.getBoundingClientRect();
+        const gx = Math.max(d.left - pr.right, 0, pr.left - d.right), gy = Math.max(d.top - pr.bottom, 0, pr.top - d.bottom), far = Math.hypot(gx, gy);
+        if (far > CAPTION_AWAY) {
+          const f = (far - CAPTION_AWAY + 0.5) / far;
+          const sx = d.left > pr.right ? -gx * f : d.right < pr.left ? gx * f : 0, sy = d.top > pr.bottom ? -gy * f : d.bottom < pr.top ? gy * f : 0;
+          won.r = { left: d.left + sx, right: d.right + sx, top: d.top + sy, bottom: d.bottom + sy };
+          cap.style.left = `${(won.r.left - cx) * k}px`; cap.style.top = `${(won.r.top - cy) * k}px`;
+        }
+      }
       taken.push({ ...won.r, piece: false });
       // a caption set apart from its piece is tied to it by a line from the piece's centre to the nearest point of the caption
       const lead = qs('.token-leader', t);
