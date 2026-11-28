@@ -10,7 +10,7 @@ import { freshState, addPaper } from '../js/engine/state.js';
 import { apply } from '../js/engine/effects.js';
 import { holds, roadStops } from '../js/engine/conditions.js';
 import { steps } from '../js/engine/turn.js';
-import { playGame, BOTS, roadLeaves } from '../tools/bots.mjs';
+import { playGame, BOTS, roadLeaves, namedCards, inYears, yearsOf } from '../tools/bots.mjs';
 import { newGame, openSeason, choose, canEndSeason, endSeason, recall, view, paperChoices, outfit } from '../js/engine/index.js';
 
 const content = await loadContent('testport', { fs });
@@ -1116,6 +1116,29 @@ test('road cards: a card whose years never meet a season of the game fails the c
   const card = structuredClone(cairoContent.cards.find(c => roadLeaves(c.when).length));
   card.when = { all: [card.when, { year: [1900, 1901] }] };
   ok(roadDealt(cairoContent, card), 'a card dated outside the game is reported');
+});
+
+// ---- MER-162: the bots' 1% row leaves out a weight-0 card a parent deals and a card dated outside the length, so each must be real
+test('orphans: every weight-0 card is named by some card, letter, event, return or opening (an orphan can never reach a desk)', () => {
+  const named = namedCards(cairoContent, { opening: true });
+  const orphans = cairoContent.cards.filter(c => c.weight === 0 && !named.has(c.id)).map(c => c.id);
+  eq(orphans, [], 'a weight-0 card no card or letter names is dealt by nothing: wire it to its parent or remove it');
+});
+test('orphans: a weight-0 card nothing names fails the case', () => {
+  const c = structuredClone(cairoContent);
+  c.cards.push({ ...structuredClone(c.cards[0]), id: 'orphan-probe', weight: 0 });
+  ok(!namedCards(c).has('orphan-probe'), 'the orphan is not named');
+  ok(namedCards(c).has('tabriz-friendly-letter'), 'a parent\'s `card` effect names its child');
+});
+test('years: inYears reads a card\'s year leaves through all and any, and holds other leaves possible', () => {
+  const acts = yearsOf(cairoContent, 'acts');
+  ok(acts.has(1324) && !acts.has(1344), 'the three acts play 1324 but not 1344');
+  ok(inYears({ all: [{ year: [1324, 1324] }, { season: ['summer'] }] }, acts));
+  ok(!inYears({ all: [{ year: [1344, 1344] }, { season: ['summer'] }] }, acts));
+  ok(inYears({ any: [{ year: [1344, 1344] }, { year: [1335, 1336] }] }, acts));
+  ok(!inYears({ any: [{ year: [1344, 1344] }, { year: [1350, 1351] }] }, acts));
+  ok(inYears(undefined, acts));
+  ok(cairoContent.cards.some(c => !inYears(c.when, acts)), 'some card is dated outside the three acts');
 });
 
 await done();
